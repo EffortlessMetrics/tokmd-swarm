@@ -7,15 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0-rc.1] - 2026-04-29
+
+Release candidate for `v1.10.0` (`v1.10.0rc1`).
+
+### Added
+
+- GitHub Action mode dispatch for `module`, `export`, `gate`, `cockpit`, `sensor`, and `baseline`.
+- GitHub Action outputs for `receipt`, `summary`, `gate-verdict`, `cockpit-report`, `sensor-report`, and `baseline-report`.
+- GitHub Action base/head handling for cockpit and sensor workflows, including PR-base inference.
+- GitHub Action test workflow coverage for expanded modes, outputs, artifact behavior, and path handling.
+- Browser/WASM capability matrix documentation for current runner support versus native-only commands.
+- Browser-runner validation checks that keep supported modes and analyze presets aligned with the capability matrix.
+- Canonical publish-surface policy documentation for product, contract, workflow, capability, and non-crates.io package boundaries.
+- Deterministic snapshot coverage for `tokmd analyze` JSON and Markdown output.
+- Deterministic receipt coverage for `tokmd run` and `tokmd diff`.
+- BDD coverage for `tokmd analyze --preset estimate`.
+- Additional config-resolution, tokmd-types, effort-model, env-interpreter, module-children, and in-memory workflow proof coverage.
+- `run_json("version")` now exposes `analysis_schema_version` when `tokmd-core` is built with analysis support.
+
+### Changed
+
+- Collapsed the previous support-crate sprawl into owner crates and SRP module families, including analysis leaf crates, rendering helpers, content/walk/fun/substrate helpers, and tool-schema helpers.
+- Public crate surface is now enforced around product, contract, workflow, and capability crates.
+- Internal crates are marked `publish = false`, while publish-surface verification and package-list proof treat the 16 published crates as the intentional crates.io boundary.
+- GitHub Action omitted mode continues the legacy module + export behavior, while explicit modes run one surface at a time.
+- CLI reference docs are generated through checked `HELP` markers instead of manually maintained flag tables.
+- No-default-features integration tests are feature-gated so the CLI test matrix respects optional analysis-dependent commands.
+- Browser-runner payload validation stays rootless/in-memory and rejects native-only command shapes unless the capability matrix changes.
+- README Action docs now cover explicit modes, outputs, artifacts, PR comments, base/head refs, and version pinning.
+- README, roadmap, and implementation docs now separate shipped browser/WASM support from follow-up browser runtime polish.
+- Architecture and testing docs now reflect the owner-module layout, current property-test entry points, and mutation-test paths.
+
+### Fixed
+
+- WASM timestamps now use real millisecond timestamps instead of silently emitting zero.
+- Bounded root/path handling rejects unsafe native, Git-listed, and MemFs/rootless paths consistently.
+- Git-listed paths are bounded under the validated root, including dirty-index and true-missing cases.
+- Metadata diagnostics preserve missing/broken-path classification instead of flattening useful path errors.
+- MemFs root semantics are explicit for `""`, `"."`, scoped subtrees, absolute paths, and parent traversal.
+- FFI in-memory path handling rejects absolute paths and parent traversal at the boundary.
+- Core workflows now default empty scan path lists to the current directory instead of reaching an upstream empty-path panic.
+- Halstead tokenization handles CJK / multibyte text adjacent to operators without panicking on invalid UTF-8 byte slicing.
+- Redacted path extension handling is limited to avoid extension leakage.
+- Context budget validation rejects invalid negative or non-finite values.
+- GitHub Action path splitting handles same-line and multiline `paths` inputs before mode-specific validation.
+- Action gate and baseline modes reject multi-path input where the underlying command accepts exactly one path.
+- Action cockpit and sensor base refs no longer assume `main` is fetched.
+- `check-ignore` now fails loudly on missing paths.
+- No-git baseline and `tokmd_git` resolution edge cases now resolve consistently.
+- No-default-features integration tests are gated to avoid false failures in unsupported feature profiles.
+- `tokmd-gate` now rejects malformed RFC 6901 pointer escapes and ambiguous array index tokens.
+- Gate rule comparison failures now surface diagnostic messages for missing or invalid operands while preserving explicit rule messages.
+- Cockpit `range_mode` parsing now validates accepted two-dot / three-dot values and fails clearly on invalid settings.
+- Browser-runner runtime errors now preserve duck-typed `message` and `code` fields across worker / WASM boundaries.
+- Receipt normalizers tolerate harmless whitespace differences in determinism tests.
+- `normalize_path` prefix behavior has mutant-catching regression coverage.
+
+### Internal
+
+- Removed unused `pyo3-build-config` from `tokmd-python`.
+- Removed redundant `tokio_rt` from `tokmd-node` and tightened `tokmd-wasm` dependency edges.
+- Bumped dependency keepers including `jsonschema`, `clap_complete`, and `softprops/action-gh-release`.
+- Updated cargo-mutants configuration for the current schema and restored mutation-test gate compatibility.
+- Updated cargo-deny metadata by removing deprecated/stale license configuration and reducing release-check warning noise.
+- Release workflow prerelease tags are marked as prereleases, excluded from `latest`, and kept away from stable crates.io, Docker, and major Action aliases.
+- Added derived-report allocation cleanup.
+- Added cockpit LCOV merge-path performance cleanup.
+- Added version-consistency allocation cleanup.
+- Removed the vulnerable RSA fixture dependency and added committed-fixture blob checks.
+- Added unsafe-code guardrails at primary interfaces.
+- Expanded Action self-tests across omitted mode, explicit modes, artifact outputs, inferred refs, and multi-path rejection rules.
+- Jules provenance policy was clarified: intentional `.jules/**` provenance is allowed, while normal patch PRs should not carry accidental run packets.
+- Consolidated Jules persona guidance and run/provenance indexing so intentional learning packets are distinguishable from runtime debris.
+- Added/updated the Jules run index builder to aggregate historical ledgers without rewriting provenance history.
+- Closed duplicate/stale PR families for pyo3 cleanup, no-default-features tests, analyze snapshots, browser-runner dynamic payloads, docs-marker drift, and stale architecture-doc updates.
+
+## [1.9.2] - 2026-04-14
+
+### Fixed
+
+- GitHub Action path handling was polished for released action usage.
+- README guidance now distinguishes the action ref from the downloaded `tokmd` binary version.
+
+## [1.9.1] - 2026-04-13
+
+### Added
+
+- GitHub Action Marketplace publish surface.
+- Browser runner support for base64 in-memory inputs.
+- Additional executable doctests and docs-as-tests for public APIs, context, diff, check-ignore, cockpit, and tutorial examples.
+- Deterministic ordering coverage for format output, TODO tags, git commits, effort models, and model data generation.
+
+### Changed
+
+- PyO3 stack updated to `0.28.3`.
+- `jsonschema` features were tightened to drop unnecessary network and crypto crates.
+- Workspace dependency pins were normalized.
+- Analysis and redaction hot paths received allocation cleanups.
+
 ### Fixed
 
 - **Tier Boundary Compliance**: Fixed architectural violation where `tokmd` CLI (Tier 5) directly depended on the analysis renderer, bypassing the `tokmd-core` facade (Tier 4) ([#996](https://github.com/EffortlessMetrics/tokmd/issues/996))
   - Added `analysis_facade` module in `tokmd-core` with renderer re-exports
   - Removed the direct analysis-renderer dependency from `tokmd` crate
-  - Restored proper tier hierarchy: Tier 5 → Tier 4 → Tier 3
+  - Restored proper tier hierarchy: Tier 5 -> Tier 4 -> Tier 3
   - Feature-gated under `analysis` feature flag with explicit `#[cfg(feature = "analysis")]` guards
-
-
+- FFI calls no longer panic on non-object JSON payloads.
+- Browser runner protocol keeps `requestId` on error responses and extracts exact error codes.
+- `--no-default-features` builds were repaired by decoupling git utilities and feature-gating unsupported tests.
+- `--redact all` hides module roots and structural row names.
+- CI, format, and clippy gates were restored after docs and PyO3 updates.
 
 ## [1.9.0] - 2026-03-27
 
@@ -23,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Browser/WASM product surface for `tokmd` via the new `tokmd-wasm` crate and `web/runner` browser runner
 - In-browser `lang`, `module`, `export`, and rootless `analyze` support for ordered in-memory inputs
-- Public GitHub repo ingestion in the browser through tree + contents APIs with explicit progress, caching, and partial-load reporting
+- Public GitHub repo ingestion in the browser through tree + contents APIs with deterministic in-memory input materialization and partial-load reporting
 
 ### Changed
 
