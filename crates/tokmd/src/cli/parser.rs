@@ -299,7 +299,7 @@ pub struct CliModuleArgs {
     /// Example:
     ///   crates/foo/src/lib.rs  (depth=2) => crates/foo
     ///   crates/foo/src/lib.rs  (depth=1) => crates
-    #[arg(long)]
+    #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
     /// Whether to include embedded languages (tokei "children" / blobs) in module totals [default: separate].
@@ -326,7 +326,7 @@ pub struct CliExportArgs {
     pub module_roots: Option<Vec<String>>,
 
     /// Module depth (see `tokmd module`) [default: 2].
-    #[arg(long)]
+    #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
     /// Whether to include embedded languages (tokei "children" / blobs) [default: separate].
@@ -625,7 +625,7 @@ pub struct CliContextArgs {
     pub module_roots: Option<Vec<String>>,
 
     /// Module depth (see `tokmd module`).
-    #[arg(long)]
+    #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
     /// Enable git-based ranking (required for churn/hotspot).
@@ -892,7 +892,7 @@ pub struct HandoffArgs {
     pub module_roots: Option<Vec<String>>,
 
     /// Module depth (see `tokmd module`).
-    #[arg(long)]
+    #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
     /// Overwrite existing output directory.
@@ -1076,6 +1076,33 @@ mod tests {
         assert!(a.top.is_none());
         assert!(!a.files);
         assert!(a.children.is_none());
+    }
+
+    #[test]
+    fn depth_visible_alias_sets_module_depth_for_module_like_commands() {
+        let cli = Cli::try_parse_from(["tokmd", "module", "--depth", "3"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Module(args) => assert_eq!(args.module_depth, Some(3)),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["tokmd", "export", "--depth", "3"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Export(args) => assert_eq!(args.module_depth, Some(3)),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["tokmd", "context", "--depth", "3"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Context(args) => assert_eq!(args.module_depth, Some(3)),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["tokmd", "handoff", "--depth", "3"]).unwrap();
+        match cli.command.unwrap() {
+            Commands::Handoff(args) => assert_eq!(args.module_depth, Some(3)),
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     // ── Enum serde roundtrips ─────────────────────────────────────────
