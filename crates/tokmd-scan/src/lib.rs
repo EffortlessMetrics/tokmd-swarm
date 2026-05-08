@@ -105,20 +105,61 @@ impl MaterializedScan {
 /// ```
 pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
     let cfg = config_from_scan_options(args);
-    let ignores = ignored_patterns(args);
-    let roots: Vec<ValidatedRoot> = paths
-        .iter()
-        .map(ValidatedRoot::new)
-        .collect::<std::result::Result<_, _>>()?;
+    let roots = validated_scan_roots(paths)?;
+    let ignores = ignored_patterns(args, &roots);
+    let ignore_refs: Vec<_> = ignores.iter().map(String::as_str).collect();
     let scan_paths: Vec<PathBuf> = roots
         .iter()
-        .map(|root| root.input().to_path_buf())
+        .map(|root| root.canonical().to_path_buf())
         .collect();
 
     let mut languages = Languages::new();
-    languages.get_statistics(&scan_paths, &ignores, &cfg);
+    languages.get_statistics(&scan_paths, &ignore_refs, &cfg);
+    rebase_report_paths(&mut languages, &roots);
 
     Ok(languages)
+}
+
+fn validated_scan_roots(paths: &[PathBuf]) -> Result<Vec<ValidatedRoot>> {
+    paths
+        .iter()
+        .map(ValidatedRoot::new)
+        .collect::<std::result::Result<_, _>>()
+        .map_err(Into::into)
+}
+
+fn rebase_report_paths(languages: &mut Languages, roots: &[ValidatedRoot]) {
+    for language in languages.values_mut() {
+        for report in &mut language.reports {
+            report.name = rebase_report_path(&report.name, roots);
+        }
+        for reports in language.children.values_mut() {
+            for report in reports {
+                report.name = rebase_report_path(&report.name, roots);
+            }
+        }
+    }
+}
+
+fn rebase_report_path(path: &Path, roots: &[ValidatedRoot]) -> PathBuf {
+    roots
+        .iter()
+        .filter_map(|root| {
+            path.strip_prefix(root.canonical())
+                .ok()
+                .map(|relative| (root, relative))
+        })
+        .max_by_key(|(root, _)| root.canonical().components().count())
+        .map_or_else(
+            || path.to_path_buf(),
+            |(root, relative)| {
+                if relative.as_os_str().is_empty() {
+                    root.input().to_path_buf()
+                } else {
+                    root.input().join(relative)
+                }
+            },
+        )
 }
 
 /// Build the `tokei` config used for a scan from clap-free `ScanOptions`.
@@ -189,8 +230,48 @@ fn build_config(args: &ScanOptions) -> Config {
     cfg
 }
 
-fn ignored_patterns(args: &ScanOptions) -> Vec<&str> {
-    args.excluded.iter().map(|s| s.as_str()).collect()
+fn ignored_patterns(args: &ScanOptions, roots: &[ValidatedRoot]) -> Vec<String> {
+    let mut patterns = BTreeSet::new();
+
+    for pattern in &args.excluded {
+        patterns.insert(pattern.clone());
+
+        if is_absolute_pattern(pattern) {
+            continue;
+        }
+
+        let relative = normalize_relative_ignore_pattern(pattern);
+        if relative.is_empty() {
+            continue;
+        }
+
+        if !relative.starts_with("**/") {
+            patterns.insert(format!("**/{relative}"));
+        }
+
+        for root in roots {
+            let canonical = normalize_slashes(&root.canonical().to_string_lossy());
+            patterns.insert(format!("{}/{}", canonical.trim_end_matches('/'), relative));
+        }
+    }
+
+    patterns.into_iter().collect()
+}
+
+fn is_absolute_pattern(pattern: &str) -> bool {
+    let path = Path::new(pattern);
+    path.is_absolute()
+        || pattern.starts_with('/')
+        || pattern.starts_with('\\')
+        || pattern.as_bytes().get(1).is_some_and(|byte| *byte == b':')
+}
+
+fn normalize_relative_ignore_pattern(pattern: &str) -> String {
+    let mut normalized = normalize_slashes(pattern);
+    while let Some(rest) = normalized.strip_prefix("./") {
+        normalized = rest.to_string();
+    }
+    normalized.trim_start_matches('/').to_string()
 }
 
 fn normalize_logical_paths(
@@ -300,6 +381,125 @@ mod tests {
                 .expect_err("should have failed")
                 .to_string()
                 .contains("Path not found")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn validated_scan_roots_resolve_parent_segments_before_walking() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let root = dir.path().join("repo");
+        let src = root.join("src");
+        fs::create_dir_all(&src)?;
+        fs::write(src.join("lib.rs"), "pub fn lib() {}\n")?;
+
+        let aliased_root = src.join("..");
+        let roots = validated_scan_roots(&[aliased_root])?;
+
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].canonical(), fs::canonicalize(&root)?);
+        Ok(())
+    }
+
+    #[test]
+    fn scan_rebases_canonical_walk_paths_to_input_root() -> Result<()> {
+        let args = default_scan_options();
+        let dir = tempfile::tempdir()?;
+        let root = dir.path().join("repo");
+        let src = root.join("src");
+        fs::create_dir_all(&src)?;
+        fs::write(src.join("lib.rs"), "pub fn lib() {}\n")?;
+
+        let aliased_root = src.join("..");
+        let languages = scan(std::slice::from_ref(&aliased_root), &args)?;
+        let rust = languages
+            .get(&tokei::LanguageType::Rust)
+            .expect("scan should find the Rust file");
+        let report = rust
+            .reports
+            .iter()
+            .find(|report| report.name.ends_with("src/lib.rs"))
+            .expect("scan should preserve a report for src/lib.rs");
+
+        assert!(
+            report.name.starts_with(&aliased_root),
+            "report path {} should be rebased under input root {}",
+            report.name.display(),
+            aliased_root.display()
+        );
+        assert_ne!(
+            report.name,
+            fs::canonicalize(&root)?.join("src/lib.rs"),
+            "report path should preserve the caller-facing input root"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn scan_rebases_embedded_child_report_paths_to_input_root() -> Result<()> {
+        let args = default_scan_options();
+        let dir = tempfile::tempdir()?;
+        let root = dir.path().join("repo");
+        let web = root.join("web");
+        fs::create_dir_all(&web)?;
+        fs::write(
+            web.join("index.html"),
+            "<html><script>const answer = 42;</script></html>\n",
+        )?;
+
+        let aliased_root = web.join("..");
+        let languages = scan(std::slice::from_ref(&aliased_root), &args)?;
+        let child_report = languages
+            .values()
+            .flat_map(|language| language.children.values())
+            .flatten()
+            .find(|report| report.name.ends_with("web/index.html"))
+            .expect("scan should preserve embedded child report paths");
+
+        assert!(
+            child_report.name.starts_with(&aliased_root),
+            "child report path {} should be rebased under input root {}",
+            child_report.name.display(),
+            aliased_root.display()
+        );
+        assert_ne!(
+            child_report.name,
+            fs::canonicalize(&root)?.join("web/index.html"),
+            "child report path should preserve the caller-facing input root"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn scan_keeps_relative_excludes_matching_canonical_walk_roots() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let root = dir.path().join("repo");
+        let secret = root.join("secret_folder");
+        fs::create_dir_all(&secret)?;
+        fs::write(secret.join("app.rs"), "fn secret() {}\n")?;
+        fs::write(root.join("other.rs"), "fn other() {}\n")?;
+
+        let mut args = default_scan_options();
+        args.excluded = vec!["secret_folder/**".to_string()];
+        let languages = scan(&[root.join(".")], &args)?;
+        let rust = languages
+            .get(&tokei::LanguageType::Rust)
+            .expect("scan should find the visible Rust file");
+        let report_paths: Vec<_> = rust
+            .reports
+            .iter()
+            .map(|report| normalize_slashes(&report.name.to_string_lossy()))
+            .collect();
+
+        assert!(
+            report_paths.iter().any(|path| path.ends_with("other.rs")),
+            "visible file should be scanned: {report_paths:?}"
+        );
+        assert!(
+            !report_paths
+                .iter()
+                .any(|path| path.contains("secret_folder")),
+            "relative exclude should still match after canonicalizing scan roots: {report_paths:?}"
         );
         Ok(())
     }
