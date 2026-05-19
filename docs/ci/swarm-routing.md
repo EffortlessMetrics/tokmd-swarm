@@ -149,6 +149,8 @@ showed only 58GB free on `/mnt/ci-scratch`, below the 100GB disk guard.
 - CX33 backfill proof: forced `workflow_dispatch` selected CX33 in run
   `26128663213` and failed the disk guard because `/mnt/ci-scratch` had 58GB
   free, so tokmd keeps the smaller `CX43 -> CX53 -> GitHub-hosted` route.
+- CX53 backfill proof: forced `workflow_dispatch` on `main` selected CX53 and
+  passed `Tokmd Rust Small Result` in run `26129908319`.
 
 ## Machine Cutover Rule
 
