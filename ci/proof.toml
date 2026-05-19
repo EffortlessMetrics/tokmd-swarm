@@ -1322,10 +1322,12 @@ coverage = false
 name = "ci_economics_policy"
 kind = "non_rust"
 paths = [
+  ".github/workflows/em-routed-rust-small.yml",
   "policy/ci-lane-whitelist.toml",
   "policy/ci-whitelist-exceptions.toml",
 ]
 proof = [
+  "cargo xtask ci-lane-whitelist",
   "cargo xtask proof-policy --check",
 ]
 reason = "CI lane whitelist and its docs govern verification economics receipts; checked via proof-policy and the lane whitelist linter (PR 03 onward)."
