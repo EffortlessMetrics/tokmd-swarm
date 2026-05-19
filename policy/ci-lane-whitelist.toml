@@ -68,26 +68,6 @@ review_after     = "2026-06-19"
 expires          = "2026-11-19"
 
 [[lane]]
-id               = "tokmd_rust_small_cx33"
-workflow         = ".github/workflows/em-routed-rust-small.yml"
-job              = "Tokmd Rust Small on CX33"
-kind             = "rust"
-tier             = "frontdoor"
-default_pr       = true
-blocking         = true
-runner           = "em_ci_small"
-base_lem         = 30
-owner            = "core/build"
-intent           = "Run the secondary tokmd Rust Small route on CX33 when CX43 is unavailable."
-failure_mode     = "The CX33 backfill route cannot safely complete the Rust Small check/test lane."
-proof_obligation = "Run cargo check and cargo test over the workspace with all features and a locked dependency graph."
-evidence         = ["job logs", "sccache stats"]
-allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
-duplicate_of     = ["tokmd_rust_small_result"]
-review_after     = "2026-06-19"
-expires          = "2026-11-19"
-
-[[lane]]
 id               = "tokmd_rust_small_cx53"
 workflow         = ".github/workflows/em-routed-rust-small.yml"
 job              = "Tokmd Rust Small on CX53"

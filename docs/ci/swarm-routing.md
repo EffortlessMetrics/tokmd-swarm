@@ -36,7 +36,6 @@ Do not require the conditional implementation jobs:
 ```text
 Route Tokmd Rust Small
 Tokmd Rust Small on CX43
-Tokmd Rust Small on CX33
 Tokmd Rust Small on CX53
 Tokmd Rust Small on GitHub Hosted
 ```
@@ -50,7 +49,7 @@ The router checks org self-hosted runner state with `EM_RUNNER_READ_TOKEN` and
 selects the first idle trusted runner in this order:
 
 ```text
-CX43 -> CX33 -> CX53 -> GitHub-hosted
+CX43 -> CX53 -> GitHub-hosted
 ```
 
 If the runner-read token is missing, the runner API fails, parsing fails, or no
@@ -75,7 +74,7 @@ runner_group: em-ci-small
 image: em-ci-rust:1.95
 cache: /mnt/ci-cache
 scratch: /mnt/ci-scratch
-required labels: em-ci, rust-small, trusted-pr, plus cx43/cx33/cx53
+required labels: em-ci, rust-small, trusted-pr, plus cx43/cx53
 ```
 
 Disk guards run before Cargo:
@@ -104,7 +103,8 @@ cargo test --workspace --all-features --locked
 ```
 
 `cargo xtask gate --check` is not in the first required frontdoor. Add it only
-after runtime telemetry shows the lane remains small enough for CX43/CX33.
+after runtime telemetry shows the lane remains small enough for the active
+Rust Small route.
 
 ## Not Moved Yet
 
@@ -133,15 +133,12 @@ Use this order before enabling branch protection:
 1. Routed workflow PR passes.
 2. Manual `workflow_dispatch` on `tokmd-swarm/main` passes.
 3. A tiny same-repo PR proves the same-repo PR path.
-4. A forced or occupied-runner backfill proof selects CX33, CX53, or
-   GitHub-hosted after CX43 is unavailable.
+4. A forced or occupied-runner backfill proof selects CX53 or GitHub-hosted
+   after CX43 is unavailable.
 5. After 3-5 clean runs, require only `Tokmd Rust Small Result`.
 
-If CX33 shows disk or runtime problems, remove it from the route and keep:
-
-```text
-CX43 -> CX53 -> GitHub-hosted
-```
+CX33 was removed from the tokmd Rust Small route after forced backfill proof
+showed only 58GB free on `/mnt/ci-scratch`, below the 100GB disk guard.
 
 ## Current Proof
 
@@ -149,6 +146,9 @@ CX43 -> CX53 -> GitHub-hosted
   `26125363201`.
 - Main dispatch proof: `workflow_dispatch` on `main` passed
   `Tokmd Rust Small Result` on CX43 in run `26126610481`.
+- CX33 backfill proof: forced `workflow_dispatch` selected CX33 in run
+  `26128663213` and failed the disk guard because `/mnt/ci-scratch` had 58GB
+  free, so tokmd keeps the smaller `CX43 -> CX53 -> GitHub-hosted` route.
 
 ## Machine Cutover Rule
 
