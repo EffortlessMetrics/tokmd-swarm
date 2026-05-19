@@ -168,10 +168,10 @@ jobs:
     env:
       CARGO_HOME: /mnt/ci-cache/cargo-home
       SCCACHE_DIR: /mnt/ci-cache/sccache
-      SCCACHE_CACHE_SIZE: 60G
+      SCCACHE_CACHE_SIZE: 30G
       RUSTC_WRAPPER: /usr/local/cargo/bin/sccache
       CARGO_INCREMENTAL: "0"
-      CARGO_BUILD_JOBS: "12"
+      CARGO_BUILD_JOBS: "4"
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -202,8 +202,8 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
-            --cpus="12" \
-            --memory="24g" \
+            --cpus="6" \
+            --memory="12g" \
             -e CARGO_HOME=/cargo-home \
             -e SCCACHE_DIR=/sccache \
             -e SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE}" \
@@ -268,7 +268,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 30G
       RUSTC_WRAPPER: /usr/local/cargo/bin/sccache
       CARGO_INCREMENTAL: "0"
-      CARGO_BUILD_JOBS: "6"
+      CARGO_BUILD_JOBS: "4"
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
       CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
