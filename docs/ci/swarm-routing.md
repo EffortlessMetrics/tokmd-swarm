@@ -143,6 +143,13 @@ If CX33 shows disk or runtime problems, remove it from the route and keep:
 CX43 -> CX53 -> GitHub-hosted
 ```
 
+## Current Proof
+
+- PR route proof: #2 passed `Tokmd Rust Small Result` on CX43 in run
+  `26125363201`.
+- Main dispatch proof: `workflow_dispatch` on `main` passed
+  `Tokmd Rust Small Result` on CX43 in run `26126610481`.
+
 ## Machine Cutover Rule
 
 New tokmd work should target:
