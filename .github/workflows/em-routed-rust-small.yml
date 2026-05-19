@@ -195,6 +195,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Expose Git metadata to container
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "HOST_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir)"
+            echo "HOST_GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)"
+          } >> "$GITHUB_ENV"
+
       - name: Check and test tokmd rust-small on CX43
         shell: bash
         env:
@@ -217,9 +226,13 @@ jobs:
             -v "${SCCACHE_DIR}:/sccache" \
             -v "${CARGO_TARGET_DIR}:/target" \
             -v "${TMPDIR}:/tmp/jobtmp" \
+            -v "${HOST_GIT_DIR}:${HOST_GIT_DIR}:ro" \
+            -v "${HOST_GIT_COMMON_DIR}:${HOST_GIT_COMMON_DIR}:ro" \
             -w /workspace \
             "${IMAGE}" \
             bash -eu -o pipefail -c '
+              git config --global --add safe.directory /workspace
+              git rev-parse --verify HEAD
               rustc --version
               cargo --version
               sccache --version
@@ -292,6 +305,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Expose Git metadata to container
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "HOST_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir)"
+            echo "HOST_GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)"
+          } >> "$GITHUB_ENV"
+
       - name: Check and test tokmd rust-small on CX33
         shell: bash
         env:
@@ -314,9 +336,13 @@ jobs:
             -v "${SCCACHE_DIR}:/sccache" \
             -v "${CARGO_TARGET_DIR}:/target" \
             -v "${TMPDIR}:/tmp/jobtmp" \
+            -v "${HOST_GIT_DIR}:${HOST_GIT_DIR}:ro" \
+            -v "${HOST_GIT_COMMON_DIR}:${HOST_GIT_COMMON_DIR}:ro" \
             -w /workspace \
             "${IMAGE}" \
             bash -eu -o pipefail -c '
+              git config --global --add safe.directory /workspace
+              git rev-parse --verify HEAD
               rustc --version
               cargo --version
               sccache --version
@@ -389,6 +415,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Expose Git metadata to container
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "HOST_GIT_DIR=$(git rev-parse --path-format=absolute --git-dir)"
+            echo "HOST_GIT_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir)"
+          } >> "$GITHUB_ENV"
+
       - name: Check and test tokmd rust-small on CX53
         shell: bash
         env:
@@ -411,9 +446,13 @@ jobs:
             -v "${SCCACHE_DIR}:/sccache" \
             -v "${CARGO_TARGET_DIR}:/target" \
             -v "${TMPDIR}:/tmp/jobtmp" \
+            -v "${HOST_GIT_DIR}:${HOST_GIT_DIR}:ro" \
+            -v "${HOST_GIT_COMMON_DIR}:${HOST_GIT_COMMON_DIR}:ro" \
             -w /workspace \
             "${IMAGE}" \
             bash -eu -o pipefail -c '
+              git config --global --add safe.directory /workspace
+              git rev-parse --verify HEAD
               rustc --version
               cargo --version
               sccache --version

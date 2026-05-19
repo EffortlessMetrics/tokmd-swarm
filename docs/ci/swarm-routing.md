@@ -89,6 +89,10 @@ ci-disk-guard /mnt/ci-cache 20
 Scratch cleanup runs through the same container image so root-owned files do
 not strand the runner.
 
+Self-hosted Docker jobs mount the checkout's resolved git dir and common dir
+read-only into the container. That keeps `HEAD` and other local refs available
+to repository tests that exercise git-aware xtask commands.
+
 ## Initial Command Set
 
 The Rust Small lane intentionally starts with:
