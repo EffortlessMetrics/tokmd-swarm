@@ -21,10 +21,111 @@ windows_latest     = 2.0
 macos_latest       = 10.0
 nix_build          = 4.0
 external_ai_review = 4.0
+em_ci_small        = 1.0
 
 # -----------------------------------------------------------------------
 # Frontdoor / cheap default-PR lanes
 # -----------------------------------------------------------------------
+
+[[lane]]
+id               = "tokmd_rust_small_route"
+workflow         = ".github/workflows/em-routed-rust-small.yml"
+job              = "Route Tokmd Rust Small"
+kind             = "planner"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Select the first available trusted Rust Small runner for tokmd-swarm."
+failure_mode     = "The normalized Rust Small result cannot identify the implementation lane to trust."
+proof_obligation = "Read org runner state with EM_RUNNER_READ_TOKEN and emit the selected target."
+evidence         = ["job outputs"]
+allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-06-19"
+expires          = "2026-11-19"
+
+[[lane]]
+id               = "tokmd_rust_small_cx43"
+workflow         = ".github/workflows/em-routed-rust-small.yml"
+job              = "Tokmd Rust Small on CX43"
+kind             = "rust"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "em_ci_small"
+base_lem         = 25
+owner            = "core/build"
+intent           = "Run the primary tokmd Rust Small check/test lane on CX43."
+failure_mode     = "The primary self-hosted Rust Small route fails to build or test the workspace."
+proof_obligation = "Run cargo check and cargo test over the workspace with all features and a locked dependency graph."
+evidence         = ["job logs", "sccache stats"]
+allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
+duplicate_of     = ["tokmd_rust_small_result"]
+review_after     = "2026-06-19"
+expires          = "2026-11-19"
+
+[[lane]]
+id               = "tokmd_rust_small_cx53"
+workflow         = ".github/workflows/em-routed-rust-small.yml"
+job              = "Tokmd Rust Small on CX53"
+kind             = "rust"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "em_ci_small"
+base_lem         = 25
+owner            = "core/build"
+intent           = "Run the overflow tokmd Rust Small route on CX53 when smaller runners are unavailable."
+failure_mode     = "The CX53 overflow route cannot complete the Rust Small check/test lane."
+proof_obligation = "Run cargo check and cargo test over the workspace with all features and a locked dependency graph."
+evidence         = ["job logs", "sccache stats"]
+allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
+duplicate_of     = ["tokmd_rust_small_result"]
+review_after     = "2026-06-19"
+expires          = "2026-11-19"
+
+[[lane]]
+id               = "tokmd_rust_small_github"
+workflow         = ".github/workflows/em-routed-rust-small.yml"
+job              = "Tokmd Rust Small on GitHub Hosted"
+kind             = "rust"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 30
+owner            = "core/build"
+intent           = "Run the GitHub-hosted fallback for untrusted PRs or unavailable self-hosted runners."
+failure_mode     = "Fork PRs or no-idle-runner cases have no safe Rust Small validation path."
+proof_obligation = "Run cargo check and cargo test over the workspace with all features and a locked dependency graph."
+evidence         = ["job logs"]
+allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
+duplicate_of     = ["tokmd_rust_small_result"]
+review_after     = "2026-06-19"
+expires          = "2026-11-19"
+
+[[lane]]
+id               = "tokmd_rust_small_result"
+workflow         = ".github/workflows/em-routed-rust-small.yml"
+job              = "Tokmd Rust Small Result"
+kind             = "summary"
+tier             = "summary"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Normalize routed Rust Small outcomes into one branch-protection check."
+failure_mode     = "Branch protection is tied to conditional implementation jobs instead of the selected route result."
+proof_obligation = "Read route and implementation job results; fail unless the selected implementation job succeeded."
+evidence         = ["GITHUB_STEP_SUMMARY", "job logs"]
+allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-06-19"
+expires          = "2026-11-19"
 
 [[lane]]
 id               = "msrv_check"
