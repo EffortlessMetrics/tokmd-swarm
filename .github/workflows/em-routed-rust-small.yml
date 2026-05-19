@@ -189,6 +189,18 @@ jobs:
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR" "$CARGO_HOME" "$SCCACHE_DIR"
 
+      - name: Cleanup stale workspace scratch
+        shell: bash
+        env:
+          IMAGE: em-ci-rust:1.95
+        run: |
+          set -eu
+          mkdir -p "${GITHUB_WORKSPACE}"
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "${IMAGE}" \
+            bash -c 'rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true'
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -250,12 +262,14 @@ jobs:
         run: |
           set -eu
           docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
             -v "${TMPDIR}:/tmp/jobtmp" \
             -v "${CARGO_TARGET_DIR}:/target" \
             "${IMAGE}" \
             bash -c '
               rm -rf /tmp/jobtmp/* /tmp/jobtmp/.[!.]* /tmp/jobtmp/..?* 2>/dev/null || true
               rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true
+              rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true
             ' || true
           rmdir "$TMPDIR" 2>/dev/null || true
           rmdir "$CARGO_TARGET_DIR" 2>/dev/null || true
@@ -298,6 +312,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR" "$CARGO_HOME" "$SCCACHE_DIR"
+
+      - name: Cleanup stale workspace scratch
+        shell: bash
+        env:
+          IMAGE: em-ci-rust:1.95
+        run: |
+          set -eu
+          mkdir -p "${GITHUB_WORKSPACE}"
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "${IMAGE}" \
+            bash -c 'rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true'
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -360,12 +386,14 @@ jobs:
         run: |
           set -eu
           docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
             -v "${TMPDIR}:/tmp/jobtmp" \
             -v "${CARGO_TARGET_DIR}:/target" \
             "${IMAGE}" \
             bash -c '
               rm -rf /tmp/jobtmp/* /tmp/jobtmp/.[!.]* /tmp/jobtmp/..?* 2>/dev/null || true
               rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true
+              rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true
             ' || true
           rmdir "$TMPDIR" 2>/dev/null || true
           rmdir "$CARGO_TARGET_DIR" 2>/dev/null || true
@@ -408,6 +436,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR" "$CARGO_HOME" "$SCCACHE_DIR"
+
+      - name: Cleanup stale workspace scratch
+        shell: bash
+        env:
+          IMAGE: em-ci-rust:1.95
+        run: |
+          set -eu
+          mkdir -p "${GITHUB_WORKSPACE}"
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "${IMAGE}" \
+            bash -c 'rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true'
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -470,12 +510,14 @@ jobs:
         run: |
           set -eu
           docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
             -v "${TMPDIR}:/tmp/jobtmp" \
             -v "${CARGO_TARGET_DIR}:/target" \
             "${IMAGE}" \
             bash -c '
               rm -rf /tmp/jobtmp/* /tmp/jobtmp/.[!.]* /tmp/jobtmp/..?* 2>/dev/null || true
               rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true
+              rm -rf /workspace/target /workspace/xtask/target 2>/dev/null || true
             ' || true
           rmdir "$TMPDIR" 2>/dev/null || true
           rmdir "$CARGO_TARGET_DIR" 2>/dev/null || true

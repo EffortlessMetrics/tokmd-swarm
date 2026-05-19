@@ -87,7 +87,8 @@ ci-disk-guard /mnt/ci-cache 20
 ```
 
 Scratch cleanup runs through the same container image so root-owned files do
-not strand the runner.
+not strand the runner. It runs before checkout for stale workspace scratch and
+after Cargo for `TMPDIR`, `CARGO_TARGET_DIR`, and workspace-local test scratch.
 
 Self-hosted Docker jobs mount the checkout's resolved git dir and common dir
 read-only into the container. That keeps `HEAD` and other local refs available
