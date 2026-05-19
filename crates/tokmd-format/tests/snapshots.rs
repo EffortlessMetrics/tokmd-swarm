@@ -1,0 +1,1138 @@
+//! Integration-level snapshot tests for every public format renderer.
+//!
+//! Each test exercises the public `write_*` API and pins the output
+//! with an insta snapshot so regressions are caught at review time.
+
+use std::path::PathBuf;
+
+use tokmd_format::{
+    DiffColorMode, DiffRenderOptions, compute_diff_rows, compute_diff_totals, create_diff_receipt,
+    render_diff_md, render_diff_md_with_options, write_export_csv_to,
+    write_export_cyclonedx_with_options, write_export_json_to, write_export_jsonl_to,
+    write_lang_report_to, write_module_report_to,
+};
+use tokmd_settings::{ChildIncludeMode, ChildrenMode, ScanOptions};
+use tokmd_types::{
+    ExportArgs, ExportData, ExportFormat, FileKind, FileRow, LangArgs, LangReport, LangRow,
+    ModuleArgs, ModuleReport, ModuleRow, RedactMode, TableFormat, Totals,
+};
+
+// ---------------------------------------------------------------------------
+// Shared fixtures
+// ---------------------------------------------------------------------------
+
+fn lang_report(with_files: bool) -> LangReport {
+    LangReport {
+        rows: vec![
+            LangRow {
+                lang: "Rust".into(),
+                code: 1000,
+                lines: 1200,
+                files: 10,
+                bytes: 50000,
+                tokens: 2500,
+                avg_lines: 120,
+            },
+            LangRow {
+                lang: "TOML".into(),
+                code: 50,
+                lines: 60,
+                files: 2,
+                bytes: 1000,
+                tokens: 125,
+                avg_lines: 30,
+            },
+        ],
+        total: Totals {
+            code: 1050,
+            lines: 1260,
+            files: 12,
+            bytes: 51000,
+            tokens: 2625,
+            avg_lines: 105,
+        },
+        with_files,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    }
+}
+
+fn module_report() -> ModuleReport {
+    ModuleReport {
+        rows: vec![
+            ModuleRow {
+                module: "crates/alpha".into(),
+                code: 800,
+                lines: 950,
+                files: 8,
+                bytes: 40000,
+                tokens: 2000,
+                avg_lines: 119,
+            },
+            ModuleRow {
+                module: "crates/beta".into(),
+                code: 200,
+                lines: 250,
+                files: 2,
+                bytes: 10000,
+                tokens: 500,
+                avg_lines: 125,
+            },
+        ],
+        total: Totals {
+            code: 1000,
+            lines: 1200,
+            files: 10,
+            bytes: 50000,
+            tokens: 2500,
+            avg_lines: 120,
+        },
+        module_roots: vec!["crates".into()],
+        module_depth: 2,
+        children: ChildIncludeMode::Separate,
+        top: 0,
+    }
+}
+
+fn file_rows() -> Vec<FileRow> {
+    vec![
+        FileRow {
+            path: "src/lib.rs".into(),
+            module: "src".into(),
+            lang: "Rust".into(),
+            kind: FileKind::Parent,
+            code: 100,
+            comments: 20,
+            blanks: 10,
+            lines: 130,
+            bytes: 1000,
+            tokens: 250,
+        },
+        FileRow {
+            path: "src/util.rs".into(),
+            module: "src".into(),
+            lang: "Rust".into(),
+            kind: FileKind::Parent,
+            code: 60,
+            comments: 5,
+            blanks: 5,
+            lines: 70,
+            bytes: 600,
+            tokens: 150,
+        },
+        FileRow {
+            path: "tests/smoke.rs".into(),
+            module: "tests".into(),
+            lang: "Rust".into(),
+            kind: FileKind::Parent,
+            code: 40,
+            comments: 2,
+            blanks: 3,
+            lines: 45,
+            bytes: 400,
+            tokens: 100,
+        },
+    ]
+}
+
+fn export_data() -> ExportData {
+    ExportData {
+        rows: file_rows(),
+        module_roots: vec!["src".into(), "tests".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    }
+}
+
+fn global() -> ScanOptions {
+    ScanOptions::default()
+}
+
+// ---------------------------------------------------------------------------
+// Lang — Markdown
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_lang_md_without_files() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &lang_report(false), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_md_no_files", output);
+}
+
+#[test]
+fn snapshot_lang_md_with_files() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        files: true,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &lang_report(true), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_md_with_files", output);
+}
+
+// ---------------------------------------------------------------------------
+// Lang — TSV
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_lang_tsv_without_files() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &lang_report(false), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_tsv_no_files", output);
+}
+
+#[test]
+fn snapshot_lang_tsv_with_files() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        files: true,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &lang_report(true), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_tsv_with_files", output);
+}
+
+// ---------------------------------------------------------------------------
+// Lang — JSON (timestamp-redacted)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_lang_json() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &lang_report(false), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    // Normalise non-deterministic fields
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("lang_json", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Module — Markdown
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_module_md() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        module_roots: vec!["crates".into()],
+        module_depth: 2,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("module_md", output);
+}
+
+// ---------------------------------------------------------------------------
+// Module — TSV
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_module_tsv() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        module_roots: vec!["crates".into()],
+        module_depth: 2,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("module_tsv", output);
+}
+
+// ---------------------------------------------------------------------------
+// Module — JSON (timestamp-redacted)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_module_json() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        module_roots: vec!["crates".into()],
+        module_depth: 2,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("module_json", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Export — CSV
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_csv() {
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Csv,
+        output: None,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: false,
+        strip_prefix: None,
+    };
+    write_export_csv_to(&mut buf, &export_data(), &args).expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("export_csv", output);
+}
+
+// ---------------------------------------------------------------------------
+// Export — JSONL (no meta)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_jsonl_no_meta() {
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Jsonl,
+        output: None,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: false,
+        strip_prefix: None,
+    };
+    write_export_jsonl_to(&mut buf, &export_data(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("export_jsonl_no_meta", output);
+}
+
+// ---------------------------------------------------------------------------
+// Export — JSON (no meta, rows only)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_json_no_meta() {
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Json,
+        output: None,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: false,
+        strip_prefix: None,
+    };
+    write_export_json_to(&mut buf, &export_data(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("export_json_no_meta", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Export — CycloneDX (deterministic serial+timestamp)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_cyclonedx() {
+    let mut buf = Vec::new();
+    write_export_cyclonedx_with_options(
+        &mut buf,
+        &export_data(),
+        RedactMode::None,
+        Some("urn:uuid:00000000-0000-0000-0000-000000000000".into()),
+        Some("1970-01-01T00:00:00Z".into()),
+    )
+    .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    // Normalise tool version
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["metadata"]["tools"][0]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("export_cyclonedx", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Diff — Markdown (full + compact)
+// ---------------------------------------------------------------------------
+
+fn diff_reports() -> (LangReport, LangReport) {
+    let from = LangReport {
+        rows: vec![
+            LangRow {
+                lang: "Rust".into(),
+                code: 500,
+                lines: 600,
+                files: 5,
+                bytes: 25000,
+                tokens: 1250,
+                avg_lines: 120,
+            },
+            LangRow {
+                lang: "Go".into(),
+                code: 200,
+                lines: 240,
+                files: 3,
+                bytes: 8000,
+                tokens: 500,
+                avg_lines: 80,
+            },
+        ],
+        total: Totals {
+            code: 700,
+            lines: 840,
+            files: 8,
+            bytes: 33000,
+            tokens: 1750,
+            avg_lines: 105,
+        },
+        with_files: false,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    };
+    let to = LangReport {
+        rows: vec![
+            LangRow {
+                lang: "Rust".into(),
+                code: 600,
+                lines: 720,
+                files: 6,
+                bytes: 30000,
+                tokens: 1500,
+                avg_lines: 120,
+            },
+            LangRow {
+                lang: "Python".into(),
+                code: 150,
+                lines: 180,
+                files: 4,
+                bytes: 7500,
+                tokens: 375,
+                avg_lines: 45,
+            },
+        ],
+        total: Totals {
+            code: 750,
+            lines: 900,
+            files: 10,
+            bytes: 37500,
+            tokens: 1875,
+            avg_lines: 90,
+        },
+        with_files: false,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    };
+    (from, to)
+}
+
+#[test]
+fn snapshot_diff_md_full() {
+    let (from, to) = diff_reports();
+    let rows = compute_diff_rows(&from, &to);
+    let totals = compute_diff_totals(&rows);
+    let md = render_diff_md("v1.0.0", "v2.0.0", &rows, &totals);
+    insta::assert_snapshot!("diff_md_full", md);
+}
+
+#[test]
+fn snapshot_diff_md_compact() {
+    let (from, to) = diff_reports();
+    let rows = compute_diff_rows(&from, &to);
+    let totals = compute_diff_totals(&rows);
+    let md = render_diff_md_with_options(
+        "v1.0.0",
+        "v2.0.0",
+        &rows,
+        &totals,
+        DiffRenderOptions {
+            compact: true,
+            color: DiffColorMode::Off,
+        },
+    );
+    insta::assert_snapshot!("diff_md_compact", md);
+}
+
+// ---------------------------------------------------------------------------
+// Diff — JSON receipt (timestamp-redacted)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_diff_json() {
+    let (from, to) = diff_reports();
+    let rows = compute_diff_rows(&from, &to);
+    let totals = compute_diff_totals(&rows);
+    let receipt = create_diff_receipt("v1.0.0", "v2.0.0", rows, totals);
+    let raw = serde_json::to_string(&receipt).expect("operation must succeed");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("diff_json", pretty);
+}
+
+// ===========================================================================
+// Edge cases
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Empty results
+// ---------------------------------------------------------------------------
+
+fn empty_lang_report() -> LangReport {
+    LangReport {
+        rows: vec![],
+        total: Totals {
+            code: 0,
+            lines: 0,
+            files: 0,
+            bytes: 0,
+            tokens: 0,
+            avg_lines: 0,
+        },
+        with_files: false,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    }
+}
+
+fn empty_module_report() -> ModuleReport {
+    ModuleReport {
+        rows: vec![],
+        total: Totals {
+            code: 0,
+            lines: 0,
+            files: 0,
+            bytes: 0,
+            tokens: 0,
+            avg_lines: 0,
+        },
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        top: 0,
+    }
+}
+
+#[test]
+fn snapshot_lang_md_empty() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &empty_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_md_empty", output);
+}
+
+#[test]
+fn snapshot_lang_tsv_empty() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &empty_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_tsv_empty", output);
+}
+
+#[test]
+fn snapshot_lang_json_empty() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &empty_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("lang_json_empty", pretty);
+}
+
+#[test]
+fn snapshot_module_md_empty() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &empty_module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("module_md_empty", output);
+}
+
+#[test]
+fn snapshot_module_tsv_empty() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &empty_module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("module_tsv_empty", output);
+}
+
+#[test]
+fn snapshot_module_json_empty() {
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &empty_module_report(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("module_json_empty", pretty);
+}
+
+#[test]
+fn snapshot_export_csv_empty() {
+    let mut buf = Vec::new();
+    let data = ExportData {
+        rows: vec![],
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Csv,
+        output: None,
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: false,
+        strip_prefix: None,
+    };
+    write_export_csv_to(&mut buf, &data, &args).expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("export_csv_empty", output);
+}
+
+// ---------------------------------------------------------------------------
+// Single language
+// ---------------------------------------------------------------------------
+
+fn single_lang_report() -> LangReport {
+    LangReport {
+        rows: vec![LangRow {
+            lang: "Rust".into(),
+            code: 500,
+            lines: 600,
+            files: 5,
+            bytes: 25000,
+            tokens: 1250,
+            avg_lines: 120,
+        }],
+        total: Totals {
+            code: 500,
+            lines: 600,
+            files: 5,
+            bytes: 25000,
+            tokens: 1250,
+            avg_lines: 120,
+        },
+        with_files: false,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    }
+}
+
+#[test]
+fn snapshot_lang_md_single() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &single_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_md_single", output);
+}
+
+#[test]
+fn snapshot_lang_tsv_single() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &single_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_tsv_single", output);
+}
+
+#[test]
+fn snapshot_lang_json_single() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &single_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("lang_json_single", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Many languages
+// ---------------------------------------------------------------------------
+
+fn many_lang_report() -> LangReport {
+    let rows = vec![
+        LangRow {
+            lang: "Rust".into(),
+            code: 5000,
+            lines: 6000,
+            files: 50,
+            bytes: 250000,
+            tokens: 12500,
+            avg_lines: 120,
+        },
+        LangRow {
+            lang: "Python".into(),
+            code: 3000,
+            lines: 3600,
+            files: 30,
+            bytes: 150000,
+            tokens: 7500,
+            avg_lines: 120,
+        },
+        LangRow {
+            lang: "JavaScript".into(),
+            code: 2000,
+            lines: 2400,
+            files: 20,
+            bytes: 100000,
+            tokens: 5000,
+            avg_lines: 120,
+        },
+        LangRow {
+            lang: "TypeScript".into(),
+            code: 1500,
+            lines: 1800,
+            files: 15,
+            bytes: 75000,
+            tokens: 3750,
+            avg_lines: 120,
+        },
+        LangRow {
+            lang: "Go".into(),
+            code: 1000,
+            lines: 1200,
+            files: 10,
+            bytes: 50000,
+            tokens: 2500,
+            avg_lines: 120,
+        },
+        LangRow {
+            lang: "TOML".into(),
+            code: 200,
+            lines: 240,
+            files: 8,
+            bytes: 10000,
+            tokens: 500,
+            avg_lines: 30,
+        },
+        LangRow {
+            lang: "YAML".into(),
+            code: 150,
+            lines: 180,
+            files: 5,
+            bytes: 7500,
+            tokens: 375,
+            avg_lines: 36,
+        },
+        LangRow {
+            lang: "Markdown".into(),
+            code: 100,
+            lines: 120,
+            files: 4,
+            bytes: 5000,
+            tokens: 250,
+            avg_lines: 30,
+        },
+    ];
+    let total = Totals {
+        code: 12950,
+        lines: 15540,
+        files: 142,
+        bytes: 647500,
+        tokens: 32375,
+        avg_lines: 109,
+    };
+    LangReport {
+        rows,
+        total,
+        with_files: false,
+        children: ChildrenMode::Collapse,
+        top: 0,
+    }
+}
+
+#[test]
+fn snapshot_lang_md_many() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &many_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_md_many", output);
+}
+
+#[test]
+fn snapshot_lang_tsv_many() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Tsv,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &many_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("lang_tsv_many", output);
+}
+
+#[test]
+fn snapshot_lang_json_many() {
+    let mut buf = Vec::new();
+    let args = LangArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Json,
+        top: 0,
+        files: false,
+        children: ChildrenMode::Collapse,
+    };
+    write_lang_report_to(&mut buf, &many_lang_report(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    v["generated_at_ms"] = serde_json::json!(0);
+    v["tool"]["version"] = serde_json::json!("0.0.0");
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("lang_json_many", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Diff — identical reports (no changes)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_diff_md_no_changes() {
+    let report = single_lang_report();
+    let rows = compute_diff_rows(&report, &report);
+    let totals = compute_diff_totals(&rows);
+    let md = render_diff_md("v1.0.0", "v1.0.0", &rows, &totals);
+    insta::assert_snapshot!("diff_md_no_changes", md);
+}
+
+// ---------------------------------------------------------------------------
+// Export — single file
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_jsonl_single_file() {
+    let data = ExportData {
+        rows: vec![FileRow {
+            path: "main.rs".into(),
+            module: ".".into(),
+            lang: "Rust".into(),
+            kind: FileKind::Parent,
+            code: 42,
+            comments: 5,
+            blanks: 3,
+            lines: 50,
+            bytes: 500,
+            tokens: 100,
+        }],
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Jsonl,
+        output: None,
+        module_roots: vec![],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: false,
+        strip_prefix: None,
+    };
+    write_export_jsonl_to(&mut buf, &data, &global(), &args).expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("export_jsonl_single_file", output);
+}
+
+// ---------------------------------------------------------------------------
+// Export — JSONL with meta
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_jsonl_with_meta() {
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Jsonl,
+        output: None,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: true,
+        strip_prefix: None,
+    };
+    write_export_jsonl_to(&mut buf, &export_data(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    // Normalise non-deterministic meta fields
+    let normalised = raw
+        .lines()
+        .map(|line| {
+            if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(line) {
+                if v.get("generated_at_ms").is_some() {
+                    v["generated_at_ms"] = serde_json::json!(0);
+                }
+                if v.pointer("/tool/version").is_some() {
+                    v["tool"]["version"] = serde_json::json!("0.0.0");
+                }
+                serde_json::to_string(&v).expect("must serialize JSON")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    insta::assert_snapshot!("export_jsonl_with_meta", normalised);
+}
+
+// ---------------------------------------------------------------------------
+// Export — JSON with meta envelope
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_export_json_with_meta() {
+    let mut buf = Vec::new();
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Json,
+        output: None,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        redact: RedactMode::None,
+        meta: true,
+        strip_prefix: None,
+    };
+    write_export_json_to(&mut buf, &export_data(), &global(), &args)
+        .expect("operation must succeed");
+    let raw = String::from_utf8(buf).expect("output must be valid UTF-8");
+    let mut v: serde_json::Value = serde_json::from_str(&raw).expect("must parse valid JSON");
+    if v.get("generated_at_ms").is_some() {
+        v["generated_at_ms"] = serde_json::json!(0);
+    }
+    if v.pointer("/tool/version").is_some() {
+        v["tool"]["version"] = serde_json::json!("0.0.0");
+    }
+    let pretty = serde_json::to_string_pretty(&v).expect("must serialize JSON");
+    insta::assert_snapshot!("export_json_with_meta", pretty);
+}
+
+// ---------------------------------------------------------------------------
+// Module — single module row
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_module_md_single() {
+    let report = ModuleReport {
+        rows: vec![ModuleRow {
+            module: "src".into(),
+            code: 500,
+            lines: 600,
+            files: 5,
+            bytes: 25000,
+            tokens: 1250,
+            avg_lines: 120,
+        }],
+        total: Totals {
+            code: 500,
+            lines: 600,
+            files: 5,
+            bytes: 25000,
+            tokens: 1250,
+            avg_lines: 120,
+        },
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        top: 0,
+    };
+    let mut buf = Vec::new();
+    let args = ModuleArgs {
+        paths: vec![PathBuf::from(".")],
+        format: TableFormat::Md,
+        top: 0,
+        module_roots: vec!["src".into()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    write_module_report_to(&mut buf, &report, &global(), &args).expect("operation must succeed");
+    let output = String::from_utf8(buf).expect("output must be valid UTF-8");
+    insta::assert_snapshot!("module_md_single", output);
+}
+
+// ---------------------------------------------------------------------------
+// Diff — color mode ANSI
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_diff_md_ansi_color() {
+    let (from, to) = diff_reports();
+    let rows = compute_diff_rows(&from, &to);
+    let totals = compute_diff_totals(&rows);
+    let md = render_diff_md_with_options(
+        "v1.0.0",
+        "v2.0.0",
+        &rows,
+        &totals,
+        DiffRenderOptions {
+            compact: false,
+            color: DiffColorMode::Ansi,
+        },
+    );
+    insta::assert_snapshot!("diff_md_ansi_color", md);
+}

@@ -1,0 +1,21 @@
+[package]
+name = "tokmd-envelope"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Cross-fleet SensorReport contract for multi-sensor integration."
+readme = "README.md"
+keywords = ["sensor", "envelope", "findings", "verdict", "contract"]
+categories = ["development-tools", "data-structures"]
+documentation = "https://docs.rs/tokmd-envelope"
+
+[dependencies]
+blake3 = "1.8.4"
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tokmd-core = { path = "../tokmd-core", version = ">=1.9, <2" }

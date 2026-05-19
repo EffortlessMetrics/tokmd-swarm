@@ -1,0 +1,577 @@
+name: 'tokmd'
+description: 'Generate deterministic repo receipts, review summaries, gates, and sensor reports with tokmd'
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  mode:
+    description: 'tokmd mode to run. Omit for the existing module + export flow. Supported values: module, export, gate, cockpit, sensor, baseline.'
+    default: ''
+  version:
+    description: 'Version of tokmd to install. Defaults to the latest release.'
+    default: 'latest'
+  paths:
+    description: 'Paths to scan'
+    default: '.'
+  module-roots:
+    description: 'Module roots (comma-separated)'
+    default: 'crates,packages'
+  top:
+    description: 'Number of rows to show in summary'
+    default: '20'
+  format:
+    description: 'Export format (json, jsonl, csv)'
+    default: 'json'
+  base:
+    description: 'Base git ref for mode: cockpit or mode: sensor. Omit to infer from pull request base or origin/HEAD.'
+    default: ''
+  head:
+    description: 'Head git ref for mode: cockpit or mode: sensor'
+    default: 'HEAD'
+  artifact:
+    description: 'Whether to upload generated tokmd files as workflow artifacts'
+    default: 'true'
+  comment:
+    description: 'Whether to post the generated Markdown summary as a pull request comment'
+    default: 'true'
+  review-packet:
+    description: 'Whether mode: cockpit should emit a review packet directory and prepare a hosted comment copy'
+    default: 'false'
+
+outputs:
+  receipt:
+    description: 'Path to the generated receipt file'
+    value: ${{ steps.generate.outputs.receipt }}
+  summary:
+    description: 'Path to the generated Markdown summary/comment file'
+    value: ${{ steps.generate.outputs.summary }}
+  gate-verdict:
+    description: 'Path to the generated gate verdict JSON file'
+    value: ${{ steps.generate.outputs['gate-verdict'] }}
+  cockpit-report:
+    description: 'Path to the generated cockpit report JSON file'
+    value: ${{ steps.generate.outputs['cockpit-report'] }}
+  review-packet:
+    description: 'Path to the generated cockpit review packet directory when mode: cockpit and review-packet: true are used'
+    value: ${{ steps.generate.outputs['review-packet'] }}
+  sensor-report:
+    description: 'Path to the generated sensor report JSON file'
+    value: ${{ steps.generate.outputs['sensor-report'] }}
+  baseline-report:
+    description: 'Path to the generated baseline JSON file'
+    value: ${{ steps.generate.outputs['baseline-report'] }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install tokmd
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v tokmd &> /dev/null; then
+          tokmd --version
+          exit 0
+        fi
+
+        version="${{ inputs.version }}"
+        os="${RUNNER_OS}"
+        arch="${RUNNER_ARCH:-X64}"
+
+        case "$arch" in
+          X64|AMD64) arch_suffix="amd64" ;;
+          ARM64) arch_suffix="arm64" ;;
+          *)
+            echo "Unsupported runner architecture: $arch" >&2
+            exit 1
+            ;;
+        esac
+
+        case "$os" in
+          Linux) asset="tokmd-linux-$arch_suffix" ;;
+          macOS) asset="tokmd-macos-$arch_suffix" ;;
+          Windows)
+            if [ "${arch_suffix:-}" != "amd64" ]; then
+              echo "Unsupported runner architecture for Windows releases: $arch" >&2
+              exit 1
+            fi
+            asset="tokmd-windows-amd64.exe"
+            ;;
+          *) echo "Unsupported runner OS: $os" >&2; exit 1 ;;
+        esac
+
+        if [ "$version" = "latest" ]; then
+          url="https://github.com/EffortlessMetrics/tokmd/releases/latest/download/$asset"
+        else
+          ver="$version"
+          if [ "${ver#v}" = "$ver" ]; then
+            ver="v$ver"
+          fi
+          url="https://github.com/EffortlessMetrics/tokmd/releases/download/$ver/$asset"
+        fi
+
+        # Determine the checksums URL based on version
+        if [ "$version" = "latest" ]; then
+          checksums_url="https://github.com/EffortlessMetrics/tokmd/releases/latest/download/checksums.txt"
+        else
+          checksums_url="https://github.com/EffortlessMetrics/tokmd/releases/download/$ver/checksums.txt"
+        fi
+
+        echo "Downloading $url"
+        if ! curl -fsSL "$url" -o "$asset"; then
+          echo "::error::Failed to download tokmd from $url"
+          echo "Check that the version exists at https://github.com/EffortlessMetrics/tokmd/releases" >&2
+          exit 1
+        fi
+
+        echo "Downloading checksums from $checksums_url"
+        if curl -fsSL "$checksums_url" -o checksums.txt 2>/dev/null; then
+          echo "Verifying checksum for $asset..."
+          expected_checksum=$(grep -E "^[a-f0-9]+[[:space:]]+\*?${asset}$" checksums.txt | awk '{print $1}')
+          if [ -z "$expected_checksum" ]; then
+            echo "::warning::Could not find checksum for $asset in checksums.txt - skipping verification"
+          else
+            echo "Expected checksum: $expected_checksum"
+            case "$os" in
+              Linux) actual_checksum=$(sha256sum "$asset" | awk '{print $1}') ;;
+              macOS) actual_checksum=$(shasum -a 256 "$asset" | awk '{print $1}') ;;
+              Windows) actual_checksum=$(powershell -Command "(Get-FileHash -Path '$asset' -Algorithm SHA256).Hash.ToLower()") ;;
+            esac
+            echo "Actual checksum:   $actual_checksum"
+            if [ "$expected_checksum" != "$actual_checksum" ]; then
+              echo "::error::Checksum verification failed for $asset"
+              exit 1
+            fi
+            echo "Checksum verification passed!"
+          fi
+          rm -f checksums.txt
+        else
+          echo "::warning::checksums.txt not available for this release - skipping verification"
+        fi
+
+        dest="$HOME/.local/bin"
+        mkdir -p "$dest"
+        if [[ "$asset" == *.exe ]]; then
+          mv "$asset" "$dest/tokmd.exe"
+        else
+          mv "$asset" "$dest/tokmd"
+          chmod +x "$dest/tokmd"
+        fi
+        echo "$dest" >> "$GITHUB_PATH"
+        export PATH="$dest:$PATH"
+        tokmd --version
+
+    - name: Generate Receipts
+      id: generate
+      shell: bash
+      env:
+        TOKMD_ACTION_BASE: ${{ inputs.base }}
+        TOKMD_ACTION_FORMAT: ${{ inputs.format }}
+        TOKMD_ACTION_HEAD: ${{ inputs.head }}
+        TOKMD_ACTION_MODE: ${{ inputs.mode }}
+        TOKMD_ACTION_MODULE_ROOTS: ${{ inputs.module-roots }}
+        TOKMD_ACTION_PATHS: ${{ inputs.paths }}
+        TOKMD_ACTION_REVIEW_PACKET: ${{ inputs.review-packet }}
+        TOKMD_ACTION_TOP: ${{ inputs.top }}
+      run: |
+        set -euo pipefail
+        echo "Generating receipts..."
+
+        # Split paths input into argv-style arguments so callers can provide
+        # multiple paths (space/newline separated) instead of a single quoted blob.
+        # Keep the complete multiline input; bash `read -a` would only parse the
+        # first line and could make mode=gate silently scan a narrower path set.
+        paths_input="${TOKMD_ACTION_PATHS//$'\r'/ }"
+        scan_paths=()
+        set -f
+        while IFS= read -r path_line || [ -n "$path_line" ]; do
+          for path in $path_line; do
+            scan_paths+=(
+              "$path"
+            )
+          done
+        done <<< "$paths_input"
+        set +f
+
+        if [ ${#scan_paths[@]} -eq 0 ]; then
+          scan_paths=(
+            .
+          )
+        fi
+
+        format="$TOKMD_ACTION_FORMAT"
+        mode="$TOKMD_ACTION_MODE"
+        summary_file=""
+        receipt_file=""
+        gate_verdict_file=""
+        cockpit_report_file=""
+        review_packet_dir=""
+        sensor_report_file=""
+        baseline_report_file=""
+        command_status=0
+        review_packet="${TOKMD_ACTION_REVIEW_PACKET}"
+
+        case "$review_packet" in
+          true|false) ;;
+          *)
+            echo "::error::review-packet must be 'true' or 'false'"
+            exit 1
+            ;;
+        esac
+
+        if [ "$review_packet" = "true" ] && [ "$mode" != "cockpit" ]; then
+          echo "::error::review-packet is only supported with mode=cockpit"
+          exit 1
+        fi
+
+        ensure_git_ref() {
+          local ref="$1"
+          git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null 2>&1
+        }
+
+        fetch_origin_branch() {
+          local branch="$1"
+          git fetch --no-tags --depth=1 origin "${branch}:refs/remotes/origin/${branch}" >/dev/null
+        }
+
+        resolve_base_ref() {
+          local mode_name="$1"
+          local base_input="${TOKMD_ACTION_BASE:-}"
+          local resolved_base=""
+
+          if [ -n "$base_input" ]; then
+            resolved_base="$base_input"
+          elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+            resolved_base="origin/${GITHUB_BASE_REF}"
+            if ! ensure_git_ref "$resolved_base"; then
+              fetch_origin_branch "$GITHUB_BASE_REF" || true
+            fi
+          else
+            if ! git symbolic-ref --quiet refs/remotes/origin/HEAD >/dev/null 2>&1; then
+              git remote set-head origin -a >/dev/null || true
+            fi
+
+            if git symbolic-ref --quiet refs/remotes/origin/HEAD >/dev/null 2>&1; then
+              resolved_base="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)"
+              if ! ensure_git_ref "$resolved_base"; then
+                fetch_origin_branch "${resolved_base#origin/}" || true
+              fi
+            fi
+          fi
+
+          if [ -z "$resolved_base" ] || ! ensure_git_ref "$resolved_base"; then
+            echo "::error::Unable to resolve base ref for mode=${mode_name}. Set the 'base' input explicitly or use actions/checkout with enough git history for the base ref." >&2
+            exit 1
+          fi
+
+          echo "$resolved_base"
+        }
+
+        case "$mode" in
+          "")
+            summary_file="tokmd-summary.md"
+            receipt_file="tokmd-receipt.${format}"
+
+            tokmd module \
+              "${scan_paths[@]}" \
+              --module-roots "$TOKMD_ACTION_MODULE_ROOTS" \
+              --top "$TOKMD_ACTION_TOP" \
+              --format md > "$summary_file"
+
+            tokmd export \
+              "${scan_paths[@]}" \
+              --module-roots "$TOKMD_ACTION_MODULE_ROOTS" \
+              --format "$format" > "$receipt_file"
+            ;;
+          module)
+            summary_file="tokmd-summary.md"
+
+            tokmd module \
+              "${scan_paths[@]}" \
+              --module-roots "$TOKMD_ACTION_MODULE_ROOTS" \
+              --top "$TOKMD_ACTION_TOP" \
+              --format md > "$summary_file"
+            ;;
+          export)
+            receipt_file="tokmd-receipt.${format}"
+
+            tokmd export \
+              "${scan_paths[@]}" \
+              --module-roots "$TOKMD_ACTION_MODULE_ROOTS" \
+              --format "$format" > "$receipt_file"
+            ;;
+          gate)
+            if [ ${#scan_paths[@]} -ne 1 ]; then
+              echo "::error::mode=gate accepts exactly one input path; received ${#scan_paths[@]} paths"
+              exit 1
+            fi
+
+            gate_verdict_file="tokmd-gate-verdict.json"
+            set +e
+            tokmd gate "${scan_paths[0]}" --format json > "$gate_verdict_file"
+            command_status=$?
+            set -e
+            ;;
+          cockpit)
+            cockpit_report_file="tokmd-cockpit-report.json"
+            compare_base="$(resolve_base_ref cockpit)"
+            cockpit_args=(
+              --base "$compare_base"
+              --head "$TOKMD_ACTION_HEAD"
+            )
+
+            if [ "$review_packet" = "true" ]; then
+              if ! tokmd cockpit --help | grep -q -- '--review-packet-dir'; then
+                echo "::error::review-packet=true requires a tokmd binary that supports cockpit --review-packet-dir. Set version to a compatible release or install a matching tokmd before running the Action."
+                exit 1
+              fi
+              review_packet_dir=".tokmd/review"
+              summary_file="$review_packet_dir/comment.md"
+              cockpit_args+=(--review-packet-dir "$review_packet_dir")
+            fi
+
+            tokmd cockpit \
+              "${cockpit_args[@]}" \
+              --format json > "$cockpit_report_file"
+            ;;
+          sensor)
+            summary_file="comment.md"
+            sensor_report_file="tokmd-sensor-report.json"
+            compare_base="$(resolve_base_ref sensor)"
+
+            tokmd sensor \
+              --base "$compare_base" \
+              --head "$TOKMD_ACTION_HEAD" \
+              --output "$sensor_report_file" \
+              --format json > /dev/null
+            ;;
+          baseline)
+            if [ ${#scan_paths[@]} -ne 1 ]; then
+              echo "::error::mode=baseline accepts exactly one input path; received ${#scan_paths[@]} paths"
+              exit 1
+            fi
+
+            baseline_report_file="tokmd-baseline.json"
+
+            tokmd baseline "${scan_paths[0]}" \
+              --output "$baseline_report_file" \
+              --force \
+              --no-progress
+            ;;
+          *)
+            echo "::error::Unsupported tokmd action mode '$mode'. Supported values: module, export, gate, cockpit, sensor, baseline. Omit mode for the default module + export flow."
+            exit 1
+            ;;
+        esac
+
+        {
+          echo "receipt=$receipt_file"
+          echo "summary=$summary_file"
+          echo "gate-verdict=$gate_verdict_file"
+          echo "cockpit-report=$cockpit_report_file"
+          echo "review-packet=$review_packet_dir"
+          echo "sensor-report=$sensor_report_file"
+          echo "baseline-report=$baseline_report_file"
+          echo "command-status=$command_status"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Prepare Review Packet Comment
+      id: review_packet_comment
+      if: steps.generate.outputs['review-packet'] != '' && steps.generate.outputs.summary != ''
+      shell: bash
+      env:
+        SUMMARY_FILE: ${{ steps.generate.outputs.summary }}
+        REVIEW_PACKET_DIR: ${{ steps.generate.outputs['review-packet'] }}
+        ARTIFACT_ENABLED: ${{ inputs.artifact }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "$SUMMARY_FILE" ]; then
+          exit 0
+        fi
+
+        comment_file="tokmd-review-packet-comment.md"
+        cp "$SUMMARY_FILE" "$comment_file"
+
+        {
+          echo
+          echo "**Hosted packet**:"
+          if [ "$ARTIFACT_ENABLED" = "true" ]; then
+            echo "- Workflow run: [$RUN_ID]($RUN_URL)"
+            echo "- Artifact: \`tokmd-receipts\`"
+          else
+            echo "- Workflow artifact upload: disabled"
+          fi
+          echo "- Packet path: \`$REVIEW_PACKET_DIR\`"
+        } >> "$comment_file"
+
+        echo "comment-file=$comment_file" >> "$GITHUB_OUTPUT"
+
+    - name: Verify Review Packet
+      id: review_packet_check
+      if: steps.generate.outputs['review-packet'] != ''
+      shell: bash
+      env:
+        REVIEW_PACKET_DIR: ${{ steps.generate.outputs['review-packet'] }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+
+        case "$REVIEW_PACKET_DIR" in
+          /*) packet_dir="$REVIEW_PACKET_DIR" ;;
+          *) packet_dir="$GITHUB_WORKSPACE/$REVIEW_PACKET_DIR" ;;
+        esac
+
+        receipt_rel="target/tokmd/review-packet-check.json"
+        receipt_file="$GITHUB_WORKSPACE/$receipt_rel"
+        mkdir -p "$(dirname "$receipt_file")"
+
+        cargo run \
+          --manifest-path "$ACTION_PATH/Cargo.toml" \
+          -p xtask -- \
+          review-packet-check \
+          --dir "$packet_dir" \
+          --json "$receipt_file"
+
+        echo "receipt=$receipt_rel" >> "$GITHUB_OUTPUT"
+
+    - name: Append Review Packet Verification Status
+      if: steps.review_packet_comment.outputs['comment-file'] != '' && steps.review_packet_check.outputs.receipt != ''
+      shell: bash
+      env:
+        COMMENT_FILE: ${{ steps.review_packet_comment.outputs['comment-file'] }}
+        REVIEW_PACKET_DIR: ${{ steps.generate.outputs['review-packet'] }}
+        REVIEW_PACKET_CHECK: ${{ steps.review_packet_check.outputs.receipt }}
+      run: |
+        set -euo pipefail
+
+        python - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+
+        comment_path = Path(os.environ["COMMENT_FILE"])
+        review_packet_dir = Path(os.environ["REVIEW_PACKET_DIR"])
+        check_path = Path(os.environ["REVIEW_PACKET_CHECK"])
+
+        with check_path.open(encoding="utf-8") as f:
+            check = json.load(f)
+        with (review_packet_dir / "evidence.json").open(encoding="utf-8") as f:
+            evidence = json.load(f)
+
+        proof_items = evidence.get("proof") or []
+
+        def available(item):
+            return item.get("availability") == "available"
+
+        def missing(item):
+            return item.get("availability") in {"missing", "unavailable"}
+
+        available_count = sum(1 for item in proof_items if available(item))
+        missing_count = sum(1 for item in proof_items if missing(item))
+        stale_count = sum(
+            1
+            for item in proof_items
+            if item.get("availability") == "stale" or item.get("commit_match") == "stale"
+        )
+
+        status = "verified" if check.get("ok") is True else "failed"
+        hash_status = "valid" if check.get("hashes_verified") == check.get("artifact_count") else "incomplete"
+
+        with comment_path.open("a", encoding="utf-8") as f:
+            f.write("\n**Review packet verification**:\n")
+            f.write(f"- Review packet: {status}\n")
+            f.write(f"- Verified artifacts: {check.get('artifact_count', 0)}\n")
+            f.write(f"- Manifest hashes: {hash_status}\n")
+            f.write(
+                f"- Proof evidence: {available_count} available, {missing_count} missing, {stale_count} stale\n"
+            )
+        PY
+
+    - name: Upload Artifact
+      if: inputs.artifact == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: tokmd-receipts
+        path: |
+          ${{ steps.generate.outputs.summary }}
+          ${{ steps.generate.outputs.receipt }}
+          ${{ steps.generate.outputs['gate-verdict'] }}
+          ${{ steps.generate.outputs['cockpit-report'] }}
+          ${{ steps.generate.outputs['review-packet'] }}
+          ${{ steps.review_packet_comment.outputs['comment-file'] }}
+          ${{ steps.review_packet_check.outputs.receipt }}
+          ${{ steps.generate.outputs['sensor-report'] }}
+          ${{ steps.generate.outputs['baseline-report'] }}
+          extras/
+
+    - name: Comment on PR
+      if: inputs.comment == 'true' && github.event_name == 'pull_request' && steps.generate.outputs.summary != ''
+      uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b
+      with:
+        file-path: ${{ steps.review_packet_comment.outputs['comment-file'] || steps.generate.outputs.summary }}
+        comment_tag: tokmd-summary
+
+    - name: Publish workflow summary
+      if: always()
+      shell: bash
+      env:
+        SUMMARY_FILE: ${{ steps.generate.outputs.summary }}
+        RECEIPT_FILE: ${{ steps.generate.outputs.receipt }}
+        GATE_VERDICT_FILE: ${{ steps.generate.outputs['gate-verdict'] }}
+        COCKPIT_REPORT_FILE: ${{ steps.generate.outputs['cockpit-report'] }}
+        REVIEW_PACKET_DIR: ${{ steps.generate.outputs['review-packet'] }}
+        SENSOR_REPORT_FILE: ${{ steps.generate.outputs['sensor-report'] }}
+        BASELINE_REPORT_FILE: ${{ steps.generate.outputs['baseline-report'] }}
+        COMMAND_STATUS: ${{ steps.generate.outputs['command-status'] }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+          exit 0
+        fi
+
+        value_or_missing() {
+          if [ -n "$1" ]; then
+            printf '%s' "$1"
+          else
+            printf '(not generated)'
+          fi
+        }
+
+        {
+          echo "## tokmd action results"
+          echo
+          echo "| Output | Path |"
+          echo "| --- | --- |"
+          echo "| Summary | \`$(value_or_missing "$SUMMARY_FILE")\` |"
+          echo "| Receipt | \`$(value_or_missing "$RECEIPT_FILE")\` |"
+          echo "| Gate verdict | \`$(value_or_missing "$GATE_VERDICT_FILE")\` |"
+          echo "| Cockpit report | \`$(value_or_missing "$COCKPIT_REPORT_FILE")\` |"
+          echo "| Review packet | \`$(value_or_missing "$REVIEW_PACKET_DIR")\` |"
+          echo "| Sensor report | \`$(value_or_missing "$SENSOR_REPORT_FILE")\` |"
+          echo "| Baseline report | \`$(value_or_missing "$BASELINE_REPORT_FILE")\` |"
+          echo
+          echo "- Artifact upload enabled: \`${{ inputs.artifact }}\`"
+          echo "- PR comment enabled: \`${{ inputs.comment }}\`"
+          echo "- Command exit status: \`$(value_or_missing "$COMMAND_STATUS")\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ -n "$SUMMARY_FILE" ] && [ -f "$SUMMARY_FILE" ]; then
+          {
+            echo
+            echo "<details><summary>Summary preview</summary>"
+            echo
+            cat "$SUMMARY_FILE"
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Fail on gate verdict
+      if: steps.generate.outputs['command-status'] != '0'
+      shell: bash
+      run: exit ${{ steps.generate.outputs['command-status'] }}

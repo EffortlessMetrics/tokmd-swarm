@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    // Rust
+    "rust-lang.rust-analyzer",
+    "vadimcn.vscode-lldb",
+    "tamasfe.even-better-toml",
+    "fill-labs.dependi",
+
+    // CI / GitHub
+    "GitHub.vscode-github-actions",
+
+    // General
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "usernamehw.errorlens",
+    "redhat.vscode-yaml",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}

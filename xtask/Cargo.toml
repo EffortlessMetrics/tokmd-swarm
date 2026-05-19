@@ -1,0 +1,34 @@
+[package]
+publish = false
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = "1.0.101"
+blake3.workspace = true
+clap = { version = "4.6.0", features = ["derive"] }
+serde = { workspace = true }
+toml = "1.1.2"
+cargo_metadata = "0.23.1"
+jsonschema = { version = "0.46.5", default-features = false }
+petgraph = "0.8.3"
+chrono = "0.4"
+globset = "0.4.18"
+semver = "1"
+serde_json = "1"
+syn = { version = "2.0.117", features = ["full", "extra-traits", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+walkdir = "2"
+tokmd-core = { workspace = true, features = ["analysis"] }
+tokmd-analysis = { path = "../crates/tokmd-analysis", version = "1.11.1", default-features = false, features = ["ast"] }
+tokmd-analysis-types.workspace = true
+
+[dev-dependencies]
+serde_json = "1"
+tempfile.workspace = true
+toml = "1.1.2"

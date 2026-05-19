@@ -1,0 +1,37 @@
+# ripr — static "mutation-testing-lite" configuration.
+#
+# ripr does not run mutants. It asks whether changed behavior appears exposed to
+# a meaningful test discriminator. The advisory rollout keeps PR evidence
+# diff-scoped and public README badge evidence repo-scoped.
+
+[analysis]
+mode = "draft"
+include_unchanged_tests = true
+
+[reports]
+max_related_tests = 8
+
+[severity.findings]
+exposed = "info"
+weakly_exposed = "warning"
+reachable_unrevealed = "warning"
+no_static_path = "note"
+infection_unknown = "note"
+propagation_unknown = "note"
+static_unknown = "note"
+
+[severity.seams]
+strongly_gripped = "off"
+weakly_gripped = "warning"
+ungripped = "warning"
+reachable_unrevealed = "warning"
+activation_unknown = "info"
+propagation_unknown = "info"
+observation_unknown = "info"
+discrimination_unknown = "info"
+opaque = "info"
+intentional = "off"
+suppressed = "off"
+
+[suppressions]
+path = "policy/ripr-suppressions.toml"

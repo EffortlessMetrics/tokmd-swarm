@@ -1,0 +1,113 @@
+name: Nightly Fuzz
+
+on:
+  schedule:
+    # Run at 2 AM UTC daily
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Fuzz duration per target (seconds)'
+        required: false
+        default: '1800'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The workspace release profile enables LTO/strip for shipped binaries. Fuzz
+  # builds need sanitizer coverage symbols preserved for libFuzzer.
+  CARGO_PROFILE_RELEASE_LTO: "false"
+  CARGO_PROFILE_RELEASE_STRIP: "false"
+
+jobs:
+  fuzz:
+    name: Fuzz Targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: fuzz_module_key
+            features: module_key
+            dict: path.dict
+          - target: fuzz_normalize_path
+            features: model
+            dict: path.dict
+          - target: fuzz_toml_config
+            features: config
+            dict: toml.dict
+          - target: fuzz_policy_toml
+            features: gate
+            dict: policy.dict
+          - target: fuzz_json_pointer
+            features: gate
+            dict: json.dict
+          - target: fuzz_policy_evaluate
+            features: gate
+            dict: policy.dict
+          - target: fuzz_entropy
+            features: content
+            dict: entropy.dict
+          - target: fuzz_json_types
+            features: types
+            dict: json.dict
+          - target: fuzz_redact
+            features: redact
+            dict: path.dict
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Restore corpus cache
+        uses: actions/cache@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.ref_name }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Build fuzzer
+        run: |
+          cd fuzz
+          cargo +nightly fuzz build ${{ matrix.target }} --features ${{ matrix.features }} --strip-dead-code false
+
+      - name: Run fuzzer
+        run: |
+          DURATION=${{ github.event.inputs.duration || '1800' }}
+          cd fuzz
+          cargo +nightly fuzz run ${{ matrix.target }} --features ${{ matrix.features }} --strip-dead-code false -- \
+            -max_total_time=$DURATION \
+            -timeout=10 \
+            -rss_limit_mb=4096 \
+            -max_len=65536 \
+            -dict=dict/${{ matrix.dict }}
+        continue-on-error: true
+
+      - name: Upload crash artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload corpus
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: fuzz/corpus/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 7

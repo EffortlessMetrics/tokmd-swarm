@@ -1,0 +1,94 @@
+name: ripr (advisory)
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: ripr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -C debuginfo=0
+
+jobs:
+  ripr:
+    name: ripr (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install ripr
+        run: cargo install ripr --locked
+
+      - name: Fetch base branch
+        if: github.base_ref != ''
+        run: git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" || true
+
+      - name: RIPR PR evidence
+        id: ripr_pr
+        if: github.event_name == 'pull_request'
+        run: cargo xtask ripr-pr --base "origin/${{ github.base_ref }}"
+
+      - name: RIPR review guidance
+        id: ripr_review
+        if: github.event_name == 'pull_request'
+        run: cargo xtask ripr-review-comments --base "origin/${{ github.base_ref }}" --head HEAD
+
+      - name: RIPR PR contract
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-pr --check
+          cargo xtask ripr-review-comments --check
+
+      - name: RIPR review summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## RIPR Review Guidance"
+            echo
+            if [ -f target/ripr/review/comments.md ]; then
+              cat target/ripr/review/comments.md
+            else
+              echo "No RIPR review guidance was produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: RIPR annotations
+        if: always()
+        run: cargo xtask ripr-annotations
+
+      - name: Upload RIPR PR evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-pr
+          path: target/ripr/pr
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload RIPR review guidance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-review
+          path: target/ripr/review
+          if-no-files-found: warn
+          retention-days: 14

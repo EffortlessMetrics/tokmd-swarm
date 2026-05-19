@@ -1,0 +1,344 @@
+# ============================================================================
+# Fuzz Testing Configuration
+# ============================================================================
+# This crate contains libfuzzer-based fuzz targets for tokmd microcrates.
+# Each target has minimal dependencies to reduce build times and attack surface.
+#
+# Usage:
+#   cargo +nightly fuzz run <target_name>
+#   cargo +nightly fuzz run fuzz_entropy -- -max_len=4096
+#
+# Dictionaries are available in fuzz/dict/ for structured input generation.
+# Seed corpora are in fuzz/corpus/<target_name>/.
+# ============================================================================
+
+[package]
+publish = false
+name = "tokmd-fuzz"
+version = "0.0.0"
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+# Core fuzzing framework - always required.
+# Optional dependencies are pulled only by targets that need them.
+
+[dependencies]
+libfuzzer-sys = "0.4.10"
+anyhow = { workspace = true, optional = true }
+blake3 = { workspace = true, optional = true }
+
+# Serialization - only for targets that test JSON/TOML parsing
+serde_json = { version = "1.0", optional = true }
+toml = { version = "1.1", optional = true }
+
+# Package dependencies - each target enables only what it needs
+tokmd-model = { workspace = true, optional = true }
+tokmd-scan = { workspace = true, optional = true }
+
+
+tokmd-gate = { workspace = true, optional = true }
+tokmd-types = { workspace = true, optional = true }
+tokmd-format = { workspace = true, optional = true }
+tokmd-settings = { workspace = true, optional = true }
+tokmd-envelope = { workspace = true, optional = true }
+tokmd-core = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+# ============================================================================
+# Features
+# ============================================================================
+# Each feature corresponds to a category of fuzz targets.
+# Features are designed to pull minimal dependencies for faster builds.
+
+[features]
+default = []
+
+# Path normalization function (tokmd-model)
+# Targets: fuzz_normalize_path
+model = ["dep:tokmd-model"]
+
+# Module key derivation function (tokmd-model/module_key)
+# Targets: fuzz_module_key
+module_key = ["dep:tokmd-model"]
+
+# Numeric/statistical helpers (tokmd-scan)
+# Targets: fuzz_math_stats
+math_stats = ["dep:tokmd-scan"]
+
+# Exclude-pattern normalization helpers (tokmd-scan)
+# Targets: fuzz_exclude_pattern
+exclude = ["dep:tokmd-scan"]
+
+# Context/handoff policy helpers (tokmd-core::context_policy)
+# Targets: fuzz_context_policy
+context_policy = ["dep:tokmd-core", "dep:tokmd-types"]
+
+# Configuration file parsing (tokmd-settings)
+# Targets: fuzz_toml_config
+# Needs serde_json and toml for round-trip testing
+config = ["dep:tokmd-settings", "dep:serde_json", "dep:toml"]
+
+# Policy engine (tokmd-gate)
+# Targets: fuzz_policy_toml, fuzz_json_pointer, fuzz_policy_evaluate
+# Needs serde_json for JSON document handling
+gate = ["dep:tokmd-gate", "dep:serde_json"]
+
+# Core receipt types (tokmd-types)
+# Targets: fuzz_json_types
+# Needs serde_json for deserialization testing
+types = ["dep:tokmd-types", "dep:serde_json"]
+
+# Content analysis utilities (tokmd-analysis content helpers)
+# Targets: fuzz_entropy
+content = ["dep:anyhow", "dep:blake3"]
+
+# Path redaction utilities (tokmd-format/redact)
+# Targets: fuzz_redact
+redact = ["dep:tokmd-format"]
+
+# Scan metadata argument shaping (tokmd-format/scan_args)
+# Targets: fuzz_scan_args
+scan_args = [
+    "dep:tokmd-format",
+    "dep:tokmd-settings",
+    "dep:tokmd-types",
+]
+
+# Import statement extraction helpers (tokmd-analysis imports module)
+# Targets: fuzz_import_parser
+analysis_imports = []
+
+# FFI response-envelope parsing/extraction helpers (tokmd-envelope::ffi)
+# Targets: fuzz_ffi_envelope
+ffi_envelope = ["dep:tokmd-envelope", "dep:serde_json"]
+
+# ExportData tree rendering helpers (tokmd-format/export_tree)
+# Targets: fuzz_export_tree
+export_tree = ["dep:tokmd-format", "dep:tokmd-types"]
+
+# FFI run_json entrypoint (tokmd-core)
+# Targets: fuzz_run_json
+# Needs serde_json for envelope validation
+core = ["dep:tokmd-core", "dep:serde_json"]
+
+# Ratchet policy evaluation (tokmd-gate)
+# Targets: fuzz_gate_ratchet
+# Needs serde_json for JSON document handling
+gate_ratchet = ["dep:tokmd-gate", "dep:serde_json"]
+
+# SVG badge rendering (tokmd-format/badge)
+# Targets: fuzz_badge_svg
+badge = ["dep:tokmd-format"]
+
+# ============================================================================
+# Fuzz Targets - Path/Module Functions
+# ============================================================================
+# Tests path normalization and module key computation.
+# Uses dict/path.dict for efficient path string generation.
+
+[[bin]]
+name = "fuzz_module_key"
+path = "fuzz_targets/fuzz_module_key.rs"
+test = false
+doc = false
+required-features = ["module_key"]
+
+[[bin]]
+name = "fuzz_math_stats"
+path = "fuzz_targets/fuzz_math_stats.rs"
+test = false
+doc = false
+required-features = ["math_stats"]
+
+[[bin]]
+name = "fuzz_normalize_path"
+path = "fuzz_targets/fuzz_normalize_path.rs"
+test = false
+doc = false
+required-features = ["model"]
+
+[[bin]]
+name = "fuzz_exclude_pattern"
+path = "fuzz_targets/fuzz_exclude_pattern.rs"
+test = false
+doc = false
+required-features = ["exclude"]
+
+[[bin]]
+name = "fuzz_context_policy"
+path = "fuzz_targets/fuzz_context_policy.rs"
+test = false
+doc = false
+required-features = ["context_policy"]
+
+[[bin]]
+name = "fuzz_export_tree"
+path = "fuzz_targets/fuzz_export_tree.rs"
+test = false
+doc = false
+required-features = ["export_tree"]
+
+# ============================================================================
+# Fuzz Targets - Configuration Parsing
+# ============================================================================
+# Tests TOML configuration file parsing with round-trip validation.
+# Uses dict/toml.dict for TOML syntax tokens.
+
+[[bin]]
+name = "fuzz_toml_config"
+path = "fuzz_targets/fuzz_toml_config.rs"
+test = false
+doc = false
+required-features = ["config"]
+
+# ============================================================================
+# Fuzz Targets - Policy Engine
+# ============================================================================
+# Tests policy TOML parsing, JSON pointer resolution, and policy evaluation.
+# Uses dict/policy.dict and dict/json.dict.
+
+[[bin]]
+name = "fuzz_policy_toml"
+path = "fuzz_targets/fuzz_policy_toml.rs"
+test = false
+doc = false
+required-features = ["gate"]
+
+[[bin]]
+name = "fuzz_json_pointer"
+path = "fuzz_targets/fuzz_json_pointer.rs"
+test = false
+doc = false
+required-features = ["gate"]
+
+[[bin]]
+name = "fuzz_policy_evaluate"
+path = "fuzz_targets/fuzz_policy_evaluate.rs"
+test = false
+doc = false
+required-features = ["gate"]
+
+# ============================================================================
+# Fuzz Targets - Content Analysis
+# ============================================================================
+# Tests entropy calculation, text detection, hashing, and tag counting.
+# Uses dict/entropy.dict for binary patterns and text samples.
+
+[[bin]]
+name = "fuzz_entropy"
+path = "fuzz_targets/fuzz_entropy.rs"
+test = false
+doc = false
+required-features = ["content"]
+
+# ============================================================================
+# Fuzz Targets - Type Deserialization
+# ============================================================================
+# Tests JSON deserialization of receipt types (RunReceipt, FileRow, etc.).
+# Uses dict/json.dict for JSON syntax tokens.
+
+[[bin]]
+name = "fuzz_json_types"
+path = "fuzz_targets/fuzz_json_types.rs"
+test = false
+doc = false
+required-features = ["types"]
+
+# ============================================================================
+# Fuzz Targets - Redaction Utilities
+# ============================================================================
+# Tests path redaction and hash determinism.
+# Uses dict/path.dict for path string generation.
+
+[[bin]]
+name = "fuzz_redact"
+path = "fuzz_targets/fuzz_redact.rs"
+test = false
+doc = false
+required-features = ["redact"]
+
+# ============================================================================
+# Fuzz Targets - Scan Args
+# ============================================================================
+# Tests ScanArgs shaping invariants and redaction mode behavior.
+
+[[bin]]
+name = "fuzz_scan_args"
+path = "fuzz_targets/fuzz_scan_args.rs"
+test = false
+doc = false
+required-features = ["scan_args"]
+
+# ============================================================================
+# Fuzz Targets - FFI Envelope Parsing
+# ============================================================================
+# Tests parser/extractor totality and deterministic behavior for
+# `{"ok": bool, "data": ..., "error": ...}` JSON envelopes.
+
+[[bin]]
+name = "fuzz_ffi_envelope"
+path = "fuzz_targets/fuzz_ffi_envelope.rs"
+test = false
+doc = false
+required-features = ["ffi_envelope"]
+
+# ============================================================================
+# Fuzz Targets - Import Parsing
+# ============================================================================
+# Tests language-aware import parsing and target normalization.
+
+[[bin]]
+name = "fuzz_import_parser"
+path = "fuzz_targets/fuzz_import_parser.rs"
+test = false
+doc = false
+required-features = ["analysis_imports"]
+
+# ============================================================================
+# Fuzz Targets - FFI run_json Entrypoint
+# ============================================================================
+# Tests the single-entrypoint FFI function with arbitrary mode/args pairs.
+# Validates no-panic behavior and JSON envelope well-formedness.
+
+[[bin]]
+name = "fuzz_run_json"
+path = "fuzz_targets/fuzz_run_json.rs"
+test = false
+doc = false
+required-features = ["core"]
+
+# ============================================================================
+# Fuzz Targets - Ratchet Gate Evaluation
+# ============================================================================
+# Tests evaluate_ratchet_policy() with arbitrary JSON docs and TOML configs.
+# Complements fuzz_policy_evaluate which targets evaluate_policy().
+
+[[bin]]
+name = "fuzz_gate_ratchet"
+path = "fuzz_targets/fuzz_gate_ratchet.rs"
+test = false
+doc = false
+required-features = ["gate_ratchet"]
+
+# ============================================================================
+# Fuzz Targets - SVG Badge Rendering
+# ============================================================================
+# Tests badge_svg() with arbitrary label/value strings for no-panic
+# behavior, determinism, and basic SVG well-formedness.
+
+[[bin]]
+name = "fuzz_badge_svg"
+path = "fuzz_targets/fuzz_badge_svg.rs"
+test = false
+doc = false
+required-features = ["badge"]

@@ -1,0 +1,68 @@
+name: Nix Full Validation
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [ "main" ]
+  schedule:
+    - cron: "23 4 * * *"
+
+concurrency:
+  # Keep workflow_run validation and nightly schedule runs from canceling each
+  # other when they target the same main-branch commit.
+  group: nix-full-${{ github.event_name }}-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+jobs:
+  nix-full:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Set the repository variable `NIX_USE_FLAKEHUB_CACHE=true` once the
+      # trusted FlakeHub Cache path is provisioned for this repo.
+      USE_FLAKEHUB_CACHE: ${{ vars.NIX_USE_FLAKEHUB_CACHE }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install Nix
+        if: env.USE_FLAKEHUB_CACHE != 'true'
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Install Nix with FlakeHub support
+        if: env.USE_FLAKEHUB_CACHE == 'true'
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Setup FlakeHub cache
+        id: flakehub-cache
+        if: env.USE_FLAKEHUB_CACHE == 'true'
+        continue-on-error: true
+        uses: DeterminateSystems/flakehub-cache-action@v3
+
+      - name: Setup Nix cache
+        if: env.USE_FLAKEHUB_CACHE != 'true' || steps.flakehub-cache.outcome != 'success'
+        continue-on-error: true
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
+          use-gha-cache: enabled
+
+      - name: Check flake (full)
+        run: nix flake check --accept-flake-config
+
+      - name: Build default package
+        run: nix build -L .#tokmd
+
+      - name: Build alias package
+        run: nix build -L .#tokmd-with-alias

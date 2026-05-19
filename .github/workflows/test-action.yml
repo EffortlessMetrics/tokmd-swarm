@@ -1,0 +1,636 @@
+name: Test Action
+
+on:
+  pull_request:
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-action:
+    name: Test tokmd-receipt Action
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Run tokmd-receipt action
+        id: tokmd
+        uses: ./
+        with:
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify outputs exist
+        shell: bash
+        run: |
+          if [ ! -f tokmd-summary.md ]; then
+            echo "::error::tokmd-summary.md not generated"
+            exit 1
+          fi
+          if [ ! -f tokmd-receipt.json ]; then
+            echo "::error::tokmd-receipt.json not generated"
+            exit 1
+          fi
+          if [ "${{ steps.tokmd.outputs.summary }}" != "tokmd-summary.md" ]; then
+            echo "::error::summary output did not point to tokmd-summary.md"
+            exit 1
+          fi
+          if [ "${{ steps.tokmd.outputs.receipt }}" != "tokmd-receipt.json" ]; then
+            echo "::error::receipt output did not point to tokmd-receipt.json"
+            exit 1
+          fi
+          if [ -n "${{ steps.tokmd.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty for omitted mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.tokmd.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty for omitted mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.tokmd.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty for omitted mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.tokmd.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty for omitted mode"
+            exit 1
+          fi
+          echo "✓ Both receipt files generated successfully"
+          echo "--- Summary preview ---"
+          head -20 tokmd-summary.md
+
+  test-formats:
+    name: Test export formats
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        format: [json, jsonl, csv]
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Run tokmd-receipt with ${{ matrix.format }} format
+        uses: ./
+        with:
+          format: ${{ matrix.format }}
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify output
+        run: |
+          if [ ! -f "tokmd-receipt.${{ matrix.format }}" ]; then
+            echo "::error::tokmd-receipt.${{ matrix.format }} not generated"
+            exit 1
+          fi
+          echo "✓ tokmd-receipt.${{ matrix.format }} generated successfully"
+
+  test-modes:
+    name: Test explicit modes
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Run module mode
+        id: module
+        uses: ./
+        with:
+          mode: module
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify module mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-summary.md ]; then
+            echo "::error::tokmd-summary.md not generated in module mode"
+            exit 1
+          fi
+          if [ "${{ steps.module.outputs.summary }}" != "tokmd-summary.md" ]; then
+            echo "::error::summary output did not point to tokmd-summary.md"
+            exit 1
+          fi
+          if [ -n "${{ steps.module.outputs.receipt }}" ]; then
+            echo "::error::receipt output should be empty in module mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.module.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty in module mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.module.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty in module mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.module.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty in module mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.module.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty in module mode"
+            exit 1
+          fi
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
+
+      - name: Run export mode
+        id: export
+        uses: ./
+        with:
+          mode: export
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify export mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-receipt.json ]; then
+            echo "::error::tokmd-receipt.json not generated in export mode"
+            exit 1
+          fi
+          if [ "${{ steps.export.outputs.receipt }}" != "tokmd-receipt.json" ]; then
+            echo "::error::receipt output did not point to tokmd-receipt.json"
+            exit 1
+          fi
+          if [ -n "${{ steps.export.outputs.summary }}" ]; then
+            echo "::error::summary output should be empty in export mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.export.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty in export mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.export.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty in export mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.export.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty in export mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.export.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty in export mode"
+            exit 1
+          fi
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
+
+      - name: Write gate policy
+        shell: bash
+        run: |
+          cat > tokmd.toml <<'TOML'
+          [[gate.rules]]
+          name = "has_files"
+          pointer = "/derived/totals/files"
+          op = "gte"
+          value = 1
+          TOML
+
+      - name: Run gate mode
+        id: gate
+        uses: ./
+        with:
+          mode: gate
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify gate mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-gate-verdict.json ]; then
+            echo "::error::tokmd-gate-verdict.json not generated in gate mode"
+            exit 1
+          fi
+          if [ "${{ steps.gate.outputs['gate-verdict'] }}" != "tokmd-gate-verdict.json" ]; then
+            echo "::error::gate-verdict output did not point to tokmd-gate-verdict.json"
+            exit 1
+          fi
+          if [ -n "${{ steps.gate.outputs.summary }}" ]; then
+            echo "::error::summary output should be empty in gate mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.gate.outputs.receipt }}" ]; then
+            echo "::error::receipt output should be empty in gate mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.gate.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty in gate mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.gate.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty in gate mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.gate.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty in gate mode"
+            exit 1
+          fi
+          grep -q '"passed": true' tokmd-gate-verdict.json
+
+      - name: Run gate mode with same-line multiple paths
+        id: gate_same_line_paths
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: gate
+          paths: ". README.md"
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify same-line gate paths reject
+        shell: bash
+        run: |
+          if [ "${{ steps.gate_same_line_paths.outcome }}" != "failure" ]; then
+            echo "::error::gate mode should reject same-line multi-path input"
+            exit 1
+          fi
+
+      - name: Run gate mode with multiline paths
+        id: gate_multiline_paths
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: gate
+          paths: |
+            .
+            README.md
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify multiline gate paths reject
+        shell: bash
+        run: |
+          if [ "${{ steps.gate_multiline_paths.outcome }}" != "failure" ]; then
+            echo "::error::gate mode should reject multiline multi-path input"
+            exit 1
+          fi
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
+
+      - name: Run cockpit mode
+        id: cockpit
+        uses: ./
+        with:
+          mode: cockpit
+          base: HEAD
+          head: HEAD
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify cockpit mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-cockpit-report.json ]; then
+            echo "::error::tokmd-cockpit-report.json not generated in cockpit mode"
+            exit 1
+          fi
+          if [ "${{ steps.cockpit.outputs['cockpit-report'] }}" != "tokmd-cockpit-report.json" ]; then
+            echo "::error::cockpit-report output did not point to tokmd-cockpit-report.json"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs.summary }}" ]; then
+            echo "::error::summary output should be empty in cockpit mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs.receipt }}" ]; then
+            echo "::error::receipt output should be empty in cockpit mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty in cockpit mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty in cockpit mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty in cockpit mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.cockpit.outputs['review-packet'] }}" ]; then
+            echo "::error::review-packet output should be empty in cockpit mode without review-packet=true"
+            exit 1
+          fi
+          grep -q '"mode": "cockpit"' tokmd-cockpit-report.json
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-review-packet-comment.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras .tokmd target/tokmd/review-packet-check.json
+
+      - name: Set up Rust for local review packet binary
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install local tokmd for review packet mode
+        shell: bash
+        run: |
+          cargo install --path crates/tokmd --features git --locked --force --root "$HOME/.local"
+          "$HOME/.local/bin/tokmd" cockpit --help | grep -q -- '--review-packet-dir'
+
+      - name: Run cockpit mode with review packet
+        id: cockpit_packet
+        uses: ./
+        with:
+          mode: cockpit
+          base: HEAD
+          head: HEAD
+          review-packet: 'true'
+          comment: 'false'
+          artifact: 'true'
+
+      - name: Verify cockpit review packet mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-cockpit-report.json ]; then
+            echo "::error::tokmd-cockpit-report.json not generated with cockpit review packet"
+            exit 1
+          fi
+          if [ "${{ steps.cockpit_packet.outputs['cockpit-report'] }}" != "tokmd-cockpit-report.json" ]; then
+            echo "::error::cockpit-report output did not point to tokmd-cockpit-report.json with review packet"
+            exit 1
+          fi
+          if [ "${{ steps.cockpit_packet.outputs['review-packet'] }}" != ".tokmd/review" ]; then
+            echo "::error::review-packet output did not point to .tokmd/review"
+            exit 1
+          fi
+          if [ "${{ steps.cockpit_packet.outputs.summary }}" != ".tokmd/review/comment.md" ]; then
+            echo "::error::summary output did not point to review packet comment.md"
+            exit 1
+          fi
+          for path in \
+            .tokmd/review/manifest.json \
+            .tokmd/review/cockpit.json \
+            .tokmd/review/evidence.json \
+            .tokmd/review/review-map.json \
+            .tokmd/review/review-map.md \
+            .tokmd/review/comment.md; do
+            if [ ! -f "$path" ]; then
+              echo "::error::$path not generated in cockpit review packet mode"
+              exit 1
+            fi
+          done
+          grep -q '"schema": "tokmd.review_packet_manifest.v1"' .tokmd/review/manifest.json
+          grep -q '"schema": "tokmd.review_map.v1"' .tokmd/review/review-map.json
+          if grep -q 'Hosted packet' .tokmd/review/comment.md; then
+            echo "::error::review packet comment.md should remain manifest-hashed packet content"
+            exit 1
+          fi
+          if grep -q 'Review packet verification' .tokmd/review/comment.md; then
+            echo "::error::review packet comment.md should not include hosted verifier status"
+            exit 1
+          fi
+          if [ ! -f tokmd-review-packet-comment.md ]; then
+            echo "::error::hosted review packet comment copy not generated"
+            exit 1
+          fi
+          grep -q 'Hosted packet' tokmd-review-packet-comment.md
+          grep -q 'Workflow run:' tokmd-review-packet-comment.md
+          grep -q 'Artifact: `tokmd-receipts`' tokmd-review-packet-comment.md
+          grep -q 'Packet path: `.tokmd/review`' tokmd-review-packet-comment.md
+          grep -q 'Review packet verification' tokmd-review-packet-comment.md
+          grep -q 'Review packet: verified' tokmd-review-packet-comment.md
+          grep -q 'Manifest hashes: valid' tokmd-review-packet-comment.md
+          grep -q 'Proof evidence: 0 available, 0 missing, 0 stale' tokmd-review-packet-comment.md
+          if [ ! -f target/tokmd/review-packet-check.json ]; then
+            echo "::error::review packet verifier receipt not generated"
+            exit 1
+          fi
+          grep -q '"schema": "tokmd.review_packet_check.v1"' target/tokmd/review-packet-check.json
+          grep -q '"ok": true' target/tokmd/review-packet-check.json
+          grep -q '"hashes_verified": 5' target/tokmd/review-packet-check.json
+          grep -q '"path": "comment.md"' target/tokmd/review-packet-check.json
+          cargo xtask review-packet-check --dir .tokmd/review
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-review-packet-comment.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras .tokmd target/tokmd/review-packet-check.json
+
+      - name: Run cockpit mode with inferred pull request base
+        id: cockpit_inferred_base
+        uses: ./
+        env:
+          GITHUB_BASE_REF: main
+        with:
+          mode: cockpit
+          head: HEAD
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify cockpit inferred base
+        shell: bash
+        run: |
+          if [ ! -f tokmd-cockpit-report.json ]; then
+            echo "::error::tokmd-cockpit-report.json not generated with inferred base"
+            exit 1
+          fi
+          if [ "${{ steps.cockpit_inferred_base.outputs['cockpit-report'] }}" != "tokmd-cockpit-report.json" ]; then
+            echo "::error::cockpit-report output did not point to tokmd-cockpit-report.json with inferred base"
+            exit 1
+          fi
+          grep -q '"mode": "cockpit"' tokmd-cockpit-report.json
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
+
+      - name: Run sensor mode
+        id: sensor
+        uses: ./
+        with:
+          mode: sensor
+          base: HEAD
+          head: HEAD
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify sensor mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-sensor-report.json ]; then
+            echo "::error::tokmd-sensor-report.json not generated in sensor mode"
+            exit 1
+          fi
+          if [ "${{ steps.sensor.outputs['sensor-report'] }}" != "tokmd-sensor-report.json" ]; then
+            echo "::error::sensor-report output did not point to tokmd-sensor-report.json"
+            exit 1
+          fi
+          if [ ! -f comment.md ]; then
+            echo "::error::comment.md not generated in sensor mode"
+            exit 1
+          fi
+          if [ "${{ steps.sensor.outputs.summary }}" != "comment.md" ]; then
+            echo "::error::summary output did not point to comment.md in sensor mode"
+            exit 1
+          fi
+          if [ ! -f extras/cockpit_receipt.json ]; then
+            echo "::error::sensor sidecar extras/cockpit_receipt.json not generated"
+            exit 1
+          fi
+          if [ -n "${{ steps.sensor.outputs.receipt }}" ]; then
+            echo "::error::receipt output should be empty in sensor mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.sensor.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty in sensor mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.sensor.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty in sensor mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.sensor.outputs['baseline-report'] }}" ]; then
+            echo "::error::baseline-report output should be empty in sensor mode"
+            exit 1
+          fi
+          grep -q '"schema": "sensor.report.v1"' tokmd-sensor-report.json
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
+
+      - name: Run sensor mode with inferred pull request base
+        id: sensor_inferred_base
+        uses: ./
+        env:
+          GITHUB_BASE_REF: main
+        with:
+          mode: sensor
+          head: HEAD
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify sensor inferred base
+        shell: bash
+        run: |
+          if [ ! -f tokmd-sensor-report.json ]; then
+            echo "::error::tokmd-sensor-report.json not generated with inferred base"
+            exit 1
+          fi
+          if [ "${{ steps.sensor_inferred_base.outputs['sensor-report'] }}" != "tokmd-sensor-report.json" ]; then
+            echo "::error::sensor-report output did not point to tokmd-sensor-report.json with inferred base"
+            exit 1
+          fi
+          if [ ! -f comment.md ]; then
+            echo "::error::comment.md not generated in sensor mode with inferred base"
+            exit 1
+          fi
+          if [ "${{ steps.sensor_inferred_base.outputs.summary }}" != "comment.md" ]; then
+            echo "::error::summary output did not point to comment.md in sensor mode with inferred base"
+            exit 1
+          fi
+          grep -q '"schema": "sensor.report.v1"' tokmd-sensor-report.json
+
+      - name: Run cockpit mode with unresolved base
+        id: cockpit_unresolved_base
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: cockpit
+          base: refs/heads/__tokmd_missing_base__
+          head: HEAD
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify unresolved cockpit base rejects
+        shell: bash
+        run: |
+          if [ "${{ steps.cockpit_unresolved_base.outcome }}" != "failure" ]; then
+            echo "::error::cockpit mode should reject an unresolved base ref"
+            exit 1
+          fi
+
+      - name: Clean generated files
+        shell: bash
+        run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras baseline-fixture
+
+      - name: Prepare baseline fixture
+        shell: bash
+        run: |
+          mkdir -p baseline-fixture/src
+          cat > baseline-fixture/src/lib.rs <<'RS'
+          pub fn add(a: i32, b: i32) -> i32 {
+              a + b
+          }
+          RS
+
+      - name: Run baseline mode
+        id: baseline
+        uses: ./
+        with:
+          mode: baseline
+          paths: baseline-fixture
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify baseline mode
+        shell: bash
+        run: |
+          if [ ! -f tokmd-baseline.json ]; then
+            echo "::error::tokmd-baseline.json not generated in baseline mode"
+            exit 1
+          fi
+          if [ "${{ steps.baseline.outputs['baseline-report'] }}" != "tokmd-baseline.json" ]; then
+            echo "::error::baseline-report output did not point to tokmd-baseline.json"
+            exit 1
+          fi
+          if [ -n "${{ steps.baseline.outputs.summary }}" ]; then
+            echo "::error::summary output should be empty in baseline mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.baseline.outputs.receipt }}" ]; then
+            echo "::error::receipt output should be empty in baseline mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.baseline.outputs['gate-verdict'] }}" ]; then
+            echo "::error::gate-verdict output should be empty in baseline mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.baseline.outputs['cockpit-report'] }}" ]; then
+            echo "::error::cockpit-report output should be empty in baseline mode"
+            exit 1
+          fi
+          if [ -n "${{ steps.baseline.outputs['sensor-report'] }}" ]; then
+            echo "::error::sensor-report output should be empty in baseline mode"
+            exit 1
+          fi
+          grep -q '"baseline_version": 1' tokmd-baseline.json
+
+      - name: Run baseline mode with multiline paths
+        id: baseline_multiline_paths
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: baseline
+          paths: |
+            baseline-fixture
+            README.md
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify multiline baseline paths reject
+        shell: bash
+        run: |
+          if [ "${{ steps.baseline_multiline_paths.outcome }}" != "failure" ]; then
+            echo "::error::baseline mode should reject multiline multi-path input"
+            exit 1
+          fi

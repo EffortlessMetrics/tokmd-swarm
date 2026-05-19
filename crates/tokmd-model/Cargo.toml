@@ -1,0 +1,24 @@
+[package]
+name = "tokmd-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Deterministic aggregation and receipt modeling for tokmd. Tier 2 stability."
+readme = "README.md"
+keywords = ["code-analysis", "aggregation", "receipts", "modeling", "tokei"]
+categories = ["development-tools"]
+documentation = "https://docs.rs/tokmd-model"
+
+[dependencies]
+serde.workspace = true
+tokei = { version = "14.0.0", default-features = false }
+tokmd-types.workspace = true
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+

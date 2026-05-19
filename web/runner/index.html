@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tokmd Browser Runner</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">tokmd browser runner</p>
+        <h1>Worker-first browser runner</h1>
+        <p>
+          This page boots <code>tokmd-wasm</code> inside a dedicated Worker and
+          exercises the current browser-safe in-memory modes. Public GitHub repo
+          fetch now uses browser-safe tree and contents APIs. The worker reports
+          the loaded wasm bundle's capability surface, repo-load progress and
+          cancel are wired in the main thread, worker runs emit progress, and
+          worker run-cancel stays explicitly unavailable.
+        </p>
+      </section>
+
+      <section class="grid">
+        <section class="panel">
+          <h2>Request</h2>
+          <div class="controls">
+            <div class="inline-fields">
+              <div class="field">
+                <label for="repo">GitHub Repo</label>
+                <input id="repo" data-repo type="text" value="EffortlessMetrics/tokmd" spellcheck="false">
+              </div>
+
+              <div class="field compact">
+                <label for="ref">Ref</label>
+                <input id="ref" data-ref type="text" value="main" spellcheck="false">
+              </div>
+
+              <div class="field">
+                <label for="token">GitHub Token</label>
+                <input id="token" data-token type="password" value="" placeholder="Optional PAT for higher limits" autocomplete="off" spellcheck="false">
+                <div class="token-controls">
+                  <span class="auth-state" data-auth-state>anonymous</span>
+                  <button class="secondary ghost" type="button" data-clear-token disabled>Clear Token</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="mode">Mode</label>
+              <select id="mode" data-mode>
+                <option value="lang">lang</option>
+                <option value="module">module</option>
+                <option value="export">export</option>
+                <option value="analyze">analyze</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="args">Args JSON</label>
+              <textarea id="args" data-args spellcheck="false"></textarea>
+            </div>
+
+            <div class="field">
+              <label for="local-files">Local Files</label>
+              <input id="local-files" data-local-files type="file" multiple>
+            </div>
+
+            <div class="field">
+              <label for="local-directory">Local Directory</label>
+              <input id="local-directory" data-local-directory type="file" multiple webkitdirectory>
+            </div>
+
+            <div class="actions">
+              <button class="secondary" type="button" data-load-local>Load Local Files</button>
+              <button class="secondary" type="button" data-load-repo>Load GitHub Repo</button>
+              <button class="secondary" type="button" data-retry-load disabled>Retry Repo Load</button>
+              <button class="secondary" type="button" data-cancel-load disabled>Cancel Repo Load</button>
+              <button class="primary" type="button" data-run>Send Run</button>
+              <button class="secondary" type="button" data-cancel disabled>Send Cancel</button>
+            </div>
+
+            <div class="status-stack">
+              <div class="status" data-load-status></div>
+              <div class="status" data-run-status></div>
+            </div>
+
+            <div class="progress-panel" data-load-progress-panel hidden>
+              <div class="panel-header compact">
+                <h2>Repo Load Progress</h2>
+                <span class="progress-copy" data-load-progress-text></span>
+              </div>
+              <progress data-load-progress max="1" value="0"></progress>
+            </div>
+
+            <div class="progress-panel" data-run-progress-panel hidden>
+              <div class="panel-header compact">
+                <h2>Run Progress</h2>
+                <span class="progress-copy" data-run-progress-text></span>
+              </div>
+              <progress data-run-progress max="1" value="0"></progress>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Worker Capabilities</h2>
+          </div>
+          <pre data-worker-capabilities>{}</pre>
+
+          <div class="panel-header">
+            <h2>Repo Load Surface</h2>
+          </div>
+          <pre data-repo-capabilities>{}</pre>
+
+          <div class="panel-header">
+            <h2>Latest Repo Ingest</h2>
+          </div>
+          <div class="summary-card" data-ingest-summary></div>
+
+          <div class="panel-header">
+            <h2>Latest Result</h2>
+            <button class="secondary ghost" type="button" data-download disabled>Download JSON</button>
+          </div>
+          <pre data-result>waiting for first result...</pre>
+
+          <h2>Protocol Log</h2>
+          <div class="log" data-log></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

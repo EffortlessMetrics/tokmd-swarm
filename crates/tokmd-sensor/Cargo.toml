@@ -1,0 +1,30 @@
+[package]
+name = "tokmd-sensor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "EffortlessSensor trait and substrate builder for multi-sensor integration."
+readme = "README.md"
+keywords = ["sensor", "trait", "substrate", "code-analysis"]
+categories = ["development-tools"]
+documentation = "https://docs.rs/tokmd-sensor"
+
+[features]
+default = []
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+tokmd-envelope.workspace = true
+tokmd-settings.workspace = true
+tokmd-scan.workspace = true
+tokmd-model.workspace = true
+tokmd-types.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+

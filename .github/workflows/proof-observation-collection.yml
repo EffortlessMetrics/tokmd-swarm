@@ -1,0 +1,185 @@
+name: Proof Executor Observation Collection
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_limit:
+        description: Number of successful proof executor runs to inspect; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+      min_observations:
+        description: Minimum observation artifacts required; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+      min_executed:
+        description: Minimum executed advisory commands required; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+      min_scopes:
+        description: Minimum distinct scopes required; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+      min_artifacts:
+        description: Minimum produced evidence artifacts required; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+      min_passing_collector_runs:
+        description: Minimum recent passing manual collector runs required; blank uses ci/proof.toml [executor.promotion]
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: proof-observation-collection-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  GH_TOKEN: ${{ github.token }}
+  RUN_LIMIT_INPUT: ${{ github.event.inputs.run_limit || '' }}
+  MIN_OBSERVATIONS_INPUT: ${{ github.event.inputs.min_observations || '' }}
+  MIN_EXECUTED_INPUT: ${{ github.event.inputs.min_executed || '' }}
+  MIN_SCOPES_INPUT: ${{ github.event.inputs.min_scopes || '' }}
+  MIN_ARTIFACTS_INPUT: ${{ github.event.inputs.min_artifacts || '' }}
+  MIN_PASSING_COLLECTOR_RUNS_INPUT: ${{ github.event.inputs.min_passing_collector_runs || '' }}
+
+jobs:
+  collect-observations:
+    name: Collect Proof Executor Observations
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Resolve collection thresholds
+        run: |
+          set -euo pipefail
+          mkdir -p target/proof-observations
+          cargo xtask proof-policy --json-output target/proof-observations/proof-policy.json
+          cargo xtask proof-observation-thresholds \
+            --proof-policy-json target/proof-observations/proof-policy.json \
+            --env-output target/proof-observations/thresholds.env \
+            --run-limit "${RUN_LIMIT_INPUT}" \
+            --min-observations "${MIN_OBSERVATIONS_INPUT}" \
+            --min-executed "${MIN_EXECUTED_INPUT}" \
+            --min-scopes "${MIN_SCOPES_INPUT}" \
+            --min-artifacts "${MIN_ARTIFACTS_INPUT}" \
+            --min-passing-collector-runs "${MIN_PASSING_COLLECTOR_RUNS_INPUT}"
+          cat target/proof-observations/thresholds.env >> "$GITHUB_ENV"
+
+      - name: Download successful proof executor artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p target/proof-observations/runs
+
+          gh run list --workflow proof-executor.yml --status success --limit "${RUN_LIMIT}" --json databaseId,event,headBranch,headSha,createdAt,url > target/proof-observations/runs.json
+          cargo xtask proof-observation-run-ids \
+            --runs-json target/proof-observations/runs.json \
+            --output target/proof-observations/run-ids.txt
+
+          if [ ! -s target/proof-observations/run-ids.txt ]; then
+            echo "No successful proof executor runs found." > target/proof-observations/download.log
+            exit 1
+          fi
+
+          : > target/proof-observations/download.log
+          while IFS= read -r run_id; do
+            run_dir="target/proof-observations/runs/${run_id}"
+            mkdir -p "${run_dir}"
+            if gh run download "${run_id}" --name proof-executor-artifacts --dir "${run_dir}" >> target/proof-observations/download.log 2>&1; then
+              echo "downloaded ${run_id}" >> target/proof-observations/download.log
+            else
+              echo "missing proof-executor-artifacts for ${run_id}" >> target/proof-observations/download.log
+            fi
+          done < target/proof-observations/run-ids.txt
+
+      - name: Record passing collector runs
+        run: |
+          set -euo pipefail
+          collector_limit="${MIN_PASSING_COLLECTOR_RUNS}"
+          if [ "${collector_limit}" -lt 1 ]; then
+            collector_limit=1
+          fi
+          gh run list --workflow proof-observation-collection.yml --status success --limit "${collector_limit}" --json databaseId,event,headBranch,headSha,createdAt,url > target/proof-observations/collector-runs.json
+
+      - name: Summarize downloaded observations
+        run: |
+          set -euo pipefail
+          cargo xtask proof-execution-observations-summary \
+            --observations-dir target/proof-observations/runs \
+            --output target/proof-observations/proof-executor-observation-collection.json \
+            --summary-md target/proof-observations/proof-executor-observation-collection.md \
+            --source-runs-json target/proof-observations/runs.json \
+            --min-observations "${MIN_OBSERVATIONS}" \
+            --min-executed "${MIN_EXECUTED}" \
+            --min-scopes "${MIN_SCOPES}" \
+            --min-artifacts "${MIN_ARTIFACTS}" \
+            --min-passing-collector-runs "${MIN_PASSING_COLLECTOR_RUNS}" \
+            --collector-runs-json target/proof-observations/collector-runs.json \
+            --promotion-readiness target/proof-observations/proof-executor-promotion-readiness.json \
+            > target/proof-observations/proof-execution-observations-summary.txt
+
+      - name: Aggregate proof observation decision evidence
+        run: |
+          set -euo pipefail
+          cargo xtask proof-observation-status \
+            --proof-policy target/proof-observations/proof-policy.json \
+            --executor-observation-collection target/proof-observations/proof-executor-observation-collection.json \
+            --promotion-readiness target/proof-observations/proof-executor-promotion-readiness.json \
+            --json target/proof-observations/proof-observation-decision.json
+          cargo xtask proof-observation-status-check \
+            --decision target/proof-observations/proof-observation-decision.json \
+            --json target/proof-observations/proof-observation-decision-check.json
+
+      - name: Write collection summary
+        if: always()
+        run: |
+          {
+            echo "## Proof Executor Observation Collection"
+            echo ""
+            echo "| Input | Value | Source |"
+            echo "| --- | ---: | --- |"
+            echo "| Run limit | ${RUN_LIMIT} | ${RUN_LIMIT_SOURCE} |"
+            echo "| Minimum observations | ${MIN_OBSERVATIONS} | ${MIN_OBSERVATIONS_SOURCE} |"
+            echo "| Minimum executed commands | ${MIN_EXECUTED} | ${MIN_EXECUTED_SOURCE} |"
+            echo "| Minimum scopes | ${MIN_SCOPES} | ${MIN_SCOPES_SOURCE} |"
+            echo "| Minimum artifacts | ${MIN_ARTIFACTS} | ${MIN_ARTIFACTS_SOURCE} |"
+            echo "| Minimum passing collector runs | ${MIN_PASSING_COLLECTOR_RUNS} | ${MIN_PASSING_COLLECTOR_RUNS_SOURCE} |"
+            echo ""
+            if [ -f target/proof-observations/proof-executor-observation-collection.md ]; then
+              cat target/proof-observations/proof-executor-observation-collection.md
+            elif [ -f target/proof-observations/proof-execution-observations-summary.txt ]; then
+              cat target/proof-observations/proof-execution-observations-summary.txt
+            elif [ -f target/proof-observations/download.log ]; then
+              cat target/proof-observations/download.log
+            fi
+            if [ -f target/proof-observations/proof-observation-decision.json ]; then
+              echo ""
+              echo "### Proof Observation Decision"
+              echo ""
+              echo "- Decision packet: \`target/proof-observations/proof-observation-decision.json\`"
+              if [ -f target/proof-observations/proof-observation-decision-check.json ]; then
+                echo "- Decision check: \`target/proof-observations/proof-observation-decision-check.json\`"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload observation collection
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-executor-observation-collection
+          path: target/proof-observations/
+          if-no-files-found: error
+          retention-days: 30

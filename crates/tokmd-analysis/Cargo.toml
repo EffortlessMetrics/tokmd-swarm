@@ -1,0 +1,67 @@
+[package]
+name = "tokmd-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Analysis logic and enrichers for tokmd receipts."
+readme = "README.md"
+keywords = ["code-analysis", "metrics", "cocomo", "hotspots", "enrichment"]
+categories = ["development-tools"]
+documentation = "https://docs.rs/tokmd-analysis"
+
+[features]
+default = ["fun", "topics", "archetype", "effort"]
+git = [
+    "dep:tokmd-git",
+]
+walk = [
+]
+content = [
+    "dep:globset",
+    "dep:regex",
+    "dep:rustc-hash",
+]
+halstead = [
+    "content",
+    "walk",
+]
+effort = []
+fun = []
+topics = []
+archetype = []
+ast = [
+    "dep:tree-sitter",
+    "dep:tree-sitter-rust",
+]
+
+[[example]]
+name = "ast_shadow_perf"
+path = "examples/ast_shadow_perf.rs"
+required-features = ["ast"]
+
+[dependencies]
+anyhow.workspace = true
+blake3.workspace = true
+serde_json.workspace = true
+globset = { version = "0.4.18", optional = true }
+regex = { version = "1.12.3", optional = true }
+rustc-hash = { version = "2", optional = true }
+tree-sitter = { version = "0.26.8", optional = true }
+tree-sitter-rust = { version = "0.24.2", optional = true }
+
+# Core contracts
+tokmd-analysis-types.workspace = true
+tokmd-format.workspace = true
+tokmd-scan.workspace = true
+tokmd-types.workspace = true
+
+# Optional adapters
+tokmd-git = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true
+serde.workspace = true
+insta = { workspace = true }

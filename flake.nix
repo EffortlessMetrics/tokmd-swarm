@@ -1,0 +1,209 @@
+{
+  description = "tokmd - Tokei-backed repo inventory receipts (Markdown/TSV/JSONL/CSV).";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    crane.url = "github:ipetkov/crane";
+  };
+
+  outputs = { self, nixpkgs, crane, ... }:
+    let
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
+
+      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
+
+      workspaceCargo = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      version = workspaceCargo.workspace.package.version;
+
+      mkPkgs = system: import nixpkgs { inherit system; };
+      mkCraneLib = system: crane.mkLib (mkPkgs system);
+
+      # Source filter that includes cargo sources plus HTML templates (for include_str!)
+      # Used for builds where we want a minimal closure
+      mkBuildSrc = craneLib: craneLib.path {
+        path = ./.;
+        filter = path: type:
+          let
+            p = toString path;
+            baseName = baseNameOf path;
+          in
+          (craneLib.filterCargoSources path type)
+          # Keep HTML templates (for include_str!)
+          || (builtins.match ".*\\.html$" p != null)
+          # Keep embedded schemas pulled in by sync tests during buildDepsOnly.
+          || (nixpkgs.lib.hasInfix "/crates/tokmd/schemas" p)
+          # Keep the published schema used by include_str! sync tests.
+          || (nixpkgs.lib.hasInfix "/docs/schema.json" p)
+          || (nixpkgs.lib.hasInfix "/docs/" p && nixpkgs.lib.hasSuffix ".schema.json" baseName)
+          # Keep docs markdown referenced by compile-time include_str!s.
+          || (nixpkgs.lib.hasInfix "/docs/" p && nixpkgs.lib.hasSuffix ".md" baseName)
+          # Keep docs directory entries so the file filter can traverse them.
+          || (type == "directory" && nixpkgs.lib.hasSuffix "/docs" p)
+          # Keep root markdown files referenced by sync tests.
+          || (baseName == "CHANGELOG.md" || baseName == "CLAUDE.md")
+          # Keep vendored crate patches used by Cargo path overrides.
+          || (builtins.match ".*/vendor(/.*)?$" p != null)
+          # Keep crate README.md files used by #[doc = include_str!(...)].
+          || (baseName == "README.md" && nixpkgs.lib.hasInfix "/crates/" p);
+      };
+
+      # Full source for tests/checks - keeps fixtures, golden files, ignore files, etc.
+      # cleanCargoSource is too restrictive; we need templates, test data, and snapshots
+      mkCheckSrc = craneLib: pkgs: pkgs.lib.cleanSourceWith {
+        src = ./.;
+        filter = path: type:
+          let
+            p = toString path;
+            baseName = baseNameOf path;
+          in
+          # Keep standard Cargo sources
+          (craneLib.filterCargoSources path type)
+          # Keep HTML templates (for include_str!)
+          || (builtins.match ".*\\.html$" path != null)
+          # Keep embedded schemas (include_str! in tests / clippy --all-targets)
+          || (pkgs.lib.hasInfix "/crates/tokmd/schemas" p)
+          # Keep published schema (sync test compares against embedded copy)
+          || (pkgs.lib.hasInfix "/docs/schema.json" p)
+          || (pkgs.lib.hasInfix "/docs/" p && pkgs.lib.hasSuffix ".schema.json" baseName)
+          # Keep docs markdown files (include_str! in schema_sync tests)
+          || (pkgs.lib.hasInfix "/docs/" p && pkgs.lib.hasSuffix ".md" baseName)
+          # Keep docs directory (directory entry must pass filter for contents to be evaluated)
+          || (type == "directory" && pkgs.lib.hasSuffix "/docs" p)
+          # Keep root markdown files (CHANGELOG.md, CLAUDE.md used by tests)
+          || (baseName == "README.md" || baseName == "CHANGELOG.md" || baseName == "CLAUDE.md")
+          # Keep vendored crate patches used by Cargo path overrides
+          || (builtins.match ".*/vendor(/.*)?$" p != null)
+          # Keep crate README.md files (include_str! in lib.rs #[doc] attributes)
+          || (baseName == "README.md" && pkgs.lib.hasInfix "/crates/" p)
+          # Keep test directories and their contents
+          || (pkgs.lib.hasInfix "/tests/" p)
+          # Keep contract fixtures validated by schema tests
+          || (pkgs.lib.hasInfix "/contracts/" p)
+          # Keep snapshot files
+          || (pkgs.lib.hasSuffix ".snap" baseName)
+          # Keep proptest regression files
+          || (pkgs.lib.hasSuffix ".proptest-regressions" baseName)
+          # Keep gitignore files (used by tests)
+          || (baseName == ".gitignore");
+      };
+
+      # Package dependency builds only need workspace dummy crates plus the
+      # real vendored `home` patch source used by Cargo's path override.
+      mkPackageDummySrc = pkgs: craneLib: src:
+        let
+          dummyBase = craneLib.mkDummySrc { inherit src; };
+        in
+        pkgs.runCommand "tokmd-package-dummy-src" { } ''
+          mkdir -p "$out"
+          cp -R ${dummyBase}/. "$out"
+          chmod -R u+w "$out"
+          mkdir -p "$out/.cargo" "$out/vendor"
+          install -Dm644 ${./.cargo/config.toml} "$out/.cargo/config.toml"
+          rm -rf "$out/vendor/home-0.5.12"
+          cp -R ${./vendor/home-0.5.12} "$out/vendor/home-0.5.12"
+        '';
+    in
+    {
+      packages = forAllSystems (system:
+        let
+          pkgs = mkPkgs system;
+          craneLib = mkCraneLib system;
+          src = mkBuildSrc craneLib;
+          dummySrc = mkPackageDummySrc pkgs craneLib src;
+
+          commonArgs = {
+            pname = "tokmd";
+            inherit version src;
+            inherit dummySrc;
+            strictDeps = true;
+          };
+
+          tokmdCargoArtifacts = craneLib.buildDepsOnly (commonArgs // {
+            cargoExtraArgs = "--locked -p tokmd";
+            doCheck = false;
+          });
+
+          tokmd = craneLib.buildPackage (commonArgs // {
+            cargoArtifacts = tokmdCargoArtifacts;
+            cargoExtraArgs = "--locked -p tokmd";
+            doCheck = false;
+          });
+
+          tokmdAliasCargoArtifacts = craneLib.buildDepsOnly (commonArgs // {
+            cargoExtraArgs = "--locked -p tokmd --features alias-tok";
+            doCheck = false;
+          });
+
+          tokmdWithAlias = craneLib.buildPackage (commonArgs // {
+            cargoArtifacts = tokmdAliasCargoArtifacts;
+            cargoExtraArgs = "--locked -p tokmd --features alias-tok";
+            doCheck = false;
+          });
+        in
+        {
+          default = tokmd;
+          tokmd = tokmd;
+          tokmd-with-alias = tokmdWithAlias;
+        });
+
+      checks = forAllSystems (system:
+        let
+          pkgs = mkPkgs system;
+          craneLib = mkCraneLib system;
+          src = mkCheckSrc craneLib pkgs;
+          checkArgs = {
+            inherit src;
+            # Keep the broad check lane on the real filtered source. The
+            # package-only dummy source is only for the release package builds.
+            dummySrc = src;
+            strictDeps = true;
+          };
+          clippyCargoArtifacts = craneLib.buildDepsOnly (checkArgs // {
+            cargoExtraArgs = "--locked";
+            doCheck = false;
+          });
+          testCargoArtifacts = craneLib.buildDepsOnly (checkArgs // {
+            cargoExtraArgs = "--locked";
+            doCheck = true;
+          });
+        in
+        {
+          clippy = craneLib.cargoClippy (checkArgs // {
+            cargoArtifacts = clippyCargoArtifacts;
+            cargoClippyExtraArgs = "--all-targets -- -D warnings";
+          });
+          fmt = craneLib.cargoFmt { inherit src; };
+          test = craneLib.cargoTest (checkArgs // {
+            cargoArtifacts = testCargoArtifacts;
+            nativeBuildInputs = [ pkgs.git ];
+          });
+        });
+
+      devShells = forAllSystems (system:
+        let
+          pkgs = mkPkgs system;
+          craneLib = mkCraneLib system;
+        in
+        {
+          default = craneLib.devShell {
+            packages = [
+              pkgs.rustc
+              pkgs.cargo
+              pkgs.rustfmt
+              pkgs.clippy
+              pkgs.rust-analyzer
+              pkgs.cargo-insta
+              pkgs.cargo-nextest
+              pkgs.git
+            ];
+          };
+        });
+
+      formatter = forAllSystems (system: (mkPkgs system).alejandra);
+    };
+}

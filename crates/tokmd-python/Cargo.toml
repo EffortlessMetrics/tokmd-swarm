@@ -1,0 +1,36 @@
+[package]
+publish = false
+name = "tokmd-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Python bindings for tokmd - code inventory and analytics"
+readme = "README.md"
+keywords = ["code-analysis", "python", "bindings", "pyo3", "tokei"]
+categories = ["development-tools::ffi"]
+# This crate produces a native Python extension, not a crates.io library
+
+[lib]
+name = "tokmd"
+crate-type = ["cdylib"]
+test = false
+
+[dependencies]
+pyo3 = { version = "0.28.3", features = ["abi3-py39"] }
+serde_json.workspace = true
+tokmd-core = { workspace = true, features = ["analysis", "cockpit"] }
+tokmd-envelope.workspace = true
+
+[features]
+# Keep `extension-module` opt-in so `cargo test --workspace --all-targets`
+# links test harnesses against the local Python runtime instead of producing
+# Python-extension-only artifacts with unresolved CPython symbols.
+default = []
+extension-module = ["pyo3/extension-module"]
+
+
+[dev-dependencies]
+tempfile.workspace = true
+proptest.workspace = true

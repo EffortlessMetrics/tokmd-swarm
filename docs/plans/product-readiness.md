@@ -1,0 +1,119 @@
+# Plan: Product Readiness User Paths
+
+- Status: complete
+- Related proposal:
+- Related spec:
+- Related ADR:
+- Related issues:
+
+## Goal
+
+Make the main tokmd jobs obvious for users who do not care about the internal
+control plane:
+
+```text
+1. Tell me what this repo is.
+2. Tell me what changed.
+3. Help me review this PR.
+4. Give CI stable evidence and gates.
+5. Give my coding agent the right context and proof expectations.
+```
+
+The first pass should simplify and connect existing surfaces. It should not add
+new product commands or promote advisory proof.
+
+## Non-goals
+
+- Do not add a separate `tokmd review` command before it has a distinct
+  artifact contract from cockpit.
+- Do not promote fast proof, scoped coverage, mutation, or Codecov upload.
+- Do not make README or tutorial examples depend on unpublished behavior.
+- Do not turn onboarding docs into architecture inventory.
+- Do not implement evidencebus export in this lane.
+
+## Work Packets
+
+1. Add a cockpit review-packet quickstart.
+   - Status: complete.
+   - Show the local commands for generating doc-artifacts evidence when
+     available, running `tokmd cockpit`, and checking the review packet.
+   - Explain which packet files a reviewer should open first.
+   - Evidence: `docs/review-packet.md` now starts with a reviewer quickstart,
+     while README, tutorial, recipes, and `docs/tokmd-in-cockpit.md` keep the
+     same workflow available from their user-facing entry points.
+2. Simplify README first-run paths around the five user jobs.
+   - Status: complete.
+   - Keep the command inventory available, but lead with the smallest useful
+     commands for inspection, PR review, CI evidence, and agent handoff.
+   - Evidence: README now leads with the five user jobs, and
+     `docs/start-here.md` provides the job-oriented bridge into tutorial,
+     review-packet, Action, handoff, and browser/native docs.
+3. Refresh tutorial and recipes around job-to-be-done flows.
+   - Status: complete.
+   - Prefer short workflows that produce a visible receipt before explaining
+     the underlying proof or schema machinery.
+   - Evidence: `docs/tutorial.md` and `docs/recipes.md` now start with
+     job-oriented routing tables that point users to the relevant existing
+     workflow before explaining lower-level commands.
+4. Tighten browser/native capability guidance.
+   - Status: complete.
+   - Keep browser mode as a no-install artifact generator with explicit
+     native-only boundaries.
+   - Evidence: `docs/browser.md` now gives the browser-safe workflow, supported
+     modes, input model, downloadable artifact role, and native-only boundaries,
+     with links from README, docs index, and Start Here.
+5. Keep handoff docs aligned with the shipped link artifacts and `work-order.md`.
+   - Status: complete.
+   - The guide should tell agents how to consume links, not imply handoff
+     verifies external receipts.
+   - Evidence: `docs/handoff.md` now distinguishes the self-contained
+     source/context bundle from external review/proof evidence handles, tells
+     agents how to consume `review-links.json` and `proof-links.json`, and keeps
+     verification authority with the review-packet verifier and proof receipts.
+
+## Validation
+
+For docs-only PRs in this lane, run:
+
+```bash
+cargo xtask doc-artifacts --check
+cargo xtask docs --check
+cargo xtask proof-policy --check
+cargo xtask affected --base origin/main --head HEAD --json
+cargo xtask proof --profile affected --base origin/main --head HEAD --plan
+cargo fmt-check
+git diff --check
+```
+
+For PRs that change examples tied to generated CLI reference output, also run
+the relevant generator/checker listed by `cargo xtask docs --check`.
+
+## Stop Conditions
+
+- Stop if a user-facing workflow needs behavior the CLI does not currently
+  support.
+- Stop before adding new proof gates, Codecov defaults, or merge verdicts.
+- Stop before adding a new command when existing `cockpit`, `handoff`, `gate`,
+  or `context` surfaces can express the workflow.
+- Stop if affected planning reports unknown files for docs, source-of-truth, or
+  proof-policy changes.
+
+## Checkpoint History
+
+- 2026-05-13: Created after the agent-handoff readiness lane completed. The
+  next product-readiness slice should make existing review, CI, browser, and
+  agent workflows easier to start without expanding the control plane.
+- 2026-05-13: Added a reviewer quickstart to `docs/review-packet.md`, keeping
+  the first review-packet path visible on the packet contract page without
+  adding a new command or changing proof policy.
+- 2026-05-13: Added `docs/start-here.md` and changed README's first-run block
+  to lead with the five user jobs instead of a command inventory. The new guide
+  is routed through the `user_guides` proof scope.
+- 2026-05-14: Added job-routing tables to tutorial and recipes so the detailed
+  docs now start from user jobs instead of command order alone.
+- 2026-05-14: Added browser/native guidance that keeps browser mode framed as a
+  no-install artifact generator and leaves git-backed review, gates, baselines,
+  context, and handoff native-first.
+- 2026-05-14: Completed the first product-readiness pass by clarifying how
+  coding agents should consume handoff link artifacts without treating handoff
+  as a verifier for external review or proof receipts.

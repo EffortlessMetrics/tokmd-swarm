@@ -1,0 +1,699 @@
+# tokmd Roadmap
+
+This document outlines the evolution of `tokmd` and the path forward.
+
+## Vision
+
+`tokmd` is the **fast deterministic code-intelligence instrument** in the
+Effortless Metrics evidence stack. It transforms repository scans into
+actionable code receipts, review surfaces, proof-routing inputs, and LLM-ready
+context for humans, machines, CI, and agents.
+
+- **Receipt-Grade**: Outputs are deterministic, versioned, and safe for automated pipelines.
+- **Analysis-Ready**: Rich derived metrics, git integration, and semantic analysis.
+- **LLM-Native**: Designed for context planning, budget estimation, and AI workflows.
+
+---
+
+## Status Summary
+
+| Version    | Status      | Focus                                                        |
+| :--------- | :---------- | :----------------------------------------------------------- |
+| **v0.1.0** | ✅ Complete | Basic functionality (scan → model → format).                 |
+| **v0.2.0** | ✅ Complete | Receipt schema, filters, redaction, export logic.            |
+| **v0.9.0** | ✅ Complete | Integration tests, golden snapshots, edge case verification. |
+| **v1.0.0** | ✅ Complete | Schema frozen, release automation, crates.io publish.        |
+| **v1.1.0** | ✅ Complete | Analysis engine, presets, badge generation, diff command.    |
+| **v1.2.0** | ✅ Complete | Microcrate architecture, context packing, git integration.   |
+| **v1.3.0** | ✅ Complete | Advanced enrichers, gate command, interactive wizard.        |
+| **v1.4.0** | ✅ Complete | Complexity metrics, cognitive complexity, PR integration.    |
+| **v1.5.0** | ✅ Complete | Baseline system, ratchet gates, ecosystem envelope, LLM handoff. |
+| **v1.6.0** | ✅ Complete | Halstead metrics, maintainability index, sensor envelope, cockpit overhaul. |
+| **v1.6.3** | ✅ Complete | UX polish: colored diff, progress indicators, --explain flag.    |
+| **v1.7.0** | ✅ Complete | Near-duplicate detection, commit intent, token estimation renames. |
+| **v1.7.1** | ✅ Complete | Focused microcrate extraction, FFI-envelope reuse, and sharper tier boundaries. |
+| **v1.7.2** | ✅ Complete | Near-dup enricher extraction, commit intent classification, and CI fixes. |
+| **v1.7.x** | ✅ Complete | Deep test expansion across the workspace, sensor determinism, and the first `tokmd-io-port` seam. |
+| **v1.8.0** | ✅ Complete | Effort estimation, estimate preset/reporting, `tokmd-io-port` seam work, and release/devex hardening. |
+| **v1.9.0** | ✅ Complete | Browser/WASM productization: parity-covered wasm entrypoints, browser runner MVP, and public repo ingestion via tree+contents |
+| **v1.10.0-rc.1** | ✅ Complete | Release-candidate proof for CI control plane, bounded trust hardening, WASM truth, and proof stability. |
+| **v1.10.0** | ✅ Complete | Stable CI control plane, trust hardening, WASM truth, Action release, and proof stability. |
+| **v1.11.0** | ✅ Complete | Browser runtime polish: explicit cache behavior, progress events, retry/rate-limit UX, and authenticated fetch. |
+| **v2.0.0** | 🔭 Planned  | MCP server, streaming analysis, plugin system.               |
+| **v3.0.0** | 🚧 Active (Shadow) | Tree-sitter AST foundation in-tree behind feature flag. |
+
+---
+
+## Completed Milestones
+
+### ✅ v1.0.0 — Stability Release
+
+**Goal**: Production-ready CLI with stable schema contract.
+
+- [x] Receipt schema v1 with `schema_version` field
+- [x] Integration tests with `assert_cmd` + `predicates`
+- [x] Golden snapshot tests with `insta`
+- [x] Cross-platform path normalization
+- [x] Redaction (paths, all) with BLAKE3 hashing
+- [x] `tokmd run` for artifact generation
+- [x] `tokmd diff` for receipt comparison
+- [x] Configuration profiles (`tokmd.toml`)
+- [x] GitHub Actions release automation
+- [x] Formal JSON Schema in `docs/schema.json`
+
+### ✅ v1.1.0 — Analysis Engine
+
+**Goal**: Derived metrics and enrichments beyond raw counts.
+
+- [x] `tokmd analyze` command with preset system
+- [x] `tokmd badge` for SVG metric badges
+- [x] Derived metrics (doc density, test density, verbosity, nesting, distribution)
+- [x] COCOMO effort estimation
+- [x] Context window fit analysis
+- [x] Reading time estimation
+- [x] File size histograms and distributions
+- [x] Top offenders (largest, least documented, most dense)
+- [x] TODO/FIXME density tracking
+
+---
+
+## Completed: v1.2.0 — Microcrate Architecture
+
+**Goal**: Modular crate structure for selective compilation and ecosystem reuse.
+
+This section records the historical v1.2.0 architecture milestone. The current
+workspace has since consolidated implementation-only crates into owner modules;
+see [docs/architecture.md](docs/architecture.md) and
+[docs/publish-surface.md](docs/publish-surface.md) for the active crate graph
+and publishing surface.
+
+### Crate Hierarchy
+
+| Tier | Crate                   | Purpose                               |
+| :--- | :---------------------- | :------------------------------------ |
+| 0    | `tokmd-types`           | Core data structures, no dependencies |
+| 0    | `tokmd-analysis-types`  | Analysis receipt types                |
+| 0    | `tokmd-settings`        | Clap-free settings types              |
+| 0    | `tokmd-envelope`        | Cross-fleet sensor report contract    |
+| 1    | `tokmd-sensor::substrate` | Shared repo context (`RepoSubstrate`) |
+| 1    | `tokmd-scan`            | tokei wrapper                         |
+| 1    | `tokmd-model`           | Aggregation logic                     |
+| 1    | `tokmd-scan` owner modules | Template generation and walk/path helpers |
+| 2    | `tokmd-format::redact`  | BLAKE3-based path redaction utilities |
+| 1    | `tokmd-sensor`          | `EffortlessSensor` trait + builder    |
+| 1    | `tokmd-scan::walk`      | File system traversal helpers         |
+| 2    | `tokmd-format`          | Output rendering                      |
+| 2    | `tokmd-analysis::content` | File content scanning helpers       |
+| 2    | `tokmd-git`             | Git history analysis                  |
+| 3    | `tokmd-analysis`        | Analysis orchestration                |
+| 3    | `tokmd-gate`            | Policy evaluation with JSON pointer   |
+| 4    | `tokmd-core`            | Library facade with FFI layer         |
+| 5    | `tokmd`                 | CLI binary                            |
+| 5    | `tokmd-python`          | Python bindings (PyO3)                |
+| 5    | `tokmd-node`            | Node.js bindings (napi-rs)            |
+
+### v1.2.0 Features Delivered
+
+- [x] **Microcrate Architecture**: Focused crates for modularity (16 initial crates; later consolidated where boundaries were implementation-only)
+- [x] **Context Packing**: `tokmd context` command for LLM context window optimization
+- [x] **Check-Ignore Command**: `tokmd check-ignore` for troubleshooting ignored files
+- [x] **Shell Completions**: `tokmd completions` for bash, zsh, fish, powershell
+- [x] **Git Integration**: Hotspots, bus factor, freshness, coupling analysis
+- [x] **Asset Inventory**: Non-code file categorization and size tracking
+- [x] **Dependency Summary**: Lockfile detection and dependency counting
+- [x] **Import Graph**: Module dependency analysis with configurable granularity
+- [x] **Duplicate Detection**: Content-hash based duplicate file detection
+- [x] **CycloneDX Export**: SBOM generation in CycloneDX 1.6 format
+- [x] **HTML Reports**: Self-contained, interactive HTML reports with treemap
+- [x] **Redaction Utilities**: Centralized BLAKE3-based path hashing
+- [x] **CI Hyper-Testing**: Proptest, mutation testing, and fuzz testing workflows
+
+---
+
+## Completed: v1.3.0 — Polish & Stabilization
+
+**Goal**: Documentation, hardening, gate command, and interactive wizard.
+
+### Analysis Presets
+
+| Preset         | Status | Includes                             |
+| :------------- | :----- | :----------------------------------- |
+| `receipt`      | ✅     | Core derived metrics                 |
+| `health`       | ✅     | TODO density + derived               |
+| `risk`         | ✅     | Git hotspots, coupling, freshness    |
+| `supply`       | ✅     | Assets + dependency lockfile summary |
+| `architecture` | ✅     | Import graph analysis                |
+| `topics`       | ✅     | Semantic topic clouds (TF-IDF)       |
+| `security`     | ✅     | License radar + entropy profiling    |
+| `identity`     | ✅     | Archetype + corporate fingerprint    |
+| `git`          | ✅     | Predictive churn + git metrics       |
+| `deep`         | ✅     | Everything (except fun)              |
+| `fun`          | ✅     | Eco-label, novelty outputs           |
+
+### v1.3.0 Features Delivered
+
+- [x] **Cockpit Command**: `tokmd cockpit` for PR metrics generation with evidence gates
+  - Change surface analysis (files added/modified/deleted, lines changed)
+  - Code composition breakdown (production vs test vs config)
+  - Risk assessment and review plan generation
+  - Evidence gates: mutation testing, diff coverage, contracts, supply chain, determinism
+- [x] **Gate Command**: `tokmd gate` for policy-based quality gates with JSON pointer rules
+- [x] **Interactive Wizard**: `tokmd init --interactive` for guided project setup
+- [x] **Git-Ranked Context**: `--rank-by churn/hotspot` in `tokmd context` command
+- [x] **Tools Schema**: `tokmd tools` for LLM tool definitions (OpenAI, Anthropic, JSON Schema)
+- [x] **Context Output Options**: `--out`, `--force`, `--bundle-dir`, `--log`, `--max-output-bytes` flags
+- [x] **Documentation**: README files for the then-current crate graph
+- [x] **Documentation**: Updated troubleshooting guide with new error behaviors
+- [x] **Documentation**: Updated CLI reference with exit code changes
+- [x] **Documentation**: CONTRIBUTING.md guide with setup, testing, and publishing workflow
+- [x] **Performance**: Reduced allocations in export streaming with `Cow` iterators
+- [x] **Stability**: Non-existent input paths now error instead of silent success
+- [x] **Stability**: Improved error handling in tests (Result instead of unwrap/expect)
+- [x] **Architecture**: Retired `tokmd-config`; pure settings live in `tokmd-settings`, and CLI/config parsing lives in `tokmd`
+- [x] **Architecture**: Exposed `git`/`walk`/`content` feature flags in CLI for lightweight builds
+- [x] **Architecture**: New `tokmd-gate` crate for policy evaluation
+- [x] **Testing**: Comprehensive integration tests across all major crates
+- [x] **Testing**: Property-based tests for redaction, tokeignore, and tokmd-scan walk helpers
+- [x] **Testing**: Fuzz targets for path redaction and JSON deserialization
+- [x] **Testing**: Mutation testing with cargo-mutants and CI gate
+- [x] **CI/CD**: Enhanced publish workflow via `cargo xtask publish`
+
+---
+
+## Completed: v1.4.0 — Complexity Metrics & PR Integration
+
+**Goal**: Function-level analysis, complexity metrics, and PR template integration.
+
+### Complexity Metrics
+
+| Feature                       | Status      | Description                                                         |
+| :---------------------------- | :---------- | :------------------------------------------------------------------ |
+| Function count/length metrics | ✅ Complete | Count functions per file, track average/max function length         |
+| Cyclomatic complexity         | ✅ Complete | Heuristic-based branching complexity (if/else/switch/loop counting) |
+| Cognitive complexity          | ✅ Complete | SonarQube-style cognitive complexity with nesting penalty           |
+| Nesting depth analysis        | ✅ Complete | Track max/avg nesting depth per file                                |
+| Complexity top offenders      | ✅ Complete | Identify most complex functions/files                               |
+| Extended language support     | ✅ Complete | Rust, Python, JS/TS, Go, C, C++, Java, C#                           |
+
+### PR Integration
+
+| Feature                              | Status      | Description                                                        |
+| :----------------------------------- | :---------- | :----------------------------------------------------------------- |
+| GitHub Actions workflow with caching | ✅ Complete | Reusable workflow with Rust caching for faster builds              |
+| Baseline trend comparison            | ✅ Complete | `--baseline` flag for tracking metric trends                       |
+| PR template with trend section       | ✅ Complete | Template with TREND section markers                                |
+| Automatic PR comment injection       | ✅ Complete | Post cockpit metrics via `thollander/actions-comment-pull-request` |
+
+### Language Bindings (FFI)
+
+_Goal: Native integration in CI pipelines and tooling ecosystems._
+
+**Python (PyPI: `tokmd`)** ✅
+
+- Native bindings via PyO3 + maturin
+- Crate: `tokmd-python/`
+- API: `tokmd.lang()`, `tokmd.module()`, `tokmd.export()`, `tokmd.analyze()`, `tokmd.diff()`
+- Returns native Python dicts
+- Wheels for Linux, macOS, Windows (x64 + arm64)
+- JSON API: `tokmd.run_json(mode, args_json)` for low-level access
+
+**Node.js (npm: `@tokmd/core`)** ✅
+
+- Native bindings via napi-rs
+- Crate: `tokmd-node/`
+- API: `lang()`, `module()`, `export()`, `analyze()`, `diff()` returning JS objects
+- Prebuilds for major platforms
+- All functions return Promises (async/non-blocking)
+
+**Shared Infrastructure** ✅
+
+- `tokmd-core` crate expanded with binding-friendly API
+- Pure settings types (no Clap dependencies)
+- JSON-in/JSON-out FFI boundary via `run_json()`
+- Structured error types for FFI
+
+### Schema Changes
+
+- **Analysis schema version**: 3 → 4
+- **New fields in `ComplexityReport`**: `avg_cognitive`, `max_cognitive`, `avg_nesting_depth`, `max_nesting_depth`
+- **New fields in `FileComplexity`**: `cognitive_complexity`, `max_nesting`, `functions`
+- **New type**: `FunctionComplexityDetail` for function-level metrics
+- **New cockpit types**: `TrendComparison`, `TrendMetric`, `TrendIndicator`, `TrendDirection`
+
+---
+
+## Completed: v1.5.0 — Baseline & Ratchet System
+
+**Goal**: Baseline storage and ratchet-based quality gates.
+
+### Baseline System
+
+| Feature                  | Status      | Description                                                  |
+| :----------------------- | :---------- | :----------------------------------------------------------- |
+| Baseline storage         | ✅ Complete | `.tokmd/baseline.json` for storing complexity baseline       |
+| `tokmd baseline` command | ✅ Complete | Generate baseline from current state                         |
+| Baseline types           | ✅ Complete | `ComplexityBaseline`, `BaselineMetrics`, `FileBaselineEntry` |
+| Baseline JSON Schema     | ✅ Complete | `docs/baseline.schema.json` formal definition                |
+
+### Ratchet Rules
+
+| Feature                       | Status      | Description                                        |
+| :---------------------------- | :---------- | :------------------------------------------------- |
+| Ratchet rules in `tokmd.toml` | ✅ Complete | `[[gate.ratchet]]` configuration                   |
+| Ratchet evaluation            | ✅ Complete | `evaluate_ratchet()` in tokmd-gate                 |
+| Max increase percentage       | ✅ Complete | `max_increase_pct` field for gradual improvement   |
+| Max value ceiling             | ✅ Complete | `max_value` field for absolute ceiling enforcement |
+| Gate integration              | ✅ Complete | `--baseline` and `--ratchet-config` CLI flags      |
+
+### Ecosystem Envelope
+
+| Feature             | Status      | Description                                       |
+| :------------------ | :---------- | :------------------------------------------------ |
+| Envelope types      | ✅ Complete | `Envelope`, `Finding`, `GatesEnvelope`, `Verdict` |
+| Finding ID registry | ✅ Complete | `tokmd.<category>.<code>` format constants        |
+| Builder APIs        | ✅ Complete | Fluent API for constructing envelopes             |
+
+---
+
+## Completed: v1.6.0 — Advanced Complexity & Sensor Envelope
+
+**Goal**: Deeper complexity analysis, sensor envelope, and cockpit overhaul.
+
+### Complexity Features
+
+| Feature                | Status      | Description                                          |
+| :--------------------- | :---------- | :--------------------------------------------------- |
+| Halstead metrics       | ✅ Complete | Feature-gated (`halstead`) Halstead software science metrics |
+| Function detail export | ✅ Complete | `--detail-functions` flag for function-level output  |
+| Complexity histogram   | ✅ Complete | Wired into analysis pipeline from pre-existing implementation |
+| Complexity gates       | ✅ Complete | Shipped in cockpit evidence gate system              |
+
+### Sensor & Envelope
+
+| Feature                  | Status      | Description                                          |
+| :----------------------- | :---------- | :--------------------------------------------------- |
+| `tokmd sensor` command   | ✅ Complete | Conforming sensor producing `sensor.report.v1` envelope |
+| `tokmd-sensor` crate     | ✅ Complete | `EffortlessSensor` trait + substrate builder          |
+| `tokmd-envelope` crate   | ✅ Complete | Cross-fleet `SensorReport` contract with verdicts    |
+| `tokmd-sensor::substrate` | ✅ Complete | Shared `RepoSubstrate` for single-I/O-pass sensors  |
+| `tokmd-settings` crate   | ✅ Complete | Clap-free settings types for library/FFI usage       |
+
+### Derived Metrics
+
+| Feature                   | Status      | Description                                               |
+| :------------------------ | :---------- | :-------------------------------------------------------- |
+| Maintainability Index     | ✅ Complete | SEI formula (simplified without Halstead, full with)      |
+| Technical debt ratio      | ✅ Complete | Complexity-to-size ratio as a heuristic debt signal       |
+| Duplication density       | ✅ Complete | Extend duplicate detection into a per-module density metric |
+| API surface area          | ✅ Complete | Public export ratio via language-specific heuristics in `tokmd-analysis` |
+| Code age distribution     | ✅ Complete | Extend git freshness into age buckets with trend tracking |
+
+### Cockpit & CLI Improvements
+
+| Feature                     | Status      | Description                                             |
+| :-------------------------- | :---------- | :------------------------------------------------------ |
+| Diff coverage overhaul      | ✅ Complete | LCOV intersected with git-added lines for accurate coverage |
+| `get_added_lines()` in git  | ✅ Complete | New API for per-file added-line extraction from git diff |
+| CLI arg normalization       | ✅ Complete | `--out` → `--output` (with backward-compatible alias)   |
+| Rust fn regex compliance    | ✅ Complete | `(_\|XID_Start) XID_Continue*` per Rust spec            |
+| Cross-platform docs         | ✅ Complete | xtask docs normalizes `tokmd.exe` → `tokmd`, CRLF → LF |
+| Docs integration test       | ✅ Complete | Automated reference-cli.md freshness verification       |
+
+### Schema Changes
+
+- **Analysis schema version**: 4 → 5
+- **New types**: `HalsteadMetrics`, `MaintainabilityIndex`
+- **New fields in `ComplexityReport`**: `halstead`, `maintainability_index`, `histogram` (now populated)
+- **New CLI flag**: `--detail-functions` on `tokmd analyze`
+- **New feature flag**: `halstead` in `tokmd-analysis`
+- **Cockpit gates completed**: diff coverage (lcov), semver checks, schema diff
+- **Handoff complexity**: Real data from file analysis (replaces heuristic)
+- **New crates/seams**: `tokmd-sensor`, `tokmd-settings`, `tokmd-envelope`, `tokmd-sensor::substrate`
+
+---
+
+## Completed: v1.6.3 — UX & Output Quality
+
+**Goal**: Improve the developer experience for interactive CLI usage and output readability.
+
+### Output Improvements
+
+| Feature                   | Status      | Description                                               |
+| :------------------------ | :---------- | :-------------------------------------------------------- |
+| Colored diff output       | ✅ Complete | Terminal colors in `tokmd diff` for additions/removals    |
+| Summary comparison tables | ✅ Complete | Side-by-side metric comparisons in diff and cockpit       |
+| Compact table mode        | ✅ Complete | `--compact` flag for narrow terminals (elide zero columns) |
+| Sparkline trends          | ✅ Complete | Inline unicode sparklines for metric trends in markdown   |
+
+### Interactive Experience
+
+| Feature                   | Status      | Description                                               |
+| :------------------------ | :---------- | :-------------------------------------------------------- |
+| Progress indicators       | ✅ Complete | Spinner/progress bar for long scans via `indicatif`       |
+| Structured error messages | ✅ Complete | Actionable hints on common failures (missing git, bad paths) |
+| `--explain` flag          | ✅ Complete | Human-readable explanation of any metric or finding       |
+| Tab completion for flags  | ✅ Complete | Dynamic completions for `--preset`, `--format`, etc.      |
+
+### Scope Notes
+
+UX work is explicitly **incremental and non-breaking**:
+- No changes to JSON/JSONL receipt schemas (these are machine surfaces)
+- Terminal enhancements are opt-in and degrade gracefully on dumb terminals
+- Progress output goes to stderr, never stdout (preserving pipe-ability)
+- Color respects `NO_COLOR` / `CLICOLOR` environment conventions
+
+### v1.6.3 Features Delivered
+
+- [x] Added CLI progress rendering primitives, now owned by `tokmd`
+- [x] Added SVG badge generation, now owned by `tokmd-format`
+- [x] Added side-by-side summary comparison rows for diff totals (LOC, lines, files, bytes, tokens)
+- [x] Added baseline-aware summary comparison tables to cockpit markdown output
+- [x] Added integration tests to lock dynamic completion values for `--preset` and `--format`
+
+---
+
+## Completed: v1.7.0 — Near-Duplicate Detection & Commit Intent
+
+**Goal**: Near-duplicate detection, commit intent classification, and token estimation improvements.
+
+### Near-Duplicate Detection
+
+| Feature                    | Status      | Description                                                  |
+| :------------------------- | :---------- | :----------------------------------------------------------- |
+| Near-dup enricher          | ✅ Complete | Content-similarity detection via the `tokmd-analysis` near-dup module |
+| `--near-dup` flag          | ✅ Complete | Enable near-duplicate detection in analysis                  |
+| `--near-dup-threshold`     | ✅ Complete | Configurable similarity threshold (default 0.8)              |
+| `--near-dup-scope`         | ✅ Complete | Scope filter for near-dup scanning                           |
+| `--near-dup-max-files`     | ✅ Complete | Max file guardrail for performance                           |
+
+### Git Enrichments
+
+| Feature                    | Status      | Description                                                  |
+| :------------------------- | :---------- | :----------------------------------------------------------- |
+| Commit intent classification | ✅ Complete | Automatic classification of commit purpose (feat/fix/refactor/etc.) |
+| Coupling metrics           | ✅ Complete | Jaccard similarity and Lift in coupling reports              |
+| Commit SHA field           | ✅ Complete | `hash` field on `GitCommit` for identification               |
+
+### Token Estimation
+
+| Feature                    | Status      | Description                                                  |
+| :------------------------- | :---------- | :----------------------------------------------------------- |
+| Field renames              | ✅ Complete | `tokens_low`/`tokens_high` → `tokens_min`/`tokens_max`      |
+| Backward compatibility     | ✅ Complete | Serde aliases preserve deserialization of old field names     |
+| Divisor fields             | ✅ Complete | Explicit `bytes_per_token_low`/`bytes_per_token_high` fields |
+
+### Schema Changes
+
+- **Analysis schema version**: 6 → 7
+- **New types**: `NearDuplicateReport`, `NearDupCluster`, `NearDupPair`, `CommitIntentKind`
+- **New fields**: `coupling.jaccard`, `coupling.lift`, `git_commit.hash`
+- **Renamed fields**: `tokens_low` → `tokens_min`, `tokens_high` → `tokens_max` (with serde aliases)
+
+---
+
+## Completed: v1.7.1 — Focused Microcrate Extraction
+
+**Goal**: Extract focused microcrates from monolithic modules for better separation of concerns.
+
+This section records the extraction step that existed at the time. The current
+architecture has kept the useful seams but moved implementation-only packages
+back into single-responsibility owner modules.
+
+### Extracted Boundaries
+
+| Current owner | Tier | Purpose |
+| :------------ | :--- | :------ |
+| `tokmd-core` / `tokmd` owner modules | 4/5 | Context/handoff policy helpers and CLI wiring |
+| `tokmd-format::scan_args` | 2 | Deterministic `ScanArgs` metadata construction |
+| `tokmd-analysis-types` / owner modules | 0+ | Deterministic numeric/statistical helpers |
+| `tokmd-scan` owner modules | 1 | Exclude-pattern, path, walk, and tokeignore helpers |
+| `tokmd-model::module_key` | 1 | Deterministic module-key derivation |
+| `tokmd-core` owner modules | 4 | Git-derived context ranking helpers |
+| `tokmd-format::export_tree` | 2 | Deterministic tree renderers for analysis/handoff exports |
+| `tokmd/src/analysis_explain` | 5 | CLI metric/finding explanation catalog and alias lookup |
+| `tokmd-analysis` owner modules | 3 | Imports, maintainability, metrics, content, and enrichers |
+| `tokmd` owner modules | 5 | AI tool-schema generation from clap command trees |
+| `tokmd-envelope::ffi` | 0 | Shared FFI envelope parser for Python/Node bindings |
+
+### Architectural Changes
+
+- [x] Moved `AnalysisFormat` to `tokmd-types` (Tier 0) for broader reuse
+- [x] Extracted focused boundaries from monolithic modules; later consolidation retained the seams as owner modules
+- [x] Analysis schema version: 7 → 8
+- [x] Workspace graph expanded beyond the original 16-crate v1.2.0 layout before later consolidation reduced implementation package surface
+- [x] Fixed clippy/lint across all new crates for strict `--all-targets` check coverage
+- [x] Updated CI/tooling for release and publish readiness
+
+---
+
+## Completed: v1.7.x — Deep Test Coverage Expansion
+
+**Goal**: Achieve broad, multi-strategy test coverage across the workspace without breaking deterministic or release-facing surfaces.
+
+### Test Numbers
+
+| Metric | Current framing |
+| :----- | :-------------- |
+| Test depth | Expanded across unit, integration, snapshot, deep, property, fuzz, and mutation layers |
+| Workspace reach | Coverage spread across essentially the full crate graph, including CLI and binding-facing seams |
+| Determinism focus | Receipt stability, schema contracts, and cross-crate invariants locked in by dedicated suites |
+
+### Coverage by Tier
+
+| Tier | Crates Covered | Test Types Added |
+| :--- | :------------- | :--------------- |
+| 0 | `tokmd-types`, `tokmd-analysis-types`, `tokmd-settings`, `tokmd-envelope` | Determinism regression, contract expansion, boundary props |
+| 1 | `tokmd-scan`, `tokmd-model`, and their path/walk/module-key owner modules | Property tests, deep proptests, snapshot suites |
+| 2 | `tokmd-format`, `tokmd-git`, and format owner modules for badges, export trees, redaction, scan args, fun, and analysis rendering | Snapshot tests for renderers, traversal properties |
+| 3 | `tokmd-analysis`, its enricher owner modules, `tokmd-cockpit`, and `tokmd-gate` | BDD scenarios, enricher contract verification, deep proptests |
+| 4 | `tokmd-core`, `tokmd-envelope/src/ffi.rs` | FFI workflow integration, JSON API round-trip tests |
+| 5 | `tokmd` CLI | E2E tests for `lang`, `module`, `export`, `run`, `analyze`, `diff`, `badge`, `gate`, `cockpit`, `context`, `handoff`, `sensor`, and `baseline` |
+
+### What Landed (36+ PRs first wave, 16 PRs second wave)
+
+- [x] Boundary verification tests across core types
+- [x] Determinism regression tests for all receipt-producing paths
+- [x] Byte-stable output regression suite with ordering locks
+- [x] Error handling coverage for edge cases and malformed inputs
+- [x] Snapshot tests (`insta`) for all format renderers (Markdown, TSV, JSON, HTML)
+- [x] Deep analysis crate tests: complexity, halstead, near-dup, topics, entropy, license, archetype, fingerprint, API surface
+- [x] CLI E2E tests for the core scan, analysis, review, sensor, and LLM-bundle commands
+- [x] FFI and workflow integration tests in `tokmd-core`
+- [x] Property tests expanded across 14+ crates with `proptest`
+- [x] 3 new fuzz targets (import parser, export tree, policy TOML)
+- [x] BDD-style scenario tests across the analysis owner-module surface
+- [x] Doctest coverage expanded across crates
+
+### CI & Performance
+
+- [x] CI green on main with full mutation testing gate passing
+- [x] macOS jobs gated to main-only pushes for CI cost control (#409)
+- [x] Nix CI fixes: resolved `cloned_ref_to_slice_refs` clippy lint for cargo 1.93 (#407)
+- [x] Fix-forward for typo, rustfmt, and content test failures (#390)
+- [x] Reduced allocations in token stream formatting (perf improvement)
+
+---
+
+## Completed: v1.8.0 — Effort Estimation & Release Hardening
+
+**Goal:** Expand `tokmd analyze` with first-class effort estimation while hardening the repo-native operator surface for CI, Windows, and release prep.
+
+### What landed
+
+- [x] **Effort estimation engine**: `tokmd-analysis` effort module with COCOMO 81, COCOMO II, and Monte Carlo scaffolding.
+- [x] **Estimate preset and receipt/report support**: effort outputs now flow through analysis receipts and Markdown renderers.
+- [x] **Preset grid expansion**: the analysis surface now exposes 12 presets, with `estimate` joining a stronger `receipt` baseline.
+- [x] **Schema evolution**: analysis schema advanced to v9 to carry effort estimation data.
+- [x] **WASM seam foundation**: `tokmd-io-port` landed with `ReadFs`, `HostFs`, and `MemFs` as the host-abstracted file access boundary.
+- [x] **Windows-safe repo-native quality path**: repo-native fmt and publish flows avoid Windows `xtask.exe` self-lock and `cargo fmt --all` pain.
+- [x] **Build-footprint reduction**: `cargo trim-target`, leaner Windows debug info defaults, and opt-in `sccache` support reduce local rebuild churn.
+- [x] **CI/release boringness**: workflow concurrency, smarter Rust caching, Node 24 Nix canary, and a clean tag-driven `1.8.0` release through GitHub Actions.
+
+### Notes
+
+- The full in-memory scan path and wasm CI parity work did not fully land in `1.8.0`; that continuation is now the next milestone instead of implicit spillover.
+
+## Completed: v1.9.0 — Browser/WASM Productization
+
+**Goal:** Finish the browser/WASM product surface around the already-landed in-memory execution path and make the supported browser workflow explicit, repeatable, and capability-honest.
+
+### What shipped in v1.9.0
+
+- [x] `tokmd-io-port`, in-memory scan/model/core workflow seams, and lower-tier clap-free boundaries now keep browser/WASM execution honest.
+- [x] `tokmd-wasm` exposes browser-friendly entrypoints for `lang`, `module`, `export`, and browser-safe `analyze`.
+- [x] Native-vs-wasm parity coverage exists for `lang`, `module`, `export`, `analyze receipt`, and `analyze estimate`.
+- [x] `web/runner` boots the real `tokmd-wasm` bundle in a dedicated worker, reports capabilities, renders the latest successful result, and supports JSON download.
+- [x] Public GitHub repo acquisition uses the browser-safe GitHub tree and contents APIs to materialize deterministic ordered inputs locally in the page.
+- [x] `tokmd-wasm` browser bundle is deployed as a versioned release artifact consumed directly from `web/runner/vendor/tokmd-wasm`.
+- [x] Browser runner guardrails landed around capability reporting, supported modes, and in-memory input validation.
+
+### Supported browser-safe surface today
+
+- Browser/WASM modes: `lang`, `module`, `export`
+- Browser/WASM analyze presets: `receipt`, `estimate`
+- Public repo acquisition strategy: GitHub tree + contents API, not zipball fetch
+- Capability reporting is explicit about unavailable host-backed enrichers and reserved protocol features
+
+### Current browser constraints
+
+- Browser-safe analysis should expand only where the preset can stay rootless and capability-honest.
+
+### Non-goals for v1.9.0
+
+- No browser-side git-history churn/hotspot metrics; keep those as explicit capability misses or backend follow-ups.
+- No browser zipball ingestion as the primary supported path for `v1.9.0`; tree+contents is the supported browser acquisition strategy.
+- No mutation testing or other heavy tooling in-browser.
+
+## Completed: v1.10.0 — CI Control Plane, Trust Hardening, and Proof Stability
+
+**Goal:** Ship the stable release after the Action, path-trust, WASM, publish-surface, and proof-hardening work landed and the release candidate was validated.
+
+### What is in v1.10.0
+
+- [x] GitHub Action explicit modes for `module`, `export`, `gate`, `cockpit`, `sensor`, and `baseline`.
+- [x] Bounded path/root handling across native, Git, and in-memory flows.
+- [x] WASM capability truth through matrix checks, timestamp correctness, and runner contract validation.
+- [x] Publish-surface enforcement across product, contract, workflow, and capability crates.
+- [x] Determinism and proof coverage for analyze snapshots, run/diff receipts, effort serde, and core CLI behavior.
+- [x] CLI reference docs generated through checked HELP markers.
+
+## v1.11.0 — Browser Runtime Polish
+
+**Goal:** Deliver the browser runtime polish deferred from the v1.10 release fence: explicit cache semantics, visible progress, resilient fetch UX, and safe authenticated-fetch boundaries.
+
+### What shipped for v1.11.0
+
+- [x] Browser cache key/invalidation semantics.
+- [x] Browser worker and repo-load progress visibility.
+- [x] Retry and rate-limit UX with retry-after guidance.
+- [x] Auth-safe fetch/cache boundaries with session-only token state.
+
+## Future Horizons
+
+### v1.12.0 — Cockpit & Architecture Consolidation (Active)
+
+_Goal: Improve cockpit as the PR-review evidence surface before adding a separate review orchestrator, and consolidate implementation microcrates into SRP modules._
+
+- Finish small cockpit review-packet and Action-hosting gaps.
+- Preserve `tokmd cockpit` as the review evidence implementation surface.
+- Start architecture consolidation in batches, preserving scope granularity.
+
+### v2.0 — Platform Evolution
+
+#### A. AI Agent Integration & MCP Server Mode
+
+_Goal: Native integration with Claude and other MCP-compatible clients._
+
+- **Tool definitions** ✅: `tokmd tools` already emits OpenAI, Anthropic, and JSON Schema definitions for agent/tool consumers.
+- **Future server**: `tokmd serve` remains planned for MCP server interaction.
+- Resources: Expose receipts as MCP resources
+- Tools: `scan`, `analyze`, `diff`, `suggest` as MCP tools
+- Streaming: Incremental analysis results
+
+#### B. Streaming Analysis
+
+_Goal: Handle massive repositories without memory pressure._
+
+- JSONL streaming for all outputs
+- Incremental file processing
+- Memory-bounded analysis limits
+- Progress reporting via stderr
+
+#### C. Plugin System
+
+_Goal: Extensible enrichers without core changes._
+
+- WASM plugin interface for custom analyzers
+- Plugin discovery from `~/.tokmd/plugins/`
+- Schema for plugin metadata and capabilities
+
+### v2.1 — Intelligence Features
+
+#### D. Smart Suggestions
+
+_Goal: Actionable recommendations, not just metrics._
+
+- `tokmd suggest --budget 128k` — Files to include for context
+- `tokmd suggest --review` — Files likely to need attention
+- `tokmd suggest --test` — Untested code paths
+
+#### E. Diff Intelligence
+
+_Goal: Semantic diff beyond structural changes._
+
+- Complexity delta detection
+- Breaking change indicators
+- Migration path suggestions
+
+#### F. Watch Mode
+
+_Goal: Continuous analysis during development._
+
+- `tokmd watch` — Re-analyze on file changes
+- Integration with LSP for editor feedback
+- Real-time metric updates
+
+### v2.2 — Ecosystem Integration
+
+#### G. CI/CD Native
+
+_Goal: First-class CI pipeline support._
+
+- GitHub Action with PR comments
+- GitLab CI template
+- Trend tracking across commits
+- Threshold-based failures (e.g., fail if complexity increases)
+
+#### H. Editor Extensions
+
+_Goal: Analysis at your fingertips._
+
+- VS Code extension with inline metrics
+- Neovim plugin for buffer analysis
+- JetBrains plugin
+
+#### I. Cloud Dashboard
+
+_Goal: Historical tracking and team insights._
+
+- Receipt aggregation service
+- Trend visualization
+- Team comparison views
+- Alert on anomalies
+
+### v3.0 — Tree-sitter Integration (Long-term)
+
+_Goal: Accurate parsing for precise metrics. This is a significant undertaking requiring substantial R&D investment and is intentionally deferred well beyond the v2.x roadmap for full default integration, but foundation shadow work has begun._
+
+#### J. Tree-sitter AST Parsing
+
+- ✅ Feature-gated AST foundation defined by ADR-0008 (landed behind `ast` feature)
+- ✅ Rust-first owner module under `tokmd-analysis` before any public parser crate
+- Shadow comparison artifacts for heuristic-vs-AST function, import, and control-flow evidence
+- Later language-specific complexity rules only after deterministic shadow evidence
+- Public receipt/schema changes only after schema review and migration policy
+
+---
+
+## Non-Goals
+
+These are explicitly out of scope for tokmd:
+
+- **Code formatting/linting** — Use dedicated tools (rustfmt, eslint)
+- **Dependency vulnerability scanning** — tokmd delegates to external tools (cargo-audit, npm audit) when available; it does not maintain its own advisory database
+- **Test execution** — Use cargo test, pytest, jest
+- **Build orchestration** — Use cargo, make, just
+- **Default full AST analysis** — tokmd remains heuristic-first until feature-gated AST shadow evidence justifies public receipt/schema changes
+
+---
+
+## Contributing
+
+Contributions welcome! Priority areas:
+
+1. **Enricher implementations** — See `crates/tokmd-analysis/src/` for patterns
+2. **Output format templates** — Markdown templates in `tokmd-format::analysis`
+3. **Language support** — Extend import graph parsing
+4. **Documentation** — Recipe examples and use cases
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

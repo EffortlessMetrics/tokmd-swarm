@@ -1,0 +1,64 @@
+/target
+crates/*/target
+**/*.swp
+**/*.DS_Store
+
+# tokmd output files (generated during testing)
+/analysis.json
+/analysis.html
+/context.json
+/context.txt
+/sbom.json
+/test_analysis.json
+/test_baseline.json
+/tokmd-*.json
+/tokmd-*.md
+!/tokmd-role.md
+
+/.runs/pr_glass_cockpit
+/web/runner/vendor/
+
+# Fuzzing
+fuzz/target/
+
+# Mutation testing
+mutants.out/
+mutants.out.old/
+
+# Snapshots
+*.snap.new
+
+.runs/
+
+.tokmd/cache/
+
+# Claude Code (local overrides)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/cache/
+.claude/transcripts/
+.claude/runtime/
+
+# Jules runtime state
+.jules/settings.local.json
+.jules/worktrees/
+.jules/cache/
+.jules/transcripts/
+.jules/runtime/
+.jules/tmp/
+
+# Hearth runtime state
+.hearth/
+
+# Windows artifacts
+nul
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# Conveyor verification outputs (generated during agent runs)
+built/
+proven/

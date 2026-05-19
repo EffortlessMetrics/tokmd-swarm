@@ -1,0 +1,791 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.11.1] - 2026-05-19
+
+### Fixed
+
+- `tokmd diff` now reports missing file-like inputs as missing or invalid paths
+  before falling through to git-reference resolution, including outside a git
+  repository.
+- Nix release validation now includes review-packet schema files in the checked
+  source tree and keeps receipt-status tests independent of repository-history
+  availability when Nix check sources intentionally omit `.git`.
+
+## [1.11.0] - 2026-05-18
+
+1.11 makes tokmd's evidence surfaces easier to consume: cockpit review
+packets, coding-agent handoffs, proof receipts, browser/native guidance, and
+release evidence now compose into practical workflows without promoting
+advisory checks or changing public AST behavior.
+
+This changelog is the concise release index. For the maintainer audit trail,
+see `docs/releases/1.11-ledger.md`.
+
+### Added
+
+- Review packets and cockpit evidence: cockpit packets now surface
+  review-first ordering, priority reasons, source-of-truth evidence,
+  proof evidence, missing/stale/degraded/skipped/unavailable states, packet
+  verification, and reproduction commands.
+- Agent handoff/work-order: handoff bundles now include actionable
+  `work-order.md` guidance, linked review-packet evidence, linked affected and
+  proof-plan receipts, proof expectations, missing evidence, stop conditions,
+  and agent guardrails.
+- Proof and CI evidence receipts: proof observation, proof workflow status,
+  proof artifact checks, CI risk-pack receipts, mutation summaries, mutation
+  scope, no-panic family JSON, and RIPR annotations are easier to inspect as
+  evidence without turning advisory telemetry into gates.
+- User-path and adoption docs: install/try, Start Here, user paths, copy-ready
+  workflows, sample artifact trees, GitHub Action quickstarts, browser-to-native
+  guidance, and release-readiness docs now map jobs to commands, artifacts,
+  open-first files, meanings, non-meanings, and next actions.
+- Publishing and release evidence: release-facing docs now describe
+  package-surface checks, version consistency, affected-proof routing, and
+  proof-plan generation before any release mutation.
+- Browser/WASM adoption: current-facing WASM/browser examples point at the
+  staged `v1.11.0` artifact shape while browser mode is positioned as a
+  no-install trial lens.
+- AST shadow evidence: developer-facing AST tooling can compare heuristic Rust
+  landmarks with Tree-sitter-backed Rust landmarks, write deterministic shadow
+  artifacts, verify them, summarize mismatch counts, and record timing and
+  function-boundary evidence. AST remains shadow-only.
+- Release record: `docs/releases/1.11-ledger.md` now gives maintainers a
+  lane-by-lane release ledger without flattening hundreds of PRs into this
+  changelog.
+
+### Changed
+
+- MSRV and lint policy: the minimum supported Rust version moved from 1.93 to
+  1.95, and the Rust 1.94/1.95 lint ratchets staged in
+  `policy/clippy-lints.toml` are active.
+- CI/proof orchestration: workflow-local shell and Python glue continued moving
+  into Rust-owned `xtask` helpers where the result is consumed as review,
+  proof, mutation, or annotation evidence.
+- Browser/native positioning: browser docs now frame browser mode as a
+  no-install trial lens with clear native-only boundaries, not native parity.
+- First-run documentation: README, tutorial, recipes, Start Here, and user-path
+  docs emphasize the shortest job-oriented paths instead of requiring readers
+  to learn the proof-control plane first.
+- Owner-module cleanup: cockpit and handoff internals continued moving toward
+  smaller SRP owner modules while preserving public schema and CLI behavior.
+- Advisory evidence boundary: proof remains advisory unless a maintainer
+  explicitly promotes a check, and Codecov upload remains opt-in rather than a
+  default release or CI behavior.
+
+### Fixed
+
+- Cockpit reproduction: review-map reproduction commands preserve the actual
+  relative `--review-packet-dir` instead of always showing `.tokmd/review` or
+  leaking absolute local paths.
+- FFI and Python settings: JSON settings reject `paths: null` consistently,
+  keep other nullable option fields on defaults, and make PyO3 extension-module
+  behavior opt-in for the test harness.
+- Unicode/content handling: UTF-8-sensitive analysis paths avoid
+  byte/character index panics, and content tag counting treats empty tags as
+  zero matches while respecting Unicode identifier boundaries.
+- Context policy paths: Windows separators are normalized, and vendor, fixture,
+  and generated directories match by exact path segment instead of broad
+  substring matches.
+- Numeric and rendering edges: average-line rounding avoids integer overflow,
+  and complexity histogram Markdown handles narrow and zero-width rendering
+  cases without malformed ASCII bars.
+- Browser feedback: token rejection and worker progress states surface clearer
+  browser-runner feedback.
+- Test determinism: git fixture signing and generated coverage work were
+  restacked into narrow keeper tests for cockpit review maps, cockpit comments,
+  derived Markdown, core FFI parsing, effort helpers, complexity spans,
+  proof-evidence model strings, git behavior, and in-memory row collection.
+- Handoff smoke friction: generated `work-order.md` no longer tells readers to
+  read itself from inside the work order.
+
+### Internal / Governance
+
+- Codex/Jules boundary: `.jules/**` remains Jules provenance and ambient
+  suggestion state, while Codex uses repo docs, accepted plans/specs/ADRs,
+  AGENTS.md, and `.codex` guidance as its operating surface.
+- PR-bound Codex policy: implementation, review, release-prep, PR-drain, and
+  changelog work authorize scoped commits, pushes, PR updates, and aligned
+  merges after validation without redundant permission prompts.
+- Generated PR triage: generated PRs were treated as scouts, with narrow
+  correctness/test/release-surface keepers merged and duplicate or broad
+  generated branches closed, parked, or superseded.
+- Source-of-truth and doc-artifact enforcement: doc-artifact policy, receipts,
+  CI upload, source-of-truth routing, and cockpit import support make
+  documentation-control evidence visible in review packets.
+- Known boundaries: 1.11 does not add `tokmd review`, proof promotion, default
+  Codecov upload, default AST-backed output, evidencebus runtime integration,
+  a release-readiness wrapper receipt, browser/native parity claims, or release
+  mutation without explicit maintainer action.
+
+## [1.10.0] - 2026-04-30
+
+Stable release following `v1.10.0-rc.1` validation.
+
+### Added
+
+- GitHub Action mode dispatch for `module`, `export`, `gate`, `cockpit`, `sensor`, and `baseline`.
+- GitHub Action outputs for `receipt`, `summary`, `gate-verdict`, `cockpit-report`, `sensor-report`, and `baseline-report`.
+- GitHub Action base/head handling for cockpit and sensor workflows, including PR-base inference.
+- GitHub Action test workflow coverage for expanded modes, outputs, artifact behavior, and path handling.
+- Browser/WASM capability matrix documentation for current runner support versus native-only commands.
+- Browser-runner validation checks that keep supported modes and analyze presets aligned with the capability matrix.
+- Canonical publish-surface policy documentation for product, contract, workflow, capability, and non-crates.io package boundaries.
+- Deterministic snapshot coverage for `tokmd analyze` JSON and Markdown output.
+- Deterministic receipt coverage for `tokmd run` and `tokmd diff`.
+- BDD coverage for `tokmd analyze --preset estimate`.
+- Additional config-resolution, tokmd-types, effort-model, env-interpreter, module-children, and in-memory workflow proof coverage.
+- `run_json("version")` now exposes `analysis_schema_version` when `tokmd-core` is built with analysis support.
+
+### Changed
+
+- Collapsed the previous support-crate sprawl into owner crates and SRP module families, including analysis leaf crates, rendering helpers, content/walk/fun/substrate helpers, and tool-schema helpers.
+- Public crate surface is now enforced around product, contract, workflow, and capability crates.
+- Release work completed crate-surface collapse and publish-surface verification, with package-list proof treating the 16 published crates as the intentional crates.io boundary (without treating production crates as `publish = false` placeholders).
+- GitHub Action omitted mode continues the legacy module + export behavior, while explicit modes run one surface at a time.
+- CLI reference docs are generated through checked `HELP` markers instead of manually maintained flag tables.
+- No-default-features integration tests are feature-gated so the CLI test matrix respects optional analysis-dependent commands.
+- Browser-runner payload validation stays rootless/in-memory and rejects native-only command shapes unless the capability matrix changes.
+- README Action docs now cover explicit modes, outputs, artifacts, PR comments, base/head refs, and version pinning.
+- README, roadmap, and implementation docs now separate shipped browser/WASM support from follow-up browser runtime polish.
+- Architecture and testing docs now reflect the owner-module layout, current property-test entry points, and mutation-test paths.
+
+### Fixed
+
+- WASM timestamps now use real millisecond timestamps instead of silently emitting zero.
+- Bounded root/path handling rejects unsafe native, Git-listed, and MemFs/rootless paths consistently.
+- Git-listed paths are bounded under the validated root, including dirty-index and true-missing cases.
+- Metadata diagnostics preserve missing/broken-path classification instead of flattening useful path errors.
+- MemFs root semantics are explicit for `""`, `"."`, scoped subtrees, absolute paths, and parent traversal.
+- FFI in-memory path handling rejects absolute paths and parent traversal at the boundary.
+- Core workflows now default empty scan path lists to the current directory instead of reaching an upstream empty-path panic.
+- Halstead tokenization handles CJK / multibyte text adjacent to operators without panicking on invalid UTF-8 byte slicing.
+- Redacted path extension handling is limited to avoid extension leakage.
+- Context budget validation rejects invalid negative or non-finite values.
+- GitHub Action path splitting handles same-line and multiline `paths` inputs before mode-specific validation.
+- Action gate and baseline modes reject multi-path input where the underlying command accepts exactly one path.
+- Action cockpit and sensor base refs no longer assume `main` is fetched.
+- `check-ignore` now fails loudly on missing paths.
+- No-git baseline and `tokmd_git` resolution edge cases now resolve consistently.
+- No-default-features integration tests are gated to avoid false failures in unsupported feature profiles.
+- `tokmd-gate` now rejects malformed RFC 6901 pointer escapes and ambiguous array index tokens.
+- Gate rule comparison failures now surface diagnostic messages for missing or invalid operands while preserving explicit rule messages.
+- Cockpit `range_mode` parsing now validates accepted two-dot / three-dot values and fails clearly on invalid settings.
+- Browser-runner runtime errors now preserve duck-typed `message` and `code` fields across worker / WASM boundaries.
+- Receipt normalizers tolerate harmless whitespace differences in determinism tests.
+- `normalize_path` prefix behavior has mutant-catching regression coverage.
+
+### Internal
+
+- Removed unused `pyo3-build-config` from `tokmd-python`.
+- Removed redundant `tokio_rt` from `tokmd-node` and tightened `tokmd-wasm` dependency edges.
+- Bumped dependency keepers including `jsonschema`, `clap_complete`, and `softprops/action-gh-release`.
+- Updated cargo-mutants configuration for the current schema and restored mutation-test gate compatibility.
+- Updated cargo-deny metadata by removing deprecated/stale license configuration and reducing release-check warning noise.
+- Release workflow prerelease tags are marked as prereleases, excluded from `latest`, and kept away from stable crates.io, Docker, and major Action aliases.
+- Added derived-report allocation cleanup.
+- Added cockpit LCOV merge-path performance cleanup.
+- Added version-consistency allocation cleanup.
+- Removed the vulnerable RSA fixture dependency and added committed-fixture blob checks.
+- Added unsafe-code guardrails at primary interfaces.
+- Expanded Action self-tests across omitted mode, explicit modes, artifact outputs, inferred refs, and multi-path rejection rules.
+- Jules provenance policy was clarified: intentional `.jules/**` provenance is allowed, while normal patch PRs should not carry accidental run packets.
+- Consolidated Jules persona guidance and run/provenance indexing so intentional learning packets are distinguishable from runtime debris.
+- Added/updated the Jules run index builder to aggregate historical ledgers without rewriting provenance history.
+- Resolved duplicate release-prep PR families for pyo3 cleanup, no-default-features tests, analyze snapshots, browser-runner dynamic payloads, docs-marker drift, RC workflow guards, and ADR publishability policy.
+
+## [1.9.2] - 2026-04-14
+
+### Fixed
+
+- GitHub Action path handling was polished for released action usage.
+- README guidance now distinguishes the action ref from the downloaded `tokmd` binary version.
+
+## [1.9.1] - 2026-04-13
+
+### Added
+
+- GitHub Action Marketplace publish surface.
+- Browser runner support for base64 in-memory inputs.
+- Additional executable doctests and docs-as-tests for public APIs, context, diff, check-ignore, cockpit, and tutorial examples.
+- Deterministic ordering coverage for format output, TODO tags, git commits, effort models, and model data generation.
+
+### Changed
+
+- PyO3 stack updated to `0.28.3`.
+- `jsonschema` features were tightened to drop unnecessary network and crypto crates.
+- Workspace dependency pins were normalized.
+- Analysis and redaction hot paths received allocation cleanups.
+
+### Fixed
+
+- **Tier Boundary Compliance**: Fixed architectural violation where `tokmd` CLI (Tier 5) directly depended on the analysis renderer, bypassing the `tokmd-core` facade (Tier 4) ([#996](https://github.com/EffortlessMetrics/tokmd/issues/996))
+  - Added `analysis_facade` module in `tokmd-core` with renderer re-exports
+  - Removed the direct analysis-renderer dependency from `tokmd` crate
+  - Restored proper tier hierarchy: Tier 5 -> Tier 4 -> Tier 3
+  - Feature-gated under `analysis` feature flag with explicit `#[cfg(feature = "analysis")]` guards
+- FFI calls no longer panic on non-object JSON payloads.
+- Browser runner protocol keeps `requestId` on error responses and extracts exact error codes.
+- `--no-default-features` builds were repaired by decoupling git utilities and feature-gating unsupported tests.
+- `--redact all` hides module roots and structural row names.
+- CI, format, and clippy gates were restored after docs and PyO3 updates.
+
+## [1.9.0] - 2026-03-27
+
+### Added
+
+- Browser/WASM product surface for `tokmd` via the new `tokmd-wasm` crate and `web/runner` browser runner
+- In-browser `lang`, `module`, `export`, and rootless `analyze` support for ordered in-memory inputs
+- Public GitHub repo ingestion in the browser through tree + contents APIs with deterministic in-memory input materialization and partial-load reporting
+
+### Changed
+
+- Browser runner deployments now consume a versioned `tokmd-wasm-<tag>.tar.gz` release artifact unpacked into `web/runner/vendor/tokmd-wasm`
+- Release prep and publish metadata are aligned on `1.9.0` across Cargo and Node package surfaces
+
+### Fixed
+
+- Hardened browser runner boot and wasm export guardrails so unsupported bundles fail explicitly instead of degrading silently
+- Locked the post-`#807` release-prep lane to a single re-anchored proof chain from current `origin/main`
+
+## [1.8.1] - 2026-03-20
+
+### Changed
+
+- Reduced allocations across git analysis, context packing, cockpit risk/lcov paths, dominant-language detection, polyglot report generation, complexity histogram rendering, and coupling computation
+- Reset planning/reference docs after `1.8.0` so README, roadmap, release instructions, schema docs, and crate READMEs match the shipped command surface
+- Moved unused `blake3`, `serde`, and content-helper edges out of production dependencies in `tokmd-analysis`
+
+### Fixed
+
+- Locked rounded COCOMO effort semantics with a retained regression seed and synced the schema/version docs that describe the estimate surface
+- Replaced remaining unwrap/panic-heavy test paths in `tokmd-analysis-types` and the FFI envelope helpers, and hardened a Windows-sensitive traversal property test
+
+## [1.8.0] - 2026-03-18
+
+### Added
+
+- Effort estimation engine (`tokmd-analysis-effort` crate) with COCOMO 81, COCOMO II, and Monte Carlo models (#654)
+- New `Estimate` analysis preset for effort-focused analysis
+- Effort estimation section in Markdown receipt output (size basis, headline, model explanation, delta comparison)
+- `--effort` CLI flag for `tokmd analyze` command with configurable models, modes, and scale factors
+- Effort estimate report in analysis receipts (`EffortEstimateReport` type)
+- Analysis schema version bumped to 9 (effort estimation fields)
+- Receipt and Estimate presets now include dup, git, complexity, and API surface enrichers
+- High-entropy key detection (`uselesskey`) runtime fixtures for security preset
+
+### Changed
+
+- `ANALYSIS_SCHEMA_VERSION` bumped from 8 to 9
+- Preset grid expanded from 11 to 12 presets (new `Estimate` preset)
+- Receipt preset enriched: now enables dup, git, complexity, and API surface analysis
+- Repository-native quality commands now handle the Windows `cargo fmt --all`/`xtask.exe` edge cases transparently
+- Windows local builds now default to leaner debug info, with `cargo trim-target` and opt-in `sccache` support to reduce rebuild footprint
+- CI now uses workflow concurrency cancellation, smarter Rust caching, and a Node 24 canary Nix lane with FlakeHub cache disabled
+
+### Dependencies
+
+- Bumped GitHub Actions: docker/setup-qemu-action v4, setup-buildx-action v4, login-action v4, metadata-action v6, build-push-action v7 (#659)
+- Bumped toml 1.0.6, uuid 1.22.0, tokio 1.50.0 (#660)
+- Bumped jsonschema from 0.44.0 to 0.45.0 (#661)
+
+### Fixed
+
+- Added explicit error hints for missing diff sources and invalid diff references
+- Locked deterministic review-plan ordering and removed remaining unwrap-heavy test paths in `tokmd-config`
+- Refreshed doctest examples and trimmed a stray unused dev-dependency in the analysis Git adapter
+
+## [1.7.3] - 2026-03-06
+
+### Added
+
+- WASM-ready I/O abstraction layer (`tokmd-io-port` crate with `ReadFs` trait and `MemFs`) (#510)
+- Massive test expansion: ~3,000+ new tests across all tiers (waves 56–77) including property-based, BDD, snapshot, determinism, and cross-crate integration tests
+
+### Fixed
+
+- `xtask bump`: corrected `TOOL_SCHEMA_VERSION` path to `crates/tokmd-tool-schema/src/lib.rs`
+- `xtask bump`: fixed help text for `COCKPIT_SCHEMA_VERSION` path and added missing schema constants
+- Strengthened schema location test to fail on any non-existent path reference
+- Deterministic sensor output using `BTreeSet` (#555)
+- Exhaustive match replacing string-parsing `expect` (#542)
+- Compatibility fixes for Rust 1.94 stable (fmt import ordering, new clippy lints) (#635)
+- Nix CI timeout cancellations unblocked (#642)
+
+### Changed
+
+- Reduced allocations in file table formatting (#543)
+- Removed unused `tokmd-analysis-types` dependency from `tokmd-gate` (#639)
+- Release documentation reconciled with CI-driven tag publish flow
+
+## [1.7.2] - 2026-02-24
+
+### Added
+
+- Near-duplicate detection enricher (`tokmd-analysis-near-dup`), commit intent classification, and focused microcrate extraction.
+### Fixed
+
+- `cargo xtask publish` now handles HTTP 429 rate-limit responses from crates.io by parsing the `retry-after` timestamp, sleeping until the cooldown expires, and retrying automatically instead of failing hard. This prevents partial releases when publishing many crates in sequence.
+
+## [1.7.1] - 2026-02-24
+
+### Added
+
+- Added context-aware scanning and policy microcrates: `tokmd-context-git`, `tokmd-context-policy`.
+- Added deterministic utility seams: `tokmd-exclude`, `tokmd-module-key`, `tokmd-path`, `tokmd-scan-args`, `tokmd-export-tree`, FFI envelope helpers, and `tokmd-math`.
+- Added explainability, schema, and import analysis components: the analysis explain catalog, import analysis modules, `tokmd-analysis-maintainability`, `tokmd-tool-schema`, and analysis HTML rendering.
+
+### Changed
+
+- Refactored analysis and scan-related boundaries into focused microcrates and moved boundary-check logic.
+- Updated CI/tooling around release and publish readiness (toolchain updates, boundary checks, deterministic ordering).
+
+### Fixed
+
+- Fixed clippy and lint failures to keep strict `--all-targets` check coverage clean.
+- Generalized dependency and publishability checks in `cargo xtask publish`.
+
+## [1.7.0] - 2026-02-21
+
+### Added
+
+- Near-duplicate detection in analysis reports (`--near-dup`, `--near-dup-threshold`, `--near-dup-scope`, `--near-dup-max-files`)
+- Commit intent classification in analysis git reports
+- Coupling metrics: Jaccard similarity and Lift in analysis coupling reports
+- `hash` field on `GitCommit` for commit SHA identification
+- Explicit token estimation divisor fields (`bytes_per_token_low`, `bytes_per_token_high`)
+- Serde alias tests locking backward compatibility of `tokens_min`/`tokens_max` renames
+- Full `ContextReceipt` E2E backward compatibility test for token field renames
+
+### Changed
+
+- Renamed `tokens_low`/`tokens_high` → `tokens_min`/`tokens_max` with backward-compatible serde aliases
+- Analysis schema version: 6 → 7
+
+### Fixed
+
+- Cockpit verdict rendering: exhaustive `GateStatus` match instead of wildcard catch-all
+- `xtask bump`: fixed stale `ANALYSIS_SCHEMA_VERSION` current value (4 → 7), corrected `COCKPIT_SCHEMA_VERSION` path, added missing schema entries (`CONTEXT_SCHEMA_VERSION`, `CONTEXT_BUNDLE_SCHEMA_VERSION`, `HANDOFF_SCHEMA_VERSION`)
+
+## [1.6.3] - 2026-02-17
+
+### Added
+
+- **Analyze Explain Mode**: Added `tokmd analyze --explain <key>` for quick human-readable metric/finding definitions (`--explain list` for key discovery)
+- **Diff Output Controls**: Added `tokmd diff --compact` and `tokmd diff --color <auto|always|never>` for narrow terminals and explicit color policy
+- **Cockpit Trend Sparklines**: Added inline unicode sparklines for trend lines in cockpit markdown output
+- **Structured CLI Error Hints**: Added actionable `Hints:` section on common failures (missing git, bad paths, missing refs, invalid explain key, TOML parse issues)
+- **Technical Debt Ratio**: Added `complexity.technical_debt` to analysis receipts (complexity points per KLOC + severity bucket)
+- **Duplication Density**: Added `dup.density` with overall and per-module duplicate waste density metrics
+- **Code Age Distribution**: Added `git.age_distribution` with file age buckets and recent-vs-prior refresh trend
+- **Microcrate: `tokmd-progress`**: Extracted progress spinner/progress-bar primitives from CLI into a dedicated crate
+- **Microcrate: `tokmd-badge`**: Extracted SVG badge rendering into a dedicated clap-free crate
+- **Diff Summary Expansion**: Added side-by-side summary rows for LOC, lines, files, bytes, and tokens plus language movement counts
+- **Cockpit Summary Comparison Table**: Added baseline-aware markdown comparison table (`Baseline`/`Current`/`Delta`/`Change`)
+
+### Changed
+
+- **Config Microcrate Extraction**: Moved `TomlConfig` schema/parsing types into `tokmd-settings`; `tokmd-config` now re-exports them for compatibility
+- **CLI Wiring**: `tokmd` now consumes `tokmd-progress` and `tokmd-badge` instead of local modules
+- **Determinism Gate Baseline Parsing**: Non-`ComplexityBaseline` files passed to `--baseline` now skip determinism gate instead of hard-failing cockpit runs
+- **Release Guide Modernized**: `RELEASE.md` now documents the `cargo xtask publish` workflow (`--plan`, `--dry-run`, `--yes`, `--from`, `--tag`) and removes stale `scripts/publish-all.ps1` references.
+
+### Fixed
+
+- **xtask Dry-Run Reliability**: `cargo xtask publish --dry-run` now validates each crate via `cargo package --list`, avoiding false failures from crates.io dependency propagation during lockstep release preparation.
+- **Cockpit Determinism Baseline Validation**: malformed baseline JSON now fails loudly, and determinism auto-skip is limited to explicit cockpit receipts (`"mode": "cockpit"`).
+
+## [1.6.2] - 2026-02-16
+
+### Added
+
+- **tokmd-core Analyze Workflow**: Implemented `analyze_workflow(scan, analyze)` to run export + analysis directly from the library API and FFI (`run_json("analyze", ...)`)
+
+### Changed
+
+- **Analyze Settings Validation**: `preset` and `granularity` in FFI analyze args are now strictly validated with `invalid_settings` errors on unknown values
+
+### Fixed
+
+- **Bindings Analyze Path**: Python/Node binding tests now validate successful analyze receipts instead of obsolete `not_implemented` behavior
+
+## [1.6.1] - 2026-02-16
+
+### Added
+
+- **File Classification**: Auto-detect generated, vendored, fixture, lockfile, minified, sourcemap, and dense data blob files during context packing
+- **Inclusion Policies**: Per-file budget caps (`--max-file-pct`, `--max-file-tokens`) with Full/HeadTail/Summary/Skip policies
+- **Head/Tail Truncation**: Oversized files emit 60% head + 40% tail with omission marker
+- **Graceful Metric Fallback**: When git scores unavailable for `--rank-by hotspot/churn`, falls back to code lines with transparent `fallback_reason`
+- **Error Suggestions**: Actionable suggestions on git, config, and path errors (`with_suggestions()` builder)
+
+### Changed
+
+- **Handoff Schema**: v3 → v4 — added `rank_by_effective`, `fallback_reason`, `excluded_by_policy`, per-file `policy`/`classifications`
+- **Context Bundle Schema**: v1 → v2 — added policy tracking fields
+- **Context Receipt Schema**: Split from Core (`SCHEMA_VERSION = 2`) to own `CONTEXT_SCHEMA_VERSION = 3`
+- **Diff Markdown**: Added comparison summary table (From / To / Delta / Change %)
+
+### Fixed
+
+- **Error Serialization**: `ResponseEnvelope::to_json()` fallback now emits actual error code and message instead of placeholders
+
+## [1.6.0] - 2026-02-11
+
+### Added
+
+- **Sensor Command**: New `tokmd sensor` for producing conforming `sensor.report.v1` envelopes
+  - Wraps cockpit computation and maps results to standardized findings and gates
+  - `--base` / `--head` flags for git diff range
+  - `--output` for artifact path (default: `artifacts/tokmd/report.json`)
+  - `--format json|md` output selection
+  - Emits risk findings (hotspots) and contract findings (schema/API/CLI changes)
+  - Maps cockpit evidence gates to envelope `GateResults`
+
+- **New Crate `tokmd-sensor`** (Tier 1): Sensor integration layer
+  - `EffortlessSensor` trait with `name()`, `version()`, `run(settings, substrate)` contract
+  - `build_substrate()` function runs tokei scan once and builds shared `RepoSubstrate`
+  - Enables pluggable multi-sensor architecture
+
+- **New Crate `tokmd-settings`** (Tier 0): Clap-free configuration types
+  - `ScanOptions`, `ScanSettings`, `LangSettings`, `ModuleSettings`, `ExportSettings`, `AnalyzeSettings`, `DiffSettings`
+  - Decouples lower-tier crates from `clap` dependency
+  - Enables library usage and FFI/Python/Node bindings without pulling in CLI types
+
+- **New Crate `tokmd-envelope`** (Tier 0): Cross-fleet sensor report contract
+  - `SensorReport` envelope with schema `"sensor.report.v1"`
+  - `Verdict` enum: `Pass`, `Fail`, `Warn`, `Skip`, `Pending` with aggregation rules
+  - `Finding` type with `(check_id, code)` tuple for buildfix routing
+  - `GateResults` and `GateItem` for evidence gate status
+  - `ToolMeta` and `Artifact` metadata types
+  - Finding registry with constants for risk, contract, supply, gate, security, and architecture categories
+
+- **New substrate seam `tokmd-sensor::substrate`**: Shared repository context
+  - `RepoSubstrate` with file metrics, language summaries, diff range, and totals
+  - `SubstrateFile` per-file metrics including `in_diff` flag
+  - `DiffRange` for git context (base, head, changed files, insertions, deletions)
+  - Helper methods: `diff_files()`, `files_for_lang()`
+  - Single I/O pass feeds multiple sensors, eliminating redundant scans
+
+### Changed
+
+- **Scan API**: `tokmd_scan::scan()` now accepts `&ScanOptions` instead of `&GlobalArgs`, decoupling Tier 1 from CLI types
+- **Core Workflows**: `tokmd-core` workflow functions now use settings types (`ScanSettings`, `LangSettings`, etc.) instead of Clap-based args
+- **Envelope Schema**: Changed schema identifier from numeric `sensor_report_version: u32` to semantic string `schema: String` (`"sensor.report.v1"`)
+- **Finding Identity**: Replaced `Finding.id` with `(check_id, code)` tuple for category-based routing
+- **Analysis Types**: Moved envelope and findings types to dedicated `tokmd-envelope` crate
+- **Core Settings**: `tokmd-core` re-exports from `tokmd-settings` for backwards compatibility
+- **CLI Args**: Renamed `--out` to `--output` across `export`, `badge`, and `context` commands (old name kept as visible alias)
+- **Context Command**: Renamed `--output` (mode selector) to `--mode` to avoid collision with `--output` (file path)
+- **Cockpit Diff Coverage**: Now intersects LCOV data with git-added lines for accurate diff-scoped coverage instead of whole-file coverage
+
+### Fixed
+
+- **Rust Function Regex**: Fixed pattern to match `(_|XID_Start) XID_Continue*` per Rust language spec; `fn _private_helper()` now correctly detected
+- **Cross-Platform Docs**: xtask docs task now normalizes `tokmd.exe` → `tokmd` and CRLF → LF for platform-independent reference output
+
+### Internal
+
+- Hardened tests: replaced sentinel nonexistent paths with `tempdir` in `tokmd-scan` and `tokmd-tokeignore`
+- Added `tempfile` dev-dependency to `tokmd-scan`
+- Added README files for `tokmd-sensor`, `tokmd-envelope`, and `tokmd-settings`
+- Added `tokmd sensor` documentation to `reference-cli.md`
+- Updated `docs/schema.json` and `docs/SCHEMA.md` for new envelope fields
+- Added `get_added_lines()` API in `tokmd-git` for per-file added-line extraction from git diff
+- Added `xtask docs` command for automated CLI reference regeneration
+- Added docs integration test verifying `reference-cli.md` stays in sync with CLI help output
+- Added issue templates for cleanup tasks and expanded options for commands
+
+## [1.5.0] - 2026-02-05
+
+### Added
+
+- **Baseline System**: New `tokmd baseline` command for tracking complexity metrics over time
+  - Generate complexity baselines to `.tokmd/baseline.json` (or custom path via `--output`)
+  - Captures git commit SHA for traceability
+  - Support for determinism baselines with build hash tracking (planned for v1.5.1)
+  - Baseline types: `ComplexityBaseline`, `BaselineMetrics`, `FileBaselineEntry`
+  - Baseline JSON schema in `docs/baseline.schema.json`
+
+- **Ratchet Rules**: Gradual improvement enforcement in `tokmd gate`
+  - `--baseline` flag for comparing current state against stored baselines
+  - `--ratchet-config` flag for external ratchet rule files
+  - `max_increase_pct` constraint for allowing bounded metric regression
+  - `max_value` constraint for absolute ceiling enforcement
+  - Inline ratchet rules via `[[gate.ratchet]]` in `tokmd.toml`
+  - Combined policy + ratchet evaluation with unified pass/fail reporting
+
+- **Ecosystem Envelope Protocol**: Standardized output format for multi-sensor integration
+  - `Envelope` type with verdict, findings, gates, and artifacts sections
+  - Finding ID registry with `tokmd.<category>.<code>` format (e.g., `tokmd.risk.hotspot`)
+  - Verdict aggregation: pass/fail/warn/skip/pending
+  - Builder pattern APIs for constructing envelopes programmatically
+
+- **Handoff Command**: New `tokmd handoff` for creating LLM-ready code bundles
+  - Generates `.handoff/` directory with `manifest.json`, `map.jsonl`, `intelligence.json`, and `code.txt`
+  - Token-budgeted file selection with `--budget` and `--strategy` options
+  - Risk-ranked ordering via `--rank-by` (hotspot, code, tokens, churn)
+  - Intelligence presets: `minimal`, `standard`, `risk`, `deep`
+  - Deterministic output with BLAKE3 integrity hashes
+
+- **Finding ID Constants**: New `tokmd_analysis_types::findings` module
+  - Risk findings: `hotspot`, `coupling`, `bus_factor`, `complexity_high`, `cognitive_high`, `nesting_deep`
+  - Contract findings: `schema_changed`, `api_changed`, `cli_changed`
+  - Supply chain findings: `lockfile_changed`, `new_dependency`, `vulnerability`
+  - Gate findings: `mutation_failed`, `coverage_failed`, `complexity_failed`
+  - Security findings: `entropy_high`, `license_conflict`
+  - Architecture findings: `circular_dep`, `layer_violation`
+
+### Changed
+
+- **Gate Config**: Extended `GateConfig` in `tokmd.toml` with ratchet support
+  - New fields: `baseline`, `ratchet`, `allow_missing_baseline`, `allow_missing_current`
+- **Gate CLI**: `tokmd gate` now supports combined policy and ratchet evaluation
+- **Gate Output**: JSON output includes separate `policy` and `ratchet` result sections
+- Extended `tokmd-analysis-types` with baseline and envelope structures
+- New `BASELINE_VERSION = 1` and `ENVELOPE_VERSION = 1` constants
+
+### Internal
+
+- New `ratchet.rs` module in `tokmd-gate` for ratchet evaluation logic
+- Comprehensive integration tests for ratchet workflow
+- Property-based tests for ratchet evaluation
+
+## [1.4.0] - 2026-01-31
+
+### Added
+- **Node.js Bindings**: New `tokmd-node` crate with napi-rs bindings for npm
+  - Full API access: `version()`, `schemaVersion()`, `lang()`, `module()`, `export()`, `analyze()`, `diff()`
+  - TypeScript definitions included
+  - Async/sync variants for all methods
+- **Python Bindings**: New `tokmd-python` crate with PyO3 bindings for PyPI
+  - Full API access with Pythonic interface
+  - Type stubs for IDE support (`py.typed`)
+  - Comprehensive test suite
+- **FFI Layer**: Enhanced `tokmd-core` with C-compatible FFI functions
+  - JSON-based API for language interop
+  - Structured error handling with error codes
+  - Settings configuration via JSON
+- **Version Bump Command**: `cargo xtask bump <VERSION>` for workspace-wide version management
+  - Updates all Cargo.toml files atomically
+  - Optional `--schema` flag for schema version constants
+  - Dry-run mode for previewing changes
+- **Complexity Metrics**: Extended complexity analysis in analysis receipts
+  - Trend analysis for complexity over time
+  - Enhanced JSON schema properties
+
+### Changed
+- **MSRV**: Minimum Supported Rust Version bumped to 1.89 (from 1.85)
+- **Schema Version**: Analysis receipts now use `schema_version: 4` (from 3)
+- **FFI Error Handling**: Improved error formatting and response envelope handling
+- **GitHub Action**: Added checksum verification for downloaded assets
+- **Nix Flake**: Replaced `cleanCargoSource` with `mkSrc` for improved source filtering
+- **cargo-deny**: Updated to version 0.18.6
+
+### Fixed
+- **Gate Comparisons**: Fixed string comparison to handle "inf"/"nan" strings correctly without parsing as floats
+- **Cockpit**: Use two-dot diff syntax (`A..B`) for accurate line counts when comparing tags/releases
+
+### Internal
+- **Documentation**: Added microcrate extraction analysis documents and git diff syntax guidance
+- **Test Refactoring**: Improved test assertions for better readability; simplified configuration setup in property tests
+- **Proptest Regressions**: Added regression seeds for property-based tests
+- **CI**: Updated cargo-deny action to use `taiki-e/install-action` for improved advisory checks
+- **Dependencies**: Bumped PyO3 and pyo3-build-config versions
+
+## [1.3.1] - 2026-01-31
+
+### Added
+- **ARM Builds**: Release binaries for macOS ARM (M1/M2) and Linux ARM64
+- **SHA256 Checksums**: Release artifacts now include `checksums.txt`
+- **Shell Completions**: Release includes `completions.tar.gz` with bash/zsh/fish/powershell/elvish
+- **Auto-publish**: Release workflow publishes to crates.io automatically
+- **Action Test Workflow**: CI workflow to test the GitHub Action on all platforms and formats
+- **README Badges**: Downloads, Docs.rs, and GitHub Marketplace badges
+- **SECURITY.md**: Security vulnerability reporting policy
+- **FUNDING.yml**: GitHub Sponsors configuration
+- **CODEOWNERS**: Default code review assignments
+- **.editorconfig**: Consistent editor formatting rules
+- **Issue Templates**: YAML form-based bug report and feature request templates
+- **cargo-deny**: License compliance and security advisory auditing in CI
+- **Typos CI**: Spell checking for code and documentation
+- **MSRV**: Minimum Supported Rust Version (1.85) documented and tested in CI
+- **Homebrew Formula**: `brew tap EffortlessMetrics/tap && brew install tokmd`
+- **CITATION.cff**: Academic citation metadata
+- **Docker Image**: Multi-arch image at `ghcr.io/effortlessmetrics/tokmd`
+- **SLSA Attestations**: Supply chain provenance for release binaries
+- **Scoop Manifest**: Windows package manager support
+- **WinGet Manifest**: Windows Package Manager support
+- **AUR PKGBUILD**: Arch Linux package support
+
+### Changed
+- **GitHub Action**: Fail fast on download failure instead of slow cargo fallback
+- **GitHub Action**: Added `format` input for export format (json, jsonl, csv)
+- **GitHub Action**: Added `artifact` input to control artifact uploads
+- **GitHub Action**: Added Marketplace branding (icon, color)
+- **GitHub Action**: Removed unused `token` input
+- **GitHub Action**: Renamed output from `receipt-json` to `receipt`
+- **Release Workflow**: Automatically updates major version tag (v1) on release
+- **.gitattributes**: Enhanced with LF normalization and binary file handling
+
+## [1.3.0] - 2026-01-31
+
+### Added
+- **Cockpit Command**: `tokmd cockpit` for PR metrics generation with comprehensive evidence gates
+  - Change surface analysis (files added/modified/deleted, lines changed)
+  - Code composition breakdown (production vs test vs config)
+  - Code health metrics (complexity, doc coverage, test coverage)
+  - Risk assessment (hotspots, coupling, freshness)
+  - Evidence gates (mutation testing, diff coverage, contracts, supply chain, determinism)
+  - Review plan generation with prioritized file list
+  - Output formats: JSON, Markdown, Sections (for PR templates)
+- **Gate Command**: `tokmd gate` for policy-based quality gates with JSON pointer rules and inline policy support
+- **Interactive Wizard**: `tokmd init --interactive` for guided project configuration
+- **Git-Ranked Context**: `--rank-by churn/hotspot` options in `tokmd context` for git-aware file prioritization
+- **Tools Schema**: `tokmd tools` command for generating LLM tool definitions (OpenAI, Anthropic, JSON Schema formats)
+- **New Crate**: `tokmd-gate` for policy evaluation with JSON pointer resolution
+- **Archetype Detection**: Identify project types (CLI, library, web app, monorepo)
+- **Topic Clouds**: TF-IDF semantic analysis of path segments
+- **Entropy Profiling**: Detect high-entropy files (potential secrets)
+- **Predictive Churn**: Linear regression on commit history for trend detection
+- **Corporate Fingerprint**: Author domain statistics from git history
+- **License Radar**: SPDX detection from LICENSE files and metadata
+- **Context Output Options**: `--out`, `--force`, `--bundle-dir`, `--log`, `--max-output-bytes` flags for flexible output handling
+- **CONTRIBUTING.md**: Comprehensive contributor guide with setup instructions, testing strategy, code style, and publishing workflow
+- **Fun Feature Variants**: `render_obj` and `render_midi` functions now have feature-gated variants
+
+### Changed
+- **Schema Version**: Analysis receipts now use `schema_version: 2`, cockpit receipts use `schema_version: 3`
+- **API**: `tokmd_core::scan_workflow` now accepts `redact: Option<RedactMode>` parameter
+- **UX**: Non-existent input paths now return an error instead of silent success
+- **Feature Flags**: `git`, `walk`, and `content` features are now exposed in CLI crate for lightweight builds
+- **Architecture**: Decoupled `tokmd-types` from `tokmd-config`, making `clap` an optional dependency
+
+### Fixed
+- **Git Initialization**: Default branch now correctly set to `main` in git repository initialization
+- **Redaction Tests**: Fixed test collection to use `Vec` for proper error handling
+- **Scan Tests**: Improved error handling in scan integration tests
+
+### Performance
+- **Export Streaming**: Reduced allocations in export streaming by using iterators with `Cow`
+
+### Internal
+- **Test Robustness**: Replaced `unwrap`/`expect` with `Result` in tests for better error messages
+- **Config Determinism**: Locked deterministic ordering in configuration tests
+- **Comprehensive Test Suite**: Added integration tests across all major crates (model, format, walk, git, analysis, fun, config, types)
+- **Property-Based Tests**: Added proptest coverage for tokmd-redact, tokmd-tokeignore, and tokmd-scan walk helpers
+- **Fuzz Targets**: Added fuzz targets for path redaction and JSON deserialization with dictionaries
+- **Mutation Testing**: Added `cargo-mutants` configuration and CI gate for PR quality assurance
+  - Enhanced mutation testing workflow with improved file change detection
+  - Mutation testing evidence section in cockpit metrics
+- **Publish Workflow**: Enhanced `cargo xtask publish` with `--plan`, `--dry-run`, `--from`, `--skip-*` options and Justfile shortcuts
+- **CI Improvements**: Added publish plan verification and mutation testing jobs to CI workflow
+- **Deprecated API Migration**: Replaced deprecated `cargo_bin` usage with `cargo_bin_cmd` in integration tests
+
+### Documentation
+- **Crate READMEs**: Added README.md files for all 17 crates with installation, usage, and API documentation
+- **New Troubleshooting Guide**: Comprehensive guide covering common issues, exit codes, performance optimization, and debugging tips
+- **CI/CD Integration Recipes**: Added GitHub Actions, GitLab CI, pre-commit hooks, and baseline tracking workflow examples
+- **Configuration Reference**: Expanded `tokmd.toml` documentation with full schema, file location precedence, environment variables, and named profiles
+- **Tutorial Improvements**: Added Step 11 for troubleshooting missing files with `check-ignore` command
+- **Exit Codes Reference**: Documented standard and command-specific exit codes
+- **Sorting Clarification**: Clarified that output is automatically sorted (descending by code lines, then path) with no `--sort` flag
+- **Bug Fix**: Removed reference to non-existent `--sort code` flag in tutorial
+- **Path Error Documentation**: Added troubleshooting section for non-existent path errors
+- **CLI Reference**: Documented new context command output flags (`--out`, `--bundle-dir`, `--log`, etc.)
+
+## [1.2.0] - 2026-01-27
+
+### Added
+- **Microcrate Architecture**: Split into 16 focused crates for modularity and selective compilation
+  - `tokmd-types`, `tokmd-analysis-types` (Tier 0: data structures)
+  - `tokmd-scan`, `tokmd-model`, `tokmd-tokeignore`, `tokmd-redact` (Tier 1: core logic)
+  - `tokmd-format`, `tokmd-git` (Tier 2: I/O)
+  - `tokmd-analysis` and analysis rendering (Tier 3: enrichment)
+  - `tokmd-config`, `tokmd-core` (Tier 4: orchestration)
+  - `tokmd` (Tier 5: CLI binary)
+- **Git Integration**: Hotspots, bus factor, freshness, coupling analysis
+- **Asset Inventory**: Non-code file categorization and size tracking
+- **Dependency Summary**: Lockfile detection and dependency counting
+- **Import Graph**: Module dependency analysis with configurable granularity
+- **Duplicate Detection**: Content-hash based duplicate file detection
+- **CycloneDX Export**: `export --format cyclonedx` generates CycloneDX 1.6 SBOM with file-level components
+- **HTML Reports**: `analyze --format html` produces self-contained, offline-capable HTML reports with interactive treemap and sortable tables
+- **Context Packing**: New `context` command for LLM context window optimization
+  - Budget-aware file selection with `--budget` (e.g., `128k`, `1M`)
+  - Multiple strategies: `greedy`, `spread`
+  - Output modes: `list`, `bundle`, `json`
+- **Redaction Utilities**: New `tokmd-redact` crate centralizes BLAKE3-based path hashing
+- **CI Hyper-Testing**: Added proptest smoke tests, mutation testing, and fuzz testing workflows
+- **Integration Tests**: Comprehensive `analyze` command smoke tests
+- **Check-Ignore Command**: New `check-ignore` command explains why files are being ignored
+  - Delegates to `git check-ignore -v` for git-related ignores
+  - Shows `.tokeignore` and `--exclude` pattern matches
+  - Exit codes: 0=ignored, 1=not ignored
+- **Shell Completions**: New `completions` command generates shell completions for bash, zsh, fish, powershell, and elvish
+
+### Changed
+- **Feature Flags**: Git, content, and walk features are now opt-in for faster compilation
+- **Analysis Limits**: Added `--max-files`, `--max-bytes`, `--max-commits` for resource control
+
+### Fixed
+- **RFC3339 Timestamps**: CycloneDX and HTML reports now use proper RFC3339 format via `time` crate
+- **Export Bundle Input**: Fixed input path handling in export bundle operations
+- **Module Key Computation**: Corrected module key derivation for edge cases
+
+## [1.1.0] - 2026-01-26
+
+### Added
+- **`tokmd analyze`**: New command for derived metrics and enrichments
+  - Presets: `receipt`, `health`, `risk`, `supply`, `architecture`, `topics`, `security`, `identity`, `git`, `deep`, `fun`
+  - Output formats: `md`, `json`, `jsonld`, `xml`, `svg`, `mermaid`, `obj`, `midi`, `tree`
+- **`tokmd badge`**: Generate SVG badges for metrics (lines, tokens, bytes, doc%, hotspots)
+- **`tokmd diff`**: Compare two runs or receipts for delta analysis
+- **`tokmd run`**: Execute full scans and save artifacts to a run directory
+- **Derived Metrics**:
+  - Doc density (comments/code ratio by language and module)
+  - Test density (test lines vs production lines)
+  - Verbosity (bytes per line)
+  - Nesting depth (max and average path depth)
+  - File size distribution (min, max, mean, median, p90, p99, Gini coefficient)
+  - Histogram buckets (tiny, small, medium, large, huge files)
+  - Top offenders (largest, least documented, most dense files)
+- **COCOMO Estimation**: Effort, duration, and staffing projections
+- **Context Window Analysis**: Token utilization against configurable window sizes
+- **Reading Time Estimation**: Human reading time based on code volume
+- **TODO Density**: TODO/FIXME/HACK tag counting and density per KLOC
+- **Integrity Hash**: BLAKE3 hash of receipt contents for verification
+
+### Changed
+- **Configuration**: Added `tokmd.toml` support for persistent settings and view profiles
+- **Documentation**: Added analysis presets table to README
+
+## [1.0.0] - 2026-01-25
+
+### Added
+- **Formal Receipt Schema**: Introduced a stable JSON output format for `lang`, `module`, and `export` modes.
+- **Formal Schema Definition**: Added `docs/schema.json` (JSON Schema Draft 07) to validate outputs.
+- **Export Mode**: New `tokmd export` command to generate JSONL/CSV inventories of files.
+- **Redaction**: `--redact paths` and `--redact all` flags to sanitize output for LLM usage.
+- **Filtering**: `--min-code` and `--max-rows` flags to control output size.
+- **Initialization**: `tokmd init` command to generate `.tokeignore` templates.
+- **Module Analysis**: Enhanced module reporting with configurable roots (`--module-roots`) and depth (`--module-depth`).
+- **Test Harness**: Robust integration suite with BDD-style scenarios and golden snapshots using `insta`.
+
+### Changed
+- **CLI**: `tokmd` (default) now produces a Markdown table by default (previously text).
+- **Semantics**: `--children` flag logic unified across all modes.
+- **Docs**: Completely overhauled documentation structure following Diataxis principles (Tutorials, How-to, Reference, Explanation).
+
+### Fixed
+- **Ignore Logic**: Corrected behavior where `--no-ignore` did not consistently disable all ignore types.
+- **Stability**: Fixed deterministic sorting of output rows.
+
+## [0.1.0] - 2026-01-25
+- Initial prototype release.

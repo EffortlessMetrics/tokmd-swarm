@@ -1,0 +1,156 @@
+name: Mutation Testing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutants:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --version 26.1.2 --locked
+
+      - name: Get changed Rust files
+        id: changed
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.base_ref }}"
+          else
+            BASE_REF="main"
+          fi
+
+          git fetch origin "$BASE_REF":"refs/remotes/origin/$BASE_REF"
+
+          cargo xtask mutation-scope \
+            --base-ref "$BASE_REF" \
+            --base "origin/$BASE_REF" \
+            --head HEAD \
+            --max-files 20 \
+            --all-changed-files all_changed_files.txt \
+            --changed-files changed_files.txt \
+            --json-output target/mutation/mutation-scope.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Run mutation tests on changed files
+        id: mutants
+        if: steps.changed.outputs.count != '0'
+        env:
+          CI: true
+        run: |
+          set -euo pipefail
+          echo "Running mutation testing on ${{ steps.changed.outputs.count }} changed file(s)..."
+
+          # Track all mutants.out directories for later aggregation
+          mkdir -p mutants-all
+
+          FILE_INDEX=0
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            [ -f "$file" ] || continue
+
+            # Microcrate scoping: run from crate dir to ensure crate's own tests run
+            crate_dir=""
+            if [[ "$file" == crates/*/* ]]; then
+              crate_dir="$(echo "$file" | cut -d/ -f1-2)"
+            fi
+
+            echo "::group::Mutants: $file"
+            if [[ -n "$crate_dir" && -f "$crate_dir/Cargo.toml" ]]; then
+              rel="${file#$crate_dir/}"
+              (cd "$crate_dir" && cargo mutants --file "$rel" --timeout 120)
+              # Copy mutants.out to aggregation dir with unique name
+              if [ -d "$crate_dir/mutants.out" ]; then
+                cp -r "$crate_dir/mutants.out" "mutants-all/mutants-$FILE_INDEX"
+              fi
+            else
+              cargo mutants --file "$file" --timeout 120
+              if [ -d "mutants.out" ]; then
+                cp -r "mutants.out" "mutants-all/mutants-$FILE_INDEX"
+              fi
+            fi
+            echo "::endgroup::"
+            FILE_INDEX=$((FILE_INDEX + 1))
+          done < changed_files.txt
+
+          echo "mutants_ran=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate mutation summary JSON
+        id: summary
+        if: always()
+        run: |
+          set -euo pipefail
+          cargo xtask mutation-summary \
+            --commit "${{ github.sha }}" \
+            --base-ref "${{ steps.changed.outputs.base_ref }}" \
+            --scope-exceeded "${{ steps.changed.outputs.scope_exceeded }}" \
+            --mutants-ran "${{ steps.mutants.outputs.mutants_ran == 'true' }}" \
+            --all-changed-files all_changed_files.txt \
+            --changed-files changed_files.txt \
+            --mutants-dir mutants-all \
+            --json-output mutants-summary.json \
+            --github-output "$GITHUB_OUTPUT"
+
+          echo "Summary generated:"
+          cat mutants-summary.json
+
+      - name: Skip notice
+        if: steps.changed.outputs.count == '0' && steps.changed.outputs.scope_exceeded != 'true'
+        run: echo "No production Rust files changed - skipping mutation testing"
+
+      - name: Upload mutants report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-report
+          path: |
+            mutants.out/
+            mutants-all/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload mutants summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-summary
+          path: |
+            mutants-summary.json
+            target/mutation/mutation-scope.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Check for survivors
+        if: always() && steps.summary.outputs.status == 'fail'
+        run: |
+          echo "::error::Mutation testing failed!"
+          if [ "${{ steps.changed.outputs.scope_exceeded }}" = "true" ]; then
+            echo "Scope exceeded: Too many changed files. Please split your PR or run crate-scoped mutation testing."
+          else
+            echo "Survivors found: ${{ steps.summary.outputs.survivor_count }} mutation(s) were not caught by tests."
+            echo ""
+            echo "Survivors:"
+            jq -r '.survivors[] | "  \(.file):\(.line): \(.mutation)"' mutants-summary.json
+          fi
+          exit 1
+
+      - name: Success notice
+        if: steps.summary.outputs.status == 'pass'
+        run: echo "All mutations caught or unviable (0 survivors)"

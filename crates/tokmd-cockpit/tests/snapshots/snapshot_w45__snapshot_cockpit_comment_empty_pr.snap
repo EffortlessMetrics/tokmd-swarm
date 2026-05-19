@@ -1,0 +1,15 @@
+---
+source: crates/tokmd-cockpit/tests/snapshot_w45.rs
+expression: comment
+---
+## Glass Cockpit Summary
+
+- **0 files changed**, +0/-0
+- **Health**: 100/100 (A)
+- **Risk**: low (0/100)
+
+**Evidence gates**: Pass
+- **Evidence availability**: 0 available, 0 degraded, 0 stale, 1 skipped, 5 unavailable, 0 missing
+
+**Next steps**:
+- [ ] Proceed with reviewer sign-off

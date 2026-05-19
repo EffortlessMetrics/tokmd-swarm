@@ -1,0 +1,288 @@
+# Plan: AST Shadow Comparison Runner
+
+- Status: complete
+- Related proposal:
+- Related spec: `docs/specs/ast-shadow.md`
+- Related ADR: `docs/adr/0008-ast-foundation.md`
+- Related issues:
+
+## Goal
+
+Define and build the first developer-facing AST shadow comparison runner.
+
+The runner should turn a small, explicit Rust source selection into
+`tokmd.ast_shadow.v1` heuristic, AST, and diff artifacts so maintainers can
+start collecting heuristic-vs-AST comparison evidence on real code before any
+public receipt, default workflow, browser, or review-packet behavior changes.
+
+The first comparison target is landmark presence by normalized path, landmark
+kind, and stable identifier for Rust functions, imports, and simple
+control-flow landmarks. This target is intentionally lower risk than semantic
+equivalence, call graphs, type resolution, or complexity replacement.
+
+## Non-goals
+
+- Do not add a public `tokmd ast` or `tokmd review` command.
+- Do not change default `tokmd analyze`, `cockpit`, `context`, `handoff`, FFI,
+  Python, Node, or WASM outputs.
+- Do not add public receipt fields or change existing schema meaning.
+- Do not claim browser/WASM AST capability.
+- Do not promote proof gates, scoped coverage, mutation, or Codecov upload.
+- Do not build mergecode-style semantic graphs, call graphs, or dependency
+  relationships.
+- Do not treat shadow diffs as merge verdicts.
+
+## Work Packets
+
+1. Close the source-of-truth gap for the next AST lane.
+   - Status: complete.
+   - Archive the completed AST shadow performance benchmark goal.
+   - Retarget `.jules/goals/active.toml` to this comparison-runner lane.
+   - Keep `docs/NEXT.md` and `docs/specs/ast-shadow.md` aligned with the
+     runner boundary.
+2. Add the first runner behind developer tooling.
+   - Status: complete.
+   - Prefer `cargo xtask ast-shadow-compare` for the first runner so the public
+     `tokmd` CLI stays unchanged while the artifact contract stabilizes.
+   - Inputs should be explicit repo-relative Rust source paths and an output
+     directory, with no network, GitHub, Codecov, or evidencebus dependency.
+3. Generate the existing artifact set.
+   - Status: complete.
+   - Reuse the `tokmd-analysis` AST shadow artifact builder to write
+     `heuristic.json`, `ast.json`, and `diff.json`.
+   - Avoid timestamps, absolute paths, temporary directories, and
+     nondeterministic ordering.
+4. Add a small fixture corpus and focused proof.
+   - Status: complete.
+   - Cover a Rust fixture with functions, imports, and simple control flow.
+   - Route the runner through the existing `analysis_ast_shadow` proof scope.
+5. Collect comparison evidence without product adoption.
+   - Status: complete.
+   - Keep `diff.json` human- and agent-readable enough for early evidence
+     collection by adding aggregate counts before wiring the artifacts into
+     cockpit, handoff, evidencebus, or public receipts.
+   - Add an optional Markdown summary output for maintainer review of aggregate
+     counts, per-file status, artifact paths, and the reproduction command.
+   - Use runner output to decide whether function, import, or control-flow
+     landmarks are accurate enough for a later public schema proposal.
+   - First candidate decision: evaluate function-boundary precision before
+     richer import semantics or control-flow landmarks. This is an evidence
+     collection priority, not product adoption.
+6. Verify the generated artifact set.
+   - Status: complete.
+   - Add `cargo xtask ast-shadow-check` so generated AST shadow artifacts can be
+     checked for expected schema/kind, relative sorted paths, timestamp-free
+     content, and summary counts that match per-file entries.
+   - Let the check command accept explicit `--path` inputs for proof commands
+     that need to regenerate the comparison before verification.
+   - Emit an optional `tokmd.ast_shadow_check.v1` receipt for downstream review
+     evidence without treating the artifacts as a gate or merge verdict.
+
+## Validation
+
+For the docs-only source-of-truth slice:
+
+```bash
+cargo xtask doc-artifacts --check
+cargo xtask docs --check
+cargo xtask proof-policy --check
+cargo xtask affected --base origin/main --head HEAD --json-output target/proof/affected-ast-shadow-runner-plan.json
+cargo xtask proof --profile affected --base origin/main --head HEAD --plan --plan-json target/proof/proof-plan-ast-shadow-runner-plan.json --evidence-json target/proof/proof-evidence-ast-shadow-runner-plan.json
+cargo fmt-check
+git diff --check
+```
+
+For the later runner implementation slice, add:
+
+```bash
+cargo test -p tokmd-analysis --features ast ast --verbose
+cargo run -p tokmd-analysis --features ast --example ast_shadow_perf -- --iterations 2 --files 2 --functions-per-file 3 --out target/perf/ast-shadow-perf.json
+cargo test -p xtask ast_shadow --verbose
+cargo xtask ast-shadow-compare --out target/tokmd-ast-shadow --summary-md target/tokmd-ast-shadow/summary.md --path <fixture-rust-path>
+cargo xtask ast-shadow-check --path <fixture-rust-path> --dir target/tokmd-ast-shadow --json target/tokmd-ast-shadow/check.json
+cargo xtask publish-surface --json --verify-publish
+```
+
+## Stop Conditions
+
+- Stop if the runner requires a new public `tokmd` command.
+- Stop if AST shadow output changes default product receipts or browser/WASM
+  capabilities.
+- Stop if the runner needs network, GitHub Actions, Codecov, or evidencebus
+  runtime dependencies.
+- Stop if comparison artifacts include timestamps, absolute paths, or
+  environment-specific temporary directories.
+- Stop if the verifier cannot explain summary count drift from the per-file
+  diff entries.
+- Stop if affected planning reports unknown files.
+- Stop if docs imply proof promotion, Codecov upload, merge verdicts, or
+  default AST adoption.
+
+## Evidence Notes
+
+### 2026-05-14: Internal AST implementation files
+
+Command:
+
+```bash
+cargo xtask ast-shadow-compare \
+  --path crates/tokmd-analysis/src/ast/rust.rs \
+  --path crates/tokmd-analysis/src/ast/shadow.rs \
+  --out target/tokmd-ast-shadow-real-corpus \
+  --summary-md target/tokmd-ast-shadow-real-corpus/summary.md
+
+cargo xtask ast-shadow-check \
+  --dir target/tokmd-ast-shadow-real-corpus \
+  --json target/tokmd-ast-shadow-real-corpus/check.json
+```
+
+Observed summary:
+
+| Metric | Count |
+| --- | ---: |
+| Files compared | 2 |
+| Matched landmarks | 70 |
+| Heuristic-only landmarks | 33 |
+| AST-only landmarks | 0 |
+| Parse-degraded files | 0 |
+| Unsupported files | 0 |
+
+Per-file summary:
+
+| File | Matched | Heuristic-only | AST-only | Parse degraded |
+| --- | ---: | ---: | ---: | --- |
+| `crates/tokmd-analysis/src/ast/rust.rs` | 26 | 23 | 0 | false |
+| `crates/tokmd-analysis/src/ast/shadow.rs` | 44 | 10 | 0 | false |
+
+Interpretation:
+
+- This is comparison evidence only, not a product behavior change or merge
+  verdict.
+- The selected internal corpus had no parse degradation and no unsupported
+  files.
+- The first signal is heuristic over-reporting, not AST-only discovery: the
+  line heuristic reported extra function/import/control-flow landmarks in test
+  fixture strings and examples that the AST parser did not treat as Rust code.
+- The next decision should use a broader corpus before proposing any public
+  receipt field. Function-boundary precision remains the likely first
+  candidate because false positives from fixture strings are easy to explain
+  and review.
+
+### 2026-05-14: Broader internal Rust corpus
+
+Command:
+
+```bash
+cargo xtask ast-shadow-compare \
+  --path crates/tokmd-analysis/src/complexity/functions/rust.rs \
+  --path crates/tokmd-analysis/src/imports/parser.rs \
+  --path crates/tokmd-cockpit/src/review_plan.rs \
+  --path crates/tokmd/src/context_pack/select.rs \
+  --path xtask/src/tasks/ast_shadow_compare.rs \
+  --out target/tokmd-ast-shadow-broader-corpus \
+  --summary-md target/tokmd-ast-shadow-broader-corpus/summary.md
+
+cargo xtask ast-shadow-check \
+  --dir target/tokmd-ast-shadow-broader-corpus \
+  --json target/tokmd-ast-shadow-broader-corpus/check.json
+```
+
+Observed summary:
+
+| Metric | Count |
+| --- | ---: |
+| Files compared | 5 |
+| Matched landmarks | 180 |
+| Heuristic-only landmarks | 67 |
+| AST-only landmarks | 30 |
+| Parse-degraded files | 0 |
+| Unsupported files | 0 |
+
+Per-file summary:
+
+| File | Matched | Heuristic-only | AST-only | Parse degraded |
+| --- | ---: | ---: | ---: | --- |
+| `crates/tokmd-analysis/src/complexity/functions/rust.rs` | 18 | 10 | 9 | false |
+| `crates/tokmd-analysis/src/imports/parser.rs` | 56 | 4 | 2 | false |
+| `crates/tokmd-cockpit/src/review_plan.rs` | 27 | 14 | 14 | false |
+| `crates/tokmd/src/context_pack/select.rs` | 24 | 15 | 3 | false |
+| `xtask/src/tasks/ast_shadow_compare.rs` | 55 | 24 | 2 | false |
+
+Mismatch summary by landmark kind:
+
+| Kind | Matches | Heuristic-only | AST-only |
+| --- | ---: | ---: | ---: |
+| `function` | 95 | 6 | 0 |
+| `import` | 20 | 1 | 1 |
+| `control_flow` | 65 | 60 | 29 |
+
+Interpretation:
+
+- This is comparison evidence only, not a product behavior change or merge
+  verdict.
+- The selected broader corpus had no parse degradation and no unsupported
+  files.
+- Function-boundary evidence remains the first public-candidate fact family:
+  the broader run found no AST-only function landmarks, and the six
+  heuristic-only function landmarks came from Rust source text embedded inside
+  tests or examples rather than from parsed Rust items.
+- Control-flow landmarks show more disagreement in both directions and should
+  stay shadow-only until a separate precision target is defined.
+- Broader corpus coverage is still required before proposing any public receipt
+  field, default behavior, browser capability, cockpit signal, or handoff
+  signal.
+
+## Checkpoint History
+
+- 2026-05-14: Closed the comparison-runner lane through PRs #2247, #2251,
+  #2252, #2254, #2255, #2256, #2257, #2258, and #2259. The runner, fixture
+  corpus, diff summary counts, verifier, Markdown summary, proof routing, first
+  internal-corpus evidence, broader corpus evidence, and function-boundary
+  candidate decision are all on main. Future AST work should start from a fresh
+  plan for broader corpus collection, optional handoff/cockpit linking, or a
+  public schema proposal; this plan should not keep accumulating routine
+  evidence by inertia.
+- 2026-05-14: Started the comparison-runner lane after the synthetic AST shadow
+  performance receipt landed. The lane selects landmark presence for Rust
+  functions, imports, and simple control-flow as the first comparison target and
+  keeps the first runner in developer tooling rather than the public `tokmd`
+  CLI.
+- 2026-05-14: Added the first `cargo xtask ast-shadow-compare` runner slice.
+  It accepts explicit repo-relative Rust paths, writes the existing
+  `heuristic.json`, `ast.json`, and `diff.json` artifacts, and routes the
+  runner plus fixture corpus through `analysis_ast_shadow` proof. The slice does
+  not add a public `tokmd` CLI command or change default receipt behavior.
+- 2026-05-14: Added `diff.json` summary counts for files, matched landmarks,
+  heuristic-only landmarks, AST-only landmarks, parse-degraded files, and
+  unsupported files. This keeps the shadow artifact useful for evidence
+  collection without turning it into a gate or merge verdict.
+- 2026-05-14: Added the planned verifier slice. `cargo xtask ast-shadow-check`
+  validates the generated shadow artifact set and can emit a
+  `tokmd.ast_shadow_check.v1` receipt without changing default product
+  behavior.
+- 2026-05-14: Added optional Markdown summary output for the comparison runner.
+  `--summary-md` renders aggregate counts, per-file status, artifact paths, and
+  the reproduction command without changing the JSON artifact contract or any
+  public `tokmd` output.
+- 2026-05-14: Collected the first real internal-corpus comparison evidence on
+  `crates/tokmd-analysis/src/ast/rust.rs` and
+  `crates/tokmd-analysis/src/ast/shadow.rs`. The run found 70 matched
+  landmarks, 33 heuristic-only landmarks, zero AST-only landmarks, and no parse
+  degradation.
+- 2026-05-14: Selected function-boundary precision as the first
+  public-candidate fact family for future AST shadow evidence collection. The
+  decision is based on the first internal-corpus signal: heuristic-only
+  landmarks came from explainable string/example over-reporting, while the AST
+  parser showed no degradation on the selected files. This does not promote AST
+  into any public receipt, default workflow, browser claim, cockpit output,
+  handoff output, proof gate, or Codecov behavior.
+- 2026-05-14: Collected a broader five-file internal Rust corpus across
+  analysis, cockpit, context packing, and xtask code. The run found 180 matched
+  landmarks, 67 heuristic-only landmarks, 30 AST-only landmarks, and no parse
+  degradation. Function-boundary precision remains the first public-candidate
+  fact family, while control-flow evidence remains shadow-only.
+- 2026-05-14: Added by-kind mismatch counts to the optional Markdown summary so
+  maintainers can see matched, heuristic-only, and AST-only landmark counts by
+  `function`, `import`, and `control_flow` without manually scanning
+  `diff.json`. This did not change the JSON artifact contract or any public
+  `tokmd` output.

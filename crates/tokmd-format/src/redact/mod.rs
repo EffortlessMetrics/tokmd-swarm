@@ -1,0 +1,297 @@
+//! # tokmd-format::redact
+//!
+//! **Tier 0.5 (Utilities)**
+//!
+//! This module provides redaction utilities for `tokmd` receipts.
+//! It's the canonical source for hashing functions used to redact sensitive
+//! information (paths, patterns) in output while preserving useful structure.
+//!
+//! ## What belongs here
+//! * Path redaction (hash while preserving extension)
+//! * String hashing for redaction
+//!
+//! ## What does NOT belong here
+//! * General-purpose file hashing (see `tokmd-analysis` content helpers)
+//! * Integrity hashing (see `tokmd-analysis`)
+
+mod extensions;
+
+/// Clean a path by normalizing separators and resolving `.` and `./` segments.
+///
+/// This ensures that logically identical paths produce the same hash.
+/// For example, `./src/lib.rs` and `src/lib.rs` will produce the same hash.
+fn clean_path(s: &str) -> String {
+    let mut normalized = String::with_capacity(s.len());
+    let mut last_was_slash = false;
+    for ch in s.chars() {
+        let ch = if ch == '\\' { '/' } else { ch };
+        if ch == '/' {
+            if last_was_slash {
+                continue;
+            }
+            last_was_slash = true;
+        } else {
+            last_was_slash = false;
+        }
+        normalized.push(ch);
+    }
+    // Strip leading ./
+    while let Some(stripped) = normalized.strip_prefix("./") {
+        normalized = stripped.to_string();
+    }
+    // Remove interior /./
+    while normalized.contains("/./") {
+        normalized = normalized.replace("/./", "/");
+    }
+    // Remove trailing /.
+    if normalized.ends_with("/.") {
+        normalized.truncate(normalized.len() - 2);
+    }
+    normalized
+}
+
+/// Compute a short (16-character) BLAKE3 hash of a string.
+///
+/// This is used for redacting sensitive strings like excluded patterns
+/// or module names in receipts.
+///
+/// Path separators are normalized to forward slashes before hashing
+/// to ensure consistent hashes across operating systems. Redundant `.`
+/// segments are also resolved so that logically identical paths hash
+/// identically.
+///
+/// # Example
+///
+/// ```
+/// use tokmd_format::redact::short_hash;
+///
+/// let hash = short_hash("my-secret-path");
+/// assert_eq!(hash.len(), 16);
+///
+/// // Cross-platform consistency: same hash regardless of separator
+/// assert_eq!(short_hash("src\\lib"), short_hash("src/lib"));
+/// ```
+///
+/// Dot-prefix and interior-dot normalization:
+///
+/// ```
+/// use tokmd_format::redact::short_hash;
+///
+/// // Leading "./" is stripped before hashing
+/// assert_eq!(short_hash("./src/lib"), short_hash("src/lib"));
+///
+/// // Interior "/." segments are resolved
+/// assert_eq!(short_hash("crates/./foo"), short_hash("crates/foo"));
+///
+/// // Different inputs always produce different hashes
+/// assert_ne!(short_hash("alpha"), short_hash("beta"));
+/// ```
+pub fn short_hash(s: &str) -> String {
+    let cleaned = clean_path(s);
+    let mut hex = blake3::hash(cleaned.as_bytes()).to_hex().to_string();
+    hex.truncate(16);
+    hex
+}
+
+/// Redact a path by hashing it while preserving a safe file suffix.
+///
+/// This allows redacted paths to still be recognizable by file type
+/// while hiding the actual path structure. A known safe compound suffix
+/// such as `.tar.gz` is preserved as a unit; otherwise only the final
+/// extension is preserved when it is in a small allowlist of common file
+/// types.
+///
+/// Path separators are normalized to forward slashes before hashing
+/// to ensure consistent hashes across operating systems.
+///
+/// # Example
+///
+/// ```
+/// use tokmd_format::redact::redact_path;
+///
+/// let redacted = redact_path("src/secrets/config.json");
+/// assert!(redacted.ends_with(".json"));
+/// assert_eq!(redacted.len(), 16 + 1 + 4); // hash + dot + "json"
+///
+/// // Cross-platform consistency: same hash regardless of separator
+/// assert_eq!(redact_path("src\\main.rs"), redact_path("src/main.rs"));
+/// ```
+///
+/// Files without an extension produce a bare 16-character hash:
+///
+/// ```
+/// use tokmd_format::redact::redact_path;
+///
+/// let bare = redact_path("Makefile");
+/// assert_eq!(bare.len(), 16);
+/// assert!(!bare.contains('.'));
+///
+/// // Known safe compound suffixes are preserved as a unit.
+/// let gz = redact_path("archive.tar.gz");
+/// assert!(gz.ends_with(".tar.gz"));
+/// ```
+pub fn redact_path(path: &str) -> String {
+    let cleaned = clean_path(path);
+    let mut out = short_hash(&cleaned);
+
+    let filename = cleaned.split('/').next_back().unwrap_or(&cleaned);
+    let parts: Vec<&str> = filename.split('.').collect();
+
+    if parts.len() > 1 && !(parts.len() == 2 && parts[0].is_empty()) {
+        let extension_parts = if parts[0].is_empty() {
+            &parts[2..]
+        } else {
+            &parts[1..]
+        };
+
+        if let Some(suffix) = extensions::safe_path_extension_suffix(extension_parts) {
+            for ext in suffix {
+                out.push('.');
+                out.push_str(ext);
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_short_hash_length() {
+        let hash = short_hash("test");
+        assert_eq!(hash.len(), 16);
+    }
+
+    #[test]
+    fn test_short_hash_deterministic() {
+        let h1 = short_hash("same input");
+        let h2 = short_hash("same input");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_short_hash_different_inputs() {
+        let h1 = short_hash("input1");
+        let h2 = short_hash("input2");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_redact_path_preserves_extension() {
+        let redacted = redact_path("src/lib.rs");
+        assert!(redacted.ends_with(".rs"));
+    }
+
+    #[test]
+    fn test_redact_path_strips_untrusted_short_extensions() {
+        for path in ["file.secret", "file.passwd", "file.pass1234"] {
+            let redacted = redact_path(path);
+            assert_eq!(redacted.len(), 16);
+            assert!(!redacted.contains('.'));
+        }
+    }
+
+    #[test]
+    fn test_redact_path_no_extension() {
+        let redacted = redact_path("Makefile");
+        assert_eq!(redacted.len(), 16);
+        assert!(!redacted.contains('.'));
+    }
+
+    #[test]
+    fn test_redact_path_double_extension() {
+        // Preserves known safe compound suffixes as a unit.
+        let redacted = redact_path("archive.tar.gz");
+        assert!(redacted.ends_with(".tar.gz"));
+    }
+
+    #[test]
+    fn test_redact_path_preserves_only_known_compound_suffixes() {
+        let redacted = redact_path("fixture.json.rs");
+        assert!(redacted.ends_with(".rs"));
+        assert!(!redacted.ends_with(".json.rs"));
+    }
+
+    #[test]
+    fn test_redact_path_drops_unsafe_final_extension() {
+        let redacted = redact_path("secret.rs.bak");
+        assert_eq!(redacted.len(), 16);
+        assert!(!redacted.contains(".rs"));
+        assert!(!redacted.contains(".bak"));
+    }
+
+    #[test]
+    fn test_redact_path_deterministic() {
+        let r1 = redact_path("src/main.rs");
+        let r2 = redact_path("src/main.rs");
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn test_short_hash_normalizes_separators() {
+        // Same logical path with different separators should hash identically
+        let h1 = short_hash("src/lib");
+        let h2 = short_hash("src\\lib");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_short_hash_normalizes_mixed_separators() {
+        let h1 = short_hash("crates/foo/src/lib");
+        let h2 = short_hash("crates\\foo\\src\\lib");
+        let h3 = short_hash("crates/foo\\src/lib");
+        assert_eq!(h1, h2);
+        assert_eq!(h2, h3);
+    }
+
+    #[test]
+    fn test_short_hash_normalizes_double_slashes() {
+        assert_eq!(short_hash("src/lib.rs"), short_hash("src//lib.rs"));
+        assert_eq!(short_hash("src/lib.rs"), short_hash("src///lib.rs"));
+        assert_eq!(short_hash("src/lib.rs"), short_hash("src\\\\lib.rs"));
+        assert_eq!(short_hash("src/lib.rs"), short_hash("src\\\\/lib.rs"));
+    }
+
+    #[test]
+    fn test_redact_path_normalizes_double_slashes() {
+        assert_eq!(redact_path("src/main.rs"), redact_path("src//main.rs"));
+        assert_eq!(redact_path("src/main.rs"), redact_path("src///main.rs"));
+        assert_eq!(redact_path("src/main.rs"), redact_path("src\\\\main.rs"));
+        assert_eq!(redact_path("src/main.rs"), redact_path("src\\\\/main.rs"));
+    }
+
+    #[test]
+    fn test_redact_path_normalizes_separators() {
+        let r1 = redact_path("src/main.rs");
+        let r2 = redact_path("src\\main.rs");
+        assert_eq!(r1, r2);
+    }
+
+    #[test]
+    fn test_redact_path_normalizes_deep_paths() {
+        let r1 = redact_path("crates/tokmd/src/commands/run.rs");
+        let r2 = redact_path("crates\\tokmd\\src\\commands\\run.rs");
+        assert_eq!(r1, r2);
+        assert!(r1.ends_with(".rs"));
+    }
+
+    #[test]
+    fn test_short_hash_normalizes_dot_prefix() {
+        assert_eq!(short_hash("src/lib.rs"), short_hash("./src/lib.rs"));
+    }
+
+    #[test]
+    fn test_short_hash_normalizes_interior_dot_segments() {
+        assert_eq!(
+            short_hash("crates/foo/./src/lib.rs"),
+            short_hash("crates/foo/src/lib.rs")
+        );
+    }
+
+    #[test]
+    fn test_redact_path_normalizes_dot_prefix() {
+        assert_eq!(redact_path("src/main.rs"), redact_path("./src/main.rs"));
+    }
+}

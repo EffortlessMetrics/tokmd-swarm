@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://effortlessmetrics.dev/tokmd/schemas/review-map.schema.json",
+  "title": "tokmd Review Map",
+  "description": "Schema for .tokmd/review/review-map.json emitted by tokmd cockpit --review-packet-dir.",
+  "type": "object",
+  "required": ["schema", "base_ref", "head_ref", "source", "item_count", "items"],
+  "properties": {
+    "schema": { "type": "string", "const": "tokmd.review_map.v1" },
+    "base_ref": { "type": "string", "minLength": 1 },
+    "head_ref": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "const": "cockpit.review_plan" },
+    "evidence": { "$ref": "#/definitions/reviewMapEvidence" },
+    "item_count": { "type": "integer", "minimum": 0 },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/reviewMapItem" }
+    }
+  },
+  "definitions": {
+    "reviewMapEvidence": {
+      "type": "object",
+      "required": ["summary", "groups", "refs"],
+      "properties": {
+        "summary": { "$ref": "#/definitions/evidenceSummary" },
+        "groups": { "$ref": "#/definitions/evidenceGroups" },
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "evidenceSummary": {
+      "type": "object",
+      "required": [
+        "details",
+        "total_gates",
+        "available",
+        "degraded",
+        "stale",
+        "skipped",
+        "unavailable",
+        "missing"
+      ],
+      "properties": {
+        "details": { "type": "string", "const": "evidence.json#/gates" },
+        "total_gates": { "type": "integer", "minimum": 0 },
+        "available": { "type": "integer", "minimum": 0 },
+        "degraded": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "evidenceGroups": {
+      "type": "object",
+      "required": [
+        "details",
+        "available",
+        "degraded",
+        "stale",
+        "skipped",
+        "unavailable",
+        "missing"
+      ],
+      "properties": {
+        "details": { "type": "string", "const": "evidence.json#/gates" },
+        "available": { "$ref": "#/definitions/evidenceGateIds" },
+        "degraded": { "$ref": "#/definitions/evidenceGateIds" },
+        "stale": { "$ref": "#/definitions/evidenceGateIds" },
+        "skipped": { "$ref": "#/definitions/evidenceGateIds" },
+        "unavailable": { "$ref": "#/definitions/evidenceGateIds" },
+        "missing": { "$ref": "#/definitions/evidenceGateIds" }
+      }
+    },
+    "evidenceGateIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "reviewMapItemEvidence": {
+      "type": "object",
+      "required": [
+        "status",
+        "present",
+        "missing",
+        "degraded",
+        "stale",
+        "skipped",
+        "unavailable",
+        "refs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "available",
+            "missing",
+            "degraded",
+            "stale",
+            "skipped",
+            "unavailable"
+          ]
+        },
+        "present": { "$ref": "#/definitions/evidenceGateIds" },
+        "missing": { "$ref": "#/definitions/evidenceGateIds" },
+        "degraded": { "$ref": "#/definitions/evidenceGateIds" },
+        "stale": { "$ref": "#/definitions/evidenceGateIds" },
+        "skipped": { "$ref": "#/definitions/evidenceGateIds" },
+        "unavailable": { "$ref": "#/definitions/evidenceGateIds" },
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reviewMapItem": {
+      "type": "object",
+      "required": [
+        "rank",
+        "path",
+        "priority",
+        "priority_label",
+        "reason",
+        "complexity",
+        "lines_changed",
+        "evidence_refs",
+        "reproduce"
+      ],
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1 },
+        "source_index": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "minLength": 1 },
+        "priority": { "type": "integer", "minimum": 0 },
+        "priority_label": {
+          "type": "string",
+          "enum": ["highest", "medium", "low"]
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "complexity": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1, "maximum": 5 },
+            { "type": "null" }
+          ]
+        },
+        "lines_changed": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "proof_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "doc_artifacts_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence": { "$ref": "#/definitions/reviewMapItemEvidence" },
+        "reproduce": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1442 @@
+schema = "tokmd.proof_policy.v1"
+
+[defaults]
+mutation_timeout_seconds = 300
+coverage = "scoped"
+fail_on_unknown_non_rust = true
+
+[tools]
+rust = "stable"
+coverage = "cargo-llvm-cov"
+javascript = "npm"
+
+[executor]
+family = "coverage"
+ci_execution = "explicit_opt_in"
+max_dry_run_commands = 1
+
+[executor.pr]
+default_enabled = true
+required = false
+max_commands = 2
+codecov_upload = false
+
+[executor.promotion]
+window = "last_successful_runs"
+run_limit = 100
+min_observations = 1
+min_executed = 4
+min_scopes = 4
+min_artifacts = 4
+min_passing_collector_runs = 1
+required_gate = false
+default_codecov_upload = false
+
+[proof_run.pr]
+default_enabled = true
+profile = "fast"
+required = false
+artifact_name = "fast-proof-run"
+
+[[scope]]
+name = "workspace_dependency_graph"
+kind = "rust"
+paths = [
+  "Cargo.lock",
+  "Cargo.toml",
+  "crates/**/Cargo.toml",
+  "crates/tokmd-node/package.json",
+  "crates/tokmd-node/npm/package.json",
+  "deny.toml",
+  "crates/tokmd-types/tests/manifest_contract.rs",
+  "xtask/Cargo.toml",
+]
+packages = ["xtask"]
+proof = [
+  "cargo deny --all-features check",
+  "cargo test -p tokmd-types manifest_stays_clap_free --verbose",
+  "cargo xtask boundaries-check",
+  "cargo xtask publish-surface --json",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "vendored_home_patch"
+kind = "rust"
+paths = [
+  "Cargo.toml",
+  "vendor/home-0.5.12/**",
+]
+proof = [
+  "cargo tree -i home --edges normal",
+  "cargo test --manifest-path vendor/home-0.5.12/Cargo.toml --verbose",
+]
+reason = "The patched `home` crate is vendored to supply tokmd's non-Unix/non-Windows fallback while preserving the upstream Windows implementation."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "fuzz_harnesses"
+kind = "rust"
+paths = [
+  ".github/workflows/fuzz.yml",
+  "docs/testing.md",
+  "fuzz/Cargo.toml",
+  "fuzz/README.md",
+  "fuzz/corpus/**",
+  "fuzz/dict/**",
+  "fuzz/fuzz_targets/**",
+]
+packages = ["tokmd-fuzz"]
+proof = [
+  "cargo +nightly fuzz list",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "proof_control_plane"
+kind = "rust"
+paths = [
+  ".github/workflows/ci-policy.yml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/mutants.yml",
+  ".github/workflows/nix-full.yml",
+  ".github/workflows/nix-macos.yml",
+  ".github/workflows/no-panic-policy.yml",
+  ".github/workflows/pr-plan.yml",
+  ".github/workflows/proof-observation-collection.yml",
+  ".github/workflows/proof-executor.yml",
+  ".github/workflows/coverage.yml",
+  ".github/workflows/droid-review.yml",
+  ".github/workflows/droid.yml",
+  ".github/workflows/droid-security-scan.yml",
+  ".factory/rules/droid-review.md",
+  ".factory/skills/review-guidelines/SKILL.md",
+  "AGENTS.md",
+  "ci/proof.toml",
+  "codecov.yml",
+  "docs/external-services.md",
+  "docs/NEXT.md",
+  "docs/ci/ci-actuals.md",
+  "docs/ci/coverage.md",
+  "docs/agent-context/review-invariants.md",
+  "docs/agent-context/droid-smoke-tests.md",
+  "agents/shared/**",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/proof/**",
+  "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/affected.rs",
+  "xtask/src/tasks/boundaries_check.rs",
+  "xtask/src/tasks/bump.rs",
+  "xtask/src/tasks/ci_actuals.rs",
+  "xtask/src/tasks/ci_lane_whitelist.rs",
+  "xtask/src/tasks/ci_plan.rs",
+  "xtask/src/tasks/coverage_receipt.rs",
+  "xtask/src/tasks/doc_artifacts.rs",
+  "xtask/src/tasks/file_policy.rs",
+  "xtask/src/tasks/fixture_blobs_check.rs",
+  "xtask/src/tasks/jules_index.rs",
+  "xtask/src/tasks/mutation_scope.rs",
+  "xtask/src/tasks/mutation_summary.rs",
+  "xtask/src/tasks/perf_smoke.rs",
+  "xtask/src/tasks/proof_artifacts_check.rs",
+  "xtask/src/tasks/proof_executor_pr_policy.rs",
+  "xtask/src/tasks/proof_observation_run_ids.rs",
+  "xtask/src/tasks/proof_observation_status.rs",
+  "xtask/src/tasks/proof_observation_thresholds.rs",
+  "xtask/src/tasks/proof_policy.rs",
+  "xtask/src/tasks/proof_plan.rs",
+  "xtask/src/tasks/proof_run_pr_policy.rs",
+  "xtask/src/tasks/proof_workflow_status.rs",
+  "xtask/tests/affected_w91.rs",
+  "xtask/tests/ci_actuals_w96.rs",
+  "xtask/tests/coverage_receipt_w95.rs",
+  "xtask/tests/deep_w71.rs",
+  "xtask/tests/docs_schema_w72.rs",
+  "xtask/tests/docs_w43.rs",
+  "xtask/tests/fixture_blobs_w83.rs",
+  "xtask/tests/proof_policy_w90.rs",
+  "xtask/tests/proof_plan_w92.rs",
+  "xtask/tests/proof_workflow_status_w98.rs",
+  "xtask/tests/xtask_contract_w65.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo xtask proof-policy --check",
+  "cargo xtask ci-lane-whitelist",
+  "cargo test -p xtask bump --verbose",
+  "cargo test -p xtask --test deep_w71 --verbose",
+  "cargo test -p xtask --test xtask_contract_w65 --verbose",
+  "cargo test -p xtask proof_policy --verbose",
+  "cargo test -p xtask affected --verbose",
+  "cargo test -p xtask ci_actuals --verbose",
+  "cargo test -p xtask --test docs_schema_w72 --verbose",
+  "cargo test -p xtask --test docs_w43 --verbose",
+  "cargo test -p xtask fixture_blob --verbose",
+  "cargo test -p xtask jules_index --verbose",
+  "cargo test -p xtask mutation_scope --verbose",
+  "cargo test -p xtask mutation_summary --verbose",
+  "cargo test -p xtask perf_smoke --verbose",
+  "cargo test -p xtask proof_artifacts --verbose",
+  "cargo test -p xtask proof_executor_pr_policy --verbose",
+  "cargo test -p xtask proof_observation_run_ids --verbose",
+  "cargo test -p xtask proof_observation_status --verbose",
+  "cargo test -p xtask proof_observation_thresholds --verbose",
+  "cargo test -p xtask proof_plan --verbose",
+  "cargo test -p xtask proof_run_pr_policy --verbose",
+  "cargo test -p xtask proof_workflow_status --verbose",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "nix_release_validation"
+kind = "non_rust"
+paths = [
+  "flake.nix",
+]
+proof = [
+  "cargo xtask proof-policy --check",
+  "cargo test -p tokmd --test schema_validation --verbose",
+]
+reason = "Nix flake source filtering and package/check wiring are release-validation surfaces; local proof covers policy shape and schema tests while hosted Nix validates the flake itself."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "tokmd_core_ffi"
+kind = "rust"
+paths = [
+  "crates/tokmd-core/src/lib.rs",
+  "crates/tokmd-core/src/error.rs",
+  "crates/tokmd-core/src/mutation_tests.rs",
+  "crates/tokmd-core/src/receipts.rs",
+  "crates/tokmd-core/src/tests.rs",
+  "crates/tokmd-core/src/ffi/mod.rs",
+  "crates/tokmd-core/src/ffi/**",
+  "crates/tokmd-core/src/workflows/**",
+  "crates/tokmd-core/tests/**",
+]
+packages = ["tokmd-core"]
+proof = [
+  "cargo test -p tokmd-core lang_workflow --verbose",
+  "cargo test -p tokmd-core module_workflow --verbose",
+  "cargo test -p tokmd-core export_workflow --verbose",
+  "cargo test -p tokmd-core diff_workflow --verbose",
+  "cargo test -p tokmd-core --all-features analyze_workflow --verbose",
+  "cargo test -p tokmd-core ffi",
+  "cargo test -p tokmd-core --test ffi_parity_w53",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_envelope_contract"
+kind = "rust"
+paths = ["crates/tokmd-envelope/**"]
+packages = ["tokmd-envelope"]
+proof = ["cargo test -p tokmd-envelope --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_settings_contract"
+kind = "rust"
+paths = ["crates/tokmd-settings/**"]
+packages = ["tokmd-settings"]
+proof = ["cargo test -p tokmd-settings --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_python_binding"
+kind = "rust"
+paths = ["crates/tokmd-python/**"]
+packages = ["tokmd-python"]
+proof = ["cargo check -p tokmd-python --all-targets"]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "tokmd_node_binding"
+kind = "rust"
+paths = [
+  "crates/tokmd-node/src/**",
+  "crates/tokmd-node/index.d.ts",
+  "crates/tokmd-node/npm/index.d.ts",
+]
+packages = ["tokmd-node"]
+proof = ["cargo check -p tokmd-node --all-targets"]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "lint_policy"
+kind = "rust"
+paths = [
+  "Cargo.toml",
+  "clippy.toml",
+  "docs/CLIPPY_POLICY.md",
+  "policy/clippy-debt.toml",
+  "policy/clippy-exceptions.toml",
+  "policy/clippy-lints.toml",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/tasks/clippy_exceptions.rs",
+  "xtask/src/tasks/lint_policy.rs",
+  "xtask/src/tasks/mod.rs",
+  "xtask/tests/lint_policy_w93.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo xtask check-lint-policy",
+  "cargo xtask check-clippy-exceptions",
+  "cargo test -p xtask lint_policy --verbose",
+  "cargo test -p xtask clippy_exceptions --verbose",
+  "cargo clippy -p xtask --all-targets -- -D warnings",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "no_panic_policy"
+kind = "rust"
+paths = [
+  "docs/NO_PANIC_POLICY.md",
+  "policy/no-panic-allowlist.toml",
+  "xtask/Cargo.toml",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/no_panic.rs",
+  "xtask/tests/no_panic_w94.rs",
+]
+packages = ["xtask"]
+proof = [
+  # Advisory mode: blocks on schema/shape, expired, and stale entries; reports
+  # unallowlisted findings without failing while panic-family debt is burned
+  # down. Flip to `--strict` after `[lints] workspace = true` is enabled and
+  # the receipt ledger covers all remaining findings.
+  "cargo xtask check-no-panic-family",
+  "cargo test -p xtask no_panic --verbose",
+  "cargo clippy -p xtask --all-targets -- -D warnings",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "analysis_orchestration"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/Cargo.toml",
+  "crates/tokmd-analysis/src/analysis.rs",
+  "crates/tokmd-analysis/src/analysis/**",
+  "crates/tokmd-analysis/src/grid/**",
+  "crates/tokmd-analysis/src/lib.rs",
+  "crates/tokmd-analysis/tests/analysis_*.rs",
+  "crates/tokmd-analysis/tests/capability_reporting_w53.rs",
+  "crates/tokmd-analysis/tests/deep*.rs",
+  "crates/tokmd-analysis/tests/enricher_pipeline.rs",
+  "crates/tokmd-analysis/tests/feature_*.rs",
+  "crates/tokmd-analysis/tests/orchestration*.rs",
+  "crates/tokmd-analysis/tests/orchestrator.rs",
+  "crates/tokmd/src/commands/analyze.rs",
+  "crates/tokmd/tests/analyze_integration.rs",
+  "crates/tokmd/tests/bdd_analyze_scenarios_w50.rs",
+]
+packages = ["tokmd-analysis", "tokmd"]
+proof = [
+  "cargo test -p tokmd-analysis --all-features --test orchestrator --test orchestration_w54 --test orchestration_w68 --test orchestration_w73 --verbose",
+  "cargo test -p tokmd-analysis --all-features --test analysis_deep_w64 --test analysis_depth_w62 --test deep --test deep_analysis_w48 --verbose",
+  "cargo test -p tokmd-analysis --all-features --test orchestration receipt --verbose",
+  "cargo test -p tokmd-analysis --all-features feature --verbose",
+  "cargo test -p tokmd --test analyze_integration --verbose",
+  "cargo test -p tokmd --test bdd_analyze_scenarios_w50 --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_receipt_types"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis-types/src/envelope.rs",
+  "crates/tokmd-analysis-types/src/lib.rs",
+  "crates/tokmd-analysis-types/src/findings.rs",
+  "crates/tokmd-analysis-types/src/receipt.rs",
+  "crates/tokmd-analysis-types/src/util.rs",
+  "crates/tokmd-analysis-types/tests/**",
+  "docs/SCHEMA.md",
+]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_api_surface"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/api_surface.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types api_surface --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_archetype"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/archetype.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types archetype --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_args"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/args.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types args --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_assets"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/assets.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types asset --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_baseline"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis-types/src/baseline/**",
+  "crates/tokmd-analysis-types/src/baseline.rs",
+  "docs/baseline.schema.json",
+]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types baseline --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_churn"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/churn.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types churn --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_complexity"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis-types/src/complexity.rs",
+  "crates/tokmd-analysis-types/src/complexity/**",
+]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types complexity --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_corporate"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/corporate.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types domain --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_dependencies"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/dependencies.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types lockfile --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_derived"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/derived.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types derived --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_duplication"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/duplication.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types dup --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_effort"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis-types/src/effort.rs",
+  "crates/tokmd-analysis-types/src/effort/**",
+]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types effort --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_entropy"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/entropy.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types entropy --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_fun"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/fun.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types fun --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_git"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/git.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types git --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_imports"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/imports.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types import --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_license"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/license.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types license --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_source"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/source.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types source --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_types_topics"
+kind = "rust"
+paths = ["crates/tokmd-analysis-types/src/topics.rs"]
+packages = ["tokmd-analysis-types"]
+proof = ["cargo test -p tokmd-analysis-types topic --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_api_surface"
+kind = "rust"
+paths = ["crates/tokmd-analysis/src/api_surface/**"]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features api_surface --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_ast_shadow"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/Cargo.toml",
+  "crates/tokmd-analysis/examples/ast_shadow_perf.rs",
+  "crates/tokmd-analysis/src/ast/**",
+  "fixtures/ast-shadow/**",
+  "policy/ast-shadow-corpus.toml",
+  "docs/adr/0008-ast-foundation.md",
+  "docs/plans/ast-function-boundary-candidate.md",
+  "docs/plans/ast-shadow-comparison-runner.md",
+  "docs/specs/ast-shadow.md",
+  "xtask/Cargo.toml",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/tasks/ast_shadow_check.rs",
+  "xtask/src/tasks/ast_shadow_compare.rs",
+  "xtask/src/tasks/mod.rs",
+]
+packages = ["tokmd-analysis", "xtask"]
+proof = [
+  "cargo test -p tokmd-analysis --features ast ast --verbose",
+  "cargo run -p tokmd-analysis --features ast --example ast_shadow_perf -- --iterations 2 --files 2 --functions-per-file 3 --out target/perf/ast-shadow-perf.json",
+  "cargo test -p xtask ast_shadow --verbose",
+  "cargo xtask ast-shadow-compare --manifest policy/ast-shadow-corpus.toml --out target/tokmd-ast-shadow --summary-md target/tokmd-ast-shadow/summary.md --timing-json target/tokmd-ast-shadow/timing.json",
+  "cargo xtask ast-shadow-check --dir target/tokmd-ast-shadow --json target/tokmd-ast-shadow/check.json",
+]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "analysis_complexity"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/complexity/**",
+  "crates/tokmd-analysis/src/content/complexity.rs",
+  "crates/tokmd-analysis/src/content/complexity/**",
+  "crates/tokmd-analysis/src/source_complexity.rs",
+  "crates/tokmd-analysis/src/source_complexity/**",
+]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features complexity --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_content_assets"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/assets/**",
+  "crates/tokmd-analysis/src/content/**",
+  "crates/tokmd-analysis/tests/synthetic_private_key_security_pipeline.rs",
+]
+packages = ["tokmd-analysis"]
+proof = [
+  "cargo test -p tokmd-analysis --all-features assets --verbose",
+  "cargo test -p tokmd-analysis --all-features content --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_derived"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/cocomo81_core.rs",
+  "crates/tokmd-analysis/src/derived/**",
+  "crates/tokmd-analysis/tests/derived.rs",
+  "crates/tokmd-analysis/tests/mutant_killers.rs",
+]
+packages = ["tokmd-analysis"]
+proof = [
+  "cargo test -p tokmd-analysis --all-features derived --verbose",
+  "cargo test -p tokmd-analysis --all-features mutant --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_effort"
+kind = "rust"
+paths = ["crates/tokmd-analysis/src/effort/**"]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features effort --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_git"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/git/**",
+  "crates/tokmd-analysis/tests/git.rs",
+]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features git --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_halstead"
+kind = "rust"
+paths = ["crates/tokmd-analysis/src/halstead/**"]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features halstead --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_imports"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/imports/**",
+  "fuzz/fuzz_targets/fuzz_import_parser.rs",
+]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features imports --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_maintainability"
+kind = "rust"
+paths = ["crates/tokmd-analysis/src/maintainability/**"]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features maintainability --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_near_dup"
+kind = "rust"
+paths = ["crates/tokmd-analysis/src/near_dup/**"]
+packages = ["tokmd-analysis"]
+proof = ["cargo test -p tokmd-analysis --all-features near_dup --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_security_identity"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/archetype/**",
+  "crates/tokmd-analysis/src/entropy/**",
+  "crates/tokmd-analysis/src/fingerprint/**",
+  "crates/tokmd-analysis/src/license/**",
+]
+packages = ["tokmd-analysis"]
+proof = [
+  "cargo test -p tokmd-analysis --all-features archetype --verbose",
+  "cargo test -p tokmd-analysis --all-features entropy --verbose",
+  "cargo test -p tokmd-analysis --all-features fingerprint --verbose",
+  "cargo test -p tokmd-analysis --all-features license --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "analysis_topics_fun"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/fun/**",
+  "crates/tokmd-analysis/src/topics/**",
+]
+packages = ["tokmd-analysis"]
+proof = [
+  "cargo test -p tokmd-analysis --all-features fun --verbose",
+  "cargo test -p tokmd-analysis --all-features topics --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_init_tokeignore"
+kind = "rust"
+paths = [
+  "crates/tokmd-scan/src/tokeignore/**",
+  "crates/tokmd/src/commands/init.rs",
+  "crates/tokmd/src/cli/parser/init.rs",
+  "crates/tokmd/tests/cli_init_e2e.rs",
+  "crates/tokmd/tests/init_cli_w76.rs",
+]
+packages = ["tokmd-scan", "tokmd"]
+proof = [
+  "cargo test -p tokmd-scan tokeignore --verbose",
+  "cargo test -p tokmd --test cli_init_e2e --verbose",
+  "cargo test -p tokmd --test init_cli_w76 --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "model_scan_path_normalization"
+kind = "rust"
+paths = [
+  "crates/tokmd-model/src/aggregate.rs",
+  "crates/tokmd-model/src/children.rs",
+  "crates/tokmd-model/src/lib.rs",
+  "crates/tokmd-model/src/module_key/**",
+  "crates/tokmd-model/src/rows.rs",
+  "crates/tokmd-model/src/sorting.rs",
+  "crates/tokmd-model/tests/**",
+  "crates/tokmd-scan/src/ignore_patterns.rs",
+  "crates/tokmd-scan/src/in_memory.rs",
+  "crates/tokmd-scan/src/lib.rs",
+  "crates/tokmd-scan/src/path/**",
+  "crates/tokmd-scan/src/roots.rs",
+  "crates/tokmd-scan/tests/**",
+]
+packages = ["tokmd-model", "tokmd-scan"]
+proof = [
+  "cargo test -p tokmd-model children --verbose",
+  "cargo test -p tokmd-model normalize --verbose",
+  "cargo test -p tokmd-scan ignore --verbose",
+  "cargo test -p tokmd-scan normalize --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "git_subprocess_boundary"
+kind = "rust"
+paths = [
+  "crates/tokmd-git/src/command.rs",
+  "crates/tokmd-git/src/lib.rs",
+  "crates/tokmd-git/src/refs.rs",
+  "crates/tokmd-git/tests/**",
+  "crates/tokmd-scan/src/walk/git.rs",
+  "crates/tokmd-scan/src/walk/mod.rs",
+  "crates/tokmd/src/git_support.rs",
+]
+packages = ["tokmd-git", "tokmd-scan", "tokmd"]
+proof = [
+  "cargo test -p tokmd-git git_cmd_removes --verbose",
+  "cargo test -p tokmd-git --test integration --verbose",
+  "cargo test -p tokmd-scan git_cmd_removes --verbose",
+  "cargo test -p tokmd git_cmd_removes --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_core_context_git"
+kind = "rust"
+paths = [
+  "crates/tokmd-core/src/context_git/**",
+  "crates/tokmd-core/src/context_git.rs",
+]
+packages = ["tokmd-core"]
+proof = ["cargo test -p tokmd-core --features git context_git --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_git_intent_classification"
+kind = "rust"
+paths = ["crates/tokmd-git/src/intent.rs"]
+packages = ["tokmd-git", "tokmd-analysis"]
+proof = [
+  "cargo test -p tokmd-git classify --verbose",
+  "cargo test -p tokmd-analysis --all-features intent --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_git_ref_resolution"
+kind = "rust"
+paths = ["crates/tokmd-git/src/refs.rs"]
+packages = ["tokmd-git"]
+proof = [
+  "cargo test -p tokmd-git rev_exists --verbose",
+  "cargo test -p tokmd-git resolve_base_ref --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "format_analysis_rendering"
+kind = "rust"
+paths = [
+  "crates/tokmd-format/src/analysis/**",
+  "crates/tokmd-format/tests/analysis_format.rs",
+  "crates/tokmd-format/tests/analysis_format/**",
+  "crates/tokmd-format/tests/analysis_html.rs",
+  "crates/tokmd-format/tests/analysis_html/**",
+  "crates/tokmd-format/tests/render_derived_markdown.rs",
+]
+packages = ["tokmd-format"]
+proof = [
+  "cargo test -p tokmd-format --test render_derived_markdown --verbose",
+  "cargo test -p tokmd-format --test analysis_format --verbose",
+  "cargo test -p tokmd-format --test analysis_html --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "format_core_outputs"
+kind = "rust"
+paths = [
+  "crates/tokmd-format/src/diff/**",
+  "crates/tokmd-format/src/diff.rs",
+  "crates/tokmd-format/src/export/**",
+  "crates/tokmd-format/src/export.rs",
+  "crates/tokmd-format/src/lib.rs",
+  "crates/tokmd-format/src/summary/**",
+  "crates/tokmd-format/src/summary.rs",
+  "crates/tokmd-format/tests/format_*.rs",
+  "crates/tokmd-format/tests/snapshot*.rs",
+  "crates/tokmd-format/tests/snapshots/**",
+]
+packages = ["tokmd-format"]
+proof = [
+  "cargo test -p tokmd-format --test snapshots --verbose",
+  "cargo test -p tokmd-format --test snapshot_golden_w54 --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "format_badge_export_tree"
+kind = "rust"
+paths = [
+  "crates/tokmd-format/src/badge/**",
+  "crates/tokmd-format/src/export_tree/**",
+  "crates/tokmd/tests/badge_*.rs",
+  "crates/tokmd/tests/cli_badge_e2e.rs",
+  "fuzz/fuzz_targets/fuzz_badge_svg.rs",
+  "fuzz/fuzz_targets/fuzz_export_tree.rs",
+]
+packages = ["tokmd-format", "tokmd"]
+proof = [
+  "cargo test -p tokmd-format badge --verbose",
+  "cargo test -p tokmd --test badge_integration --verbose",
+  "cargo test -p tokmd --test cli_badge_e2e --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "format_redaction_scan_args"
+kind = "rust"
+paths = [
+  "crates/tokmd-format/src/redact/**",
+  "crates/tokmd-format/src/scan_args/**",
+  "crates/tokmd-format/tests/scan_args_reexport.rs",
+  "crates/tokmd-format/tests/test_redaction_leak.rs",
+  "crates/tokmd-format/tests/test_cyclonedx_redaction.rs",
+  "fuzz/fuzz_targets/fuzz_redact.rs",
+  "fuzz/fuzz_targets/fuzz_scan_args.rs",
+]
+packages = ["tokmd-format"]
+proof = [
+  "cargo test -p tokmd-format redact --verbose",
+  "cargo test -p tokmd-format scan_args --verbose",
+  "cargo test -p tokmd-format redaction --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "format_fun_outputs"
+kind = "rust"
+paths = [
+  "crates/tokmd-format/src/analysis/fun_outputs.rs",
+  "crates/tokmd-format/src/fun/**",
+  "crates/tokmd-format/tests/fun_*.rs",
+  "crates/tokmd-format/tests/snapshots/fun_*.snap",
+]
+packages = ["tokmd-format"]
+proof = ["cargo test -p tokmd-format --features fun fun --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_cli"
+kind = "rust"
+paths = [
+  "crates/tokmd/src/bin/**",
+  "crates/tokmd/src/cli/**",
+  "crates/tokmd/src/commands/**",
+  "crates/tokmd/src/config.rs",
+  "crates/tokmd/src/config/**",
+  "crates/tokmd/src/error_hints.rs",
+  "crates/tokmd/tests/cli_*.rs",
+  "crates/tokmd/tests/config_resolution.rs",
+  "crates/tokmd/tests/error_handling_w70.rs",
+  "docs/reference-cli.md",
+]
+packages = ["tokmd"]
+proof = [
+  "cargo test -p tokmd --test cli_snapshot_golden --verbose",
+  "cargo test -p tokmd --test cli_e2e --verbose",
+  "cargo test -p tokmd --test cli_parser_properties --verbose",
+  "cargo test -p tokmd --test config_resolution --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_context_handoff"
+kind = "rust"
+paths = [
+  "crates/tokmd-types/src/context.rs",
+  "crates/tokmd-types/tests/context*.rs",
+  "crates/tokmd-types/tests/handoff*.rs",
+  "crates/tokmd/src/context_pack.rs",
+  "crates/tokmd/src/context_pack/**",
+  "crates/tokmd/src/cli/parser/context.rs",
+  "crates/tokmd/src/commands/context.rs",
+  "crates/tokmd/src/commands/handoff.rs",
+  "crates/tokmd/src/commands/handoff/**",
+  "crates/tokmd/tests/context*.rs",
+  "crates/tokmd/tests/deep_context_handoff_w51.rs",
+  "crates/tokmd/tests/handoff_*.rs",
+  "docs/handoff.schema.json",
+  "docs/handoff-schema.md",
+]
+packages = ["tokmd-types", "tokmd"]
+proof = [
+  "cargo test -p tokmd-types context --verbose",
+  "cargo test -p tokmd-types handoff --verbose",
+  "cargo test -p tokmd context_pack --verbose",
+  "cargo test -p tokmd --test context_e2e --verbose",
+  "cargo test -p tokmd --test context_handoff_deep --verbose",
+  "cargo test -p tokmd --test handoff_integration --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_pipeline_integration"
+kind = "rust"
+paths = [
+  "crates/tokmd/tests/cross_crate_integration_w50.rs",
+  "crates/tokmd/tests/full_pipeline_w55.rs",
+]
+packages = ["tokmd"]
+proof = [
+  "cargo test -p tokmd --test cross_crate_integration_w50 --verbose",
+  "cargo test -p tokmd --test full_pipeline_w55 --verbose",
+]
+mutation = false
+coverage = true
+
+[[scope]]
+name = "tokmd_gate"
+kind = "rust"
+paths = [
+  "crates/tokmd-gate/**",
+  "crates/tokmd/src/commands/gate.rs",
+  "crates/tokmd/src/commands/gate/**",
+  "crates/tokmd/tests/gate_integration.rs",
+]
+packages = ["tokmd-gate", "tokmd"]
+proof = [
+  "cargo test -p tokmd-gate --verbose",
+  "cargo test -p tokmd --test gate_integration --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "tokmd_cockpit"
+kind = "rust"
+paths = [
+  ".github/workflows/cockpit.yml",
+  "crates/tokmd-cockpit/**",
+  "crates/tokmd-core/src/workflows/cockpit.rs",
+  "crates/tokmd-core/tests/cockpit_workflow.rs",
+  "crates/tokmd-types/src/cockpit.rs",
+  "crates/tokmd-types/src/cockpit/**",
+  "crates/tokmd-types/tests/cockpit_tests.rs",
+  "crates/tokmd/src/commands/cockpit.rs",
+  "crates/tokmd/schemas/review-map.schema.json",
+  "crates/tokmd/schemas/review-packet-evidence.schema.json",
+  "crates/tokmd/schemas/review-packet-manifest.schema.json",
+  "crates/tokmd/tests/cockpit_*.rs",
+  "docs/cockpit-proof-evidence.md",
+  "docs/review-packet.md",
+  "docs/review-map.schema.json",
+  "docs/review-packet-evidence.schema.json",
+  "docs/review-packet-manifest.schema.json",
+  "docs/tokmd-in-cockpit.md",
+]
+packages = ["tokmd-cockpit", "tokmd-core", "tokmd-types", "tokmd"]
+proof = [
+  "cargo test -p tokmd-cockpit --verbose",
+  "cargo test -p tokmd-core --features cockpit --test cockpit_workflow --verbose",
+  "cargo test -p tokmd-types cockpit --verbose",
+  "cargo test -p tokmd --test cockpit_integration --verbose",
+]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "review_packet_verifier"
+kind = "rust"
+paths = ["xtask/src/tasks/review_packet_check.rs"]
+packages = ["xtask", "tokmd-cockpit"]
+proof = [
+  "cargo test -p xtask review_packet --verbose",
+  "cargo test -p tokmd-cockpit review_packet --verbose",
+]
+reason = "The Rust-owned review packet verifier guards the cockpit review-packet artifact contract without changing cockpit receipt semantics."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "tokmd_wasm"
+kind = "rust"
+paths = [
+  "crates/tokmd-wasm/**",
+  "docs/capabilities/wasm.json",
+]
+packages = ["tokmd-wasm"]
+proof = ["cargo test -p tokmd-wasm --verbose"]
+mutation = true
+coverage = true
+
+[[scope]]
+name = "jules_workspace"
+kind = "non_rust"
+paths = [".jules/**"]
+proof = ["cargo xtask proof-policy --check"]
+reason = "Jules provenance, specs, investigations, friction notes, runbooks, ledgers, envelopes, and generated indexes are intentional repo knowledge artifacts."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "codex_workspace"
+kind = "non_rust"
+paths = [".codex/**"]
+proof = ["cargo xtask proof-policy --check"]
+reason = "Codex-local tracked execution state and operator notes are intentional repo knowledge artifacts when checked in."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "project_readme"
+kind = "non_rust"
+paths = ["README.md"]
+proof = ["cargo xtask docs --check"]
+reason = "The project README is a user-facing documentation surface; README-only edits should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "user_guides"
+kind = "non_rust"
+paths = [
+  "docs/artifacts.md",
+  "docs/action-quickstart.md",
+  "docs/browser.md",
+  "docs/browser-to-native.md",
+  "docs/examples/**",
+  "docs/install-and-try.md",
+  "docs/publishing-evidence.md",
+  "docs/release-readiness.md",
+  "docs/start-here.md",
+  "docs/handoff.md",
+  "docs/recipes.md",
+  "docs/tutorial.md",
+  "docs/troubleshooting.md",
+  "docs/user-paths.md",
+  "docs/workflows.md",
+]
+proof = ["cargo xtask docs --check"]
+reason = "User-facing tutorial, recipe, and troubleshooting docs should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "crate_guidance_docs"
+kind = "non_rust"
+paths = [
+  "crates/*/CLAUDE.md",
+  "crates/*/README.md",
+]
+proof = ["cargo xtask docs --check"]
+reason = "Crate-local README and agent guidance files are contributor-facing architecture surfaces; edits should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "project_truth_docs"
+kind = "non_rust"
+paths = [
+  "ROADMAP.md",
+  "tokmd-role.md",
+  "docs/PRODUCT.md",
+  "docs/NOW.md",
+  "docs/agent-workflows/**",
+  "docs/architecture-consolidation-plan.md",
+  "docs/architecture.md",
+  "docs/design.md",
+  "docs/evidencebus-integration.md",
+  "docs/implementation-plan.md",
+  "docs/install.md",
+  "docs/adr/**",
+  "docs/audits/**",
+  "docs/README.md",
+  "docs/VERIFICATION.md",
+  "docs/plans/**",
+  "docs/progress-events.md",
+  "docs/proposals/**",
+  "docs/requirements.md",
+  "docs/sensor-report-v1.md",
+  "docs/source-of-truth.md",
+  "docs/specs/**",
+  "docs/specification.md",
+  "docs/templates/**",
+  "docs/testing.md",
+]
+proof = ["cargo xtask docs --check"]
+reason = "Top-level architecture, ADR, design, roadmap, requirements, proposal/spec/plan/template, and audit docs are project truth surfaces; edits should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "doc_artifacts_policy"
+kind = "non_rust"
+paths = [
+  ".jules/goals/**",
+  "docs/adr/**",
+  "docs/agent-workflows/**",
+  "docs/plans/**",
+  "docs/proposals/**",
+  "docs/source-of-truth.md",
+  "docs/specs/**",
+  "docs/templates/**",
+  "policy/doc-artifacts.toml",
+  "xtask/src/tasks/doc_artifacts.rs",
+  "xtask/src/tasks/docs.rs",
+]
+proof = [
+  "cargo xtask doc-artifacts --check",
+  "cargo xtask docs --check",
+  "cargo xtask proof-policy --check",
+  "cargo test -p xtask doc_artifacts --verbose",
+]
+reason = "The documentation artifact policy and checker define source-of-truth artifact inputs, active-goal state, shape rules, and link validation without changing product behavior."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "browser_runner"
+kind = "non_rust"
+paths = ["web/runner/**", "docs/capabilities/wasm.json"]
+proof = [
+  "npm --prefix web/runner test",
+  "npm --prefix web/runner run check",
+]
+reason = "Browser worker and GitHub ingest logic are JavaScript/WASM-facing surfaces."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "github_action"
+kind = "non_rust"
+paths = [
+  ".github/workflows/test-action.yml",
+  "action.yml",
+  "docs/github-action.md",
+]
+proof = [
+  "cargo xtask docs --check",
+  "cargo test -p tokmd --test docs --verbose",
+]
+reason = "The composite GitHub Action is a YAML and documentation contract for repository consumers."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "ci_economics_docs"
+kind = "non_rust"
+paths = [
+  ".github/pull_request_template.md",
+  ".github/workflows/sync-labels.yml",
+  "docs/POLICY_ALLOWLISTS.md",
+  "docs/RIPR_EVIDENCE_POLICY.md",
+  "docs/ci/**",
+]
+proof = [
+  "cargo xtask docs --check",
+]
+reason = "CI verification economics documentation governs how the proof model is delivered; treated like other governance docs (CLIPPY_POLICY, NO_PANIC_POLICY) but grouped under docs/ci/ for the rollout."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "ripr_policy"
+kind = "rust"
+paths = [
+  ".github/workflows/badge-endpoints.yml",
+  ".github/workflows/ripr.yml",
+  "policy/ripr-suppressions.toml",
+  "ripr.toml",
+  "scripts/ripr-annotations.py",
+  "xtask/src/tasks/badges.rs",
+  "xtask/src/tasks/ripr_pr.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask badge --verbose",
+  "cargo test -p xtask ripr --verbose",
+  "cargo xtask check-file-policy",
+  "cargo xtask proof-policy --check",
+]
+reason = "RIPR config, advisory workflow, wrappers, annotations, and suppression ledger are PR evidence surfaces; they remain advisory and must route through proof and file-policy checks."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "verification_badges"
+kind = "rust"
+paths = [
+  "badges/*.json",
+  "badges/README.md",
+  "xtask/src/tasks/badges.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask badge --verbose",
+  "cargo xtask docs --check",
+  "cargo xtask check-file-policy",
+]
+reason = "Committed Shields endpoint JSON and generation helpers are public verification surfaces; detailed evidence remains under target/ or CI artifacts."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "file_policy"
+kind = "non_rust"
+paths = [
+  "_fix_branch.ps1",
+  "run_checks.ps1",
+  "run_tests.bat",
+  "docs/FILE_POLICY.md",
+  "policy/non-rust-allowlist.toml",
+  "*.patch",
+  "**/*.patch",
+]
+proof = [
+  "cargo xtask check-file-policy",
+]
+reason = "Non-Rust file allowlist governance: every non-Rust file in the repo must match an explicit allow entry."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "ci_economics_policy"
+kind = "non_rust"
+paths = [
+  "policy/ci-lane-whitelist.toml",
+  "policy/ci-whitelist-exceptions.toml",
+]
+proof = [
+  "cargo xtask proof-policy --check",
+]
+reason = "CI lane whitelist and its docs govern verification economics receipts; checked via proof-policy and the lane whitelist linter (PR 03 onward)."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "ci_pr_plan"
+kind = "non_rust"
+paths = [
+  "policy/ci-risk-packs.toml",
+]
+proof = [
+  "cargo xtask proof-policy --check",
+]
+reason = "PR Plan policy data: risk-pack routing and the LEM-aware advisory plan."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "release_metadata"
+kind = "non_rust"
+paths = [
+  ".github/workflows/release.yml",
+  "CHANGELOG.md",
+  "docs/releases/**",
+]
+proof = [
+  "cargo xtask version-consistency",
+  "cargo xtask publish-surface --json --verify-publish",
+  "cargo xtask docs --check",
+]
+reason = "CHANGELOG and release workflow changes are release artifacts; proof routes to version consistency, publish-surface verification, and docs checks."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "schema_contracts"
+kind = "rust"
+paths = [
+  "crates/tokmd/schemas/**",
+  "crates/tokmd/tests/schema*.rs",
+  "crates/tokmd-types/src/context.rs",
+  "crates/tokmd-types/src/diff.rs",
+  "crates/tokmd-types/src/inventory.rs",
+  "crates/tokmd-types/src/lib.rs",
+  "crates/tokmd-types/tests/schema*.rs",
+  "docs/SCHEMA.md",
+  "docs/adr/0007-schema-family-versioning.md",
+  "docs/baseline.schema.json",
+  "docs/handoff.schema.json",
+  "docs/handoff-schema.md",
+  "docs/review-map.schema.json",
+  "docs/review-packet-evidence.schema.json",
+  "docs/review-packet-manifest.schema.json",
+  "docs/schema.json",
+  "docs/requirements.md",
+]
+packages = ["tokmd-types", "tokmd"]
+proof = [
+  "cargo test -p tokmd-types schema --verbose",
+  "cargo test -p tokmd --test schema_sync --verbose",
+  "cargo test -p tokmd --test schema_doc_sync --verbose",
+  "cargo xtask docs --check",
+]
+mutation = false
+coverage = true
+
+[[allow.workspace_area]]
+name = "jules_knowledge_workspace"
+paths = [".jules/**"]
+reason = "Durable specs, investigations, friction notes, persona learnings, and generated indexes are allowed here."
+discourage = [
+  "raw terminal logs",
+  "duplicated run transcripts",
+  "large binary artifacts",
+]
+
+[[dependency_boundary]]
+name = "retired_tokmd_config_must_not_return"
+packages = ["*"]
+forbid = ["tokmd-config"]
+reason = "tokmd-config is retired; ownership lives in tokmd-settings, tokmd-core, and tokmd."
+
+[[forbid.fixture_blob]]
+name = "committed_crypto_fixture_blobs"
+extensions = [
+  "cer",
+  "crt",
+  "der",
+  "jwk",
+  "jwks",
+  "key",
+  "p12",
+  "p8",
+  "pem",
+  "pfx",
+  "pk8",
+]
+markers = [
+  "BEGIN CERTIFICATE",
+  "BEGIN EC PRIVATE KEY",
+  "BEGIN OPENSSH PRIVATE KEY",
+  "BEGIN PRIVATE KEY",
+  "BEGIN RSA PRIVATE KEY",
+]
+allow = [
+  ".claude/**",
+  ".jules/**",
+  "ci/proof.toml",
+  "vendor/**",
+  "xtask/src/tasks/fixture_blobs_check.rs",
+]
+reason = "Crypto material should be generated at runtime or explicitly documented in an allowlisted workspace area."

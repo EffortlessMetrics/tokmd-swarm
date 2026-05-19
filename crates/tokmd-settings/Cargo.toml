@@ -1,0 +1,22 @@
+[package]
+name = "tokmd-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Clap-free settings types for tokmd scan and format layers."
+readme = "README.md"
+keywords = ["settings", "configuration", "code-analysis", "serde"]
+categories = ["development-tools", "config"]
+documentation = "https://docs.rs/tokmd-settings"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml = "1.1"
+tokmd-types.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,236 @@
+name: Proof Executor Experiment
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base branch or ref for affected proof planning
+        required: false
+        default: main
+      upload_codecov:
+        description: Upload generated scoped LCOV files to Codecov
+        required: false
+        type: boolean
+        default: false
+      max_evidence_commands:
+        description: Maximum advisory evidence commands to execute; blank uses ci/proof.toml [executor.pr]
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proof-executor-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: ""
+
+jobs:
+  scoped-coverage-executor:
+    name: Scoped Coverage Executor (Non-Required)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PROOF_BASE_REF: ${{ github.event.pull_request.base.ref || github.event.inputs.base_ref || 'main' }}
+      PROOF_EXECUTOR_MAX_COMMANDS_INPUT: ${{ github.event.inputs.max_evidence_commands || '' }}
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Use larger writable target dir
+        run: echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/target" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-directories: ${{ runner.temp }}/target
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Resolve executor PR policy
+        run: |
+          set -euo pipefail
+          mkdir -p target/proof
+          cargo xtask proof-policy --json-output target/proof/proof-policy.json
+          cargo xtask proof-executor-pr-policy \
+            --proof-policy-json target/proof/proof-policy.json \
+            --env-output target/proof/proof-executor-pr.env \
+            --max-commands "${PROOF_EXECUTOR_MAX_COMMANDS_INPUT}"
+          cat target/proof/proof-executor-pr.env >> "$GITHUB_ENV"
+
+      - name: Fetch base ref
+        run: git fetch origin "${PROOF_BASE_REF}":"refs/remotes/origin/${PROOF_BASE_REF}" || true
+
+      - name: Execute planner-selected scoped coverage
+        env:
+          CI: true
+        run: |
+          set +e
+          mkdir -p target/proof
+          cargo llvm-cov clean --workspace
+
+          cargo xtask affected --base "origin/${PROOF_BASE_REF}" --head HEAD --json-output target/proof/affected.json
+          affected_status=$?
+
+          cargo xtask proof --profile affected --base "origin/${PROOF_BASE_REF}" --head HEAD --executor-mode execute --executor-max-commands "${PROOF_EXECUTOR_MAX_COMMANDS}" --allow-ci-evidence-execution --plan-json target/proof/proof-plan.json --executor-summary target/proof/executor-summary.json --executor-manifest target/proof/executor-manifest.json
+          executor_status=$?
+
+          cargo xtask proof-execution-artifacts-check --executor-summary target/proof/executor-summary.json --executor-manifest target/proof/executor-manifest.json --json-output target/proof/proof-execution-artifacts-check.json > target/proof/proof-execution-artifacts-check.txt 2>&1
+          verifier_status=$?
+          if [ "${verifier_status}" -eq 0 ]; then
+            cargo xtask proof-execution-observation --executor-summary target/proof/executor-summary.json --executor-manifest target/proof/executor-manifest.json --output target/proof/proof-executor-observation.json > target/proof/proof-execution-observation.txt 2>&1
+            observation_status=$?
+            if [ "${observation_status}" -eq 0 ]; then
+              cargo xtask proof-execution-observations-summary --observations-dir target/proof --output target/proof/proof-executor-observation-collection.json --summary-md target/proof/proof-executor-observation-collection.md > target/proof/proof-execution-observations-summary.txt 2>&1
+              collection_status=$?
+            else
+              collection_status=1
+              echo "executor observation did not pass generation" > target/proof/proof-execution-observations-summary.txt
+            fi
+          else
+            observation_status=1
+            collection_status=1
+            echo "executor artifacts did not pass verification" > target/proof/proof-execution-observation.txt
+            echo "executor artifacts did not pass verification" > target/proof/proof-execution-observations-summary.txt
+          fi
+
+          cargo xtask proof-workflow-status \
+            --workflow-kind scoped-coverage-executor \
+            --status "affected_status=${affected_status}" \
+            --status "executor_status=${executor_status}" \
+            --status "verifier_status=${verifier_status}" \
+            --status "observation_status=${observation_status}" \
+            --status "collection_status=${collection_status}" \
+            --proof-policy target/proof/proof-policy.json \
+            --affected target/proof/affected.json \
+            --proof-plan target/proof/proof-plan.json \
+            --executor-summary target/proof/executor-summary.json \
+            --executor-manifest target/proof/executor-manifest.json \
+            --proof-execution-artifacts-check target/proof/proof-execution-artifacts-check.json \
+            --proof-executor-observation target/proof/proof-executor-observation.json \
+            --proof-executor-observation-collection target/proof/proof-executor-observation-collection.json \
+            --json target/proof/proof-workflow-status.json \
+            --summary-md target/proof/proof-workflow-status.md \
+            --env-output target/proof/proof-workflow-status.env > target/proof/proof-workflow-status.txt 2>&1
+          proof_workflow_status_status=$?
+
+          if [ "${proof_workflow_status_status}" -eq 0 ]; then
+            cargo xtask proof-workflow-status-check \
+              --status target/proof/proof-workflow-status.json \
+              --json target/proof/proof-workflow-status-check.json > target/proof/proof-workflow-status-check.txt 2>&1
+            proof_workflow_status_check_status=$?
+          else
+            printf 'proof-workflow-status-check skipped because proof-workflow-status exited %s\n' "${proof_workflow_status_status}" > target/proof/proof-workflow-status-check.txt
+            proof_workflow_status_check_status=0
+          fi
+
+          {
+            echo "affected_status=${affected_status}"
+            echo "executor_status=${executor_status}"
+            echo "verifier_status=${verifier_status}"
+            echo "observation_status=${observation_status}"
+            echo "collection_status=${collection_status}"
+          } > target/proof/status.env
+
+          {
+            echo "## Scoped Coverage Executor"
+            echo ""
+            echo "| Command | Exit |"
+            echo "| --- | ---: |"
+            echo "| affected | ${affected_status} |"
+            echo "| proof executor | ${executor_status} |"
+            echo "| execution artifact verifier | ${verifier_status} |"
+            echo "| execution observation | ${observation_status} |"
+            echo "| observation collection | ${collection_status} |"
+            echo ""
+            echo "| Policy | Value |"
+            echo "| --- | --- |"
+            echo "| PR default enabled | ${PROOF_EXECUTOR_PR_DEFAULT_ENABLED} |"
+            echo "| PR required | ${PROOF_EXECUTOR_PR_REQUIRED} |"
+            echo "| PR Codecov upload | ${PROOF_EXECUTOR_PR_CODECOV_UPLOAD} |"
+            echo "| executor max commands | ${PROOF_EXECUTOR_MAX_COMMANDS} |"
+            echo "| executor max commands source | ${PROOF_EXECUTOR_MAX_COMMANDS_SOURCE} |"
+            echo ""
+            echo "This is an explicitly non-required PR/manual experiment. It runs only planner-selected non-required coverage commands and does not replace required PR proof jobs."
+            echo ""
+            cat target/proof/proof-execution-artifacts-check.txt
+            echo ""
+            cat target/proof/proof-execution-observation.txt
+            echo ""
+            cat target/proof/proof-execution-observations-summary.txt
+            if [ -f target/proof/proof-executor-observation-collection.md ]; then
+              echo ""
+              cat target/proof/proof-executor-observation-collection.md
+            fi
+            if [ -f target/proof/proof-workflow-status.txt ]; then
+              echo ""
+              cat target/proof/proof-workflow-status.txt
+            fi
+            if [ -f target/proof/proof-workflow-status-check.txt ]; then
+              echo ""
+              cat target/proof/proof-workflow-status-check.txt
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${affected_status}" -ne 0 ]; then
+            exit "${affected_status}"
+          fi
+          if [ "${executor_status}" -ne 0 ]; then
+            exit "${executor_status}"
+          fi
+          if [ "${verifier_status}" -ne 0 ]; then
+            exit "${verifier_status}"
+          fi
+          if [ "${observation_status}" -ne 0 ]; then
+            exit "${observation_status}"
+          fi
+          if [ "${collection_status}" -ne 0 ]; then
+            exit "${collection_status}"
+          fi
+
+          if [ "${proof_workflow_status_status}" -ne 0 ]; then
+            exit "${proof_workflow_status_status}"
+          fi
+
+          if [ "${proof_workflow_status_check_status}" -ne 0 ]; then
+            exit "${proof_workflow_status_check_status}"
+          fi
+
+          exit 0
+
+      - name: Upload proof executor artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-executor-artifacts
+          path: target/proof/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload scoped coverage to Codecov
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.upload_codecov == 'true' }}
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/proof/coverage/*.lcov
+          flags: rust-scoped-executor
+          name: rust-scoped-executor
+          fail_ci_if_error: false
+          verbose: true
