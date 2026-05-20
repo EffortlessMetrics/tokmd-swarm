@@ -43,6 +43,9 @@ Tokmd Rust Small on GitHub Hosted
 Only one implementation job runs in a normal workflow run, so those job names
 are intentionally not stable branch-protection checks.
 
+`main` branch protection requires only `Tokmd Rust Small Result` with strict
+status checks enabled.
+
 ## Route Order
 
 The router checks org self-hosted runner state with `EM_RUNNER_READ_TOKEN` and
@@ -151,6 +154,10 @@ showed only 58GB free on `/mnt/ci-scratch`, below the 100GB disk guard.
   free, so tokmd keeps the smaller `CX43 -> CX53 -> GitHub-hosted` route.
 - CX53 backfill proof: forced `workflow_dispatch` on `main` selected CX53 and
   passed `Tokmd Rust Small Result` in run `26129908319`.
+- GitHub-hosted fallback proof: forced `workflow_dispatch` on `main` selected
+  GitHub-hosted and passed `Tokmd Rust Small Result` in run `26144499931`.
+- Branch protection proof: `main` requires only `Tokmd Rust Small Result`; the
+  conditional route and implementation jobs are not required checks.
 
 ## Machine Cutover Rule
 
