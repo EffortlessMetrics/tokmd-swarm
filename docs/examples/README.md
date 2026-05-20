@@ -15,6 +15,7 @@ artifact set.
 - [Browser receipt tree](browser-receipt-tree.md)
 - [Publishing evidence tree](publishing-evidence-tree.md)
 - [Real user path smoke run](real-user-path-smoke-run.md)
+- [Swarm user path smoke run](swarm-user-path-smoke-run.md)
 
 ## Rules
 
