@@ -1,6 +1,6 @@
 # tokmd Swarm Publication Model
 
-Status: active topology target.
+Status: active topology.
 
 This document defines the durable repository roles and Git graph rules for
 `EffortlessMetrics/tokmd` and `EffortlessMetrics/tokmd-swarm`. It is a repo
@@ -8,7 +8,8 @@ topology contract, not a product behavior change.
 
 ## Goal
 
-`tokmd` and `tokmd-swarm` should share one real commit graph.
+`tokmd` and `tokmd-swarm` share one real commit graph after the
+2026-05-21 history realignment.
 
 ```text
 EffortlessMetrics/tokmd
@@ -34,6 +35,24 @@ tokmd-swarm fast-forwards to the publication merge commit.
 
 No new orphan content-sync flow should be used after realignment except as an
 explicit emergency repair.
+
+The current graph invariant is:
+
+```bash
+git fetch origin main --prune
+git fetch publication main --prune
+git rev-list --left-right --count publication/main...origin/main
+```
+
+After a publication import and swarm fast-forward, the ahead/behind result
+should be:
+
+```text
+0 0
+```
+
+Use the local remote name that points at `EffortlessMetrics/tokmd` in place of
+`publication` when it differs.
 
 ## Repository Roles
 
@@ -209,13 +228,16 @@ tokmd/main:
     S1 -- S2 -- S3  S4 -- S5
 ```
 
-## Realignment From The Orphan Import
+## Realignment Record And Emergency Repair
 
-The current `tokmd-swarm` history was originally seeded by an orphan content
-import. That was useful for proving same-repo routed CI, but it is not the
-steady-state topology.
+`tokmd-swarm` history was originally seeded by an orphan content import. That
+was useful for proving same-repo routed CI, but it was not the steady-state
+topology. The 2026-05-21 realignment replaced that orphan main line with
+`tokmd/main` history and proved the publication loop with merge-commit imports
+and fast-forward syncs back to swarm.
 
-Realignment is an admin operation, not a normal PR:
+Future realignment should be treated as an emergency repair or admin recovery
+operation, not as a normal PR:
 
 ```text
 Replace tokmd-swarm/main with a branch based on tokmd/main history.
@@ -226,7 +248,7 @@ base. Before the reset, publication workflows must be made dual-repo safe so
 the shared tree can include swarm-aware files without accidentally running
 publication-only behavior in `tokmd-swarm`.
 
-Realignment sequence:
+The repair sequence is:
 
 1. Freeze new swarm PRs and agent work.
 2. Land shared-history docs in `tokmd`.
@@ -240,7 +262,8 @@ Realignment sequence:
 8. Perform the first publication import with a merge commit.
 9. Fast-forward `tokmd-swarm/main` to the publication merge commit.
 
-After this sequence, content-sync PRs should stop.
+After this sequence, content-sync PRs should stop again and the graph invariant
+above should return to `0 0`.
 
 ## Release And Hotfix Work
 
