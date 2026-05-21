@@ -2,7 +2,7 @@
 
 ## Cancellation
 
-Every workflow defines a `concurrency` group with the shape:
+PR-facing workflows define a `concurrency` group with the shape:
 
 ```yaml
 concurrency:
@@ -20,6 +20,15 @@ The conditional cancels only when GitHub fires `synchronize` (a new
 commit pushed). All other PR events — `labeled`, `unlabeled`, `opened`,
 `reopened` — leave existing runs alone, and their replacement runs start
 fresh with the new state.
+
+Publication-only Nix workflows are different. They do not run on PR events.
+`nix-full.yml` is commit-scoped for successful `CI` workflow runs on
+`tokmd/main`, so a newer publication merge does not cancel an older Nix full
+validation for a prior commit. These long side validations have explicit job
+timeouts and are release/publication evidence, not the normal swarm workbench
+gate. Treat an in-progress Nix full run as a release-readiness caveat, not as a
+reason to block a green `tokmd-swarm` PR, a merge-commit publication import, or
+the follow-up fast-forward back to swarm.
 
 ## Cache save policy
 
@@ -49,5 +58,5 @@ return without writing.
 | `cockpit.yml` | sync-only | `save-if: main` |
 | `proof-executor.yml` | sync-only | `save-if: main` |
 | `proof-observation-collection.yml` | sync-only | `save-if: main` |
-| `nix-full.yml` | sync-only | n/a |
-| `nix-macos.yml` | sync-only | n/a |
+| `nix-full.yml` | commit-scoped side validation | n/a |
+| `nix-macos.yml` | ref-scoped side validation | n/a |
