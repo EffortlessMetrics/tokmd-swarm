@@ -33,7 +33,7 @@ source_repo: EffortlessMetrics/tokmd
 source_branch: main
 source_sha: a45db1e5d4cbd836ed0918cad351af74cae2108c
 swarm_repo: EffortlessMetrics/tokmd-swarm
-swarm_sync_commit: pending sync PR merge
+swarm_sync_commit: 73147f9bd3d26b3c02c058a5f2e8b905fefe7d8e
 ```
 
 After a sync, swarm content should match the source repo at `source_sha` except
