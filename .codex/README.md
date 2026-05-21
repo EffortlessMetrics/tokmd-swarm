@@ -3,6 +3,21 @@
 This directory is reserved for Codex-local tracked execution state and operator
 notes when a Codex workflow needs durable in-repo context.
 
+## Repo Topology
+
+Normal tokmd development targets `EffortlessMetrics/tokmd-swarm`. Start new
+work from `tokmd-swarm/main`, keep each branch PR-sized, wait for the required
+`Tokmd Rust Small Result` check, and squash-merge aligned PRs into swarm.
+
+`EffortlessMetrics/tokmd` remains the publication repository. Do not push
+feature work, release tags, GitHub releases, crates.io publishes, Docker pushes,
+signing changes, or `v1` alias movement from swarm. Publication imports happen
+by merge commit in `tokmd`, followed by a fast-forward of `tokmd-swarm/main` to
+the publication merge commit.
+
+See [`../docs/ci/swarm-routing.md`](../docs/ci/swarm-routing.md) for the full
+dual-repo workflow, graph invariant, and emergency repair rules.
+
 ## Commit And Push Policy
 
 For PR-bound work, Codex may create scoped branches, commit scoped changes, push
