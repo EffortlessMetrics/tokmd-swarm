@@ -9,7 +9,10 @@ for maintainers and agents, not a new product feature.
 ## Goal
 
 Keep tokmd's repository knowledge reviewable and enforceable by putting each
-kind of truth in the artifact that can best carry it.
+kind of truth in the artifact that can best carry it. The repo-native spec
+namespace is rooted at `.tokmd-spec/`; established source-of-truth documents
+under `docs/` remain valid until they are deliberately promoted, indexed, moved,
+or superseded.
 
 The intended flow is:
 
@@ -36,8 +39,8 @@ the owning artifact before relying on chat history.
 When planning a lane:
 
 1. Read `docs/NEXT.md` for the current operating mode.
-2. Read the accepted plan/spec/ADR/policy files linked by `docs/NEXT.md`, the
-   PR, or current repo guidance.
+2. Read `.tokmd-spec/index.toml` and the accepted plan/spec/ADR/policy files
+   linked by `docs/NEXT.md`, the PR, or current repo guidance.
 3. Create or update a proposal only when the why, alternatives, or open
    questions need durable review.
 4. Create or update a spec when behavior, artifact shape, compatibility, or
@@ -70,6 +73,7 @@ changing a lane, see `docs/agent-workflows/source-of-truth.md`.
 
 | Artifact | Owns | Does not own |
 | --- | --- | --- |
+| `.tokmd-spec/` | Repo-native durable namespace, index, future proposal/spec/ADR/lane/closeout artifacts, and links to durable artifacts that still live under `docs/`. | Tool-specific execution state, raw run logs, or unindexed alternate truth stores. |
 | `docs/proposals/` | Exploratory rationale, alternatives, open questions, and the reason a change should exist before it becomes a contract. | Final behavior contracts, merge verdicts, or machine policy. |
 | `docs/specs/` | Testable behavior contracts, artifact shapes, compatibility rules, proof requirements, and accepted semantics. | Historical decision rationale or PR-by-PR sequencing. |
 | `docs/adr/` | Durable architecture, packaging, boundary, or governance decisions and their consequences. | Detailed behavior matrices that should be tested as specs. |

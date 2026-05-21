@@ -4,9 +4,9 @@ Status: active workflow guide.
 
 Use this guide when starting, continuing, or handing off a tokmd lane. It is
 operational guidance for humans and agents; the durable ownership rules remain
-in `docs/source-of-truth.md`, `docs/specs/`, `docs/adr/`, `docs/plans/`,
-`AGENTS.md`, `.codex/` state where present, `ci/proof.toml`, and
-`policy/*.toml`.
+in `.tokmd-spec/`, `.tokmd-spec/index.toml`, `docs/source-of-truth.md`,
+`docs/specs/`, `docs/adr/`, `docs/plans/`, `AGENTS.md`, `.codex/` state where
+present, `ci/proof.toml`, and `policy/*.toml`.
 
 For Codex work, `.jules/**` is Jules provenance and ambient suggestion state.
 Review it when relevant, but do not treat it as Codex's primary active-lane
@@ -16,8 +16,8 @@ controller.
 
 1. Check the open PR queue.
 2. Read `docs/NEXT.md` for the current operating mode.
-3. Read the accepted plan first, then any linked spec, ADR, proposal, or policy
-   file named by current repo guidance or PR context.
+3. Read `.tokmd-spec/index.toml`, then the accepted plan, linked spec, ADR,
+   proposal, or policy file named by current repo guidance or PR context.
 4. Review `.jules/goals/active.toml` as Jules-local context when it is relevant,
    not as Codex's primary lane selector.
 5. Confirm `docs/NEXT.md`, accepted docs/plans/specs/ADRs, and the PR context do
@@ -35,6 +35,8 @@ truth before opening an implementation branch.
   decisions.
 - Use a plan for PR order, dependencies, validation commands, and stop
   conditions.
+- Use `.tokmd-spec/` and `.tokmd-spec/index.toml` for repo-native durable rails
+  and for links to durable artifacts that still live under `docs/`.
 - Use `.jules/goals/active.toml` only for Jules-local machine-readable state and
   suggestions.
 - Use `.codex/` for Codex-local tracked state when a Codex workflow needs a

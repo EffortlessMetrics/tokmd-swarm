@@ -1,8 +1,14 @@
 # tokmd repo-native spec namespace
 
-The durable source-of-truth stack for tokmd lives in `.tokmd-spec/`.
+The durable repo-native source-of-truth namespace for tokmd is `.tokmd-spec/`.
 
 This namespace owns long-term proposal/spec/ADR/lane/closeout rails and keeps them separate from tool-specific execution state.
+
+Existing accepted source-of-truth documents under `docs/proposals/`,
+`docs/specs/`, `docs/adr/`, and `docs/plans/` remain valid until a deliberate
+migration moves or supersedes them. New repo-native durable artifacts should be
+rooted here or linked from `.tokmd-spec/index.toml` so agents can find the
+current control plane without searching tool-local state.
 
 ## Durable ownership
 

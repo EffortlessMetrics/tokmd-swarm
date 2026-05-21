@@ -25,6 +25,7 @@ proof gates should be promoted.
 
 The documentation artifact checker reads these repo paths:
 
+- `.tokmd-spec/README.md`
 - `docs/source-of-truth.md`
 - `docs/proposals/**/*.md`
 - `docs/specs/**/*.md`
@@ -115,6 +116,22 @@ The checker should verify only routing-level facts:
 - referenced policy files exist;
 - source-of-truth documentation does not claim a policy file that is absent;
 - doc-artifact rules do not conflict with `cargo xtask proof-policy --check`.
+
+### Repo-Native Spec Namespace
+
+`.tokmd-spec/README.md` defines the durable repo-native namespace and its
+separation from tool-local state.
+
+The checker should require:
+
+- a top-level Markdown heading;
+- `## Durable ownership`;
+- `## External and awareness-only namespaces`;
+- `## Source-of-truth chain`.
+
+`.tokmd-spec/index.toml` is the index for durable artifacts in or linked from
+the namespace. Index schema enforcement is intentionally separate from this
+first routing check until the indexed artifact shape is promoted.
 
 ## Outputs
 

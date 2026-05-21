@@ -36,6 +36,15 @@ forbid_absolute_links = true
 require_existing_links = true
 
 [[required_doc]]
+path = ".tokmd-spec/README.md"
+purpose = "repo-native namespace guide for durable spec rails and tool-local separation"
+required_sections = [
+  "## Durable ownership",
+  "## External and awareness-only namespaces",
+  "## Source-of-truth chain",
+]
+
+[[required_doc]]
 path = "docs/source-of-truth.md"
 purpose = "human routing guide for durable docs, policy, active agent state, and PR evidence"
 required_sections = [

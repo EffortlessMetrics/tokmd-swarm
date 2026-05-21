@@ -499,7 +499,7 @@ mod tests {
 
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(report.active_goals, 1);
-        assert_eq!(report.required_docs, 1);
+        assert_eq!(report.required_docs, 2);
         assert_eq!(report.family_files, 4);
     }
 
@@ -515,7 +515,7 @@ mod tests {
         let receipt = read_json(&output);
         assert_eq!(receipt["schema"], CHECK_SCHEMA);
         assert_eq!(receipt["ok"], true);
-        assert_eq!(receipt["checked"]["required_docs"], 1);
+        assert_eq!(receipt["checked"]["required_docs"], 2);
         assert_eq!(receipt["checked"]["family_files"], 4);
         assert_eq!(receipt["checked"]["active_goals"], 1);
         assert_eq!(receipt["errors"].as_array().expect("errors array").len(), 0);
@@ -667,6 +667,7 @@ mod tests {
             "docs/specs",
             "docs/adr",
             "docs/plans",
+            ".tokmd-spec",
             ".jules/goals",
             "policy",
         ] {
@@ -676,6 +677,11 @@ mod tests {
         fs::write(
             root.join("policy/doc-artifacts.toml"),
             include_str!("../../../policy/doc-artifacts.toml"),
+        )
+        .unwrap();
+        fs::write(
+            root.join(".tokmd-spec/README.md"),
+            "# tokmd repo-native spec namespace\n\n## Durable ownership\n\n## External and awareness-only namespaces\n\n## Source-of-truth chain\n",
         )
         .unwrap();
         fs::write(
