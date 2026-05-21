@@ -2,7 +2,7 @@ schema_version = "1.0"
 policy = "non-rust-allowlist"
 owner = "release/files"
 status = "advisory"
-updated = "2026-05-07"
+updated = "2026-05-21"
 
 # Non-Rust file surfaces. Each [[allow]] entry pins:
 #   glob   - what the entry covers
@@ -459,6 +459,15 @@ surface = "agents"
 classification = "documentation"
 reason = "Jules workspace artifacts and indexes."
 covered_by = ["cargo xtask proof-policy --check"]
+
+[[allow]]
+glob = ".tokmd-spec/**"
+kind = "spec_namespace"
+owner = "docs"
+surface = "docs"
+classification = "documentation"
+reason = "Repo-native proposal/spec/plan/proof/closeout namespace and index."
+covered_by = ["cargo xtask docs --check", "cargo xtask proof-policy --check"]
 
 [[allow]]
 glob = ".claude/**"
