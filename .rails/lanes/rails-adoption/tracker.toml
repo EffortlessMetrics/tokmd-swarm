@@ -1,0 +1,28 @@
+schema_version = "1.0"
+
+id = "rails-adoption"
+name = "Rails adoption"
+status = "active"
+owner = "repo-maintainers"
+
+objective = """
+Adopt the portable .rails/ framework footprint as this repository's durable source-of-truth knowledge base.
+"""
+
+end_state = [
+  "Core Rails footprint exists under .rails/ with docs guidance.",
+  "Initial proposal/spec/ADR graph is linked through .rails/index.toml.",
+]
+
+[[work_item]]
+id = "rails-footprint"
+status = "done"
+proposal = "TOKMD-PROP-0001"
+spec = "TOKMD-SPEC-0001"
+adr = "TOKMD-ADR-0001"
+implementation_plan = ".rails/lanes/rails-adoption/implementation-plan.md"
+blocks = []
+blocked_by = []
+proof = [
+  "git diff --check",
+]

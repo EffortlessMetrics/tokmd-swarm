@@ -1,0 +1,9 @@
+schema_version = "1.0"
+
+[[ledger]]
+id = "<policy-ledger-id>"
+name = "<Policy ledger name>"
+path = "<existing-ledger-path>"
+owner = "<owner>"
+review_cadence = "<cadence>"
+notes = "References an existing policy source of truth; do not duplicate policy text here."
