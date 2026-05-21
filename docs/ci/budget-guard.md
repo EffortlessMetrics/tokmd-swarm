@@ -1,7 +1,7 @@
 # Soft budget guard
 
-PR 14 wires `cargo xtask ci-plan --enforce` into the PR Plan workflow.
-Estimated LEM bands map to advisory severity:
+The PR Plan workflow runs `cargo xtask ci-plan --enforce`. Estimated LEM bands
+map to advisory severity:
 
 | Estimated LEM | Behavior | Override |
 |---------------|----------|----------|
@@ -18,15 +18,20 @@ or split the PR).
 Bands ≤ hard ceiling never fail; they only emit `::warning::`
 annotations and a step-summary banner. This matches the rollout intent:
 
-- Don't fail normal 40 LEM PRs until learned actuals exist (PR 15).
+- Don't fail elevated-but-normal PRs while estimate calibration is still coarse.
 - Visibly nudge for elevated band so reviewers know the PR is broad.
 - Refuse the worst case (>125) without an explicit override.
 
-## Static estimates today; learned tomorrow
+## Static and learned estimates
 
-`base_lem` in `policy/ci-lane-whitelist.toml` is the static floor used
-until PR 15 swaps in `p50 × 1.15` learned from `ci-actuals.json`. The
-guard logic is the same in both phases; only the input changes.
+`base_lem` in `policy/ci-lane-whitelist.toml` is the static floor. The hosted
+PR Plan workflow uses this static floor unless a future workflow change provides
+an `--actuals-dir` cache of past `ci-actuals.json` receipts.
+
+When `--actuals-dir` is provided, `cargo xtask ci-plan` can estimate lanes with
+`max(static_floor, p50_recent_actual × 1.15)` while still reporting p90 and p95
+context. The guard logic is the same in both modes; only the estimate input
+changes.
 
 ## Suppressions
 
@@ -35,3 +40,8 @@ guard logic is the same in both phases; only the input changes.
 - `ci-budget-override` — bypass the hard ceiling for one PR. Use
   sparingly.
 - `full-ci` — also acts as override; the deep lanes will run anyway.
+
+If a label is added after an `override-required` failure, use the latest PR Plan
+run for the same head SHA after the label is visible. Rerunning the failed job
+is acceptable; older failed attempts may remain in the check history, but they
+are not the current budget signal once a newer run passes with the override.

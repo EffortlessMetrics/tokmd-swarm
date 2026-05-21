@@ -55,9 +55,9 @@ mutation testing — easily 150+ LEM before risk-pack routing.
 
 ## Estimation vs. actuals
 
-Until `ci-actuals.json` calibration data exists, estimates are **static
-floors** taken from `policy/ci-lane-whitelist.toml :: base_lem`. Once
-actuals are collected (PR 13), the planner uses:
+By default, estimates are **static floors** taken from
+`policy/ci-lane-whitelist.toml :: base_lem`. When a caller provides
+`--actuals-dir` with past `ci-actuals.json` receipts, the planner uses:
 
 ```text
 estimate     = max(static_floor, p50_recent_actual × 1.15)
@@ -65,5 +65,7 @@ warning      = p90_recent_actual
 hard ceiling = p95_recent_actual
 ```
 
-The static floor exists so a brand-new lane never reports `0 LEM` because
-no data has been collected yet.
+The static floor still applies in learned mode so a brand-new lane never
+reports `0 LEM` because no data has been collected yet. The hosted PR Plan
+workflow currently uses static estimates unless a durable actuals cache is
+explicitly wired into the workflow invocation.

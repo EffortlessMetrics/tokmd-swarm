@@ -1,9 +1,12 @@
 # PR Plan
 
-The PR Plan job (`.github/workflows/pr-plan.yml`) emits an advisory
-`ci-plan.json` for every PR. It is the source of truth for which risk
-packs the change touches, which lanes will run, and the estimated LEM
-band.
+The PR Plan job (`.github/workflows/pr-plan.yml`) emits a `ci-plan.json`
+artifact for every PR. It is the source of truth for which risk packs the
+change touches, which lanes will run, and the estimated LEM band.
+
+The plan is advisory for lane selection, but budget enforcement is active:
+when `--enforce` estimates more than the hard LEM ceiling, the PR Plan job
+fails until the PR is split or an explicit override label is present.
 
 ## How it works
 
@@ -24,8 +27,8 @@ band.
    | `high-cost` | ≤ hard_limit_lem (125) |
    | `override-required` | > hard_limit_lem |
 
-8. Write `target/ci/ci-plan.json` and append a Markdown summary to
-   `GITHUB_STEP_SUMMARY`.
+8. Write `target/ci/ci-plan.json`, emit budget annotations, and append a
+   Markdown summary to `GITHUB_STEP_SUMMARY`.
 
 ## Output
 
@@ -58,20 +61,32 @@ band.
 }
 ```
 
-## Status
+## Current behavior
 
-- **PR 08 (this PR)** — adds the planner, the workflow, and the schema.
-  The plan is **advisory**: existing CI still routes via `affected proof
-  plan` and the static workflow.
-- **CI risk-pack outputs** — `cargo xtask ci-plan --github-output <path>`
-  writes workflow-compatible risk-pack booleans for the CI detect job. The
-  workflow keeps existing `needs.detect.outputs.*` names, but path
-  classification now comes from the Rust-owned planner and checked
-  `policy/ci-risk-packs.toml` rather than duplicated shell matching.
-- **PR 14** — adds the soft budget guard that warns above the elevated
-  limit and fails above the hard limit.
-- **PR 15** — replaces static `base_lem` with learned p50/p90/p95
-  estimates from `ci-actuals.json` (PR 13).
+- `cargo xtask ci-plan --github-output <path>` writes workflow-compatible
+  risk-pack booleans for the CI detect job. The workflow keeps existing
+  `needs.detect.outputs.*` names, but path classification comes from the
+  Rust-owned planner and checked `policy/ci-risk-packs.toml` rather than
+  duplicated shell matching.
+- `--enforce` fails only the hard-ceiling band (`override-required`) when
+  neither `ci-budget-override` nor `full-ci` is present. Lower bands emit
+  warnings but do not fail the job.
+- The hosted PR Plan workflow currently uses static `base_lem` values from
+  `policy/ci-lane-whitelist.toml`. `cargo xtask ci-plan` can consume learned
+  actuals with `--actuals-dir`, but the workflow must wire that directory in
+  before hosted PRs use learned estimates.
+
+## Override handling
+
+Use `ci-budget-override` when a high-LEM PR is intentionally broad enough to
+exceed the hard ceiling and splitting would make the evidence worse. Use
+`full-ci` when the PR should also request every default blocking lane.
+
+The workflow runs on `labeled` and `unlabeled` events. If the first PR Plan run
+fails before the override label is visible, rerun the failed PR Plan run or wait
+for the label-triggered replacement run. Treat the latest successful PR Plan
+for the current head SHA as the actionable budget signal; older failed attempts
+can remain in the check history.
 
 ## Local invocation
 
@@ -80,7 +95,8 @@ cargo xtask ci-plan \
   --base "origin/main" \
   --head HEAD \
   --labels-json '[{"name":"full-ci"}]' \
-  --json-out target/ci/ci-plan.json
+  --json-out target/ci/ci-plan.json \
+  --enforce
 ```
 
 To generate the same output flags consumed by `.github/workflows/ci.yml`:
