@@ -594,6 +594,10 @@ pub struct CiPlanArgs {
     #[arg(long, value_name = "PATH")]
     pub github_output: Option<std::path::PathBuf>,
 
+    /// Suppress GitHub budget annotations while still writing JSON and outputs
+    #[arg(long)]
+    pub no_budget_annotations: bool,
+
     /// Fail with a non-zero exit when the estimated LEM exceeds the hard
     /// ceiling and no override label is present
     #[arg(long)]
@@ -616,6 +620,7 @@ impl Default for CiPlanArgs {
             json_out: None,
             github_summary: None,
             github_output: None,
+            no_budget_annotations: false,
             enforce: false,
             actuals_dir: None,
         }

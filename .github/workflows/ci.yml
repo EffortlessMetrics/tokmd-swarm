@@ -63,6 +63,7 @@ jobs:
             --labels-json "${LABELS_JSON}" \
             --lanes policy/ci-lane-whitelist.toml \
             --risk-packs policy/ci-risk-packs.toml \
+            --no-budget-annotations \
             --json-out target/ci/ci-detect-plan.json \
             --github-output "$GITHUB_OUTPUT"
 
