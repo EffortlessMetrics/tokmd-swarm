@@ -30,6 +30,21 @@ Optional git hooks:
 git config core.hooksPath .githooks
 ```
 
+## Dual-Repo Workbench Boundary
+
+Normal tokmd development starts from `EffortlessMetrics/tokmd-swarm:main`.
+Create narrow PRs there, wait for `Tokmd Rust Small Result`, and squash-merge
+aligned work into the swarm repo.
+
+`EffortlessMetrics/tokmd` is the publication repository. Do not push feature
+work, release tags, GitHub releases, crates.io publishes, Docker pushes,
+signing changes, or `v1` alias moves from swarm. Publication imports are
+explicit merge-commit PRs in `tokmd`, followed by fast-forwarding
+`tokmd-swarm/main` to the publication merge commit.
+
+See `docs/ci/swarm-routing.md` for the shared-history topology and routing
+rules.
+
 ## Codex Commit / Push Policy
 
 For PR-bound work, Codex may create scoped branches, commit scoped changes, push
