@@ -19,13 +19,37 @@ swarm_repo: EffortlessMetrics/tokmd-swarm
 seed_commit: abaf450dbc493052a767f536b7e03e7ee8c8bbd9
 ```
 
+Because `tokmd-swarm` was seeded as a single import commit, GitHub ahead/behind
+counts against `EffortlessMetrics/tokmd` reflect history shape, not necessarily
+content drift. Refresh swarm by content-sync PRs instead of merging the source
+repo commit DAG into swarm.
+
+## Current Content Sync Point
+
+The current source-content sync point is:
+
+```text
+source_repo: EffortlessMetrics/tokmd
+source_branch: main
+source_sha: a45db1e5d4cbd836ed0918cad351af74cae2108c
+swarm_repo: EffortlessMetrics/tokmd-swarm
+swarm_sync_commit: pending sync PR merge
+```
+
+After a sync, swarm content should match the source repo at `source_sha` except
+for the intentional swarm overlay:
+
+```text
+.github/workflows/em-routed-rust-small.yml
+docs/ci/swarm-routing.md
+```
+
 ## Rust Small Frontdoor
 
 The first swarm-specific workflow is
 `.github/workflows/em-routed-rust-small.yml`.
 
-It creates one normalized check that should become the branch-protection check
-after the proof sequence is complete:
+It creates one normalized branch-protection check:
 
 ```text
 Tokmd Rust Small Result
@@ -131,14 +155,14 @@ full platform matrix
 
 ## Proof Sequence
 
-Use this order before enabling branch protection:
+The proof sequence for the current frontdoor is:
 
 1. Routed workflow PR passes.
 2. Manual `workflow_dispatch` on `tokmd-swarm/main` passes.
 3. A tiny same-repo PR proves the same-repo PR path.
 4. A forced or occupied-runner backfill proof selects CX53 or GitHub-hosted
    after CX43 is unavailable.
-5. After 3-5 clean runs, require only `Tokmd Rust Small Result`.
+5. Branch protection requires only `Tokmd Rust Small Result`.
 
 CX33 was removed from the tokmd Rust Small route after forced backfill proof
 showed only 58GB free on `/mnt/ci-scratch`, below the 100GB disk guard.
