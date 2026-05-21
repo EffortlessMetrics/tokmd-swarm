@@ -11,10 +11,10 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # Only cancel on synchronize (new commits). Label add/remove must not
-  # cancel an in-flight run: it triggers a fresh run with the new label
+  # Cancel superseded push runs and PR synchronize runs. Label add/remove must
+  # not cancel an in-flight PR run: it triggers a fresh run with the new label
   # set without throwing away work.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 env:
   CARGO_TERM_COLOR: always
