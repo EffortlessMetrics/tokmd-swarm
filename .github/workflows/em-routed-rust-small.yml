@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - auto
+          - cpx42
           - cx43
           - cx53
           - github
@@ -78,7 +79,7 @@ jobs:
               emit "github" "forced_github" "false" "${trusted}"
               exit 0
               ;;
-          cx43|cx53)
+            cpx42|cx43|cx53)
               if [ "${trusted}" != "true" ]; then
                 emit "github" "forced_self_hosted_untrusted_event" "true" "${trusted}"
                 exit 0
@@ -118,11 +119,11 @@ jobs:
 
           data = json.loads(os.environ["RUNNERS_JSON"])
 
-          def idle_count(host_label):
+          def idle_count(required_labels):
               count = 0
               for runner in data.get("runners", []):
                   labels = {label.get("name") for label in runner.get("labels", [])}
-                  required = {"em-ci", host_label, "rust-small", "trusted-pr"}
+                  required = set(required_labels)
                   if (
                       runner.get("status") == "online"
                       and not runner.get("busy", True)
@@ -131,8 +132,9 @@ jobs:
                       count += 1
               return count
 
-          for label in ("cx43", "cx53"):
-              print(f"idle_{label}={idle_count(label)}")
+          print(f'idle_cpx42={idle_count(["em-ci", "cpx42", "rust-medium", "rust-16gb", "trusted-pr"])}')
+          print(f'idle_cx43={idle_count(["em-ci", "cx43", "rust-small", "trusted-pr"])}')
+          print(f'idle_cx53={idle_count(["em-ci", "cx53", "rust-small", "trusted-pr"])}')
           PY
           then
             emit "github" "parse_failed" "true" "${trusted}"
@@ -141,16 +143,79 @@ jobs:
 
           . ./runner-counts.env
 
+          echo "idle_cpx42=${idle_cpx42:-0}"
           echo "idle_cx43=${idle_cx43:-0}"
           echo "idle_cx53=${idle_cx53:-0}"
 
-          if [ "${idle_cx43:-0}" -gt 0 ]; then
+          if [ "${idle_cpx42:-0}" -gt 0 ]; then
+            emit "cpx42" "cpx42_idle" "false" "${trusted}"
+          elif [ "${idle_cx43:-0}" -gt 0 ]; then
             emit "cx43" "cx43_idle" "false" "${trusted}"
           elif [ "${idle_cx53:-0}" -gt 0 ]; then
             emit "cx53" "cx53_idle" "false" "${trusted}"
           else
             emit "github" "no_idle_runner" "false" "${trusted}"
           fi
+
+  rust-small-cpx42:
+    name: Tokmd Rust Small on CPX42
+    needs: route-rust-small
+    if: >-
+      github.repository == 'EffortlessMetrics/tokmd-swarm' &&
+      needs.route-rust-small.outputs.target == 'cpx42' &&
+      needs.route-rust-small.outputs.trusted_self_hosted == 'true'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, linux, x64, em-ci, cpx42, rust-16gb, rust-medium, trusted-pr]
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "7"
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Prepare CPX42 scratch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci-disk-guard /mnt/ci-scratch 45
+          ci-disk-guard /mnt/ci-cache 10
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+
+      - name: Preflight CPX42 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          rustc --version
+          cargo --version
+          if command -v python3 >/dev/null 2>&1; then python3 --version; elif command -v python >/dev/null 2>&1; then python --version; fi
+
+      - name: Check workspace on CPX42
+        run: cargo check --workspace --all-features --locked
+
+      - name: Test workspace on CPX42
+        run: cargo test --workspace --all-features --locked
+
+      - name: Cleanup scratch dirs
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          rm -rf "$TMPDIR"
+          rm -rf "$CARGO_TARGET_DIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
 
   rust-small-cx43:
     name: Tokmd Rust Small on CX43
@@ -442,6 +507,7 @@ jobs:
     name: Tokmd Rust Small Result
     needs:
       - route-rust-small
+      - rust-small-cpx42
       - rust-small-cx43
       - rust-small-cx53
       - rust-small-github
@@ -456,6 +522,7 @@ jobs:
         env:
           TARGET: ${{ needs.route-rust-small.outputs.target }}
           ROUTER_RESULT: ${{ needs.route-rust-small.result }}
+          CPX42_RESULT: ${{ needs.rust-small-cpx42.result }}
           CX43_RESULT: ${{ needs.rust-small-cx43.result }}
           CX53_RESULT: ${{ needs.rust-small-cx53.result }}
           GITHUB_RESULT: ${{ needs.rust-small-github.result }}
@@ -463,6 +530,7 @@ jobs:
           set -eu
           echo "router_target=${TARGET:-<empty>}"
           echo "router_result=${ROUTER_RESULT:-<empty>}"
+          echo "cpx42_result=${CPX42_RESULT:-<empty>}"
           echo "cx43_result=${CX43_RESULT:-<empty>}"
           echo "cx53_result=${CX53_RESULT:-<empty>}"
           echo "github_result=${GITHUB_RESULT:-<empty>}"
@@ -473,6 +541,12 @@ jobs:
           fi
 
           case "${TARGET}" in
+            cpx42)
+              if [ "${CPX42_RESULT}" != "success" ]; then
+                echo "selected target cpx42 but rust-small-cpx42 result was ${CPX42_RESULT}" >&2
+                exit 1
+              fi
+              ;;
             cx43)
               if [ "${CX43_RESULT}" != "success" ]; then
                 echo "selected target cx43 but rust-small-cx43 result was ${CX43_RESULT}" >&2

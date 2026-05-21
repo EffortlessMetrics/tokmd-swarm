@@ -97,9 +97,20 @@ document, as long as the jobs that must not run in one repository are guarded by
 - Required check: `Tokmd Rust Small Result`.
 - Do not require conditional route or implementation jobs such as:
   - `Route Tokmd Rust Small`;
+  - `Tokmd Rust Small on CPX42`;
   - `Tokmd Rust Small on CX43`;
   - `Tokmd Rust Small on CX53`;
   - `Tokmd Rust Small on GitHub Hosted`.
+
+The routed Rust Small implementation order is:
+
+```text
+CPX42 -> CX43 -> CX53 -> GitHub-hosted
+```
+
+CPX42 uses the pinned Rust 1.95 toolchain directly on the host, with
+`/mnt/ci-scratch` `TMPDIR` prepared before the toolchain action runs. CX43 and
+CX53 keep their existing local `em-ci-rust:1.95` Docker execution path.
 
 Merge commits may remain available for exceptional sync or admin flows, but
 normal feature work should be squash-only.
