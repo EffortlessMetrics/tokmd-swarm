@@ -1189,6 +1189,23 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "repo_native_spec_namespace"
+kind = "non_rust"
+paths = [
+  ".tokmd-spec/**",
+  "docs/contributing/spec-rails.md",
+  "docs/spec-style.md",
+]
+proof = [
+  "cargo xtask docs --check",
+  "cargo xtask check-file-policy",
+  "cargo xtask proof-policy --check",
+]
+reason = "The repo-native spec namespace and contributor rails define durable proposal/spec/plan/proof/closeout ownership separate from tool-local session state."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "doc_artifacts_policy"
 kind = "non_rust"
 paths = [

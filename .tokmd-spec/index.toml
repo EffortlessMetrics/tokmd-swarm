@@ -1,0 +1,19 @@
+schema_version = "1.0"
+
+repo = "tokmd"
+namespace = ".tokmd-spec"
+
+[conventions]
+proposal_prefix = "TOKMD-PROP"
+spec_prefix = "TOKMD-SPEC"
+adr_prefix = "TOKMD-ADR"
+lane_prefix = "TOKMD-LANE"
+
+[external_namespaces]
+codex = ".codex"
+speckit = ".spec"
+claude = ".claude"
+jules = ".jules"
+
+# Add [[artifact]] and [[lane]] entries as durable artifacts are created.
+# Paths in [[artifact]] entries must not point into .codex/.spec/.claude/.jules.
