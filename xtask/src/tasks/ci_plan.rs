@@ -279,55 +279,68 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
         plan.band,
     );
 
-    // Soft budget guard. Always reports advisory diagnostics. Only fails
-    // when --enforce is set, and then only on the over-hard-limit case
-    // unless an override label is present.
-    let labels_set: BTreeSet<&str> = plan.labels.iter().map(|s| s.as_str()).collect();
-    let override_present =
-        labels_set.contains("full-ci") || labels_set.contains("ci-budget-override");
-    let ack_present = labels_set.contains("ci-budget-ack");
+    for message in maybe_budget_annotation_messages(&plan, !args.no_budget_annotations) {
+        println!("{message}");
+    }
 
-    match plan.band.as_str() {
-        "elevated" if !ack_present => {
-            println!(
-                "::warning::PR plan estimated {} LEM (elevated band; expected ≤ {}). \
-                Apply `ci-budget-ack` to acknowledge.",
-                plan.estimated_lem, plan.budget.default_limit_lem
-            );
-        }
-        "high-cost" if !override_present => {
-            println!(
-                "::warning::PR plan estimated {} LEM (high-cost band; expected ≤ {}). \
-                Apply `ci-budget-override` or `full-ci` to bypass.",
-                plan.estimated_lem, plan.budget.elevated_limit_lem
-            );
-        }
-        "override-required" => {
-            if override_present {
-                println!(
-                    "::warning::PR plan estimated {} LEM (>{} hard ceiling) — \
-                    proceeding because override label is present.",
-                    plan.estimated_lem, plan.budget.hard_limit_lem
-                );
-            } else {
-                println!(
-                    "::error::PR plan estimated {} LEM (>{} hard ceiling) — \
-                    apply `ci-budget-override` or `full-ci` to bypass, or split the PR.",
-                    plan.estimated_lem, plan.budget.hard_limit_lem
-                );
-                if args.enforce {
-                    bail!(
-                        "ci-plan: estimated {} LEM exceeds hard ceiling {}",
-                        plan.estimated_lem,
-                        plan.budget.hard_limit_lem
-                    );
-                }
-            }
-        }
-        _ => {}
+    if args.enforce && budget_requires_override(&plan) {
+        bail!(
+            "ci-plan: estimated {} LEM exceeds hard ceiling {}",
+            plan.estimated_lem,
+            plan.budget.hard_limit_lem
+        );
     }
 
     Ok(())
+}
+
+fn budget_label_flags(labels: &[String]) -> (bool, bool) {
+    let labels_set: BTreeSet<&str> = labels.iter().map(|s| s.as_str()).collect();
+    let override_present =
+        labels_set.contains("full-ci") || labels_set.contains("ci-budget-override");
+    let ack_present = labels_set.contains("ci-budget-ack");
+    (override_present, ack_present)
+}
+
+fn budget_requires_override(plan: &PlanOutput) -> bool {
+    let (override_present, _) = budget_label_flags(&plan.labels);
+    plan.band == "override-required" && !override_present
+}
+
+fn budget_annotation_messages(plan: &PlanOutput) -> Vec<String> {
+    let (override_present, ack_present) = budget_label_flags(&plan.labels);
+
+    match plan.band.as_str() {
+        "elevated" if !ack_present => vec![format!(
+            "::warning::PR plan estimated {} LEM (elevated band; expected ≤ {}). \
+            Apply `ci-budget-ack` to acknowledge.",
+            plan.estimated_lem, plan.budget.default_limit_lem
+        )],
+        "high-cost" if !override_present => vec![format!(
+            "::warning::PR plan estimated {} LEM (high-cost band; expected ≤ {}). \
+            Apply `ci-budget-override` or `full-ci` to bypass.",
+            plan.estimated_lem, plan.budget.elevated_limit_lem
+        )],
+        "override-required" if override_present => vec![format!(
+            "::warning::PR plan estimated {} LEM (>{} hard ceiling) — \
+            proceeding because override label is present.",
+            plan.estimated_lem, plan.budget.hard_limit_lem
+        )],
+        "override-required" => vec![format!(
+            "::error::PR plan estimated {} LEM (>{} hard ceiling) — \
+            apply `ci-budget-override` or `full-ci` to bypass, or split the PR.",
+            plan.estimated_lem, plan.budget.hard_limit_lem
+        )],
+        _ => Vec::new(),
+    }
+}
+
+fn maybe_budget_annotation_messages(plan: &PlanOutput, emit_annotations: bool) -> Vec<String> {
+    if emit_annotations {
+        budget_annotation_messages(plan)
+    } else {
+        Vec::new()
+    }
 }
 
 fn parse_toml<T: for<'de> Deserialize<'de>>(path: &Path, kind: &str) -> Result<T> {
@@ -777,5 +790,61 @@ mod tests {
         assert!(outputs.contains("release=true\n"), "{outputs}");
         assert!(outputs.contains("wasm=false\n"), "{outputs}");
         assert!(outputs.contains("windows_path=true\n"), "{outputs}");
+    }
+
+    #[test]
+    fn budget_annotation_messages_preserve_override_required_error() {
+        let plan = plan_for_budget("override-required", 150, Vec::new());
+
+        let messages = budget_annotation_messages(&plan);
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("::error::PR plan estimated 150 LEM"));
+        assert!(budget_requires_override(&plan));
+    }
+
+    #[test]
+    fn budget_annotation_messages_ack_override_label() {
+        let plan = plan_for_budget(
+            "override-required",
+            150,
+            vec!["ci-budget-override".to_string()],
+        );
+
+        let messages = budget_annotation_messages(&plan);
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("proceeding because override label is present"));
+        assert!(!budget_requires_override(&plan));
+    }
+
+    #[test]
+    fn budget_annotation_messages_allow_silent_detector_mode() {
+        let plan = plan_for_budget("override-required", 150, Vec::new());
+
+        let emitted = maybe_budget_annotation_messages(&plan, false);
+
+        assert!(emitted.is_empty());
+        assert!(budget_requires_override(&plan));
+    }
+
+    fn plan_for_budget(band: &str, estimated_lem: u64, labels: Vec<String>) -> PlanOutput {
+        PlanOutput {
+            schema_version: 1,
+            base: "origin/main".into(),
+            head: "HEAD".into(),
+            labels,
+            changed_files: Vec::new(),
+            risk_packs_hit: Vec::new(),
+            lanes_selected: Vec::new(),
+            estimated_lem,
+            band: band.into(),
+            budget: BudgetView {
+                preferred_default_lem: 25,
+                default_limit_lem: 35,
+                elevated_limit_lem: 75,
+                hard_limit_lem: 125,
+            },
+        }
     }
 }
