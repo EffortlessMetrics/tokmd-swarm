@@ -22,6 +22,17 @@ path = ".tokmd-spec/index.toml"
 schema_version = "1.0"
 repo = "tokmd"
 namespace = ".tokmd-spec"
+allowed_statuses = [
+  "draft",
+  "proposed",
+  "accepted",
+  "active",
+  "paused",
+  "complete",
+  "superseded",
+  "retired",
+  "withdrawn",
+]
 require_existing_paths = true
 forbidden_path_prefixes = [
   ".codex/",

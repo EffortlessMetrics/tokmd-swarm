@@ -143,6 +143,8 @@ The checker should require:
   `status`;
 - each `[[lane]]` entry to have non-empty `id`, `path`, and `status` when lane
   entries are present;
+- indexed statuses to use the vocabulary configured in
+  `policy/doc-artifacts.toml`;
 - indexed paths to be repo-relative, existing paths;
 - indexed paths to avoid tool-local namespaces such as `.codex/`, `.spec/`,
   `.claude/`, and `.jules/`;

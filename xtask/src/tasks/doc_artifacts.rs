@@ -35,6 +35,8 @@ struct SpecIndexPolicy {
     repo: String,
     namespace: String,
     #[serde(default)]
+    allowed_statuses: Vec<String>,
+    #[serde(default)]
     require_existing_paths: bool,
     #[serde(default)]
     forbidden_path_prefixes: Vec<String>,
@@ -371,6 +373,13 @@ fn validate_spec_index(root: &Path, policy: &SpecIndexPolicy, report: &mut Check
             "status",
             errors,
         );
+        validate_index_status(
+            &policy.path,
+            &format!("artifact {}", artifact.id),
+            &artifact.status,
+            &policy.allowed_statuses,
+            errors,
+        );
         validate_unique_index_id(&policy.path, "artifact", &artifact.id, &mut ids, errors);
         validate_spec_index_path(
             root,
@@ -388,6 +397,13 @@ fn validate_spec_index(root: &Path, policy: &SpecIndexPolicy, report: &mut Check
             &format!("lane {}", lane.id),
             &lane.status,
             "status",
+            errors,
+        );
+        validate_index_status(
+            &policy.path,
+            &format!("lane {}", lane.id),
+            &lane.status,
+            &policy.allowed_statuses,
             errors,
         );
         validate_unique_index_id(&policy.path, "lane", &lane.id, &mut ids, errors);
@@ -411,6 +427,24 @@ fn validate_non_empty_index_field(
 ) {
     if value.trim().is_empty() {
         errors.push(format!("{index_path}: {entry} must have non-empty {field}"));
+    }
+}
+
+fn validate_index_status(
+    index_path: &str,
+    entry: &str,
+    status: &str,
+    allowed_statuses: &[String],
+    errors: &mut Vec<String>,
+) {
+    if allowed_statuses.is_empty() || status.trim().is_empty() {
+        return;
+    }
+    if !allowed_statuses.iter().any(|allowed| allowed == status) {
+        errors.push(format!(
+            "{index_path}: {entry}.status {status:?} is not allowed; expected one of {}",
+            allowed_statuses.join(", ")
+        ));
     }
 }
 
@@ -936,6 +970,26 @@ mod tests {
                 .errors
                 .iter()
                 .any(|error| error.contains("duplicate indexed id \"source-of-truth-model\"")),
+            "{:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn spec_index_rejects_unknown_statuses() {
+        let temp = tempfile::tempdir().unwrap();
+        write_valid_fixture(temp.path());
+        let index = spec_index("docs/source-of-truth.md")
+            .replace("status = \"active\"", "status = \"review-maybe\"");
+        fs::write(temp.path().join(".tokmd-spec/index.toml"), index).unwrap();
+
+        let report = check(temp.path(), Path::new("policy/doc-artifacts.toml")).unwrap();
+
+        assert!(
+            report.errors.iter().any(|error| {
+                error.contains("artifact source-of-truth-model.status \"review-maybe\"")
+                    && error.contains("is not allowed")
+            }),
             "{:?}",
             report.errors
         );
