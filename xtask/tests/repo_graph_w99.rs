@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use tempfile::TempDir;
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -21,6 +22,66 @@ fn run_xtask(args: &[&str]) -> (String, String, bool) {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
+}
+
+fn run_xtask_in_dir(args: &[&str], current_dir: &std::path::Path) -> (String, String, bool) {
+    let root = workspace_root();
+    let output = Command::new("cargo")
+        .arg("run")
+        .arg("-q")
+        .arg("-p")
+        .arg("xtask")
+        .arg("--manifest-path")
+        .arg(root.join("Cargo.toml"))
+        .arg("--")
+        .args(args)
+        .current_dir(current_dir)
+        .output()
+        .expect("failed to run cargo xtask");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    (stdout, stderr, output.status.success())
+}
+
+fn git(repo: &std::path::Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|_| panic!("failed to run git {}", args.join(" ")));
+
+    assert!(
+        output.status.success(),
+        "git {} failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn write_file(repo: &std::path::Path, path: &str, body: &str) {
+    std::fs::write(repo.join(path), body).expect("fixture file should be writable");
+}
+
+fn commit(repo: &std::path::Path, message: &str) {
+    git(repo, &["add", "."]);
+    git(repo, &["commit", "-m", message]);
+}
+
+fn init_repo() -> TempDir {
+    let temp = TempDir::new().expect("temporary git repo should be creatable");
+    let repo = temp.path();
+    git(repo, &["init", "-b", "main"]);
+    git(
+        repo,
+        &["config", "user.email", "repo-graph@example.invalid"],
+    );
+    git(repo, &["config", "user.name", "Repo Graph Test"]);
+    write_file(repo, "file.txt", "base\n");
+    commit(repo, "base");
+    git(repo, &["branch", "publication"]);
+    git(repo, &["branch", "swarm"]);
+    temp
 }
 
 #[test]
@@ -71,6 +132,129 @@ fn repo_graph_head_to_head_is_aligned() {
     assert_eq!(value["relation"], "aligned");
     assert_eq!(value["ahead_behind"]["publication_ahead"], 0);
     assert_eq!(value["ahead_behind"]["swarm_ahead"], 0);
+}
+
+#[test]
+fn repo_graph_reports_swarm_ahead_in_real_git_repo() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["switch", "swarm"]);
+    write_file(repo, "file.txt", "base\nswarm\n");
+    commit(repo, "swarm");
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "swarm",
+            "--expect",
+            "swarm-descends-publication",
+        ],
+        repo,
+    );
+
+    assert!(success, "repo-graph swarm-ahead failed. stderr: {stderr}");
+    assert!(stdout.contains("SwarmAhead"), "stdout: {stdout}");
+    assert!(stdout.contains("publication_ahead=0"), "stdout: {stdout}");
+    assert!(stdout.contains("swarm_ahead=1"), "stdout: {stdout}");
+}
+
+#[test]
+fn repo_graph_reports_publication_ahead_in_real_git_repo() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["switch", "publication"]);
+    write_file(repo, "file.txt", "base\npublication\n");
+    commit(repo, "publication");
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "swarm",
+            "--expect",
+            "publication-descends-swarm",
+        ],
+        repo,
+    );
+
+    assert!(
+        success,
+        "repo-graph publication-ahead failed. stderr: {stderr}"
+    );
+    assert!(stdout.contains("PublicationAhead"), "stdout: {stdout}");
+    assert!(stdout.contains("publication_ahead=1"), "stdout: {stdout}");
+    assert!(stdout.contains("swarm_ahead=0"), "stdout: {stdout}");
+}
+
+#[test]
+fn repo_graph_rejects_diverged_refs_in_real_git_repo() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["switch", "publication"]);
+    write_file(repo, "publication.txt", "publication\n");
+    commit(repo, "publication");
+    git(repo, &["switch", "swarm"]);
+    write_file(repo, "swarm.txt", "swarm\n");
+    commit(repo, "swarm");
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "swarm",
+            "--expect",
+            "no-divergence",
+        ],
+        repo,
+    );
+
+    assert!(!success, "diverged refs should fail");
+    assert!(stdout.contains("Diverged"), "stdout: {stdout}");
+    assert!(
+        stderr.contains("repo graph expectation no-divergence was not met"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn repo_graph_rejects_unrelated_refs_in_real_git_repo() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["checkout", "--orphan", "orphan"]);
+    git(repo, &["rm", "-rf", "."]);
+    write_file(repo, "orphan.txt", "orphan\n");
+    commit(repo, "orphan");
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "orphan",
+            "--expect",
+            "no-divergence",
+        ],
+        repo,
+    );
+
+    assert!(!success, "unrelated refs should fail");
+    assert!(stdout.contains("Unrelated"), "stdout: {stdout}");
+    assert!(
+        stderr.contains("repo graph expectation no-divergence was not met"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]
