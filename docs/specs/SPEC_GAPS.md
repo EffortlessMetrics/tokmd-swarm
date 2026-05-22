@@ -57,7 +57,7 @@ require deleting or rewriting user-facing docs in the same change.
 | No-panic allowlist checker semantics | `policy/no-panic-allowlist.toml`, xtask checks | policy-only | add `docs/specs/no-panic-policy.md` |
 | Non-Rust allowlist/file-policy semantics | `policy/non-rust-allowlist.toml`, xtask checks, `docs/FILE_POLICY.md` | policy-only | add `docs/specs/file-policy.md` |
 | PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add ADR `0010` + `docs/specs/pr-disposition.md` |
-| Dependency maintenance classification and validation | queue practice, CI/proof scopes | plan-only | add `docs/specs/dependency-maintenance.md` |
+| Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
 
 ## Classification Vocabulary
 
