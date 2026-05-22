@@ -84,7 +84,11 @@
       `tokmd-swarm` head, and must merge with a merge commit, not squash.
 - [ ] Other: explain why this PR is outside the normal swarm/publication loop.
 
-- **Repo-graph evidence:** <!-- e.g. cargo xtask repo-graph --publication public/main --swarm origin/main --expect swarm-descends-publication -->
+- **Repo-graph evidence:** <!-- Replace with the matching command and result.
+  Normal swarm PR: cargo xtask repo-graph --publication public/main --swarm HEAD --expect swarm-descends-publication
+  Publication import PR: cargo xtask repo-graph --publication origin/main --swarm HEAD --expect swarm-descends-publication
+  Post-publication fast-forward: cargo xtask repo-graph --publication public/main --swarm origin/main --expect aligned
+-->
 
 ---
 
