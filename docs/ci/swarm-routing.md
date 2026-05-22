@@ -194,9 +194,10 @@ CPX42 -> CX43 -> CX53 -> GitHub-hosted
 CPX42 uses the pinned Rust 1.95 toolchain directly on the host, with
 `/mnt/ci-scratch` `TMPDIR` prepared before the toolchain action runs. CX43 and
 CX53 keep their existing local `em-ci-rust:1.95` Docker execution path. CX43
-uses a 90GB scratch-space guard to avoid false negatives from host-reserved
-space while preserving a high floor for the isolated Cargo target directory;
-CX53 keeps the 100GB scratch-space guard.
+uses an 80GB scratch-space guard after a PR-event false negative showed 86GB
+free on the 150GB host filesystem; that still preserves a high floor for the
+isolated Cargo target directory while avoiding known host-reserved-space
+failures. CX53 keeps the 100GB scratch-space guard.
 
 Merge commits may remain available for exceptional sync or admin flows, but
 normal feature work should be squash-only.
