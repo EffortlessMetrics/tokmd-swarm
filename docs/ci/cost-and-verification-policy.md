@@ -53,7 +53,7 @@ marginal cost.
 |------|----------|---------|
 | Frontdoor (ordinary) | 0–35 | Green by default. Sub-$0.50 wherever possible. |
 | Elevated | 36–75 | Warning. Justified by risk pack hit or label. |
-| High-cost | 76–125 | Strong warning. Requires explicit label. |
+| High-cost | 76–125 | Strong warning. Reviewer acknowledgement may suppress the warning. |
 | Override | >125 | Blocked unless `full-ci` or `ci-budget-override`. |
 
 See `docs/ci/lem-budgeting.md` for the LEM definition and worked examples.

@@ -71,6 +71,8 @@ fails until the PR is split or an explicit override label is present.
 - `--enforce` fails only the hard-ceiling band (`override-required`) when
   neither `ci-budget-override` nor `full-ci` is present. Lower bands emit
   warnings but do not fail the job.
+- `ci-budget-ack` acknowledges elevated and high-cost warnings below the hard
+  ceiling. It does not bypass `override-required`.
 - The hosted PR Plan workflow currently uses static `base_lem` values from
   `policy/ci-lane-whitelist.toml`. `cargo xtask ci-plan` can consume learned
   actuals with `--actuals-dir`, but the workflow must wire that directory in
@@ -97,9 +99,11 @@ targets were counted.
 
 ## Override handling
 
-Use `ci-budget-override` when a high-LEM PR is intentionally broad enough to
-exceed the hard ceiling and splitting would make the evidence worse. Use
-`full-ci` when the PR should also request every default blocking lane.
+Use `ci-budget-ack` when a PR is intentionally elevated or high-cost but still
+below the hard ceiling. Use `ci-budget-override` when a high-LEM PR is
+intentionally broad enough to exceed the hard ceiling and splitting would make
+the evidence worse. Use `full-ci` when the PR should also request every default
+blocking lane.
 
 The workflow runs on `labeled` and `unlabeled` events. If the first PR Plan run
 fails before the override label is visible, rerun the failed PR Plan run or wait

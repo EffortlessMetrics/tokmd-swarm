@@ -316,10 +316,11 @@ fn budget_annotation_messages(plan: &PlanOutput) -> Vec<String> {
             Apply `ci-budget-ack` to acknowledge.",
             plan.estimated_lem, plan.budget.default_limit_lem
         )],
-        "high-cost" if !override_present => vec![format!(
+        "high-cost" if !ack_present => vec![format!(
             "::warning::PR plan estimated {} LEM (high-cost band; expected ≤ {}). \
-            Apply `ci-budget-override` or `full-ci` to bypass.",
-            plan.estimated_lem, plan.budget.elevated_limit_lem
+            Review the PR scope and apply `ci-budget-ack` if the spend is intentional; \
+            hard override is required only above {} LEM.",
+            plan.estimated_lem, plan.budget.elevated_limit_lem, plan.budget.hard_limit_lem
         )],
         "override-required" if override_present => vec![format!(
             "::warning::PR plan estimated {} LEM (>{} hard ceiling) — \
@@ -801,6 +802,29 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert!(messages[0].contains("::error::PR plan estimated 150 LEM"));
         assert!(budget_requires_override(&plan));
+    }
+
+    #[test]
+    fn budget_annotation_messages_high_cost_asks_for_ack_not_override() {
+        let plan = plan_for_budget("high-cost", 113, Vec::new());
+
+        let messages = budget_annotation_messages(&plan);
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("::warning::PR plan estimated 113 LEM"));
+        assert!(messages[0].contains("ci-budget-ack"));
+        assert!(!messages[0].contains("ci-budget-override"));
+        assert!(!budget_requires_override(&plan));
+    }
+
+    #[test]
+    fn budget_annotation_messages_high_cost_ack_suppresses_warning() {
+        let plan = plan_for_budget("high-cost", 113, vec!["ci-budget-ack".to_string()]);
+
+        let messages = budget_annotation_messages(&plan);
+
+        assert!(messages.is_empty(), "{messages:?}");
+        assert!(!budget_requires_override(&plan));
     }
 
     #[test]

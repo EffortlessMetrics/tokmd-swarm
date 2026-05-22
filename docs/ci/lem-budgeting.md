@@ -29,7 +29,7 @@ The canonical multipliers live in `policy/ci-lane-whitelist.toml` under
 | Pennies | 0–12 | Tiny PR, docs-only, single-crate change. |
 | Normal | 13–35 | Default sub-$0.50 ordinary PR target. |
 | Elevated | 36–75 | Risk-pack-hit PR. Warns. |
-| High-cost | 76–125 | Explicit label or known-broad change. Strong warning. |
+| High-cost | 76–125 | Known-broad or heavily routed change. Strong warning; `ci-budget-ack` may acknowledge. |
 | Override | >125 | Requires `full-ci` or `ci-budget-override`. |
 
 ## Worked example

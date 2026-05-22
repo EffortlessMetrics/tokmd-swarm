@@ -7,7 +7,7 @@ map to advisory severity:
 |---------------|----------|----------|
 | `0–35` (normal) | green | — |
 | `36–75` (elevated) | warning | `ci-budget-ack` suppresses |
-| `76–125` (high-cost) | strong warning | `ci-budget-override` or `full-ci` |
+| `76–125` (high-cost) | strong warning | `ci-budget-ack` suppresses |
 | `>125` (override-required) | non-zero exit (when `--enforce`) | `ci-budget-override` or `full-ci` |
 
 The PR Plan workflow runs with `--enforce`. Without an override label, a
@@ -16,7 +16,8 @@ shows a `::error::` annotation explaining what to do (apply the label,
 or split the PR).
 
 Bands ≤ hard ceiling never fail; they only emit `::warning::`
-annotations and a step-summary banner. This matches the rollout intent:
+annotations and a step-summary banner unless acknowledged. This matches the
+rollout intent:
 
 - Don't fail elevated-but-normal PRs while estimate calibration is still coarse.
 - Visibly nudge for elevated band so reviewers know the PR is broad.
@@ -35,14 +36,13 @@ changes.
 
 ## Suppressions
 
-- `ci-budget-ack` — apply when the PR is intentionally elevated and the
-  reviewer has confirmed the spend is worth it.
+- `ci-budget-ack` — apply when the PR is intentionally elevated or high-cost
+  and the reviewer has confirmed the spend is worth it. This acknowledges
+  bands below the hard ceiling; it does not bypass the hard ceiling.
 - `ci-budget-override` — bypass the hard ceiling for one PR. Use
-  sparingly. This is appropriate when the PR is intentionally broad, or when a
-  narrow PR has a known static-estimator overcount such as mutually exclusive
-  routed Rust Small implementation lanes. In the overcount case, cite the
-  affected proof plan, latest passing PR Plan run for the current head SHA, and
-  hosted check rollup.
+  sparingly. This is appropriate when the PR is intentionally broad enough to
+  exceed the hard ceiling. For high-cost estimates below the hard ceiling, use
+  `ci-budget-ack` instead.
 - `full-ci` — also acts as override; the deep lanes will run anyway.
 
 If a label is added after an `override-required` failure, use the latest PR Plan
