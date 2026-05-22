@@ -55,6 +55,44 @@ publication_ahead = 0
 swarm_ahead = 0
 ```
 
+## First Proven Workbench Loop
+
+The first post-realignment workbench loop completed on 2026-05-22:
+
+```text
+tokmd-swarm PR #33
+  test: cover repo graph history states
+  squash merge: b6ad72becaed459b219c1667cb6a28379f2d05aa
+
+tokmd publication PR #2440
+  merge(swarm): import tokmd-swarm repo graph tests
+  merge commit: 8a617266fc4e50ba08957afd9fad3f693e9190a4
+  parents:
+    ba9473395d39ad267cfef5cf48833bf04eb6d57c
+    b6ad72becaed459b219c1667cb6a28379f2d05aa
+
+tokmd-swarm/main
+  fast-forwarded to 8a617266fc4e50ba08957afd9fad3f693e9190a4
+```
+
+The final graph proof was:
+
+```text
+HEAD == origin/main == public/main == 8a617266fc4e50ba08957afd9fad3f693e9190a4
+public/main...origin/main == 0 0
+repo-graph relation == aligned
+```
+
+The swarm PR proved the same-repo workbench gate with
+`Tokmd Rust Small Result`. The publication PR proved the import path with a
+merge commit and publication CI. Post-merge main CI passed in both repositories.
+
+`Nix Full Validation` remains a publication-only side workflow in `tokmd`.
+It is release-boundary evidence, not a condition for considering the swarm
+fast-forward complete. If it fails, triage it before release or publication
+claims that rely on full Nix proof; do not move the Nix-full lane into routine
+swarm development to make the workbench loop look cleaner.
+
 Use the local remote name that points at `EffortlessMetrics/tokmd` in place of
 `publication` when it differs. The local clone in Codex workbench runs often
 uses `public/main` for that remote, so the same check can be run with:
