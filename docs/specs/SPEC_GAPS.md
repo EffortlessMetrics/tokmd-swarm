@@ -49,14 +49,14 @@ require deleting or rewriting user-facing docs in the same change.
 | AST shadow lane boundaries | `docs/specs/ast-shadow.md`, `docs/NEXT.md` | documented but not specced | add `docs/specs/ast-shadow-artifacts.md` |
 | Proof observation decision packet and promotion-readiness semantics | `docs/specs/proof-observation-decision-packet.md`, `docs/NEXT.md` | documented but not specced | add `docs/specs/proof-observation-decision.md` |
 | Proof workflow status receipt semantics | `docs/specs/proof-workflow-status.md` | specified | keep verifier/schema references current |
-| Diff input classification (path-like before git refs) | implementation/tests, issue #2411 notes | needs ADR/spec split | add `docs/specs/diff-input-classification.md` |
+| Diff input classification (path-like before git refs) | `docs/adr/0010-diff-input-classification.md`, `docs/specs/diff-input-classification.md`, implementation/tests, PR #2411 notes | specified | keep CLI behavior, tests, ADR, and spec aligned |
 | Nix/release source-closure invariants for schemas/fixtures/docs | `flake.nix`, tests, issue #2415 notes | policy-only | add `docs/specs/release-validation-source-closure.md` |
 | Cockpit review packet contract (required files, evidence states, verifier semantics) | `docs/specs/review-packet.md`, `docs/review-packet.md`, schemas, tests | specified | keep schemas, verifier, and user-facing guide aligned with the spec |
 | Handoff work-order required sections and semantics | `docs/specs/handoff-work-order.md`, `docs/handoff.md`, schema/tests | specified | keep renderer and tests aligned with spec |
 | Coverage/Codecov evidence claim boundary | `docs/specs/coverage-evidence.md`, `docs/ci/coverage.md` | specified | keep coverage workflows, Codecov config, and proof policy aligned with the spec |
 | No-panic allowlist checker semantics | `docs/specs/no-panic-policy.md`, `docs/NO_PANIC_POLICY.md`, `policy/no-panic-allowlist.toml`, xtask checks | specified | keep checker, workflow, allowlist, and guide aligned with the spec |
 | Non-Rust allowlist/file-policy semantics | `docs/specs/file-policy.md`, `policy/non-rust-allowlist.toml`, xtask checks, `docs/FILE_POLICY.md` | specified | keep checker, allowlist, proof routing, and guide aligned with the spec |
-| PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add ADR `0010` + `docs/specs/pr-disposition.md` |
+| PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add next ADR + `docs/specs/pr-disposition.md` |
 | Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
 
 ## Classification Vocabulary
