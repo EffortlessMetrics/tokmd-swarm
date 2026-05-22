@@ -193,7 +193,7 @@ CPX42 -> CX43 -> CX53 -> GitHub-hosted
 CPX42 uses the pinned Rust 1.95 toolchain directly on the host, with
 `/mnt/ci-scratch` `TMPDIR` prepared before the toolchain action runs. CX43 and
 CX53 keep their existing local `em-ci-rust:1.95` Docker execution path. CX43
-uses a 95GB scratch-space guard to avoid false negatives from host-reserved
+uses a 90GB scratch-space guard to avoid false negatives from host-reserved
 space while preserving a high floor for the isolated Cargo target directory;
 CX53 keeps the 100GB scratch-space guard.
 
@@ -337,6 +337,16 @@ Release and hotfix work remains in `tokmd`.
 
 If a release or hotfix lands directly in publication and `tokmd/main` is a
 descendant of `tokmd-swarm/main`, fast-forward swarm immediately.
+
+Verify that direction before the fast-forward:
+
+```bash
+cargo xtask repo-graph \
+  --publication public/main \
+  --swarm origin/main \
+  --expect publication-descends-swarm \
+  --json target/repo-graph/publication-hotfix.json
+```
 
 If publication is not a descendant of swarm, sync publication into swarm with an
 explicit merge commit:

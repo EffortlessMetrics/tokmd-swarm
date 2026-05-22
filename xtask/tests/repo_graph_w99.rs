@@ -194,6 +194,39 @@ fn repo_graph_reports_publication_ahead_in_real_git_repo() {
 }
 
 #[test]
+fn repo_graph_rejects_swarm_ahead_when_publication_must_descend_from_swarm() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["switch", "swarm"]);
+    write_file(repo, "file.txt", "base\nswarm\n");
+    commit(repo, "swarm");
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "swarm",
+            "--expect",
+            "publication-descends-swarm",
+        ],
+        repo,
+    );
+
+    assert!(
+        !success,
+        "swarm-ahead refs should fail publication-descends-swarm"
+    );
+    assert!(stdout.contains("SwarmAhead"), "stdout: {stdout}");
+    assert!(
+        stderr.contains("repo graph expectation publication-descends-swarm was not met"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn repo_graph_rejects_diverged_refs_in_real_git_repo() {
     let temp = init_repo();
     let repo = temp.path();
