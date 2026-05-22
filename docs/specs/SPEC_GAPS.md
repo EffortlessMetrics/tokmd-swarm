@@ -54,7 +54,7 @@ require deleting or rewriting user-facing docs in the same change.
 | Cockpit review packet contract (required files, evidence states, verifier semantics) | `docs/specs/review-packet.md`, `docs/review-packet.md`, schemas, tests | specified | keep schemas, verifier, and user-facing guide aligned with the spec |
 | Handoff work-order required sections and semantics | `docs/specs/handoff-work-order.md`, `docs/handoff.md`, schema/tests | specified | keep renderer and tests aligned with spec |
 | Coverage/Codecov evidence claim boundary | `docs/specs/coverage-evidence.md`, `docs/ci/coverage.md` | specified | keep coverage workflows, Codecov config, and proof policy aligned with the spec |
-| No-panic allowlist checker semantics | `policy/no-panic-allowlist.toml`, xtask checks | policy-only | add `docs/specs/no-panic-policy.md` |
+| No-panic allowlist checker semantics | `docs/specs/no-panic-policy.md`, `docs/NO_PANIC_POLICY.md`, `policy/no-panic-allowlist.toml`, xtask checks | specified | keep checker, workflow, allowlist, and guide aligned with the spec |
 | Non-Rust allowlist/file-policy semantics | `policy/non-rust-allowlist.toml`, xtask checks, `docs/FILE_POLICY.md` | policy-only | add `docs/specs/file-policy.md` |
 | PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add ADR `0010` + `docs/specs/pr-disposition.md` |
 | Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
