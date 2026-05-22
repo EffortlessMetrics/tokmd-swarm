@@ -85,8 +85,8 @@
 - [ ] Other: explain why this PR is outside the normal swarm/publication loop.
 
 - **Repo-graph evidence:** <!-- Replace with the matching command and result.
-  Normal swarm PR: cargo xtask repo-graph --publication public/main --swarm HEAD --expect swarm-descends-publication
-  Publication import PR: cargo xtask repo-graph --publication origin/main --swarm HEAD --expect swarm-descends-publication
+  Normal swarm PR: cargo xtask repo-graph --publication public/main --swarm HEAD --expect swarm-ahead
+  Publication import PR: cargo xtask repo-graph --publication origin/main --swarm HEAD --expect swarm-ahead
   Post-publication fast-forward: cargo xtask repo-graph --publication public/main --swarm origin/main --expect aligned
 -->
 
