@@ -23,6 +23,8 @@ struct Policy {
     #[serde(default)]
     required_doc: Vec<RequiredDoc>,
     #[serde(default)]
+    policy_file: Vec<PolicyFile>,
+    #[serde(default)]
     family: Vec<ArtifactFamily>,
 }
 
@@ -61,6 +63,14 @@ struct RequiredDoc {
     path: String,
     #[serde(default)]
     required_sections: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PolicyFile {
+    path: String,
+    owner: String,
+    #[serde(default)]
+    covered_by: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,6 +205,10 @@ fn check(root: &Path, policy_path: &Path) -> Result<CheckReport> {
     if let Some(active_goal) = &policy.active_goal {
         report.active_goals += 1;
         validate_active_goal(root, active_goal, &mut report.errors);
+    }
+
+    for policy_file in &policy.policy_file {
+        validate_policy_file(root, policy_file, &mut report.errors);
     }
 
     for family in &policy.family {
@@ -437,6 +451,45 @@ fn validate_spec_index_path(
         errors.push(format!(
             "{index_path}: {entry}.path points at missing path {value:?}"
         ));
+    }
+}
+
+fn validate_policy_file(root: &Path, policy_file: &PolicyFile, errors: &mut Vec<String>) {
+    validate_non_empty_policy_field(&policy_file.path, "path", errors);
+    validate_non_empty_policy_field(&policy_file.owner, "owner", errors);
+    if policy_file.covered_by.is_empty() {
+        errors.push(format!(
+            "policy_file {:?}: covered_by must list at least one verifier command",
+            policy_file.path
+        ));
+    }
+
+    let path = Path::new(&policy_file.path);
+    if path.is_absolute() {
+        errors.push(format!(
+            "policy_file {:?}: path must be repo-relative",
+            policy_file.path
+        ));
+        return;
+    }
+    if policy_file.path.contains("..") {
+        errors.push(format!(
+            "policy_file {:?}: path must not traverse parents",
+            policy_file.path
+        ));
+        return;
+    }
+    if !root.join(path).is_file() {
+        errors.push(format!(
+            "policy_file {:?}: points at missing path",
+            policy_file.path
+        ));
+    }
+}
+
+fn validate_non_empty_policy_field(value: &str, field: &str, errors: &mut Vec<String>) {
+    if value.trim().is_empty() {
+        errors.push(format!("policy_file must have non-empty {field}"));
     }
 }
 
@@ -867,6 +920,51 @@ mod tests {
     }
 
     #[test]
+    fn missing_policy_file_reference_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        write_valid_fixture(temp.path());
+        let policy = fs::read_to_string(temp.path().join("policy/doc-artifacts.toml"))
+            .unwrap()
+            .replace("path = \"ci/proof.toml\"", "path = \"ci/missing.toml\"");
+        fs::write(temp.path().join("policy/doc-artifacts.toml"), policy).unwrap();
+
+        let report = check(temp.path(), Path::new("policy/doc-artifacts.toml")).unwrap();
+
+        assert!(
+            report.errors.iter().any(|error| {
+                error.contains("policy_file \"ci/missing.toml\"")
+                    && error.contains("points at missing path")
+            }),
+            "{:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn policy_file_reference_requires_verifier_command() {
+        let temp = tempfile::tempdir().unwrap();
+        write_valid_fixture(temp.path());
+        let policy = fs::read_to_string(temp.path().join("policy/doc-artifacts.toml"))
+            .unwrap()
+            .replace(
+                "covered_by = [\"cargo xtask proof-policy --check\"]",
+                "covered_by = []",
+            );
+        fs::write(temp.path().join("policy/doc-artifacts.toml"), policy).unwrap();
+
+        let report = check(temp.path(), Path::new("policy/doc-artifacts.toml")).unwrap();
+
+        assert!(
+            report.errors.iter().any(|error| {
+                error.contains("policy_file \"ci/proof.toml\"")
+                    && error.contains("covered_by must list")
+            }),
+            "{:?}",
+            report.errors
+        );
+    }
+
+    #[test]
     fn missing_required_section_fails() {
         let temp = tempfile::tempdir().unwrap();
         write_valid_fixture(temp.path());
@@ -938,13 +1036,14 @@ mod tests {
             "docs/specs",
             "docs/adr",
             "docs/plans",
+            "ci",
             ".tokmd-spec",
             ".jules/goals",
             "policy",
         ] {
             fs::create_dir_all(root.join(dir)).unwrap();
         }
-        fs::write(root.join("ci-proof-placeholder"), "").unwrap();
+        fs::write(root.join("ci/proof.toml"), "").unwrap();
         fs::write(
             root.join("policy/doc-artifacts.toml"),
             include_str!("../../../policy/doc-artifacts.toml"),

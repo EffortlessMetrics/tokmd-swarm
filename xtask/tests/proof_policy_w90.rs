@@ -168,6 +168,7 @@ fn proof_policy_includes_current_product_scopes() {
     assert!(proof_control_paths.contains(".github/workflows/mutants.yml"));
     assert!(proof_control_paths.contains(".github/workflows/nix-full.yml"));
     assert!(proof_control_paths.contains(".github/workflows/nix-macos.yml"));
+    assert!(proof_control_paths.contains("xtask/src/tasks/workspace.rs"));
     assert!(proof_control_proof.contains("cargo xtask ci-lane-whitelist"));
 
     let project_truth_docs = scopes

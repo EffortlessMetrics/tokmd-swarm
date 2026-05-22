@@ -27,7 +27,7 @@ pub fn run_workspace_fmt(check: bool) -> Result<()> {
         let mut command = Command::new("cargo");
         command.arg("fmt").arg("--all");
         if check {
-            command.arg("--check");
+            command.arg("--").arg("--check");
         }
 
         let status = command.status().context("failed to run cargo fmt")?;
@@ -42,7 +42,7 @@ pub fn run_workspace_fmt(check: bool) -> Result<()> {
         let mut command = Command::new("cargo");
         command.arg("fmt").arg("-p").arg(&package);
         if check {
-            command.arg("--check");
+            command.arg("--").arg("--check");
         }
 
         let status = command
