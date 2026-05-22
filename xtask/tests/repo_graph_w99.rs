@@ -201,6 +201,52 @@ fn repo_graph_reports_publication_ahead_in_real_git_repo() {
 }
 
 #[test]
+fn repo_graph_accepts_publication_merge_commit_import() {
+    let temp = init_repo();
+    let repo = temp.path();
+
+    git(repo, &["switch", "swarm"]);
+    write_file(repo, "file.txt", "base\nswarm\n");
+    commit(repo, "swarm");
+    git(repo, &["switch", "publication"]);
+    git(
+        repo,
+        &[
+            "merge",
+            "--no-ff",
+            "swarm",
+            "-m",
+            "merge(swarm): import proof slice",
+        ],
+    );
+
+    let (stdout, stderr, success) = run_xtask_in_dir(
+        &[
+            "repo-graph",
+            "--publication",
+            "publication",
+            "--swarm",
+            "swarm",
+            "--expect",
+            "publication-descends-swarm",
+        ],
+        repo,
+    );
+
+    assert!(
+        success,
+        "repo-graph publication import failed. stderr: {stderr}"
+    );
+    assert!(stdout.contains("PublicationAhead"), "stdout: {stdout}");
+    assert!(stdout.contains("publication_ahead=1"), "stdout: {stdout}");
+    assert!(stdout.contains("swarm_ahead=0"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("fast-forward tokmd-swarm/main"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
 fn repo_graph_no_divergence_accepts_swarm_ahead_in_real_git_repo() {
     let temp = init_repo();
     let repo = temp.path();
