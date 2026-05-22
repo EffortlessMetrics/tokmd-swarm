@@ -53,6 +53,7 @@ should be:
 relation = aligned
 publication_ahead = 0
 swarm_ahead = 0
+next_action = graph is aligned; no publication or swarm fast-forward action is needed
 ```
 
 ## First Proven Workbench Loop

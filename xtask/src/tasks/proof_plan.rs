@@ -6,11 +6,13 @@ use crate::tasks::affected::{
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const CI_ENV_VAR: &str = "CI";
+const PROOF_EXECUTOR_CARGO_TARGET_DIR_ENV: &str = "TOKMD_PROOF_CARGO_TARGET_DIR";
 
 #[derive(Debug, Serialize)]
 struct ProofPlanReport {
@@ -1123,9 +1125,20 @@ fn execute_entry(command: &ProofPlanCommand) -> Result<ProofExecutorEntry> {
         ensure_parent_dir(Path::new(&path))?;
     }
 
-    let (program, args) = split_command(&command.command)?;
-    let output = Command::new(&program)
-        .args(&args)
+    let (program, args) = resolve_executor_command(&command.command)?;
+    let mut child = Command::new(&program);
+    child.args(&args);
+    if let Some(target_dir) = executor_cargo_target_dir(&program, &args) {
+        fs::create_dir_all(&target_dir).with_context(|| {
+            format!(
+                "create proof executor cargo target dir {}",
+                target_dir.display()
+            )
+        })?;
+        child.env("CARGO_TARGET_DIR", &target_dir);
+    }
+
+    let output = child
         .output()
         .with_context(|| format!("failed to run executor command `{}`", command.command))?;
     let status = output.status;
@@ -1172,6 +1185,39 @@ fn split_command(command: &str) -> Result<(String, Vec<String>)> {
         program.to_string(),
         parts.map(ToOwned::to_owned).collect::<Vec<_>>(),
     ))
+}
+
+fn resolve_executor_command(command: &str) -> Result<(String, Vec<String>)> {
+    let (program, args) = split_command(command)?;
+    if program == "cargo" && args.first().map(String::as_str) == Some("xtask") {
+        let current_exe =
+            env::current_exe().context("resolve current xtask executable for proof command")?;
+        return Ok((
+            current_exe.to_string_lossy().to_string(),
+            args.into_iter().skip(1).collect(),
+        ));
+    }
+
+    Ok((program, args))
+}
+
+fn executor_cargo_target_dir(program: &str, args: &[String]) -> Option<PathBuf> {
+    if cfg!(windows) && program == "cargo" && cargo_command_needs_unlocked_xtask_binary(args) {
+        Some(
+            env::var_os(PROOF_EXECUTOR_CARGO_TARGET_DIR_ENV)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("target/proof-run/cargo-target")),
+        )
+    } else {
+        None
+    }
+}
+
+fn cargo_command_needs_unlocked_xtask_binary(args: &[String]) -> bool {
+    args.first().map(String::as_str) == Some("test")
+        && args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "repo_graph" | "repo_graph_w99"))
 }
 
 fn executor_manifest_command(
@@ -1435,12 +1481,13 @@ fn profile_name(profile: ProofProfile) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProofExecutorConfig, ProofPlanCommand, ProofPlanReport, affected_commands, dedupe_commands,
+        PROOF_EXECUTOR_CARGO_TARGET_DIR_ENV, ProofExecutorConfig, ProofPlanCommand,
+        ProofPlanReport, affected_commands, dedupe_commands, executor_cargo_target_dir,
         is_mutation_candidate, proof_evidence_plan, proof_executor_config,
         proof_executor_execute_summary, proof_executor_execution_guard_for,
         proof_executor_manifest, proof_executor_summary, proof_run_execute_summary,
-        proof_run_execution_guard_for, render_markdown_summary, split_command,
-        static_profile_commands,
+        proof_run_execution_guard_for, render_markdown_summary, resolve_executor_command,
+        split_command, static_profile_commands,
     };
     use crate::cli::{ProofExecutorMode, ProofProfile};
     use crate::proof::policy::parse_policy_str;
@@ -2148,6 +2195,55 @@ coverage = "cargo-llvm-cov"
 
         let error = split_command("cargo llvm-cov | tee out").unwrap_err();
         assert!(error.to_string().contains("unsupported"));
+    }
+
+    #[test]
+    fn executor_resolves_cargo_xtask_to_current_binary() {
+        let (program, args) = resolve_executor_command("cargo xtask docs --check")
+            .expect("cargo xtask commands should resolve");
+
+        assert_ne!(program, "cargo");
+        assert!(program.ends_with(".exe") || program.contains("xtask"));
+        assert_eq!(args, vec!["docs", "--check"]);
+    }
+
+    #[test]
+    fn executor_leaves_non_xtask_cargo_commands_unchanged() {
+        let (program, args) = resolve_executor_command("cargo test -p xtask")
+            .expect("cargo test commands should resolve");
+
+        assert_eq!(program, "cargo");
+        assert_eq!(args, vec!["test", "-p", "xtask"]);
+    }
+
+    #[test]
+    fn executor_uses_separate_cargo_target_dir_on_windows() {
+        let repo_graph_args = vec![
+            "test".to_string(),
+            "-p".to_string(),
+            "xtask".to_string(),
+            "repo_graph".to_string(),
+        ];
+        let proof_plan_args = vec![
+            "test".to_string(),
+            "-p".to_string(),
+            "xtask".to_string(),
+            "proof_plan".to_string(),
+        ];
+
+        if cfg!(windows) {
+            let expected = std::env::var_os(PROOF_EXECUTOR_CARGO_TARGET_DIR_ENV)
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("target/proof-run/cargo-target"));
+            assert_eq!(
+                executor_cargo_target_dir("cargo", &repo_graph_args),
+                Some(expected)
+            );
+        } else {
+            assert_eq!(executor_cargo_target_dir("cargo", &repo_graph_args), None);
+        }
+        assert_eq!(executor_cargo_target_dir("cargo", &proof_plan_args), None);
+        assert_eq!(executor_cargo_target_dir("xtask", &repo_graph_args), None);
     }
 
     #[test]

@@ -1,43 +1,46 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
+
+fn xtask_run_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.parent().unwrap().to_path_buf()
 }
 
+fn xtask_bin() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_xtask"))
+}
+
 fn run_xtask(args: &[&str]) -> (String, String, bool) {
+    let _guard = xtask_run_lock()
+        .lock()
+        .expect("xtask run lock should not be poisoned");
     let root = workspace_root();
-    let output = Command::new("cargo")
-        .arg("run")
-        .arg("-q")
-        .arg("-p")
-        .arg("xtask")
-        .arg("--")
+    let output = Command::new(xtask_bin())
         .args(args)
         .current_dir(&root)
         .output()
-        .expect("failed to run cargo xtask");
+        .expect("failed to run xtask");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
 }
 
 fn run_xtask_in_dir(args: &[&str], current_dir: &std::path::Path) -> (String, String, bool) {
-    let root = workspace_root();
-    let output = Command::new("cargo")
-        .arg("run")
-        .arg("-q")
-        .arg("-p")
-        .arg("xtask")
-        .arg("--manifest-path")
-        .arg(root.join("Cargo.toml"))
-        .arg("--")
+    let _guard = xtask_run_lock()
+        .lock()
+        .expect("xtask run lock should not be poisoned");
+    let output = Command::new(xtask_bin())
         .args(args)
         .current_dir(current_dir)
         .output()
-        .expect("failed to run cargo xtask");
+        .expect("failed to run xtask");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
@@ -130,6 +133,10 @@ fn repo_graph_head_to_head_is_aligned() {
     assert_eq!(value["schema"], "tokmd.repo_graph.v1");
     assert_eq!(value["ok"], true);
     assert_eq!(value["relation"], "aligned");
+    assert_eq!(
+        value["next_action"],
+        "graph is aligned; no publication or swarm fast-forward action is needed"
+    );
     assert_eq!(value["ahead_behind"]["publication_ahead"], 0);
     assert_eq!(value["ahead_behind"]["swarm_ahead"], 0);
 }

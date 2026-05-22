@@ -23,6 +23,7 @@ pub(crate) struct RepoGraphReport {
     pub(crate) ok: bool,
     pub(crate) expectation: String,
     pub(crate) relation: GraphRelation,
+    pub(crate) next_action: &'static str,
     pub(crate) publication: RefReport,
     pub(crate) swarm: RefReport,
     pub(crate) merge_base: Option<String>,
@@ -72,12 +73,15 @@ fn repo_graph_report(args: &RepoGraphArgs) -> Result<RepoGraphReport> {
     let ahead_behind = ahead_behind(&args.publication, &args.swarm)?;
     let relation = classify_relation(merge_base.as_deref(), ahead_behind);
     let ok = expectation_matches(args.expect, relation);
+    let expectation = expectation_name(args.expect).to_string();
+    let next_action = graph_next_action(&expectation, relation);
 
     Ok(RepoGraphReport {
         schema: SCHEMA,
         ok,
-        expectation: expectation_name(args.expect).to_string(),
+        expectation,
         relation,
+        next_action,
         publication: RefReport {
             name: args.publication.clone(),
             sha: publication_sha,
@@ -212,7 +216,27 @@ fn expectation_name(expectation: RepoGraphExpectation) -> &'static str {
 }
 
 fn expectation_failure_hint(report: &RepoGraphReport) -> &'static str {
-    match (report.expectation.as_str(), report.relation) {
+    graph_next_action(&report.expectation, report.relation)
+}
+
+fn graph_next_action(expectation: &str, relation: GraphRelation) -> &'static str {
+    match (expectation, relation) {
+        ("aligned", GraphRelation::Aligned) => {
+            "graph is aligned; no publication or swarm fast-forward action is needed"
+        }
+        ("swarm-descends-publication", GraphRelation::Aligned)
+        | ("publication-descends-swarm", GraphRelation::Aligned)
+        | ("no-divergence", GraphRelation::Aligned) => {
+            "graph is aligned; continue with the operating step that requested this check"
+        }
+        ("swarm-descends-publication", GraphRelation::SwarmAhead)
+        | ("no-divergence", GraphRelation::SwarmAhead) => {
+            "swarm descends from publication; open a tokmd publication PR and merge it with a merge commit before fast-forwarding swarm"
+        }
+        ("publication-descends-swarm", GraphRelation::PublicationAhead)
+        | ("no-divergence", GraphRelation::PublicationAhead) => {
+            "publication descends from swarm; fast-forward tokmd-swarm/main to the publication commit before routine swarm work continues"
+        }
         ("aligned", GraphRelation::SwarmAhead)
         | ("publication-descends-swarm", GraphRelation::SwarmAhead) => {
             "publication has not imported the swarm head; create a tokmd publication PR and merge it with a merge commit before fast-forwarding swarm"
@@ -252,6 +276,7 @@ fn print_human_report(report: &RepoGraphReport) {
         report.expectation,
         report.ok
     );
+    println!("next_action {}", report.next_action);
     println!(
         "publication {} {}",
         report.publication.name, report.publication.sha
@@ -392,6 +417,7 @@ mod tests {
             ok: false,
             expectation: expectation.to_string(),
             relation,
+            next_action: super::graph_next_action(expectation, relation),
             publication: RefReport {
                 name: "publication/main".to_string(),
                 sha: "publication-sha".to_string(),
@@ -436,5 +462,28 @@ mod tests {
 
         assert!(hint.contains("share no merge base"));
         assert!(hint.contains("admin realignment"));
+    }
+
+    #[test]
+    fn next_action_names_no_sync_when_aligned() {
+        let report = report("aligned", GraphRelation::Aligned);
+
+        assert!(
+            report
+                .next_action
+                .contains("no publication or swarm fast-forward")
+        );
+    }
+
+    #[test]
+    fn next_action_names_publication_import_when_swarm_is_validly_ahead() {
+        let report = report("swarm-descends-publication", GraphRelation::SwarmAhead);
+
+        assert!(
+            report
+                .next_action
+                .contains("swarm descends from publication")
+        );
+        assert!(report.next_action.contains("publication PR"));
     }
 }

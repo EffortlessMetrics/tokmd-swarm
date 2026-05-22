@@ -192,7 +192,7 @@ proof = [
   "cargo test -p xtask proof_plan --verbose",
   "cargo test -p xtask proof_run_pr_policy --verbose",
   "cargo test -p xtask proof_workflow_status --verbose",
-  "cargo test -p xtask repo_graph --verbose",
+  "cargo test -p xtask repo_graph --verbose -- --test-threads=1",
 ]
 mutation = false
 coverage = false
