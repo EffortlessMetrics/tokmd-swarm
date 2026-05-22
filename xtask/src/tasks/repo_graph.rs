@@ -323,6 +323,22 @@ mod tests {
     }
 
     #[test]
+    fn publication_descends_swarm_accepts_aligned_or_publication_ahead() {
+        assert!(expectation_matches(
+            RepoGraphExpectation::PublicationDescendsSwarm,
+            GraphRelation::Aligned
+        ));
+        assert!(expectation_matches(
+            RepoGraphExpectation::PublicationDescendsSwarm,
+            GraphRelation::PublicationAhead
+        ));
+        assert!(!expectation_matches(
+            RepoGraphExpectation::PublicationDescendsSwarm,
+            GraphRelation::SwarmAhead
+        ));
+    }
+
+    #[test]
     fn no_divergence_rejects_diverged_and_unrelated_refs() {
         assert!(expectation_matches(
             RepoGraphExpectation::NoDivergence,

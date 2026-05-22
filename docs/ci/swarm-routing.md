@@ -338,6 +338,16 @@ Release and hotfix work remains in `tokmd`.
 If a release or hotfix lands directly in publication and `tokmd/main` is a
 descendant of `tokmd-swarm/main`, fast-forward swarm immediately.
 
+Verify that direction before the fast-forward:
+
+```bash
+cargo xtask repo-graph \
+  --publication public/main \
+  --swarm origin/main \
+  --expect publication-descends-swarm \
+  --json target/repo-graph/publication-hotfix.json
+```
+
 If publication is not a descendant of swarm, sync publication into swarm with an
 explicit merge commit:
 
