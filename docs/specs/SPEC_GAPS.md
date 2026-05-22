@@ -53,7 +53,7 @@ require deleting or rewriting user-facing docs in the same change.
 | Nix/release source-closure invariants for schemas/fixtures/docs | `flake.nix`, tests, issue #2415 notes | policy-only | add `docs/specs/release-validation-source-closure.md` |
 | Cockpit review packet contract (required files, evidence states, verifier semantics) | `docs/review-packet.md`, schemas, tests | documented but not specced | add `docs/specs/review-packet.md` |
 | Handoff work-order required sections and semantics | `docs/specs/handoff-work-order.md`, `docs/handoff.md`, schema/tests | specified | keep renderer and tests aligned with spec |
-| Coverage/Codecov evidence claim boundary | `docs/ci/coverage.md` | documented but not specced | add `docs/specs/coverage-evidence.md` |
+| Coverage/Codecov evidence claim boundary | `docs/specs/coverage-evidence.md`, `docs/ci/coverage.md` | specified | keep coverage workflows, Codecov config, and proof policy aligned with the spec |
 | No-panic allowlist checker semantics | `policy/no-panic-allowlist.toml`, xtask checks | policy-only | add `docs/specs/no-panic-policy.md` |
 | Non-Rust allowlist/file-policy semantics | `policy/non-rust-allowlist.toml`, xtask checks, `docs/FILE_POLICY.md` | policy-only | add `docs/specs/file-policy.md` |
 | PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add ADR `0010` + `docs/specs/pr-disposition.md` |
