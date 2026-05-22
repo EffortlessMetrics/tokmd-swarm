@@ -190,6 +190,8 @@ pub(crate) fn expectation_matches(
 ) -> bool {
     match expectation {
         RepoGraphExpectation::Aligned => relation == GraphRelation::Aligned,
+        RepoGraphExpectation::SwarmAhead => relation == GraphRelation::SwarmAhead,
+        RepoGraphExpectation::PublicationAhead => relation == GraphRelation::PublicationAhead,
         RepoGraphExpectation::SwarmDescendsPublication => {
             matches!(relation, GraphRelation::Aligned | GraphRelation::SwarmAhead)
         }
@@ -209,6 +211,8 @@ pub(crate) fn expectation_matches(
 fn expectation_name(expectation: RepoGraphExpectation) -> &'static str {
     match expectation {
         RepoGraphExpectation::Aligned => "aligned",
+        RepoGraphExpectation::SwarmAhead => "swarm-ahead",
+        RepoGraphExpectation::PublicationAhead => "publication-ahead",
         RepoGraphExpectation::SwarmDescendsPublication => "swarm-descends-publication",
         RepoGraphExpectation::PublicationDescendsSwarm => "publication-descends-swarm",
         RepoGraphExpectation::NoDivergence => "no-divergence",
@@ -225,23 +229,29 @@ fn graph_next_action(expectation: &str, relation: GraphRelation) -> &'static str
             "graph is aligned; no publication or swarm fast-forward action is needed"
         }
         ("swarm-descends-publication", GraphRelation::Aligned)
+        | ("swarm-ahead", GraphRelation::Aligned)
+        | ("publication-ahead", GraphRelation::Aligned)
         | ("publication-descends-swarm", GraphRelation::Aligned)
         | ("no-divergence", GraphRelation::Aligned) => {
             "graph is aligned; continue with the operating step that requested this check"
         }
-        ("swarm-descends-publication", GraphRelation::SwarmAhead)
+        ("swarm-ahead", GraphRelation::SwarmAhead)
+        | ("swarm-descends-publication", GraphRelation::SwarmAhead)
         | ("no-divergence", GraphRelation::SwarmAhead) => {
             "swarm descends from publication; open a tokmd publication PR and merge it with a merge commit before fast-forwarding swarm"
         }
-        ("publication-descends-swarm", GraphRelation::PublicationAhead)
+        ("publication-ahead", GraphRelation::PublicationAhead)
+        | ("publication-descends-swarm", GraphRelation::PublicationAhead)
         | ("no-divergence", GraphRelation::PublicationAhead) => {
             "publication descends from swarm; fast-forward tokmd-swarm/main to the publication commit before routine swarm work continues"
         }
         ("aligned", GraphRelation::SwarmAhead)
+        | ("publication-ahead", GraphRelation::SwarmAhead)
         | ("publication-descends-swarm", GraphRelation::SwarmAhead) => {
             "publication has not imported the swarm head; create a tokmd publication PR and merge it with a merge commit before fast-forwarding swarm"
         }
         ("aligned", GraphRelation::PublicationAhead)
+        | ("swarm-ahead", GraphRelation::PublicationAhead)
         | ("swarm-descends-publication", GraphRelation::PublicationAhead) => {
             "swarm is behind publication; fast-forward tokmd-swarm/main to the publication commit before routine swarm work continues"
         }
@@ -352,6 +362,34 @@ mod tests {
         ));
         assert!(!expectation_matches(
             RepoGraphExpectation::Aligned,
+            GraphRelation::SwarmAhead
+        ));
+    }
+
+    #[test]
+    fn ahead_expectations_require_exact_ahead_side() {
+        assert!(expectation_matches(
+            RepoGraphExpectation::SwarmAhead,
+            GraphRelation::SwarmAhead
+        ));
+        assert!(!expectation_matches(
+            RepoGraphExpectation::SwarmAhead,
+            GraphRelation::Aligned
+        ));
+        assert!(!expectation_matches(
+            RepoGraphExpectation::SwarmAhead,
+            GraphRelation::PublicationAhead
+        ));
+        assert!(expectation_matches(
+            RepoGraphExpectation::PublicationAhead,
+            GraphRelation::PublicationAhead
+        ));
+        assert!(!expectation_matches(
+            RepoGraphExpectation::PublicationAhead,
+            GraphRelation::Aligned
+        ));
+        assert!(!expectation_matches(
+            RepoGraphExpectation::PublicationAhead,
             GraphRelation::SwarmAhead
         ));
     }

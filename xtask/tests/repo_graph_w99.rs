@@ -96,6 +96,8 @@ fn repo_graph_help_mentions_refs_expectation_and_json() {
     assert!(stdout.contains("--swarm"), "stdout: {stdout}");
     assert!(stdout.contains("--expect"), "stdout: {stdout}");
     assert!(stdout.contains("--json"), "stdout: {stdout}");
+    assert!(stdout.contains("swarm-ahead"), "stdout: {stdout}");
+    assert!(stdout.contains("publication-ahead"), "stdout: {stdout}");
 }
 
 #[test]
@@ -158,7 +160,7 @@ fn repo_graph_reports_swarm_ahead_in_real_git_repo() {
             "--swarm",
             "swarm",
             "--expect",
-            "swarm-descends-publication",
+            "swarm-ahead",
         ],
         repo,
     );
@@ -186,7 +188,7 @@ fn repo_graph_reports_publication_ahead_in_real_git_repo() {
             "--swarm",
             "swarm",
             "--expect",
-            "publication-descends-swarm",
+            "publication-ahead",
         ],
         repo,
     );

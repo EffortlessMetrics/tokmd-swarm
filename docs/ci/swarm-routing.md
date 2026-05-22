@@ -142,14 +142,15 @@ cargo xtask repo-graph \
 ```
 
 Before a publication import, a green swarm PR may intentionally leave
-`tokmd-swarm/main` ahead of `tokmd/main`. In that state, verify the graph is
-still a single ancestor line rather than a divergence:
+`tokmd-swarm/main` ahead of `tokmd/main`. In that state, use the exact
+`swarm-ahead` expectation when proving a pending publication import; use
+`swarm-descends-publication` only when aligned or swarm-ahead are both acceptable:
 
 ```bash
 cargo xtask repo-graph \
   --publication public/main \
   --swarm origin/main \
-  --expect swarm-descends-publication \
+  --expect swarm-ahead \
   --json target/repo-graph/pre-publication.json
 ```
 
@@ -381,9 +382,12 @@ Verify that direction before the fast-forward:
 cargo xtask repo-graph \
   --publication public/main \
   --swarm origin/main \
-  --expect publication-descends-swarm \
+  --expect publication-ahead \
   --json target/repo-graph/publication-hotfix.json
 ```
+
+Use `publication-descends-swarm` instead when aligned and publication-ahead are
+both acceptable for the calling workflow.
 
 If publication is not a descendant of swarm, sync publication into swarm with an
 explicit merge commit:

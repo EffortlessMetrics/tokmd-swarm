@@ -663,6 +663,10 @@ impl Default for RepoGraphArgs {
 pub enum RepoGraphExpectation {
     /// Refs point at the same commit.
     Aligned,
+    /// Swarm is ahead of publication and publication is an ancestor of swarm.
+    SwarmAhead,
+    /// Publication is ahead of swarm and swarm is an ancestor of publication.
+    PublicationAhead,
     /// Publication is an ancestor of swarm; aligned and swarm-ahead are accepted.
     SwarmDescendsPublication,
     /// Swarm is an ancestor of publication; aligned and publication-ahead are accepted.
