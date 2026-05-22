@@ -468,7 +468,7 @@ fn write_doc_artifacts_overview(
         Some(input) => {
             let _ = writeln!(
                 s,
-                "Doc artifacts: {} ({} required docs, {} family files, {} active goals).",
+                "Doc artifacts: {} ({} required docs, {} family files, {} active goals, {} spec-index artifacts, {} spec-index lanes).",
                 if input.receipt.ok {
                     "verified"
                 } else {
@@ -477,6 +477,8 @@ fn write_doc_artifacts_overview(
                 input.receipt.checked.required_docs,
                 input.receipt.checked.family_files,
                 input.receipt.checked.active_goals,
+                input.receipt.checked.spec_index_artifacts,
+                input.receipt.checked.spec_index_lanes,
             );
             if !input.receipt.errors.is_empty() {
                 let _ = writeln!(s, "- Errors: {}", input.receipt.errors.len());

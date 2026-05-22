@@ -52,6 +52,8 @@ pub(super) fn review_packet_doc_artifacts_evidence(
                 "required_docs": input.receipt.checked.required_docs,
                 "family_files": input.receipt.checked.family_files,
                 "active_goals": input.receipt.checked.active_goals,
+                "spec_index_artifacts": input.receipt.checked.spec_index_artifacts,
+                "spec_index_lanes": input.receipt.checked.spec_index_lanes,
             },
             "errors": input.receipt.errors,
             "refs": [format!("{DOC_ARTIFACTS_PACKET_PATH}")],

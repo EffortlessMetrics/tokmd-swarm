@@ -171,7 +171,9 @@
       "properties": {
         "required_docs": { "type": "integer", "minimum": 0 },
         "family_files": { "type": "integer", "minimum": 0 },
-        "active_goals": { "type": "integer", "minimum": 0 }
+        "active_goals": { "type": "integer", "minimum": 0 },
+        "spec_index_artifacts": { "type": "integer", "minimum": 0 },
+        "spec_index_lanes": { "type": "integer", "minimum": 0 }
       }
     },
     "scopeCoverage": {

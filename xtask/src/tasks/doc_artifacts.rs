@@ -153,6 +153,8 @@ struct CheckReport {
     required_docs: usize,
     family_files: usize,
     active_goals: usize,
+    spec_index_artifacts: usize,
+    spec_index_lanes: usize,
     errors: Vec<String>,
 }
 
@@ -169,6 +171,8 @@ struct CheckedCounts {
     required_docs: usize,
     family_files: usize,
     active_goals: usize,
+    spec_index_artifacts: usize,
+    spec_index_lanes: usize,
 }
 
 impl From<&CheckReport> for CheckReceipt {
@@ -180,6 +184,8 @@ impl From<&CheckReport> for CheckReceipt {
                 required_docs: report.required_docs,
                 family_files: report.family_files,
                 active_goals: report.active_goals,
+                spec_index_artifacts: report.spec_index_artifacts,
+                spec_index_lanes: report.spec_index_lanes,
             },
             errors: report.errors.clone(),
         }
@@ -199,7 +205,7 @@ fn check(root: &Path, policy_path: &Path) -> Result<CheckReport> {
     }
 
     if let Some(spec_index) = &policy.spec_index {
-        validate_spec_index(root, spec_index, &mut report.errors);
+        validate_spec_index(root, spec_index, &mut report);
     }
 
     if let Some(active_goal) = &policy.active_goal {
@@ -230,8 +236,12 @@ fn report_result(report: CheckReport) -> Result<String> {
     }
 
     Ok(format!(
-        "doc artifacts ok: {} required doc(s), {} family file(s), {} active goal(s)",
-        report.required_docs, report.family_files, report.active_goals
+        "doc artifacts ok: {} required doc(s), {} family file(s), {} active goal(s), {} spec-index artifact(s), {} spec-index lane(s)",
+        report.required_docs,
+        report.family_files,
+        report.active_goals,
+        report.spec_index_artifacts,
+        report.spec_index_lanes
     ))
 }
 
@@ -294,22 +304,30 @@ fn validate_required_doc(root: &Path, required_doc: &RequiredDoc, errors: &mut V
     }
 }
 
-fn validate_spec_index(root: &Path, policy: &SpecIndexPolicy, errors: &mut Vec<String>) {
+fn validate_spec_index(root: &Path, policy: &SpecIndexPolicy, report: &mut CheckReport) {
     let path = root.join(&policy.path);
     let content = match fs::read_to_string(&path) {
         Ok(content) => content,
         Err(err) => {
-            errors.push(format!("{} is unreadable: {err}", policy.path));
+            report
+                .errors
+                .push(format!("{} is unreadable: {err}", policy.path));
             return;
         }
     };
     let index: SpecIndex = match toml::from_str(&content) {
         Ok(index) => index,
         Err(err) => {
-            errors.push(format!("{} is invalid TOML: {err}", policy.path));
+            report
+                .errors
+                .push(format!("{} is invalid TOML: {err}", policy.path));
             return;
         }
     };
+    report.spec_index_artifacts += index.artifact.len();
+    report.spec_index_lanes += index.lane.len();
+
+    let errors = &mut report.errors;
 
     if index.schema_version != policy.schema_version {
         errors.push(format!(
@@ -759,6 +777,8 @@ mod tests {
         assert_eq!(report.active_goals, 1);
         assert_eq!(report.required_docs, 2);
         assert_eq!(report.family_files, 4);
+        assert_eq!(report.spec_index_artifacts, 1);
+        assert_eq!(report.spec_index_lanes, 0);
     }
 
     #[test]
@@ -776,6 +796,8 @@ mod tests {
         assert_eq!(receipt["checked"]["required_docs"], 2);
         assert_eq!(receipt["checked"]["family_files"], 4);
         assert_eq!(receipt["checked"]["active_goals"], 1);
+        assert_eq!(receipt["checked"]["spec_index_artifacts"], 1);
+        assert_eq!(receipt["checked"]["spec_index_lanes"], 0);
         assert_eq!(receipt["errors"].as_array().expect("errors array").len(), 0);
     }
 

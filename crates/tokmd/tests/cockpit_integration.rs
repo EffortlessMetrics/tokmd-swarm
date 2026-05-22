@@ -128,7 +128,9 @@ const DOC_ARTIFACTS_CHECK_JSON: &str = r#"{
   "checked": {
     "required_docs": 1,
     "family_files": 11,
-    "active_goals": 1
+    "active_goals": 1,
+    "spec_index_artifacts": 9,
+    "spec_index_lanes": 2
   },
   "errors": []
 }"#;
@@ -396,6 +398,11 @@ fn test_cockpit_review_packet_includes_imported_doc_artifacts_evidence() {
     assert_eq!(evidence["doc_artifacts"]["checked"]["required_docs"], 1);
     assert_eq!(evidence["doc_artifacts"]["checked"]["family_files"], 11);
     assert_eq!(evidence["doc_artifacts"]["checked"]["active_goals"], 1);
+    assert_eq!(
+        evidence["doc_artifacts"]["checked"]["spec_index_artifacts"],
+        9
+    );
+    assert_eq!(evidence["doc_artifacts"]["checked"]["spec_index_lanes"], 2);
 
     let copied_doc_artifacts_path = packet_dir.join("docs").join("doc-artifacts-check.json");
     assert!(

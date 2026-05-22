@@ -23,6 +23,10 @@ pub struct DocArtifactsCheckedCounts {
     pub required_docs: usize,
     pub family_files: usize,
     pub active_goals: usize,
+    #[serde(default)]
+    pub spec_index_artifacts: usize,
+    #[serde(default)]
+    pub spec_index_lanes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +95,19 @@ mod tests {
   "checked": {
     "required_docs": 1,
     "family_files": 11,
+    "active_goals": 1,
+    "spec_index_artifacts": 9,
+    "spec_index_lanes": 2
+  },
+  "errors": []
+}"#;
+
+    const LEGACY_RECEIPT: &str = r#"{
+  "schema": "tokmd.doc_artifacts_check.v1",
+  "ok": true,
+  "checked": {
+    "required_docs": 1,
+    "family_files": 11,
     "active_goals": 1
   },
   "errors": []
@@ -105,7 +122,21 @@ mod tests {
         assert_eq!(input.receipt.checked.required_docs, 1);
         assert_eq!(input.receipt.checked.family_files, 11);
         assert_eq!(input.receipt.checked.active_goals, 1);
+        assert_eq!(input.receipt.checked.spec_index_artifacts, 9);
+        assert_eq!(input.receipt.checked.spec_index_lanes, 2);
         assert_eq!(input.availability(), "available");
+    }
+
+    #[test]
+    fn parses_legacy_doc_artifacts_check_receipt_without_spec_index_counts() {
+        let input = parse_doc_artifacts_evidence_input(LEGACY_RECEIPT, "target/docs/check.json")
+            .expect("legacy doc artifacts receipt");
+
+        assert_eq!(input.receipt.checked.required_docs, 1);
+        assert_eq!(input.receipt.checked.family_files, 11);
+        assert_eq!(input.receipt.checked.active_goals, 1);
+        assert_eq!(input.receipt.checked.spec_index_artifacts, 0);
+        assert_eq!(input.receipt.checked.spec_index_lanes, 0);
     }
 
     #[test]

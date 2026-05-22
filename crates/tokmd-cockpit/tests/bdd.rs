@@ -1368,7 +1368,9 @@ fn scenario_write_review_packet_includes_imported_doc_artifacts_evidence() {
   "checked": {
     "required_docs": 1,
     "family_files": 11,
-    "active_goals": 1
+    "active_goals": 1,
+    "spec_index_artifacts": 9,
+    "spec_index_lanes": 2
   },
   "errors": []
 }"#,
@@ -1399,6 +1401,11 @@ fn scenario_write_review_packet_includes_imported_doc_artifacts_evidence() {
     assert_eq!(evidence["doc_artifacts"]["checked"]["required_docs"], 1);
     assert_eq!(evidence["doc_artifacts"]["checked"]["family_files"], 11);
     assert_eq!(evidence["doc_artifacts"]["checked"]["active_goals"], 1);
+    assert_eq!(
+        evidence["doc_artifacts"]["checked"]["spec_index_artifacts"],
+        9
+    );
+    assert_eq!(evidence["doc_artifacts"]["checked"]["spec_index_lanes"], 2);
     assert_eq!(
         evidence["doc_artifacts"]["refs"][0],
         "docs/doc-artifacts-check.json"
@@ -1487,7 +1494,9 @@ fn scenario_write_review_packet_includes_imported_doc_artifacts_evidence() {
 
     let comment_md = std::fs::read_to_string(out.join("comment.md")).unwrap();
     assert!(comment_md.contains("Doc artifacts"));
-    assert!(comment_md.contains("verified (1 required docs, 11 family files, 1 active goals)"));
+    assert!(comment_md.contains(
+        "verified (1 required docs, 11 family files, 1 active goals, 9 spec-index artifacts, 2 spec-index lanes)"
+    ));
 }
 
 #[test]

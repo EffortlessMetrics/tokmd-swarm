@@ -207,8 +207,9 @@ cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json
 
 The review packet should treat this as documentation-control evidence, not as a
 merge verdict. A successful receipt means the source-of-truth artifact shape,
-links, active-goal state, and policy routing checked by the doc-artifacts
-contract were valid at verification time. It does not prove the prose is
+links, `.tokmd-spec` index entries, active-goal state, and policy routing
+checked by the doc-artifacts contract were valid at verification time. It does
+not prove the prose is
 correct or that a PR should merge.
 
 Packet treatment:

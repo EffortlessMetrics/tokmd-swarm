@@ -171,7 +171,9 @@ The JSON receipt uses schema `tokmd.doc_artifacts_check.v1`:
   "checked": {
     "required_docs": 1,
     "family_files": 11,
-    "active_goals": 1
+    "active_goals": 1,
+    "spec_index_artifacts": 9,
+    "spec_index_lanes": 2
   },
   "errors": []
 }

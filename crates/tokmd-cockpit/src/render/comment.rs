@@ -188,10 +188,12 @@ fn write_doc_artifacts_summary(
         Some(input) if input.receipt.ok => {
             let _ = writeln!(
                 s,
-                "**Doc artifacts**: verified ({} required docs, {} family files, {} active goals).",
+                "**Doc artifacts**: verified ({} required docs, {} family files, {} active goals, {} spec-index artifacts, {} spec-index lanes).",
                 input.receipt.checked.required_docs,
                 input.receipt.checked.family_files,
                 input.receipt.checked.active_goals,
+                input.receipt.checked.spec_index_artifacts,
+                input.receipt.checked.spec_index_lanes,
             );
             let _ = writeln!(s);
         }
