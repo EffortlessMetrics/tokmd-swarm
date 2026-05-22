@@ -22,6 +22,7 @@ For the broader documentation routing model, see
 | [0007](0007-schema-family-versioning.md) | accepted | Independent schema-family versioning |
 | [0008](0008-ast-foundation.md) | proposed | AST foundation and shadow rollout |
 | [0009](0009-proof-observation-promotion-boundary.md) | accepted | Proof observation promotion boundary |
+| [0010](0010-diff-input-classification.md) | accepted | Diff input classification before git resolution |
 
 ## House Style
 
