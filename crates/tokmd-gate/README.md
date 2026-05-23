@@ -26,6 +26,33 @@ level = "error"
 
 Supported operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `in`, `contains`, and `exists`.
 
+## Example
+
+```rust
+use serde_json::json;
+use tokmd_gate::{evaluate_policy, PolicyConfig};
+
+let receipt = json!({
+    "derived": {
+        "totals": {
+            "tokens": 42_000
+        }
+    }
+});
+
+let policy = PolicyConfig::from_toml(r#"
+[[rules]]
+name = "max_tokens"
+pointer = "/derived/totals/tokens"
+op = "lte"
+value = 500000
+level = "error"
+"#)?;
+
+let result = evaluate_policy(&receipt, &policy);
+assert!(result.passed);
+```
+
 ## Go deeper
 
 ### How-to

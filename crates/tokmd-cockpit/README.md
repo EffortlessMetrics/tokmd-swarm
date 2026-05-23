@@ -19,6 +19,25 @@ The default `git` feature lets the crate walk `base..head`, hash file sets, and 
 
 Without `git`, the pure render helpers stay available for prebuilt cockpit receipts.
 
+## Example
+
+```rust
+use std::path::PathBuf;
+use tokmd_cockpit::{compute_cockpit, render_comment_md};
+use tokmd_git::GitRangeMode;
+
+let repo_root = PathBuf::from(".");
+let receipt = compute_cockpit(
+    &repo_root,
+    "origin/main",
+    "HEAD",
+    GitRangeMode::ThreeDot,
+    None,
+)?;
+
+let comment_markdown = render_comment_md(&receipt);
+```
+
 ## Go deeper
 
 ### How-to
