@@ -514,7 +514,7 @@ fn test_render_obj_coordinate_math() {
                 .map(|l| {
                     let parts: Vec<f32> = l[2..]
                         .split_whitespace()
-                        .map(|p| p.parse().unwrap())
+                        .map(|p| p.parse().expect("valid f32 coordinate in OBJ vertex"))
                         .collect();
                     (parts[0], parts[1], parts[2])
                 })
