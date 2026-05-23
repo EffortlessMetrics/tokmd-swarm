@@ -56,7 +56,7 @@ require deleting or rewriting user-facing docs in the same change.
 | Coverage/Codecov evidence claim boundary | `docs/specs/coverage-evidence.md`, `docs/ci/coverage.md` | specified | keep coverage workflows, Codecov config, and proof policy aligned with the spec |
 | No-panic allowlist checker semantics | `docs/specs/no-panic-policy.md`, `docs/NO_PANIC_POLICY.md`, `policy/no-panic-allowlist.toml`, xtask checks | specified | keep checker, workflow, allowlist, and guide aligned with the spec |
 | Non-Rust allowlist/file-policy semantics | `docs/specs/file-policy.md`, `policy/non-rust-allowlist.toml`, xtask checks, `docs/FILE_POLICY.md` | specified | keep checker, allowlist, proof routing, and guide aligned with the spec |
-| PR disposition lifecycle rules near release | `AGENTS.md`, `docs/source-of-truth.md` | needs ADR | add next ADR + `docs/specs/pr-disposition.md` |
+| PR disposition lifecycle rules near release | `docs/adr/0011-pr-disposition-lifecycle.md`, `docs/specs/pr-disposition.md`, `AGENTS.md`, `docs/source-of-truth.md` | specified | keep agent guidance, PR bodies, release ledgers, and disposition rationale aligned |
 | Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
 
 ## Classification Vocabulary
