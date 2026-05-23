@@ -50,7 +50,7 @@ require deleting or rewriting user-facing docs in the same change.
 | Proof observation decision packet and promotion-readiness semantics | `docs/specs/proof-observation-decision-packet.md`, `docs/NEXT.md` | documented but not specced | add `docs/specs/proof-observation-decision.md` |
 | Proof workflow status receipt semantics | `docs/specs/proof-workflow-status.md` | specified | keep verifier/schema references current |
 | Diff input classification (path-like before git refs) | `docs/adr/0010-diff-input-classification.md`, `docs/specs/diff-input-classification.md`, implementation/tests, PR #2411 notes | specified | keep CLI behavior, tests, ADR, and spec aligned |
-| Nix/release source-closure invariants for schemas/fixtures/docs | `flake.nix`, tests, issue #2415 notes | policy-only | add `docs/specs/release-validation-source-closure.md` |
+| Nix/release source-closure invariants for schemas/fixtures/docs | `docs/specs/release-validation-source-closure.md`, `flake.nix`, tests, PR #2415 notes | specified | keep Nix filters, schema tests, hosted Nix validation, and proof routing aligned |
 | Cockpit review packet contract (required files, evidence states, verifier semantics) | `docs/specs/review-packet.md`, `docs/review-packet.md`, schemas, tests | specified | keep schemas, verifier, and user-facing guide aligned with the spec |
 | Handoff work-order required sections and semantics | `docs/specs/handoff-work-order.md`, `docs/handoff.md`, schema/tests | specified | keep renderer and tests aligned with spec |
 | Coverage/Codecov evidence claim boundary | `docs/specs/coverage-evidence.md`, `docs/ci/coverage.md` | specified | keep coverage workflows, Codecov config, and proof policy aligned with the spec |
