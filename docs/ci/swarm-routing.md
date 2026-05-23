@@ -220,6 +220,73 @@ This is topology proof only. It does not move release tags, publish packages,
 sign artifacts, update the v1 alias, or promote Nix-full validation into the
 routine swarm workbench gate.
 
+## Repeat Workbench Loop Evidence
+
+A repeat workbench loop on 2026-05-23 proved that ordinary swarm work can land,
+publish, and return to alignment without changing the topology rules:
+
+```text
+tokmd-swarm PR #86
+  docs(proof): clarify affected range boundary
+  squash merge: 45754cddd151db0d5c84dfbd0299ff7f5b4530d8
+
+tokmd publication PR #2493
+  merge(swarm): import affected range-boundary docs
+  merge commit: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  parents:
+    82472bf987e2929da118ef2f0bf7781ffa29856e
+    45754cddd151db0d5c84dfbd0299ff7f5b4530d8
+
+tokmd-swarm/main
+  fast-forwarded to 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+```
+
+The final graph proof was:
+
+```text
+publication public/main 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+swarm origin/main 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+merge_base 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+publication_ahead = 0
+swarm_ahead = 0
+repo-graph relation == aligned
+```
+
+The swarm-side checks included:
+
+```text
+Tokmd Routed Rust Small run 26344728336
+  headSha: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  Route Tokmd Rust Small: success
+  Tokmd Rust Small on CPX42: success
+  Tokmd Rust Small Result: success
+
+CI run 26344439110
+  headSha: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  conclusion: success
+
+Nix Full Validation runs 26344443151 and 26344669696
+  headSha: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  conclusion: skipped
+```
+
+The publication-side checks included:
+
+```text
+CI run 26344429068
+  headSha: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  conclusion: success
+
+Nix Full Validation run 26344780239
+  headSha: 3cce165167a1fdb86142e4af61ca6643e8d4c88f
+  attempt: 1
+  closeout snapshot: in_progress at Check flake (full)
+```
+
+That Nix full snapshot is release-boundary evidence only. It is not part of the
+routine swarm workbench gate and must not be cited as passing proof until the
+publication run reaches a terminal success.
+
 Use the local remote name that points at `EffortlessMetrics/tokmd` in place of
 `publication` when it differs. The local clone in Codex workbench runs often
 uses `public/main` for that remote, so the same check can be run with:
