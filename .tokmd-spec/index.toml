@@ -70,6 +70,12 @@ path = "docs/ci/swarm-routing.md"
 status = "active"
 
 [[artifact]]
+id = "dual-repo-topology-spec"
+kind = "spec"
+path = "docs/specs/repo-topology.md"
+status = "active"
+
+[[artifact]]
 id = "spec-rails-contributor-guide"
 kind = "contributor-guide"
 path = "docs/contributing/spec-rails.md"
