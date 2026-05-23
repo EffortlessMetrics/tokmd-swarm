@@ -96,6 +96,10 @@
         "source_schema": { "type": "string", "minLength": 1 },
         "run_id": { "type": "string", "minLength": 1 },
         "run_attempt": { "type": "string", "minLength": 1 },
+        "run_url": { "type": "string", "minLength": 1 },
+        "workflow": { "type": "string", "minLength": 1 },
+        "event_name": { "type": "string", "minLength": 1 },
+        "ref_name": { "type": "string", "minLength": 1 },
         "profile": {
           "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
         },

@@ -124,8 +124,8 @@ Each imported evidence item should preserve:
 
 - packet-local source artifact path;
 - source schema;
-- source run metadata, such as GitHub run ID and attempt, or workflow URL when
-  available;
+- source run metadata, such as GitHub run ID, attempt, run URL, workflow,
+  event name, and ref when available;
 - base ref or commit when available;
 - head ref or commit when available;
 - proof profile, such as `fast`, `affected`, `release`, or `deep`;
@@ -138,9 +138,12 @@ Each imported evidence item should preserve:
 - generated timestamp when available.
 
 Coverage receipts that include GitHub run metadata preserve non-empty
-`run_id` and `run_attempt` values on their normalized `evidence.json` proof
-entry. That lets packet consumers distinguish reruns while keeping the copied
-`proof/coverage-receipt.json` artifact as the full source payload.
+`run_id`, `run_attempt`, `workflow`, `event_name`, and `ref_name` values on
+their normalized `evidence.json` proof entry. When the receipt has a safe
+GitHub `owner/repo` value and numeric run ID, cockpit also derives `run_url`.
+That lets packet consumers distinguish reruns and open the source Action while
+keeping the copied `proof/coverage-receipt.json` artifact as the full source
+payload.
 
 Packet renderers should refer back to packet-local source artifacts using
 stable refs rather than copying large proof payloads into every packet file.
