@@ -94,6 +94,47 @@ fast-forward complete. If it fails, triage it before release or publication
 claims that rely on full Nix proof; do not move the Nix-full lane into routine
 swarm development to make the workbench loop look cleaner.
 
+## Publication Import CI Triage
+
+Publication imports should be treated as normal CI until evidence says
+otherwise. If a publication-import PR or post-merge run fails before repository
+code executes, capture the failing workflow, job, command, and error text before
+deciding whether a rerun is enough.
+
+The common infrastructure-only shape is:
+
+```text
+actions/checkout fetch fails with:
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+or an advisory review action fails while reading or writing GitHub comments:
+
+```text
+GitHub API 401 / Bad credentials
+```
+
+When the failure is limited to checkout or an advisory external-review API call,
+rerun the failed job or workflow and record the rerun result in the import
+evidence. Do not change code, branch protection, proof policy, or publication
+rules just to make an infrastructure transient disappear from the first
+attempt.
+
+Stop and fix the workflow or credentials instead of merging when:
+
+- the rerun reaches repository code and the same command fails again;
+- the failing job reports a policy, proof, test, lint, or schema error from the
+  checked-out repository;
+- a required aggregate remains red after the failed job is rerun successfully;
+- the failure is in a release, publish, signing, tag, Docker, or `v1` alias
+  workflow.
+
+When a non-blocking advisory review action cannot complete because of an
+external API credential failure, the swarm PR's successful review and the
+publication PR's required CI may be sufficient for a docs-only import. Record
+that boundary in the merge message; do not present the advisory review as
+passing.
+
 ## Publication Merge-Commit Import Proof
 
 A later workbench loop on 2026-05-22 proved the merge-commit import shape that
