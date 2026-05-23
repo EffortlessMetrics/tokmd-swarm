@@ -46,7 +46,7 @@ require deleting or rewriting user-facing docs in the same change.
 | --- | --- | --- | --- |
 | Documentation artifact routing and conservative checker behavior | `docs/specs/doc-artifacts.md` | specified | keep checker and policy in sync |
 | Publish/release evidence packet semantics | `docs/specs/publishing-evidence.md` | specified | align future release receipts to spec |
-| AST shadow lane boundaries | `docs/specs/ast-shadow.md`, `docs/NEXT.md` | documented but not specced | add `docs/specs/ast-shadow-artifacts.md` |
+| AST shadow artifact and lane boundaries | `docs/specs/ast-shadow.md`, `.tokmd-spec/index.toml`, `docs/NEXT.md` | specified | keep shadow-only artifact semantics, verifier, corpus/timing evidence, and public-behavior non-goals aligned |
 | Proof observation decision packet and promotion-readiness semantics | `docs/specs/proof-observation-decision-packet.md`, `docs/adr/0009-proof-observation-promotion-boundary.md`, `docs/NEXT.md` | specified | keep ADR, artifact inventory, verifier, and policy boundary aligned |
 | Proof workflow status receipt semantics | `docs/specs/proof-workflow-status.md` | specified | keep verifier/schema references current |
 | Diff input classification (path-like before git refs) | `docs/adr/0010-diff-input-classification.md`, `docs/specs/diff-input-classification.md`, implementation/tests, PR #2411 notes | specified | keep CLI behavior, tests, ADR, and spec aligned |
