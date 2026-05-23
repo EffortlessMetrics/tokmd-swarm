@@ -52,6 +52,12 @@ path = "docs/specs/ast-shadow.md"
 status = "draft"
 
 [[artifact]]
+id = "spec-contract-gap-audit"
+kind = "spec-audit"
+path = "docs/specs/SPEC_GAPS.md"
+status = "draft"
+
+[[artifact]]
 id = "doc-artifacts-policy"
 kind = "policy"
 path = "policy/doc-artifacts.toml"
