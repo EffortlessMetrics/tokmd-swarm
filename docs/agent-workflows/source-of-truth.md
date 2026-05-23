@@ -15,12 +15,26 @@ controller.
 ## Before Starting
 
 1. Check the open PR queue.
-2. Read `docs/NEXT.md` for the current operating mode.
-3. Read `.tokmd-spec/index.toml`, then the accepted plan, linked spec, ADR,
+2. Fetch `tokmd-swarm` and `tokmd` refs, then verify the dual-repo graph before
+   starting ordinary swarm work:
+
+   ```bash
+   cargo xtask repo-graph \
+     --publication public/main \
+     --swarm origin/main \
+     --expect aligned \
+     --json target/repo-graph/agent-start.json
+   ```
+
+   If the graph is not aligned, do not start unrelated feature work. Follow the
+   publication-import, fast-forward, hotfix, or emergency-repair path in
+   `docs/ci/swarm-routing.md` first.
+3. Read `docs/NEXT.md` for the current operating mode.
+4. Read `.tokmd-spec/index.toml`, then the accepted plan, linked spec, ADR,
    proposal, or policy file named by current repo guidance or PR context.
-4. Review `.jules/goals/active.toml` as Jules-local context when it is relevant,
+5. Review `.jules/goals/active.toml` as Jules-local context when it is relevant,
    not as Codex's primary lane selector.
-5. Confirm `docs/NEXT.md`, accepted docs/plans/specs/ADRs, and the PR context do
+6. Confirm `docs/NEXT.md`, accepted docs/plans/specs/ADRs, and the PR context do
    not contradict each other.
 
 If those artifacts disagree, stop and fix the routing artifact that owns the
