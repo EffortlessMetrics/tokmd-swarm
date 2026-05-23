@@ -212,10 +212,11 @@ proof-plan, and proof-evidence artifacts remain sufficient until a named
 consumer proves otherwise.
 
 There is no selected implementation lane. `.jules/goals/active.toml` is paused
-as the current machine-readable state, and new work should start only from a
-fresh consumer, missing artifact, workflow pain, or product gap. Do not reopen
-proof, AST, architecture, user-path, publishing, or release-readiness work by
-inertia.
+as the current Jules-local machine-readable state, and new work should start
+only from a fresh consumer, missing artifact, workflow pain, or product gap. Do
+not treat the Jules-local state file as Codex's active-lane controller. Do not
+reopen proof, AST, architecture, user-path, publishing, or release-readiness
+work by inertia.
 
 ## Next Work Packets
 
@@ -384,7 +385,10 @@ inertia.
   `docs/plans/doc-artifacts-check.md` is complete, the completed goal is
   archived in `.jules/goals/archive/2026-05-13-doc-artifacts-check.toml`, and
   `.jules/goals/active.toml` then moved on to cockpit review usefulness. The
-  current active-goal state is authoritative in `.jules/goals/active.toml`.
+  current Jules-local active-goal state is authoritative there for Jules
+  automation; Codex lane selection still comes from `AGENTS.md`, `docs/NEXT.md`,
+  accepted docs/plans/specs/ADRs, PR context, and `.codex/**` state where
+  present.
 - The cockpit review packet comment now points directly to `evidence.json`, `review-map.md`, and `cockpit.json`, so hosted PR comments have a short path from the summary to the full packet artifacts.
 - Cockpit review-packet evidence availability now uses the `missing` bucket for pending gates with relevant scope but no tested scope, keeping absent optional gates separate as `unavailable`.
 - The composite Action now adds hosted packet metadata to review-packet PR comments, pointing reviewers to the workflow run, `tokmd-receipts` artifact, and `.tokmd/review` packet path when artifacts are uploaded.
