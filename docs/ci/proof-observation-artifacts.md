@@ -39,7 +39,7 @@ The important distinction is planned versus executed evidence:
 
 | Artifact | Schema | Usual path | Writer | Decision use | Verification |
 | --- | --- | --- | --- | --- | --- |
-| `affected.json` | `tokmd.affected.v1` | `target/proof/affected.json` | `cargo xtask affected --json-output <path>` | Shows changed files, matched proof scopes, and unknown files before proof is planned. | Inspect unknown files; affected planning must report zero unknown files before scoped proof is trusted. |
+| `affected.json` | `tokmd.affected.v1` | `target/proof/affected.json` | `cargo xtask affected --json-output <path>` | Shows changed files, matched proof scopes, and unknown files before proof is planned. The changed files come from the selected Git `--base` / `--head` comparison, not uncommitted working-tree state. | Inspect unknown files; affected planning must report zero unknown files before scoped proof is trusted. Confirm `--head` already contains the intended diff before citing the receipt. |
 | `proof-policy.json` | `tokmd.proof_policy.v1` | `target/proof/proof-policy.json` or `target/proof-observations/proof-policy.json` | `cargo xtask proof-policy --json-output <path>` | Captures checked proof policy, executor defaults, promotion thresholds, and Codecov/default-gate state. | `cargo xtask proof-policy --check`. |
 | `proof-plan.json` | `tokmd.proof_plan.v1` | `target/proof/proof-plan.json` | `cargo xtask proof --profile affected --plan --plan-json <path>` | Shows required and advisory commands selected from affected scopes. | Re-run the same plan command against the same base/head. |
 | `proof-evidence.json` | `tokmd.proof_evidence_plan.v1` | `target/proof/proof-evidence.json` | `cargo xtask proof --plan --evidence-json <path>` | Shows planned evidence families and status before execution. | Treat `planned` / `not_executed` as not passing proof. |
@@ -107,6 +107,11 @@ Generate the core plan and planned-evidence receipts:
 cargo xtask affected --base origin/main --head HEAD --json-output target/proof/affected.json
 cargo xtask proof --profile affected --base origin/main --head HEAD --plan --plan-json target/proof/proof-plan.json --evidence-json target/proof/proof-evidence.json --summary-md target/proof/proof-plan.md
 ```
+
+These commands use `git diff --name-only <base> <head> --` for changed-file
+discovery. Run them after the intended changes are committed to the selected
+`--head`, or point `--head` at another revision that already contains those
+changes. Dirty working-tree edits are outside the affected receipt.
 
 Execute and verify required proof when a lane intentionally opts in:
 

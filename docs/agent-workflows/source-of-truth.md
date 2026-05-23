@@ -135,6 +135,12 @@ cargo fmt-check
 git diff --check
 ```
 
+The affected and proof-plan commands compare the `--base` and `--head` Git
+revisions. They do not inspect unstaged or staged working-tree changes unless
+those changes are part of the selected `--head` revision. Create the branch
+commit, or pass an explicit head revision that already contains the intended
+diff, before citing affected/proof-plan output as PR evidence.
+
 Run package, schema, or publish-surface checks only when the changed artifacts
 touch those surfaces.
 
