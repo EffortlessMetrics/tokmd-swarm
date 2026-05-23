@@ -76,10 +76,17 @@ When a change touches source-of-truth artifacts:
 
 For non-trivial source-of-truth changes, the PR body should include:
 
+- what changed and why the change removes a concrete reviewer, agent, user,
+  proof, or workflow ambiguity;
 - linked source-of-truth artifact or active goal;
 - changed layer, such as proposal, spec, ADR, plan, active goal, policy, or
   proof scope;
 - validation commands and result summary;
+- repo-graph evidence for the current swarm or publication step;
+- claim boundary that names behavior, schemas, release mutation, proof
+  promotion, Codecov defaults, AST behavior, evidencebus runtime, or public CLI
+  surfaces that are intentionally unchanged;
+- rollback or parking path that preserves the swarm/publication graph;
 - stop condition or parking rationale if the work is intentionally incomplete;
 - explicit note when product behavior, schemas, proof promotion, Codecov
   defaults, or publish surface are not changed.
