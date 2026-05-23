@@ -84,6 +84,30 @@ For non-trivial source-of-truth changes, the PR body should include:
 - explicit note when product behavior, schemas, proof promotion, Codecov
   defaults, or publish surface are not changed.
 
+## After A Swarm PR Merges
+
+A completed swarm PR should not leave the dual-repo graph unexamined. After a
+swarm squash merge, fetch both repositories and record the current relation:
+
+```bash
+cargo xtask repo-graph \
+  --publication public/main \
+  --swarm origin/main \
+  --expect swarm-descends-publication \
+  --json target/repo-graph/post-swarm-merge.json
+```
+
+If `tokmd-swarm/main` is ahead of `tokmd/main`, either perform the publication
+checkpoint described in `docs/ci/swarm-routing.md` or leave an explicit
+handoff note explaining why the import is deferred. If the publication import
+lands, fast-forward `tokmd-swarm/main` to the publication merge commit and rerun
+`repo-graph` with `--expect aligned`.
+
+Required publication checks and an aligned repo graph prove the workbench loop.
+Publication-only side workflows such as Nix full validation are release-boundary
+evidence; record in-progress run IDs when relevant, but do not cite them as
+passing proof until they complete successfully.
+
 ## Validation
 
 Use the relevant subset:
