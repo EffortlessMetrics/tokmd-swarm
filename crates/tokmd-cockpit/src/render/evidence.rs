@@ -95,6 +95,10 @@ fn review_packet_proof_evidence(
     .map(|item| {
         let run_id = item.run_id;
         let run_attempt = item.run_attempt;
+        let run_url = item.run_url;
+        let workflow = item.workflow;
+        let event_name = item.event_name;
+        let ref_name = item.ref_name;
         let mut evidence = json!({
             "kind": item.kind.as_str(),
             "source": normalize_path_for_output(&item.source_path),
@@ -115,6 +119,18 @@ fn review_packet_proof_evidence(
         }
         if let Some(run_attempt) = run_attempt {
             evidence["run_attempt"] = json!(run_attempt);
+        }
+        if let Some(run_url) = run_url {
+            evidence["run_url"] = json!(run_url);
+        }
+        if let Some(workflow) = workflow {
+            evidence["workflow"] = json!(workflow);
+        }
+        if let Some(event_name) = event_name {
+            evidence["event_name"] = json!(event_name);
+        }
+        if let Some(ref_name) = ref_name {
+            evidence["ref_name"] = json!(ref_name);
         }
 
         evidence

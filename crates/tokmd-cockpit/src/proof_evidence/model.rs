@@ -93,6 +93,10 @@ pub(crate) struct NormalizedProofEvidence {
     pub commit_match: CommitMatch,
     pub run_id: Option<String>,
     pub run_attempt: Option<String>,
+    pub run_url: Option<String>,
+    pub workflow: Option<String>,
+    pub event_name: Option<String>,
+    pub ref_name: Option<String>,
     pub artifact_refs: Vec<String>,
 }
 

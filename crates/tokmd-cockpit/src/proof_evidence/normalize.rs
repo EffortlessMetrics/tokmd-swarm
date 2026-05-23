@@ -68,6 +68,10 @@ pub(crate) fn normalize_proof_evidence(
                     commit_match,
                     run_id: None,
                     run_attempt: None,
+                    run_url: None,
+                    workflow: None,
+                    event_name: None,
+                    ref_name: None,
                     artifact_refs: vec![format!("{source_ref}#/entries/{idx}")],
                 }
             })
@@ -94,6 +98,10 @@ pub(crate) fn normalize_proof_evidence(
                     commit_match,
                     run_id: None,
                     run_attempt: None,
+                    run_url: None,
+                    workflow: None,
+                    event_name: None,
+                    ref_name: None,
                     artifact_refs: vec![format!("{source_ref}#/scopes/{idx}")],
                 }
             })
@@ -119,6 +127,10 @@ pub(crate) fn normalize_proof_evidence(
                     commit_match,
                     run_id: None,
                     run_attempt: None,
+                    run_url: None,
+                    workflow: None,
+                    event_name: None,
+                    ref_name: None,
                     artifact_refs: vec![format!("{source_ref}#/scopes/{idx}")],
                 }
             })
@@ -152,6 +164,10 @@ pub(crate) fn normalize_proof_evidence(
                 commit_match,
                 run_id: non_empty_string(receipt.github.run_id.as_deref()),
                 run_attempt: non_empty_string(receipt.github.run_attempt.as_deref()),
+                run_url: github_run_url(&receipt.repo, receipt.github.run_id.as_deref()),
+                workflow: non_empty_string(Some(&receipt.workflow)),
+                event_name: non_empty_string(receipt.github.event_name.as_deref()),
+                ref_name: non_empty_string(receipt.github.ref_name.as_deref()),
                 artifact_refs,
             }]
         }
@@ -201,6 +217,36 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 
 fn non_empty_string(value: Option<&str>) -> Option<String> {
     non_empty(value).map(ToOwned::to_owned)
+}
+
+fn github_run_url(repo: &str, run_id: Option<&str>) -> Option<String> {
+    let repo = non_empty(Some(repo))?;
+    let run_id = non_empty(run_id)?;
+
+    if !valid_github_repo(repo) || !run_id.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+
+    Some(format!("https://github.com/{repo}/actions/runs/{run_id}"))
+}
+
+fn valid_github_repo(repo: &str) -> bool {
+    let mut parts = repo.split('/');
+    let Some(owner) = parts.next() else {
+        return false;
+    };
+    let Some(name) = parts.next() else {
+        return false;
+    };
+
+    parts.next().is_none() && valid_github_segment(owner) && valid_github_segment(name)
+}
+
+fn valid_github_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
 }
 
 fn normalize_path_for_ref(path: &Path) -> String {
@@ -314,6 +360,13 @@ mod tests {
         );
         assert_eq!(evidence.run_id.as_deref(), Some("12345"));
         assert_eq!(evidence.run_attempt.as_deref(), Some("1"));
+        assert_eq!(
+            evidence.run_url.as_deref(),
+            Some("https://github.com/EffortlessMetrics/tokmd/actions/runs/12345")
+        );
+        assert_eq!(evidence.workflow.as_deref(), Some("Coverage"));
+        assert_eq!(evidence.event_name.as_deref(), Some("pull_request"));
+        assert_eq!(evidence.ref_name.as_deref(), Some("feature"));
     }
 
     #[test]
@@ -339,5 +392,22 @@ mod tests {
 
         assert_eq!(evidence.commit_match, CommitMatch::Unknown);
         assert_eq!(evidence.availability, ProofEvidenceAvailability::Degraded);
+    }
+
+    #[test]
+    fn github_run_url_requires_safe_repo_and_numeric_run_id() {
+        assert_eq!(
+            github_run_url("EffortlessMetrics/tokmd", Some("12345")).as_deref(),
+            Some("https://github.com/EffortlessMetrics/tokmd/actions/runs/12345")
+        );
+        assert_eq!(github_run_url("EffortlessMetrics", Some("12345")), None);
+        assert_eq!(
+            github_run_url("EffortlessMetrics/tokmd", Some("run-12345")),
+            None
+        );
+        assert_eq!(
+            github_run_url("EffortlessMetrics/tokmd?x=1", Some("12345")),
+            None
+        );
     }
 }
