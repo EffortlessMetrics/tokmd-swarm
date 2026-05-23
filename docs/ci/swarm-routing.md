@@ -116,16 +116,20 @@ GitHub API 401 / Bad credentials
 
 When the failure is limited to checkout or an advisory external-review API call,
 rerun the failed job or workflow and record the rerun result in the import
-evidence. Do not change code, branch protection, proof policy, or publication
-rules just to make an infrastructure transient disappear from the first
-attempt.
+evidence. For publication imports, that evidence is the PR body or merge
+message plus any `repo-graph`, affected-proof, or CI receipts already produced
+for the import. Include the failed run or job ID and the successful rerun ID
+when both exist. Do not change code, branch protection, proof policy, or
+publication rules just to make an infrastructure transient disappear from the
+first attempt.
 
 Stop and fix the workflow or credentials instead of merging when:
 
 - the rerun reaches repository code and the same command fails again;
 - the failing job reports a policy, proof, test, lint, or schema error from the
   checked-out repository;
-- a required aggregate remains red after the failed job is rerun successfully;
+- a required aggregate remains red after the job that previously failed is
+  rerun successfully;
 - the failure is in a release, publish, signing, tag, Docker, or `v1` alias
   workflow.
 
