@@ -109,10 +109,20 @@ When the publication-only Nix lane is still running after an otherwise complete
 import, record:
 
 - repository, run ID or URL, and head SHA;
+- run attempt, status, and conclusion;
 - current job or step, if the GitHub API exposes it;
 - whether any earlier attempt failed before repository code executed;
 - the boundary that no release, publish, signing, tag, Docker, `v1` alias, or
   full-Nix claim is proven until the run reaches a terminal success.
+
+Use an attempt-aware status check so reruns are not confused with the original
+failed attempt:
+
+```bash
+gh run view <run-id> \
+  --repo EffortlessMetrics/tokmd \
+  --json attempt,status,conclusion,headSha,jobs,url
+```
 
 Routine swarm PR work may continue while that side workflow runs only when the
 publication PR's required checks passed, the publication merge commit was pushed
