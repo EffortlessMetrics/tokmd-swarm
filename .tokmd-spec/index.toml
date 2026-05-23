@@ -46,6 +46,12 @@ path = "docs/specs/doc-artifacts.md"
 status = "draft"
 
 [[artifact]]
+id = "ast-shadow-artifacts-spec"
+kind = "spec"
+path = "docs/specs/ast-shadow.md"
+status = "draft"
+
+[[artifact]]
 id = "doc-artifacts-policy"
 kind = "policy"
 path = "policy/doc-artifacts.toml"
