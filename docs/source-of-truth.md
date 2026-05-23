@@ -78,7 +78,8 @@ changing a lane, see `docs/agent-workflows/source-of-truth.md`.
 | `docs/specs/` | Testable behavior contracts, artifact shapes, compatibility rules, proof requirements, and accepted semantics. | Historical decision rationale or PR-by-PR sequencing. |
 | `docs/adr/` | Durable architecture, packaging, boundary, or governance decisions and their consequences. | Detailed behavior matrices that should be tested as specs. |
 | `docs/plans/` | PR sequencing, implementation packets, validation commands, dependencies, and stop conditions. | Product contracts or architecture decisions. |
-| `docs/ci/swarm-routing.md` | Repository topology, publication/swarm roles, import and fast-forward rules, and repo-conditional workflow boundaries. | Product behavior contracts, release evidence, or workflow implementation details. |
+| `docs/specs/repo-topology.md` | Testable dual-repo topology contract, allowed graph relations, and proof requirements for publication/workbench alignment. | Operational runbooks, release evidence, or workflow implementation details. |
+| `docs/ci/swarm-routing.md` | Repository topology runbook, publication/swarm roles, import and fast-forward procedures, and repo-conditional workflow boundaries. | Product behavior contracts, release evidence, or workflow implementation details. |
 | `.jules/goals/active.toml` | Jules-local machine-readable state, suggestions, and linked context for Jules runs. | Codex primary lane selection, accepted product decisions, raw terminal logs, complete run history, or policy. |
 | `.jules/runs/` | Per-run Jules packets, receipts, decisions, and PR bodies. | Codex primary lane selection, shared active state, or edited truth ledgers. |
 | `.jules/friction/` | Structured future-work and friction items found by Jules runs. | Codex primary lane selection, current implementation plans, or accepted decisions. |
