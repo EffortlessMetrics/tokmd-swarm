@@ -1,6 +1,6 @@
 # Spec: Documentation Artifacts
 
-- Status: draft
+- Status: active
 - Schema family, if any: `tokmd.doc_artifacts_check.v1`
 - Related ADRs: `docs/adr/0000-adr-process.md`
 - Related proof scopes: `project_truth_docs`, `proof_control_plane`, `jules_workspace`

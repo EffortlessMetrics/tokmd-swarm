@@ -43,7 +43,7 @@ status = "active"
 id = "doc-artifacts-spec"
 kind = "spec"
 path = "docs/specs/doc-artifacts.md"
-status = "draft"
+status = "active"
 
 [[artifact]]
 id = "ast-shadow-artifacts-spec"
@@ -55,7 +55,7 @@ status = "draft"
 id = "doc-artifacts-policy"
 kind = "policy"
 path = "policy/doc-artifacts.toml"
-status = "draft"
+status = "active"
 
 [[artifact]]
 id = "swarm-routing"

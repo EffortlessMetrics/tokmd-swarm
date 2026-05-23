@@ -1,8 +1,8 @@
 schema_version = "0.1"
 policy = "doc-artifacts"
 owner = "docs/control-plane"
-status = "draft"
-updated = "2026-05-13"
+status = "active"
+updated = "2026-05-23"
 
 # Shape policy for `cargo xtask doc-artifacts --check`.
 # The checker should verify routing, links, required sections, and active-agent
