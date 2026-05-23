@@ -35,7 +35,10 @@ just by workflow name. Multiple in-progress `Nix Full Validation` runs can be
 valid at the same time when they cover different publication commits. Report the
 run for the current `tokmd/main` head separately from older commit-scoped runs,
 and avoid treating an older in-progress run as evidence about the current
-publication merge.
+publication merge. When a failed Nix full run is rerun, also record the run
+`attempt`, current `status`, and `conclusion`; GitHub keeps the rerun under the
+same run ID, so an in-progress later attempt is different evidence from the
+earlier failed attempt.
 
 ## Cache save policy
 
