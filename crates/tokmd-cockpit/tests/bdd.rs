@@ -1596,6 +1596,13 @@ fn scenario_review_map_md_includes_packet_level_proof_overview() {
     assert_eq!(proof[0]["kind"], "coverage_receipt");
     assert_eq!(proof[0]["run_id"], "12345");
     assert_eq!(proof[0]["run_attempt"], "1");
+    assert_eq!(
+        proof[0]["run_url"],
+        "https://github.com/EffortlessMetrics/tokmd/actions/runs/12345"
+    );
+    assert_eq!(proof[0]["workflow"], "Coverage");
+    assert_eq!(proof[0]["event_name"], "pull_request");
+    assert_eq!(proof[0]["ref_name"], "feature");
 
     let review_map_md = std::fs::read_to_string(out.join("review-map.md")).unwrap();
     assert!(review_map_md.contains("Proof evidence overview:"));

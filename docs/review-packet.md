@@ -180,9 +180,10 @@ are supplied with `--review-packet-dir`, cockpit validates them, copies them
 into canonical packet-local `proof/*.json` paths, and records normalized proof
 items in `evidence.json`. Packet imports preserve required/advisory
 classification and commit freshness. Coverage proof entries also preserve
-non-empty GitHub `run_id` and `run_attempt` values when the source receipt
-includes them. Packet imports must not promote advisory proof into blocking
-evidence.
+non-empty GitHub `run_id`, `run_attempt`, `workflow`, `event_name`, and
+`ref_name` values when the source receipt includes them, plus a derived
+`run_url` for safe GitHub repository/run ID pairs. Packet imports must not
+promote advisory proof into blocking evidence.
 
 For a complete local workflow that plans proof, optionally executes guarded
 required proof, imports proof artifacts, and verifies the packet, see the

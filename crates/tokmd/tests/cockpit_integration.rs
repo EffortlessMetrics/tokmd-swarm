@@ -392,6 +392,13 @@ fn test_cockpit_review_packet_preserves_coverage_run_metadata() {
     assert_eq!(proof[0]["kind"], "coverage_receipt");
     assert_eq!(proof[0]["run_id"], "12345");
     assert_eq!(proof[0]["run_attempt"], "1");
+    assert_eq!(
+        proof[0]["run_url"],
+        "https://github.com/EffortlessMetrics/tokmd/actions/runs/12345"
+    );
+    assert_eq!(proof[0]["workflow"], "Coverage");
+    assert_eq!(proof[0]["event_name"], "pull_request");
+    assert_eq!(proof[0]["ref_name"], "feature");
 }
 
 #[test]
