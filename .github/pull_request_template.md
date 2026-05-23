@@ -3,6 +3,10 @@
 <!-- AI-FILL:SUMMARY -->
 <!-- Brief description of what this PR does -->
 
+## Why
+
+<!-- What concrete reviewer, agent, user, proof, or workflow ambiguity does this remove? -->
+
 ## Type of Change
 
 <!-- Check the relevant option(s) -->
@@ -65,6 +69,11 @@
 
 ## Verification
 
+<!-- Summarize the actual proof run for this PR. Keep planned proof distinct
+     from executed proof. -->
+
+- **Proof summary:** <!-- commands run + result, hosted check IDs/URLs if useful -->
+
 - [ ] `cargo build` compiles
 - [ ] `cargo test` passes
 - [ ] `cargo clippy` clean
@@ -90,6 +99,17 @@
   Post-publication fast-forward: cargo xtask repo-graph --publication public/main --swarm origin/main --expect aligned
 -->
 
+## Claim Boundary
+
+<!-- State what this PR proves and what it does not prove. Call out unchanged
+     release, publish, signing, Docker, v1 alias, proof-promotion, Codecov,
+     AST, evidencebus, or public CLI behavior when relevant. -->
+
+## Rollback
+
+<!-- How to revert or park this change without breaking the swarm/publication
+     graph or losing needed evidence. -->
+
 ---
 
 ## CI economics
@@ -101,7 +121,7 @@
 - **Branch protection impact:** <!-- none / adds required job / removes required job -->
 - **Failure mode caught:** <!-- one sentence on what proof this PR buys -->
 - **Cheaper signal considered:** <!-- what was rejected and why -->
-- **Rollback path:** <!-- how to revert without losing the receipt model -->
+- **CI rollback path:** <!-- how to revert CI changes without losing the receipt model -->
 
 ---
 
