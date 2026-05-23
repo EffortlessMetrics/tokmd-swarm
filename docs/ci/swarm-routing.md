@@ -2,9 +2,11 @@
 
 Status: active topology.
 
-This document defines the durable repository roles and Git graph rules for
-`EffortlessMetrics/tokmd` and `EffortlessMetrics/tokmd-swarm`. It is a repo
-topology contract, not a product behavior change.
+This document is the operational runbook for the durable repository roles and
+Git graph rules for `EffortlessMetrics/tokmd` and
+`EffortlessMetrics/tokmd-swarm`. The focused behavior contract lives in
+`docs/specs/repo-topology.md`. Both documents describe repository topology, not
+product behavior.
 
 ## Goal
 
