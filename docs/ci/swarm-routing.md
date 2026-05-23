@@ -132,8 +132,10 @@ back to `tokmd-swarm/main` as a fast-forward, and `repo-graph` reports
 If an earlier Nix attempt failed while fetching a flake input from GitHub, for
 example with `HTTP error 401` / `Bad credentials`, and a rerun gets past
 checkout, Nix installation, and cache setup into `nix flake check`, treat the
-first failure as an infrastructure/auth transient. Keep watching the rerun. If
-the rerun reaches repository validation and fails in `nix flake check`,
+first failure as an infrastructure/auth transient. Continue with bounded status
+snapshots rather than an unbounded `gh run watch`; see
+`docs/ci/cache-and-cancellation.md#run-status-polling`. If the rerun reaches
+repository validation and fails in `nix flake check`,
 `nix build .#tokmd`, or `nix build .#tokmd-with-alias`, triage it as a
 publication validation failure before making release-boundary claims.
 
@@ -162,9 +164,10 @@ rerun the failed job or workflow and record the rerun result in the import
 evidence. For publication imports, that evidence is the PR body or merge
 message plus any `repo-graph`, affected-proof, or CI receipts already produced
 for the import. Include the failed run or job ID and the successful rerun ID
-when both exist. Do not change code, branch protection, proof policy, or
-publication rules just to make an infrastructure transient disappear from the
-first attempt.
+when both exist. During the rerun, use bounded `gh run view` snapshots so slow
+matrix jobs do not exhaust API quota while they are still active. Do not change
+code, branch protection, proof policy, or publication rules just to make an
+infrastructure transient disappear from the first attempt.
 
 Stop and fix the workflow or credentials instead of merging when:
 

@@ -40,6 +40,37 @@ publication merge. When a failed Nix full run is rerun, also record the run
 same run ID, so an in-progress later attempt is different evidence from the
 earlier failed attempt.
 
+## Run status polling
+
+For agent-run CI triage, prefer bounded status snapshots over long
+`gh run watch` sessions. `gh run watch` polls every few seconds and can exhaust
+the GitHub API quota during slow matrix jobs, which turns a CI follow-up into an
+authentication or rate-limit problem.
+
+Use a single status read, then sleep before the next read when the run is still
+active:
+
+```bash
+gh run view <run-id> \
+  --repo EffortlessMetrics/tokmd \
+  --json attempt,status,conclusion,headSha,jobs,url
+```
+
+or for swarm:
+
+```bash
+gh run view <run-id> \
+  --repo EffortlessMetrics/tokmd-swarm \
+  --json attempt,status,conclusion,headSha,jobs,url
+```
+
+If the run is still `in_progress`, record active jobs and wait a bounded
+interval before checking again. Only fetch logs after GitHub reports the run or
+job as terminal; logs for active runs may be unavailable or incomplete. Rerun
+failed jobs only after the failed steps show an infrastructure-only failure,
+such as checkout/auth, and record the rerun attempt separately from the original
+attempt.
+
 ## Cache save policy
 
 Every `Swatinem/rust-cache@v2` use sets:
