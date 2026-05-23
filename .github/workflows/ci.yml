@@ -582,13 +582,17 @@ jobs:
   nix-pr:
     name: Nix PR Package Gate
     needs: detect
+    # Nix package validation is publication-owned. Keep it out of the
+    # tokmd-swarm workbench so swarm push/PR checks do not depend on
+    # publication repo Nix state.
     if: >-
-      github.event_name == 'push' ||
+      github.repository == 'EffortlessMetrics/tokmd' &&
+      (github.event_name == 'push' ||
       contains(github.event.pull_request.labels.*.name, 'nix') ||
       contains(github.event.pull_request.labels.*.name, 'release-check') ||
       contains(github.event.pull_request.labels.*.name, 'full-ci') ||
       needs.detect.outputs.nix == 'true' ||
-      needs.detect.outputs.release == 'true'
+      needs.detect.outputs.release == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
