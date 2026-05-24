@@ -464,6 +464,29 @@ fn affected_plan_ci_blocks_on_planner_generation_failures() {
 }
 
 #[test]
+fn ci_workflow_keeps_pr_docs_evidence_routable() {
+    let ci = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
+        .expect("ci workflow should be readable");
+
+    assert!(
+        ci.contains("pull_request:"),
+        "CI workflow should continue to run for PRs so affected proof can classify changes"
+    );
+    assert!(
+        !ci.contains("paths-ignore:"),
+        "do not skip the whole CI workflow by path; docs-only PRs still need Docs Check and Affected Proof Plan evidence"
+    );
+    assert!(
+        ci.contains("docs-check:"),
+        "CI workflow should keep the docs check job available to PRs"
+    );
+    assert!(
+        ci.contains("affected-plan:"),
+        "CI workflow should keep affected proof planning available to PRs"
+    );
+}
+
+#[test]
 fn proof_plan_json_writes_plan_report_artifact() {
     let root = workspace_root();
     let path = root
