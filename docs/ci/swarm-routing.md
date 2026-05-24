@@ -139,6 +139,32 @@ repository validation and fails in `nix flake check`,
 `nix build .#tokmd`, or `nix build .#tokmd-with-alias`, triage it as a
 publication validation failure before making release-boundary claims.
 
+## Post-Fast-Forward Branch Health
+
+After a publication import merges and `tokmd-swarm/main` fast-forwards to the
+publication merge commit, both repositories may start normal `main` branch CI for
+the same head SHA. Those runs are branch-health evidence, not additional graph
+alignment steps.
+
+When those post-merge runs are still active after the graph is aligned, record:
+
+- repository and workflow run ID or URL;
+- shared `headSha`;
+- run `status` and `conclusion`;
+- active job names and, when exposed, active step names;
+- the boundary that an `in_progress` run is not passing proof.
+
+Use `repo-graph` as the authority for topology state. Use the post-merge CI runs
+as branch-health evidence for the shared commit. Do not delay the
+fast-forward-back-to-swarm operation waiting for branch-health jobs that start
+only after the publication merge, but do not cite those jobs as successful until
+they reach a terminal success.
+
+If a post-fast-forward branch-health run fails in repository code, triage it as
+a current-main regression on the shared commit before relying on full CI, release
+readiness, or publication validation claims. The failure does not undo the Git
+graph alignment, but it does create a branch-health repair lane.
+
 ## Publication Import CI Triage
 
 Publication imports should be treated as normal CI until evidence says
