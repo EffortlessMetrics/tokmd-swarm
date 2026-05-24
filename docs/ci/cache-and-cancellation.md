@@ -40,6 +40,114 @@ publication merge. When a failed Nix full run is rerun, also record the run
 same run ID, so an in-progress later attempt is different evidence from the
 earlier failed attempt.
 
+
+## Codex CI-efficiency compatibility invariants
+
+When drafting CI-efficiency PRs, treat this section as hard compatibility policy.
+
+### 1) Heavy/core concurrency semantics
+
+For heavy/core PR workflows, keep the no-cancel active-run model:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+```
+
+Desired queue behavior:
+
+| State | Desired result |
+|------|-----------------|
+| One run is already executing | Let it continue |
+| A newer commit arrives | Queue the newer run |
+| Another newer commit arrives while one is pending | Replace the older pending run |
+| Active run finishes | Run the newest pending run |
+
+Do not submit generic efficiency edits that flip heavy/core lanes to
+`cancel-in-progress: true` unless a workflow is explicitly documented as safe to
+cancel.
+
+### 2) Change classification before lane selection
+
+Do not treat every changed path as Rust input. Control-plane and metadata edits
+must route to light validation paths unless mixed with real Rust/build/test
+changes.
+
+Paths that are docs/control-plane light by default:
+
+- `docs/**`, `*.md`, `README*`, `CHANGELOG*`, `SECURITY*`, `CONTRIBUTING*`
+- `policy/**`, `plans/**`, `badges/**`, `AGENTS.md`
+- `.github/CODEOWNERS`, `.github/dependabot.yml`, PR templates
+- `.codex/campaigns/**`, `docs/tracking/**`, `ci/hardware/**` receipts
+- `.rails/**`, `.uselesskey/**`
+
+Workflow edits are special:
+
+- `.github/workflows/**` must not be routed as docs-light.
+- Route workflow-only changes to minimal hosted workflow/YAML validation,
+  not full Rust CI unless required.
+
+### 3) Default PR routing policy
+
+Default PR CI should classify first, then choose the cheapest truthful lane:
+
+- docs/control-plane-only → no Rust compile
+- workflow-only → hosted workflow validation only
+- Rust/build/test changes → routed Rust-small
+- hardware/GPU/receipt-only → syntax/receipt validation only
+- unknown or mixed → Rust-small (not full CI)
+
+Full CI requires explicit intent (labels, manual dispatch, merge queue, release,
+main push, or schedule according to workflow policy).
+
+### 4) Hosted fallback guardrails
+
+Do not silently replace a self-hosted Rust-small route with a full
+GitHub-hosted equivalent.
+
+- Fork PRs may use a tiny hosted safe lane.
+- Missing runner readiness, transient token failures, or no idle runner must not
+  automatically trigger a 75–120 minute hosted lane.
+- Require explicit labels/inputs for expensive hosted fallback (for example
+  `full-ci`, `allow-github-hosted`, `ci-budget-ack`).
+
+### 5) Artifact cost policy
+
+Do not upload large receipts/JUnit/log artifacts on every default PR run unless
+merge policy requires them.
+
+- Prefer upload-on-failure.
+- Keep retention short (typically 3–7 days).
+- Keep policy-required receipts small, and skip uploads for docs/control-plane
+  only paths whenever possible.
+
+### 6) Required validation for CI-only PRs
+
+Every CI-efficiency PR must include evidence for:
+
+- `git diff --check`
+- YAML parse check for each edited workflow
+- classification dry-run or shell-unit coverage for:
+  - docs-only
+  - `.rails/**`
+  - `.uselesskey/**`
+  - workflow-file change
+  - Rust-file change
+  - mixed docs + Rust
+- explicit confirmation that heavy/core concurrency did not regress from
+  no-cancel semantics, unless intentionally documented
+
+### Reviewer reject checklist
+
+Reject CI-efficiency PRs unless all answers are "yes":
+
+1. Heavy/core workflows preserve `cancel-in-progress: false`.
+2. Metadata/control-plane-only edits avoid Rust CI.
+3. Workflow edits are kept out of docs-light routing.
+4. No silent expensive hosted fallback was introduced.
+5. The change reduces actual billable work instead of shifting cost.
+
 ## Run status polling
 
 For agent-run CI triage, prefer bounded status snapshots over long
