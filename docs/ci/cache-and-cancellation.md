@@ -45,28 +45,20 @@ earlier failed attempt.
 
 When drafting CI-efficiency PRs, treat this section as hard compatibility policy.
 
-### 1) Heavy/core concurrency semantics
+### 1) Concurrency semantics are lane-specific
 
-For heavy/core PR workflows, keep the no-cancel active-run model:
+Do not apply one concurrency recipe across every workflow. A CI-efficiency PR
+must preserve the cancellation model for the lane it edits:
 
-```yaml
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
-```
+| Workflow class | Expected cancellation model |
+| --- | --- |
+| Core PR workflows | Cancel superseded `synchronize` runs, but do not cancel label/open/reopen runs. |
+| Routed Rust Small frontdoor | Cancel superseded route/result runs; only the newest route can satisfy the required check. |
+| Publication side validation | Treat runs as commit-scoped evidence keyed by `headSha`; do not collapse older publication evidence into the newest commit. |
 
-Desired queue behavior:
-
-| State | Desired result |
-|------|-----------------|
-| One run is already executing | Let it continue |
-| A newer commit arrives | Queue the newer run |
-| Another newer commit arrives while one is pending | Replace the older pending run |
-| Active run finishes | Run the newest pending run |
-
-Do not submit generic efficiency edits that flip heavy/core lanes to
-`cancel-in-progress: true` unless a workflow is explicitly documented as safe to
-cancel.
+Do not submit generic efficiency edits that flip workflows to plain
+`cancel-in-progress: true`, plain `false`, or a new group key without explaining
+which lane class is changing and why the evidence semantics still hold.
 
 ### 2) Change classification before lane selection
 
@@ -90,9 +82,11 @@ Workflow edits are special:
 
 ### 3) Default PR routing policy
 
-Default PR CI should classify first, then choose the cheapest truthful lane:
+Default PR CI proposals should classify first, then choose the cheapest truthful
+lane the current required-check policy can support:
 
-- docs/control-plane-only → no Rust compile
+- docs/control-plane-only → avoid Rust compile only after the aggregate required
+  check still has truthful replacement evidence
 - workflow-only → hosted workflow validation only
 - Rust/build/test changes → routed Rust-small
 - hardware/GPU/receipt-only → syntax/receipt validation only
@@ -135,15 +129,16 @@ Every CI-efficiency PR must include evidence for:
   - workflow-file change
   - Rust-file change
   - mixed docs + Rust
-- explicit confirmation that heavy/core concurrency did not regress from
-  no-cancel semantics, unless intentionally documented
+- explicit confirmation that each edited workflow preserved its lane-specific
+  concurrency semantics, unless the change intentionally updates that policy
 
 ### Reviewer reject checklist
 
 Reject CI-efficiency PRs unless all answers are "yes":
 
-1. Heavy/core workflows preserve `cancel-in-progress: false`.
-2. Metadata/control-plane-only edits avoid Rust CI.
+1. Edited workflows preserve their documented concurrency semantics.
+2. Metadata/control-plane-only edits avoid unnecessary Rust CI, or the PR
+   explains why the current required aggregate still runs it.
 3. Workflow edits are kept out of docs-light routing.
 4. No silent expensive hosted fallback was introduced.
 5. The change reduces actual billable work instead of shifting cost.
