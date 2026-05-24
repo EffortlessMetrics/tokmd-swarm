@@ -79,16 +79,16 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
             fallback_allowed="true"
           elif [ "${{ github.event_name }}" = "pull_request" ] && python - <<'PY'
-import json
-import os
-raw_labels = json.loads(os.environ.get("LABELS_JSON", "[]"))
-labels = {
-    label.get("name") if isinstance(label, dict) else str(label)
-    for label in raw_labels
-}
-allowed = bool({"allow-github-hosted", "ci-budget-ack"} & labels)
-raise SystemExit(0 if allowed else 1)
-PY
+          import json
+          import os
+          raw_labels = json.loads(os.environ.get("LABELS_JSON", "[]"))
+          labels = {
+              label.get("name") if isinstance(label, dict) else str(label)
+              for label in raw_labels
+          }
+          allowed = bool({"allow-github-hosted", "ci-budget-ack"} & labels)
+          raise SystemExit(0 if allowed else 1)
+          PY
           then
             fallback_allowed="true"
           fi
