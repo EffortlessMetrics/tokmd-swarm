@@ -411,6 +411,13 @@ The routed Rust Small implementation order is:
 CPX42 -> CX43 -> CX53 -> GitHub-hosted
 ```
 
+Fallback labels such as `ci-budget-ack` are read by the routed workflow run.
+The routed workflow does not run on label-only PR events, so adding the label
+after a `no_idle_runner` result only authorizes fallback for the next route.
+Trigger a new route with a branch update or `workflow_dispatch` after applying
+the label. Do not treat the older failed aggregate as superseded until a newer
+`Tokmd Rust Small Result` succeeds for the same head.
+
 CPX42 uses the pinned Rust 1.95 toolchain directly on the host, with
 `/mnt/ci-scratch` `TMPDIR` prepared before the toolchain action runs. CX43 and
 CX53 keep their existing local `em-ci-rust:1.95` Docker execution path. CX43
