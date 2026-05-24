@@ -73,6 +73,10 @@
      from executed proof. -->
 
 - **Proof summary:** <!-- commands run + result, hosted check IDs/URLs if useful -->
+- **Routed fallback note:** <!-- If `Tokmd Rust Small Result` first failed with
+  `no_idle_runner`, record the failed run, the fallback authorization label or
+  dispatch used, and the newer successful routed run. Label-only edits do not
+  start a new routed check. -->
 
 - [ ] `cargo build` compiles
 - [ ] `cargo test` passes
@@ -98,6 +102,9 @@
   Publication import PR: cargo xtask repo-graph --publication origin/main --swarm HEAD --expect swarm-ahead
   Post-publication fast-forward: cargo xtask repo-graph --publication public/main --swarm origin/main --expect aligned
 -->
+- **Post-fast-forward branch health:** <!-- If branch CI starts after the graph
+  is aligned, record repo/run IDs, shared headSha, active jobs, and the boundary
+  that in_progress jobs are not passing proof. -->
 
 ## Claim Boundary
 
