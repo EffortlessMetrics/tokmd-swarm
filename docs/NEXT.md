@@ -1,5 +1,14 @@
 # Next Program
 
+## Improvement Roadmap
+
+Durable swarm improvement selection lives in
+[`docs/IMPROVEMENT_ROADMAP.md`](IMPROVEMENT_ROADMAP.md).
+
+`NEXT.md` remains the short-lived current-state handoff. The improvement roadmap
+defines which kinds of non-release, non-package, non-GHCR work are desirable for
+the swarm to pursue next.
+
 The generated PR drain is complete. `PR_DRAIN.md` is now a historical ledger for the duplicate/stale queue and should only change for PR-drain-specific corrections. Active product and control-plane work moves here.
 
 Factory Droid PR #1541 was declined in its original external-service form. A
