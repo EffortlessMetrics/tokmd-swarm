@@ -80,6 +80,8 @@ jobs:
           fallback_allowed="false"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
             fallback_allowed="true"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${trusted}" = "true" ]; then
+            fallback_allowed="true"
           elif [ "${{ github.event_name }}" = "pull_request" ] && python - <<'PY'
           import json
           import os
@@ -544,8 +546,10 @@ jobs:
           cache-directories: ${{ runner.temp }}/target
           save-if: false
 
-      - name: Tiny fallback check
-        run: cargo check --workspace --locked
+      - name: Check and test tokmd rust-small on GitHub Hosted
+        run: |
+          cargo check --workspace --all-features --locked
+          cargo test --workspace --all-features --locked
 
   rust-small-result:
     name: Tokmd Rust Small Result
