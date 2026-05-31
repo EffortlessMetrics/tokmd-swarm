@@ -4,6 +4,9 @@ use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Debug, Clone)]
+#[command(
+    after_help = "Examples:\n  tokmd cockpit --base origin/main --head HEAD --format comment\n  tokmd cockpit --base origin/main --head HEAD --review-packet-dir .tokmd/review"
+)]
 pub struct CockpitArgs {
     /// Base reference to compare from (default: main).
     #[arg(long, default_value = "main")]

@@ -198,6 +198,19 @@ fn help_handoff_mentions_preset() {
 }
 
 #[test]
+fn help_handoff_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["handoff", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd handoff"))
+                .and(predicate::str::contains("--review-packet-dir")),
+        );
+}
+
+#[test]
 fn help_completions_mentions_shell_types() {
     let assert = tokmd_cmd()
         .args(["completions", "--help"])
@@ -284,6 +297,19 @@ fn help_cockpit_exists() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty().not());
+}
+
+#[test]
+fn help_cockpit_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["cockpit", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd cockpit"))
+                .and(predicate::str::contains("--review-packet-dir")),
+        );
 }
 
 #[test]
