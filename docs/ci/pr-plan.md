@@ -47,7 +47,7 @@ expected proof:
       "proof_packs": ["core_receipts"],
       "reason": "manifest_match",
       "policy": "blocking",
-      "lanes": ["rust_fast_gate", "proof_policy", "ripr"],
+      "lanes": ["build_test_linux", "proof_policy", "ripr_advisory"],
       "deep_lanes": ["build_test_windows", "proptest_smoke"]
     }
   ],
@@ -70,9 +70,9 @@ The advisory plan keeps its existing shape:
   ],
   "lanes_selected": [
     {
-      "id": "rust_fast_gate",
+      "id": "build_test_linux",
       "workflow": ".github/workflows/ci.yml",
-      "job": "Rust Fast Gate",
+      "job": "Build & Test (Linux)",
       "kind": "rust",
       "tier": "frontdoor",
       "runner": "ubuntu_latest",

@@ -203,6 +203,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
 
     let lane_index: BTreeMap<&str, &Lane> =
         whitelist.lane.iter().map(|l| (l.id.as_str(), l)).collect();
+    validate_risk_pack_lanes(&risk_packs, &lane_index)?;
     let route_analysis = route_changed_files(&changed, &risk_packs, &lane_index)?;
 
     let mut hits: Vec<RiskPackHit> = Vec::new();
@@ -571,6 +572,38 @@ fn route_changed_files(
         unmatched_files,
         matched_by_pack,
     })
+}
+
+fn validate_risk_pack_lanes(
+    risk_packs: &RiskPacksFile,
+    lane_index: &BTreeMap<&str, &Lane>,
+) -> Result<()> {
+    let mut missing = Vec::new();
+    for (pack_name, pack) in &risk_packs.risk_pack {
+        for lane_id in &pack.lanes {
+            if !lane_index.contains_key(lane_id.as_str()) {
+                missing.push(format!(
+                    "risk_pack.{pack_name}.lanes references {lane_id:?}"
+                ));
+            }
+        }
+        for lane_id in &pack.deep_lanes {
+            if !lane_index.contains_key(lane_id.as_str()) {
+                missing.push(format!(
+                    "risk_pack.{pack_name}.deep_lanes references {lane_id:?}"
+                ));
+            }
+        }
+    }
+
+    if !missing.is_empty() {
+        bail!(
+            "ci-plan risk-pack policy references unknown lane id(s): {}",
+            missing.join(", ")
+        );
+    }
+
+    Ok(())
 }
 
 fn route_policy(
@@ -1021,6 +1054,31 @@ mod tests {
                 && skip.reason == "deep_lane_requires_label"
                 && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
         }));
+    }
+
+    #[test]
+    fn risk_pack_lane_validation_rejects_unknown_lane_ids() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let risk_packs = RiskPacksFile {
+            risk_pack: BTreeMap::from([(
+                "broken".to_string(),
+                RiskPack {
+                    description: "Broken".into(),
+                    paths: vec!["crates/tokmd/**".into()],
+                    lanes: vec!["missing_lane".into()],
+                    deep_lanes: vec!["missing_deep_lane".into()],
+                },
+            )]),
+        };
+
+        let err = validate_risk_pack_lanes(&risk_packs, &lane_index).expect_err("invalid lanes");
+        let message = err.to_string();
+
+        assert!(message.contains("risk_pack.broken.lanes"));
+        assert!(message.contains("missing_lane"));
+        assert!(message.contains("risk_pack.broken.deep_lanes"));
+        assert!(message.contains("missing_deep_lane"));
     }
 
     #[test]
