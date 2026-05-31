@@ -3,7 +3,7 @@
 - Status: active
 - Schema family, if any: `tokmd.coverage_receipt.v1`; scoped executor
   artifacts use existing proof executor receipt families
-- Related ADRs: `docs/adr/0009-proof-observation-lane.md`
+- Related ADRs: `docs/adr/0009-proof-observation-promotion-boundary.md`
 - Related proof scopes: `proof_control_plane`, `project_truth_docs`
 
 ## Contract

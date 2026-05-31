@@ -2,7 +2,7 @@
 
 - Status: draft
 - Schema family, if any: n/a
-- Related ADRs: `docs/adr/0000-adr-process.md`, `docs/adr/0009-proof-observation-lane.md`
+- Related ADRs: `docs/adr/0000-adr-process.md`, `docs/adr/0009-proof-observation-promotion-boundary.md`
 - Related proof scopes: `project_truth_docs`, `proof_control_plane`, `cockpit`
 
 ## Contract

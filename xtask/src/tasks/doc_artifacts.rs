@@ -690,11 +690,12 @@ fn validate_family(root: &Path, family: &ArtifactFamily, report: &mut CheckRepor
             continue;
         }
         report.family_files += 1;
-        validate_family_file(path, &relative, family, &mut report.errors);
+        validate_family_file(root, path, &relative, family, &mut report.errors);
     }
 }
 
 fn validate_family_file(
+    root: &Path,
     path: &Path,
     relative: &str,
     family: &ArtifactFamily,
@@ -741,6 +742,7 @@ fn validate_family_file(
         }
         validate_section(relative, &content, section, errors);
     }
+    validate_inline_repo_path_refs(root, relative, &content, errors);
 }
 
 fn read_markdown(path: &Path, errors: &mut Vec<String>) -> Option<String> {
@@ -763,6 +765,111 @@ fn validate_section(relative: &str, content: &str, section: &str, errors: &mut V
     if !content.lines().any(|line| line.trim_end() == section) {
         errors.push(format!("{relative}: missing required section {section:?}"));
     }
+}
+
+fn validate_inline_repo_path_refs(
+    root: &Path,
+    relative: &str,
+    content: &str,
+    errors: &mut Vec<String>,
+) {
+    for reference in inline_code_spans(content) {
+        let reference = reference.trim();
+        let Some(path_ref) = checked_source_path_ref(reference) else {
+            continue;
+        };
+        if !root.join(Path::new(path_ref)).exists() {
+            errors.push(format!(
+                "{relative}: inline path ref {reference:?} points at missing path {path_ref:?}"
+            ));
+        }
+    }
+}
+
+fn inline_code_spans(content: &str) -> Vec<String> {
+    let mut spans = Vec::new();
+    let mut in_fence = false;
+    for line in content.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+
+        let mut rest = line;
+        while let Some(start) = rest.find('`') {
+            let after_start = &rest[start + 1..];
+            let Some(end) = after_start.find('`') else {
+                break;
+            };
+            spans.push(after_start[..end].to_string());
+            rest = &after_start[end + 1..];
+        }
+    }
+    spans
+}
+
+fn checked_source_path_ref(reference: &str) -> Option<&str> {
+    if reference.is_empty()
+        || reference.contains(char::is_whitespace)
+        || reference
+            .chars()
+            .any(|ch| matches!(ch, '*' | '?' | '[' | ']'))
+        || reference.starts_with('/')
+        || reference.starts_with("http://")
+        || reference.starts_with("https://")
+        || reference.starts_with("mailto:")
+        || reference.starts_with("target/")
+    {
+        return None;
+    }
+
+    let path_ref = reference
+        .split_once('#')
+        .map_or(reference, |(path, _)| path);
+    if path_ref.is_empty() || path_ref.contains("..") {
+        return None;
+    }
+
+    if is_checked_source_path_prefix(path_ref) {
+        Some(path_ref)
+    } else {
+        None
+    }
+}
+
+fn is_checked_source_path_prefix(path_ref: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        ".github/",
+        ".jules/",
+        ".tokmd-spec/",
+        "ci/",
+        "crates/",
+        "docs/",
+        "examples/",
+        "fuzz/",
+        "policy/",
+        "web/",
+        "xtask/",
+    ];
+    const EXACT: &[&str] = &[
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "Cargo.lock",
+        "Cargo.toml",
+        "Dockerfile",
+        "README.md",
+        "ROADMAP.md",
+        "codecov.yml",
+        "deny.toml",
+        "flake.lock",
+        "flake.nix",
+    ];
+
+    PREFIXES.iter().any(|prefix| path_ref.starts_with(prefix)) || EXACT.contains(&path_ref)
 }
 
 fn status_line(content: &str) -> Option<String> {
@@ -1057,6 +1164,28 @@ mod tests {
                 .errors
                 .iter()
                 .any(|error| error.contains("missing required section \"## Work Packets\"")),
+            "{:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn missing_inline_source_path_reference_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        write_valid_fixture(temp.path());
+        fs::write(
+            temp.path().join("docs/specs/doc-artifacts.md"),
+            "# Spec: Documentation Artifacts\n\n- Status: active\n\nRelated ADR: `docs/adr/missing.md`\n\n## Contract\n\n## Inputs\n\n## Outputs\n\n## Compatibility\n\n## Proof Requirements\n",
+        )
+        .unwrap();
+
+        let report = check(temp.path(), Path::new("policy/doc-artifacts.toml")).unwrap();
+
+        assert!(
+            report.errors.iter().any(|error| {
+                error.contains("inline path ref \"docs/adr/missing.md\"")
+                    && error.contains("points at missing path")
+            }),
             "{:?}",
             report.errors
         );
