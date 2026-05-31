@@ -66,7 +66,19 @@ jobs:
             --risk-packs policy/ci-risk-packs.toml \
             --no-budget-annotations \
             --json-out target/ci/ci-detect-plan.json \
+            --route-json-out target/ci/proof-pack-route.json \
             --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload proof-pack route receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-pack-route
+          path: |
+            target/ci/ci-detect-plan.json
+            target/ci/proof-pack-route.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   msrv:
     name: MSRV Check
