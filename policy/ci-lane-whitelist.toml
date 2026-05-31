@@ -22,7 +22,6 @@ macos_latest       = 10.0
 nix_build          = 4.0
 external_ai_review = 4.0
 em_ci_small        = 1.0
-em_ci_nano         = 0.25
 
 # -----------------------------------------------------------------------
 # Frontdoor / cheap default-PR lanes
@@ -414,7 +413,7 @@ kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
 blocking         = false
-runner           = "em_ci_nano"
+runner           = "ubuntu_latest"
 base_lem         = 1
 owner            = "release/ci"
 intent           = "Select the trusted Rust Small runner for tokmd-swarm PRs and dispatches."
@@ -514,7 +513,7 @@ kind             = "summary"
 tier             = "summary"
 default_pr       = true
 blocking         = true
-runner           = "em_ci_nano"
+runner           = "ubuntu_latest"
 base_lem         = 1
 owner            = "release/ci"
 intent           = "Normalize the selected routed Rust Small implementation job into one branch-protection check and carry its conservative PR Plan budget."
@@ -570,7 +569,7 @@ kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
 blocking         = true
-runner           = "em_ci_nano"
+runner           = "ubuntu_latest"
 base_lem         = 1
 owner            = "release/ci"
 intent           = "Reject bare self-hosted/linux/x64 runner routing before runner-group access expands."

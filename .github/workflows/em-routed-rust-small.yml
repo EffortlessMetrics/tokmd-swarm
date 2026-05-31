@@ -32,9 +32,7 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/tokmd-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      group: em-ci-nano
-      labels: [self-hosted, linux, x64, em-ci, cx23, ci-nano, trusted-pr]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       target: ${{ steps.route.outputs.target }}
@@ -561,9 +559,7 @@ jobs:
       always() &&
       github.repository == 'EffortlessMetrics/tokmd-swarm' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      group: em-ci-nano
-      labels: [self-hosted, linux, x64, em-ci, cx23, ci-nano, trusted-pr]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Evaluate router and selected target
