@@ -30,6 +30,9 @@ fails until the PR is split or an explicit override label is present.
 8. Write `target/ci/ci-plan.json`, write
    `target/ci/proof-pack-route.json`, emit budget annotations, and append a
    Markdown summary to `GITHUB_STEP_SUMMARY`.
+9. Upload both receipt files as a strict artifact. A missing PR plan or route
+   receipt is a workflow failure because reviewers lose the actionable routing
+   evidence.
 
 ## Output
 
