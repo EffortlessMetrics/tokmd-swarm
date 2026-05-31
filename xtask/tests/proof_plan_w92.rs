@@ -487,6 +487,34 @@ fn ci_workflow_keeps_pr_docs_evidence_routable() {
 }
 
 #[test]
+fn ci_detect_uses_parent_fallback_for_manual_receipts() {
+    let ci = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
+        .expect("ci workflow should be readable");
+    let detect_section = ci
+        .split("  detect:")
+        .nth(1)
+        .and_then(|section| section.split("  msrv:").next())
+        .expect("CI workflow should define detect and msrv jobs");
+
+    assert!(
+        detect_section.contains("PUSH_BEFORE: ${{ github.event.before || '' }}"),
+        "detect job should read the push before SHA when available"
+    );
+    assert!(
+        detect_section.contains("[ \"${{ github.event_name }}\" = \"push\" ]"),
+        "detect job should preserve push-specific before-SHA routing"
+    );
+    assert!(
+        detect_section.contains("elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then"),
+        "manual detect runs should fall back to the previous commit instead of HEAD..HEAD"
+    );
+    assert!(
+        detect_section.contains("base_ref=\"HEAD\""),
+        "detect job should retain a neutral single-commit fallback when no parent exists"
+    );
+}
+
+#[test]
 fn routed_rust_small_result_uploads_normalized_receipt() {
     let workflow =
         fs::read_to_string(workspace_root().join(".github/workflows/em-routed-rust-small.yml"))
