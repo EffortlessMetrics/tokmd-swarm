@@ -22,7 +22,7 @@ env:
 jobs:
   ripr:
     name: ripr (advisory)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
         with:
