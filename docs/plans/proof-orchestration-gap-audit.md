@@ -45,7 +45,7 @@ record that no proof-orchestration implementation slice is justified yet
    - Status: complete.
    - Evidence: #2297 and #2300 were merged after review and validation; #2299
      remains a draft generated coverage PR, is currently dirty against main,
-     and touches the pre-split `crates/tokmd-cockpit/src/gates/diff_coverage.rs`
+     and touches the pre-split `crates/tokmd-cockpit/src/gates/diff_coverage/`
      path.
 2. Audit remaining workflow-owned proof behavior.
    - Status: complete.

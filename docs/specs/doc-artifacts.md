@@ -91,6 +91,10 @@ The checker should require:
 - `## Validation`;
 - `## Stop Conditions`.
 
+For family Markdown, inline backticked references that look like repo source
+paths should resolve to existing checked-in paths. Generated `target/`
+artifacts and fenced command examples are outside this link-shape check.
+
 ### Active Agent State
 
 `.jules/goals/active.toml` is the current machine-readable active-agent state.
