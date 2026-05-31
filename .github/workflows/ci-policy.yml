@@ -39,7 +39,7 @@ jobs:
 
   ci-lane-whitelist:
     name: CI Lane Whitelist
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
 

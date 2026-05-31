@@ -11,6 +11,11 @@ if [ ! -d "${workflow_dir}" ]; then
   exit 1
 fi
 
+if rg -n --no-heading 'runs-on:[[:space:]]*self-hosted[[:space:]]*(#.*)?$' "${workflow_dir}"; then
+  echo "Bare scalar self-hosted runs-on is forbidden; use an explicit runner group/labels or a hosted runner." >&2
+  bad=1
+fi
+
 if rg -n --no-heading 'runs-on:[[:space:]]*\[[^]]*self-hosted[^]]*linux[^]]*x64[^]]*\]' "${workflow_dir}"; then
   echo "Bare inline self-hosted/linux/x64 runs-on is forbidden." >&2
   bad=1

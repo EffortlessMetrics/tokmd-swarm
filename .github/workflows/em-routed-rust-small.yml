@@ -124,7 +124,11 @@ jobs:
           fi
 
           if [ -z "${GH_TOKEN:-}" ]; then
-            emit "none" "runner_token_missing" "true" "${trusted}" "${fallback_allowed}"
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_token_missing_github_fallback" "true" "${trusted}" "true"
+            else
+              emit "none" "runner_token_missing" "true" "${trusted}" "${fallback_allowed}"
+            fi
             exit 0
           fi
 
@@ -135,7 +139,9 @@ jobs:
             echo "runner API request failed:" >&2
             cat /tmp/gh.err >&2 || true
             err="$(cat /tmp/gh.err 2>/dev/null || true)"
-            if echo "$err" | grep -qi "401"; then
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_api_failed_github_fallback" "true" "${trusted}" "true"
+            elif echo "$err" | grep -qi "401"; then
               emit "none" "runner_token_unauthorized" "true" "${trusted}" "${fallback_allowed}"
             elif echo "$err" | grep -qi "403"; then
               emit "none" "runner_token_forbidden" "true" "${trusted}" "${fallback_allowed}"
@@ -169,7 +175,11 @@ jobs:
           print(f'idle_cx53={idle_count(["em-ci", "cx53", "rust-large", "trusted-pr"])}')
           PY
           then
-            emit "none" "parse_failed" "true" "${trusted}" "${fallback_allowed}"
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_parse_failed_github_fallback" "true" "${trusted}" "true"
+            else
+              emit "none" "parse_failed" "true" "${trusted}" "${fallback_allowed}"
+            fi
             exit 0
           fi
 

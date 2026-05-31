@@ -15,7 +15,7 @@ concurrency:
 jobs:
   nix-macos:
     if: github.repository == 'EffortlessMetrics/tokmd'
-    runs-on: self-hosted
+    runs-on: macos-latest
     timeout-minutes: 150
     permissions:
       contents: read

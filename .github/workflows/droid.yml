@@ -42,7 +42,7 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
 
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     env:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
