@@ -1,19 +1,25 @@
 # PR Plan
 
 The PR Plan job (`.github/workflows/pr-plan.yml`) emits a `ci-plan.json`
-artifact for every PR. It is the source of truth for which risk packs the
-change touches, which lanes will run, and the estimated LEM band.
+artifact for every PR. It is the source of truth for the planner's view of
+changed files, hit risk packs, selected lane IDs, and the estimated LEM band.
 
-The plan is advisory for lane selection, but budget enforcement is active:
-when `--enforce` estimates more than the hard LEM ceiling, the PR Plan job
-fails until the PR is split or an explicit override label is present.
+It is not execution proof. Workflows can still skip conditional jobs, fail
+after selection, or be superseded by a newer run for the same head. Open the
+route receipt for changed-file routing, the hosted check list for actual job
+state, and execution receipts such as `routed-rust-small-result.json` or
+`proof-run-summary.json` before treating proof as run.
+
+Lane selection is advisory, but budget enforcement is active: when `--enforce`
+estimates more than the hard LEM ceiling, the PR Plan job fails until the PR is
+split or an explicit override label is present.
 
 ## How it works
 
 1. Fetch the base ref and compute `git diff --name-only base...head`.
 2. Read `policy/ci-lane-whitelist.toml` for the lane catalogue + budget.
 3. Read `policy/ci-risk-packs.toml` for path -> lane routing.
-4. For each non-expensive `default_pr` lane: include it always.
+4. For each non-expensive `default_pr` lane: include it in the advisory plan.
 5. For each risk pack whose paths match a changed file: include its
    `lanes`, and (if a matching label or `full-ci` is set) its
    `deep_lanes`.
@@ -37,7 +43,9 @@ fails until the PR is split or an explicit override label is present.
 ## Output
 
 The route receipt is the first artifact to open when a path did not select the
-expected proof:
+expected proof. `changed_files` records manifest matches, `unmatched_files`
+records paths with no route, and `skipped_by_policy` records lanes that were
+known but intentionally not selected:
 
 ```json
 {
@@ -55,11 +63,19 @@ expected proof:
     }
   ],
   "unmatched_files": [],
-  "skipped_by_policy": []
+  "skipped_by_policy": [
+    {
+      "lane": "build_test_windows",
+      "status": "skipped_by_policy",
+      "reason": "deep_lane_requires_label",
+      "matched_files": ["crates/tokmd/src/main.rs"]
+    }
+  ]
 }
 ```
 
-The advisory plan keeps its existing shape:
+The advisory plan keeps its existing shape. Treat `lanes_selected` as planner
+selection, not proof that those jobs executed or passed:
 
 ```json
 {
