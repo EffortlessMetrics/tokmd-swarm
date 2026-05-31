@@ -673,20 +673,29 @@ jobs:
 
       - name: Get changed Rust files
         id: changed
+        env:
+          PUSH_BEFORE: ${{ github.event.before || '' }}
         run: |
           set -euo pipefail
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_REF="${{ github.base_ref }}"
+            BASE_REV="origin/$BASE_REF"
+            git fetch origin "$BASE_REF":"refs/remotes/origin/$BASE_REF" || true
+          elif [ -n "${PUSH_BEFORE}" ] && ! printf '%s' "${PUSH_BEFORE}" | grep -Eq '^0+$'; then
+            BASE_REF="main"
+            BASE_REV="${PUSH_BEFORE}"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            BASE_REF="main"
+            BASE_REV="HEAD^"
           else
             BASE_REF="main"
+            BASE_REV="HEAD"
           fi
-
-          git fetch origin "$BASE_REF":"refs/remotes/origin/$BASE_REF" || true
 
           cargo xtask mutation-scope \
             --base-ref "$BASE_REF" \
-            --base "origin/$BASE_REF" \
+            --base "$BASE_REV" \
             --head HEAD \
             --max-files 20 \
             --all-changed-files all_changed_files.txt \

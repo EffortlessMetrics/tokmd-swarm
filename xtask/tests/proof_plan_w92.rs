@@ -740,8 +740,24 @@ fn ci_mutation_job_uses_rust_owned_mutation_scope_selector() {
         "CI mutation job should record the human base ref"
     );
     assert!(
-        mutation_section.contains("--base \"origin/$BASE_REF\""),
-        "CI mutation job should diff against the fetched base ref"
+        mutation_section.contains("BASE_REV=\"origin/$BASE_REF\""),
+        "CI mutation job should preserve PR diffs against the fetched base ref"
+    );
+    assert!(
+        mutation_section.contains("PUSH_BEFORE: ${{ github.event.before || '' }}"),
+        "CI mutation job should read the push before SHA"
+    );
+    assert!(
+        mutation_section.contains("BASE_REV=\"${PUSH_BEFORE}\""),
+        "CI mutation job should diff main pushes from the pushed-before revision"
+    );
+    assert!(
+        mutation_section.contains("BASE_REV=\"HEAD^\""),
+        "CI mutation job should fall back to the parent commit for unusual push events"
+    );
+    assert!(
+        mutation_section.contains("--base \"$BASE_REV\""),
+        "CI mutation job should pass the resolved base revision to mutation-scope"
     );
     assert!(
         mutation_section.contains("--head HEAD"),
