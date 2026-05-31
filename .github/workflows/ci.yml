@@ -50,11 +50,16 @@ jobs:
         name: Compute risk-pack output flags
         env:
           LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels) || '[]' }}
+          PUSH_BEFORE: ${{ github.event.before || '' }}
         run: |
           set -euo pipefail
           mkdir -p target/ci
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base_ref="origin/${{ github.base_ref }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ -n "${PUSH_BEFORE}" ] && ! printf '%s' "${PUSH_BEFORE}" | grep -Eq '^0+$'; then
+            base_ref="${PUSH_BEFORE}"
+          elif [ "${{ github.event_name }}" = "push" ] && git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base_ref="HEAD^"
           else
             base_ref="HEAD"
           fi
