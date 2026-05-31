@@ -477,6 +477,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd analyze --preset receipt --format md
+  tokmd analyze . --preset risk --output-dir .runs/analysis
 ```
 <!-- /HELP: analyze -->
 
@@ -935,6 +939,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd context --budget 128k --mode bundle --output context.txt
+  tokmd context crates/tokmd xtask --strategy spread --budget 200k
 ```
 <!-- /HELP: context -->
 

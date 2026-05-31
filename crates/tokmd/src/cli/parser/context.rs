@@ -4,6 +4,9 @@ use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Args, Debug, Clone)]
+#[command(
+    after_help = "Examples:\n  tokmd context --budget 128k --mode bundle --output context.txt\n  tokmd context crates/tokmd xtask --strategy spread --budget 200k"
+)]
 pub struct CliContextArgs {
     /// Paths to scan (directories, files, or globs). Defaults to "."
     #[arg(value_name = "PATH")]

@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use super::AnalysisFormat;
 
 #[derive(Args, Debug, Clone)]
+#[command(
+    after_help = "Examples:\n  tokmd analyze --preset receipt --format md\n  tokmd analyze . --preset risk --output-dir .runs/analysis"
+)]
 pub struct CliAnalyzeArgs {
     /// Inputs to analyze (run dir, receipt.json, export.jsonl, or paths).
     #[arg(value_name = "INPUT", default_value = ".")]

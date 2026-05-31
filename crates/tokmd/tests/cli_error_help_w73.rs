@@ -180,12 +180,38 @@ fn help_analyze_mentions_preset() {
 }
 
 #[test]
+fn help_analyze_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["analyze", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("tokmd analyze")
+                .and(predicate::str::contains("--preset risk"))
+                .and(predicate::str::contains("--output-dir")),
+        );
+}
+
+#[test]
 fn help_context_mentions_mode_and_budget() {
     tokmd_cmd()
         .args(["context", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("--mode").and(predicate::str::contains("--budget")));
+}
+
+#[test]
+fn help_context_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["context", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("tokmd context")
+                .and(predicate::str::contains("--mode bundle"))
+                .and(predicate::str::contains("--strategy spread")),
+        );
 }
 
 #[test]
