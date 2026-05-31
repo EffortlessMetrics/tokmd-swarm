@@ -12,7 +12,7 @@ fails until the PR is split or an explicit override label is present.
 
 1. Fetch the base ref and compute `git diff --name-only base...head`.
 2. Read `policy/ci-lane-whitelist.toml` for the lane catalogue + budget.
-3. Read `policy/ci-risk-packs.toml` for path → lane routing.
+3. Read `policy/ci-risk-packs.toml` for path -> lane routing.
 4. For each non-expensive `default_pr` lane: include it always.
 5. For each risk pack whose paths match a changed file: include its
    `lanes`, and (if a matching label or `full-ci` is set) its
@@ -22,15 +22,41 @@ fails until the PR is split or an explicit override label is present.
 
    | Band | LEM range |
    |------|-----------|
-   | `normal` | ≤ default_limit_lem (35) |
-   | `elevated` | ≤ elevated_limit_lem (75) |
-   | `high-cost` | ≤ hard_limit_lem (125) |
+   | `normal` | <= default_limit_lem (35) |
+   | `elevated` | <= elevated_limit_lem (75) |
+   | `high-cost` | <= hard_limit_lem (125) |
    | `override-required` | > hard_limit_lem |
 
-8. Write `target/ci/ci-plan.json`, emit budget annotations, and append a
+8. Write `target/ci/ci-plan.json`, write
+   `target/ci/proof-pack-route.json`, emit budget annotations, and append a
    Markdown summary to `GITHUB_STEP_SUMMARY`.
 
 ## Output
+
+The route receipt is the first artifact to open when a path did not select the
+expected proof:
+
+```json
+{
+  "schema": "tokmd.proof_pack_route.v1",
+  "schema_version": 1,
+  "changed_files": [
+    {
+      "path": "crates/tokmd/src/main.rs",
+      "surface": "core_receipts",
+      "proof_packs": ["core_receipts"],
+      "reason": "manifest_match",
+      "policy": "blocking",
+      "lanes": ["rust_fast_gate", "proof_policy", "ripr"],
+      "deep_lanes": ["build_test_windows", "proptest_smoke"]
+    }
+  ],
+  "unmatched_files": [],
+  "skipped_by_policy": []
+}
+```
+
+The advisory plan keeps its existing shape:
 
 ```json
 {
@@ -68,6 +94,9 @@ fails until the PR is split or an explicit override label is present.
   `needs.detect.outputs.*` names, but path classification comes from the
   Rust-owned planner and checked `policy/ci-risk-packs.toml` rather than
   duplicated shell matching.
+- `cargo xtask ci-plan --route-json-out <path>` writes the changed-file route
+  receipt used to see matched proof packs, unmatched files, and explicit
+  skipped-by-policy lanes before broad CI proof starts.
 - `--enforce` fails only the hard-ceiling band (`override-required`) when
   neither `ci-budget-override` nor `full-ci` is present. Lower bands emit
   warnings but do not fail the job.
@@ -119,6 +148,7 @@ cargo xtask ci-plan \
   --head HEAD \
   --labels-json '[{"name":"full-ci"}]' \
   --json-out target/ci/ci-plan.json \
+  --route-json-out target/ci/proof-pack-route.json \
   --enforce
 ```
 
@@ -130,5 +160,6 @@ cargo xtask ci-plan \
   --head HEAD \
   --labels-json '[{"name":"full-ci"}]' \
   --json-out target/ci/ci-plan.json \
+  --route-json-out target/ci/proof-pack-route.json \
   --github-output target/ci/ci-plan.outputs
 ```

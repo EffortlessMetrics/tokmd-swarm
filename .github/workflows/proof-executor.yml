@@ -34,7 +34,7 @@ env:
 jobs:
   scoped-coverage-executor:
     name: Scoped Coverage Executor (Non-Required)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:

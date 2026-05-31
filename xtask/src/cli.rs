@@ -588,6 +588,10 @@ pub struct CiPlanArgs {
     #[arg(long, value_name = "PATH")]
     pub json_out: Option<std::path::PathBuf>,
 
+    /// Optional output path for the changed-file proof-pack route receipt
+    #[arg(long, value_name = "PATH")]
+    pub route_json_out: Option<std::path::PathBuf>,
+
     /// Optional path to GITHUB_STEP_SUMMARY (the workflow appends to it)
     #[arg(long, value_name = "PATH")]
     pub github_summary: Option<std::path::PathBuf>,
@@ -620,6 +624,7 @@ impl Default for CiPlanArgs {
             lanes: std::path::PathBuf::from("policy/ci-lane-whitelist.toml"),
             risk_packs: std::path::PathBuf::from("policy/ci-risk-packs.toml"),
             json_out: None,
+            route_json_out: None,
             github_summary: None,
             github_output: None,
             no_budget_annotations: false,

@@ -514,7 +514,7 @@ tier             = "summary"
 default_pr       = true
 blocking         = true
 runner           = "ubuntu_latest"
-base_lem         = 20
+base_lem         = 1
 owner            = "release/ci"
 intent           = "Normalize the selected routed Rust Small implementation job into one branch-protection check and carry its conservative PR Plan budget."
 failure_mode     = "Swarm branch protection fragments across conditional runner jobs."
@@ -560,6 +560,26 @@ expires          = "2026-11-07"
 # (PR 03). These are not part of the default-PR gate; they're enumerated
 # here so PR 03 can run advisory-clean and so reviewers see the full set.
 # -----------------------------------------------------------------------
+
+[[lane]]
+id               = "no_bare_self_hosted"
+workflow         = ".github/workflows/ci-policy.yml"
+job              = "No Bare Self-Hosted Routing"
+kind             = "policy"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Reject bare self-hosted/linux/x64 runner routing before runner-group access expands."
+failure_mode     = "A workflow can accidentally land broad CI on the wrong self-hosted capacity class."
+proof_obligation = "Run scripts/check-no-bare-self-hosted.sh .github/workflows."
+evidence         = ["job logs"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of     = []
+review_after     = "2026-06-21"
+expires          = "2026-11-21"
 
 [[lane]]
 id               = "ci_lane_whitelist"
@@ -634,8 +654,8 @@ base_lem         = 1
 owner            = "release/ci"
 intent           = "Publish the LEM-aware advisory PR plan for reviewers."
 failure_mode     = "Reviewers lose the planned proof/cost view for ordinary PRs."
-proof_obligation = "Run cargo xtask ci-plan --enforce and upload pr-plan artifacts."
-evidence         = ["target/ci-plan.json", "target/ci-plan.md"]
+proof_obligation = "Run cargo xtask ci-plan --enforce and upload pr-plan plus proof-pack route artifacts."
+evidence         = ["target/ci/ci-plan.json", "target/ci/proof-pack-route.json"]
 allowed_triggers = ["pull_request"]
 duplicate_of     = ["ci_detect_risk_packs"]
 review_after     = "2026-06-07"

@@ -29,8 +29,10 @@ permissions:
 jobs:
   route-rust-small:
     name: Route Tokmd Rust Small
-    if: github.repository == 'EffortlessMetrics/tokmd-swarm'
-    runs-on: self-hosted
+    if: >-
+      github.repository == 'EffortlessMetrics/tokmd-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       target: ${{ steps.route.outputs.target }}
@@ -78,6 +80,8 @@ jobs:
           fallback_allowed="false"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
             fallback_allowed="true"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${trusted}" = "true" ]; then
+            fallback_allowed="true"
           elif [ "${{ github.event_name }}" = "pull_request" ] && python - <<'PY'
           import json
           import os
@@ -120,7 +124,11 @@ jobs:
           fi
 
           if [ -z "${GH_TOKEN:-}" ]; then
-            emit "none" "runner_token_missing" "true" "${trusted}" "${fallback_allowed}"
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_token_missing_github_fallback" "true" "${trusted}" "true"
+            else
+              emit "none" "runner_token_missing" "true" "${trusted}" "${fallback_allowed}"
+            fi
             exit 0
           fi
 
@@ -131,7 +139,9 @@ jobs:
             echo "runner API request failed:" >&2
             cat /tmp/gh.err >&2 || true
             err="$(cat /tmp/gh.err 2>/dev/null || true)"
-            if echo "$err" | grep -qi "401"; then
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_api_failed_github_fallback" "true" "${trusted}" "true"
+            elif echo "$err" | grep -qi "401"; then
               emit "none" "runner_token_unauthorized" "true" "${trusted}" "${fallback_allowed}"
             elif echo "$err" | grep -qi "403"; then
               emit "none" "runner_token_forbidden" "true" "${trusted}" "${fallback_allowed}"
@@ -160,25 +170,29 @@ jobs:
                       count += 1
               return count
 
+          print(f'idle_cx43={idle_count(["em-ci", "cx43", "rust-medium", "trusted-pr"])}')
           print(f'idle_cpx42={idle_count(["em-ci", "cpx42", "rust-medium", "rust-16gb", "trusted-pr"])}')
-          print(f'idle_cx43={idle_count(["em-ci", "cx43", "rust-small", "trusted-pr"])}')
-          print(f'idle_cx53={idle_count(["em-ci", "cx53", "rust-small", "trusted-pr"])}')
+          print(f'idle_cx53={idle_count(["em-ci", "cx53", "rust-large", "trusted-pr"])}')
           PY
           then
-            emit "none" "parse_failed" "true" "${trusted}" "${fallback_allowed}"
+            if [ "${trusted}" = "true" ]; then
+              emit "github" "runner_parse_failed_github_fallback" "true" "${trusted}" "true"
+            else
+              emit "none" "parse_failed" "true" "${trusted}" "${fallback_allowed}"
+            fi
             exit 0
           fi
 
           . ./runner-counts.env
 
-          echo "idle_cpx42=${idle_cpx42:-0}"
           echo "idle_cx43=${idle_cx43:-0}"
+          echo "idle_cpx42=${idle_cpx42:-0}"
           echo "idle_cx53=${idle_cx53:-0}"
 
-          if [ "${idle_cpx42:-0}" -gt 0 ]; then
-            emit "cpx42" "cpx42_idle" "false" "${trusted}" "${fallback_allowed}"
-          elif [ "${idle_cx43:-0}" -gt 0 ]; then
+          if [ "${idle_cx43:-0}" -gt 0 ]; then
             emit "cx43" "cx43_idle" "false" "${trusted}" "${fallback_allowed}"
+          elif [ "${idle_cpx42:-0}" -gt 0 ]; then
+            emit "cpx42" "cpx42_idle" "false" "${trusted}" "${fallback_allowed}"
           elif [ "${idle_cx53:-0}" -gt 0 ]; then
             emit "cx53" "cx53_idle" "false" "${trusted}" "${fallback_allowed}"
           else
@@ -259,7 +273,7 @@ jobs:
       needs.route-rust-small.outputs.trusted_self_hosted == 'true'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, linux, x64, em-ci, cx43, rust-small, trusted-pr]
+      labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
     timeout-minutes: 120
     env:
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -384,7 +398,7 @@ jobs:
       needs.route-rust-small.outputs.trusted_self_hosted == 'true'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, linux, x64, em-ci, cx53, rust-small, trusted-pr]
+      labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
     timeout-minutes: 120
     env:
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -507,7 +521,7 @@ jobs:
       github.repository == 'EffortlessMetrics/tokmd-swarm' &&
       needs.route-rust-small.outputs.target == 'github' &&
       needs.route-rust-small.outputs.fallback_allowed == 'true'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -532,8 +546,10 @@ jobs:
           cache-directories: ${{ runner.temp }}/target
           save-if: false
 
-      - name: Tiny fallback check
-        run: cargo check --workspace --locked
+      - name: Check and test tokmd rust-small on GitHub Hosted
+        run: |
+          cargo check --workspace --all-features --locked
+          cargo test --workspace --all-features --locked
 
   rust-small-result:
     name: Tokmd Rust Small Result
@@ -545,8 +561,9 @@ jobs:
       - rust-small-github
     if: >-
       always() &&
-      github.repository == 'EffortlessMetrics/tokmd-swarm'
-    runs-on: self-hosted
+      github.repository == 'EffortlessMetrics/tokmd-swarm' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Evaluate router and selected target

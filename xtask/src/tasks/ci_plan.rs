@@ -7,6 +7,8 @@
 //!
 //! Output: `ci-plan.json` describing which risk packs were hit, which
 //! lanes will run on this PR, the estimated LEM, and the LEM band.
+//! It can also write `proof-pack-route.json`, a smaller changed-file to
+//! proof-pack receipt for CI routing/debugging.
 //!
 //! Advisory only — does not change which jobs actually run. PR 12 wires
 //! workflows to consume the plan; PR 14 layers in the budget warning.
@@ -124,6 +126,53 @@ struct LaneSelection {
     reason: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+struct ChangedFileRoute {
+    path: String,
+    surface: String,
+    proof_packs: Vec<String>,
+    reason: String,
+    policy: String,
+    lanes: Vec<String>,
+    deep_lanes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkippedByPolicy {
+    lane: String,
+    status: String,
+    reason: String,
+    matched_files: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RouteSummary {
+    changed_file_count: usize,
+    routed_file_count: usize,
+    unmatched_file_count: usize,
+    skipped_lane_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct ProofPackRouteReceipt {
+    schema: &'static str,
+    schema_version: u32,
+    base: String,
+    head: String,
+    labels: Vec<String>,
+    changed_files: Vec<ChangedFileRoute>,
+    unmatched_files: Vec<String>,
+    skipped_by_policy: Vec<SkippedByPolicy>,
+    summary: RouteSummary,
+}
+
+#[derive(Debug)]
+struct RouteAnalysis {
+    changed_files: Vec<ChangedFileRoute>,
+    unmatched_files: Vec<String>,
+    matched_by_pack: BTreeMap<String, Vec<String>>,
+}
+
 #[derive(Debug, Serialize, Clone, Copy)]
 struct BudgetView {
     preferred_default_lem: u64,
@@ -154,6 +203,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
 
     let lane_index: BTreeMap<&str, &Lane> =
         whitelist.lane.iter().map(|l| (l.id.as_str(), l)).collect();
+    let route_analysis = route_changed_files(&changed, &risk_packs, &lane_index)?;
 
     let mut hits: Vec<RiskPackHit> = Vec::new();
     let mut selected: BTreeMap<String, LaneSelection> = BTreeMap::new();
@@ -174,7 +224,11 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
     }
 
     for (name, pack) in &risk_packs.risk_pack {
-        let matched = match_paths(&pack.paths, &changed)?;
+        let matched = route_analysis
+            .matched_by_pack
+            .get(name)
+            .cloned()
+            .unwrap_or_default();
         if matched.is_empty() {
             continue;
         }
@@ -224,6 +278,25 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
         }
     }
 
+    let selected_ids: BTreeSet<String> = selected.keys().cloned().collect();
+    let skipped_by_policy = skipped_by_policy(&whitelist, &selected_ids, &route_analysis);
+    let route_receipt = ProofPackRouteReceipt {
+        schema: "tokmd.proof_pack_route.v1",
+        schema_version: 1,
+        base: args.base.clone(),
+        head: args.head.clone(),
+        labels: labels.clone(),
+        changed_files: route_analysis.changed_files.clone(),
+        unmatched_files: route_analysis.unmatched_files.clone(),
+        summary: RouteSummary {
+            changed_file_count: changed.len(),
+            routed_file_count: route_analysis.changed_files.len(),
+            unmatched_file_count: route_analysis.unmatched_files.len(),
+            skipped_lane_count: skipped_by_policy.len(),
+        },
+        skipped_by_policy,
+    };
+
     let lanes_selected: Vec<LaneSelection> = selected.into_values().collect();
     let estimated_lem: u64 = lanes_selected.iter().map(|l| l.estimated_lem).sum();
     let band = classify_band(estimated_lem, budget);
@@ -256,6 +329,17 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
         println!("ci-plan written to {}", path.display());
     } else {
         println!("{json}");
+    }
+
+    if let Some(out) = &args.route_json_out {
+        let route_json =
+            serde_json::to_string_pretty(&route_receipt).context("serialize proof-pack route")?;
+        let path = root.join(out);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        fs::write(&path, route_json).with_context(|| format!("write {}", path.display()))?;
+        println!("proof-pack route written to {}", path.display());
     }
 
     if let Some(summary_path) = &args.github_summary {
@@ -423,6 +507,152 @@ fn match_paths(globs: &[String], files: &[String]) -> Result<Vec<String>> {
     matched.sort();
     matched.dedup();
     Ok(matched)
+}
+
+fn route_changed_files(
+    changed: &[String],
+    risk_packs: &RiskPacksFile,
+    lane_index: &BTreeMap<&str, &Lane>,
+) -> Result<RouteAnalysis> {
+    let mut file_to_packs: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut matched_by_pack: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for (name, pack) in &risk_packs.risk_pack {
+        let matched = match_paths(&pack.paths, changed)?;
+        if matched.is_empty() {
+            continue;
+        }
+        for file in &matched {
+            file_to_packs
+                .entry(file.clone())
+                .or_default()
+                .push(name.clone());
+        }
+        matched_by_pack.insert(name.clone(), matched);
+    }
+
+    let mut changed_files = Vec::new();
+    let mut unmatched_files = Vec::new();
+    for file in changed {
+        let Some(pack_names) = file_to_packs.get(file) else {
+            unmatched_files.push(file.clone());
+            continue;
+        };
+
+        let mut lanes: BTreeSet<String> = BTreeSet::new();
+        let mut deep_lanes: BTreeSet<String> = BTreeSet::new();
+        for pack_name in pack_names {
+            if let Some(pack) = risk_packs.risk_pack.get(pack_name) {
+                lanes.extend(pack.lanes.iter().cloned());
+                deep_lanes.extend(pack.deep_lanes.iter().cloned());
+            }
+        }
+
+        changed_files.push(ChangedFileRoute {
+            path: file.clone(),
+            surface: if pack_names.len() == 1 {
+                pack_names
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string())
+            } else {
+                "multiple".to_string()
+            },
+            proof_packs: pack_names.clone(),
+            reason: "manifest_match".to_string(),
+            policy: route_policy(&lanes, &deep_lanes, lane_index).to_string(),
+            lanes: lanes.into_iter().collect(),
+            deep_lanes: deep_lanes.into_iter().collect(),
+        });
+    }
+
+    Ok(RouteAnalysis {
+        changed_files,
+        unmatched_files,
+        matched_by_pack,
+    })
+}
+
+fn route_policy(
+    lanes: &BTreeSet<String>,
+    deep_lanes: &BTreeSet<String>,
+    lane_index: &BTreeMap<&str, &Lane>,
+) -> &'static str {
+    for lane_id in lanes.iter().chain(deep_lanes.iter()) {
+        if lane_index
+            .get(lane_id.as_str())
+            .is_some_and(|lane| lane.blocking)
+        {
+            return "blocking";
+        }
+    }
+    "advisory"
+}
+
+fn skipped_by_policy(
+    whitelist: &WhitelistFile,
+    selected_ids: &BTreeSet<String>,
+    route: &RouteAnalysis,
+) -> Vec<SkippedByPolicy> {
+    let docs_only = is_docs_only_route(route);
+
+    whitelist
+        .lane
+        .iter()
+        .filter(|lane| lane.expensive && !selected_ids.contains(&lane.id))
+        .map(|lane| {
+            let direct_matched_files = matched_files_for_lane(route, &lane.id, false);
+            let deep_matched_files = matched_files_for_lane(route, &lane.id, true);
+            let (reason, matched_files) = if !deep_matched_files.is_empty() {
+                ("deep_lane_requires_label", deep_matched_files)
+            } else if !direct_matched_files.is_empty() {
+                ("not_selected_by_policy", direct_matched_files)
+            } else if docs_only {
+                (
+                    "docs_only_change",
+                    route
+                        .changed_files
+                        .iter()
+                        .map(|file| file.path.clone())
+                        .collect(),
+                )
+            } else if route.changed_files.is_empty() && route.unmatched_files.is_empty() {
+                ("no_changed_files", Vec::new())
+            } else {
+                ("not_selected_for_changed_surface", Vec::new())
+            };
+
+            SkippedByPolicy {
+                lane: lane.id.clone(),
+                status: "skipped_by_policy".to_string(),
+                reason: reason.to_string(),
+                matched_files,
+            }
+        })
+        .collect()
+}
+
+fn matched_files_for_lane(route: &RouteAnalysis, lane_id: &str, deep: bool) -> Vec<String> {
+    route
+        .changed_files
+        .iter()
+        .filter(|file| {
+            if deep {
+                file.deep_lanes.iter().any(|candidate| candidate == lane_id)
+            } else {
+                file.lanes.iter().any(|candidate| candidate == lane_id)
+            }
+        })
+        .map(|file| file.path.clone())
+        .collect()
+}
+
+fn is_docs_only_route(route: &RouteAnalysis) -> bool {
+    !route.changed_files.is_empty()
+        && route.unmatched_files.is_empty()
+        && route.changed_files.iter().all(|file| {
+            !file.proof_packs.is_empty() && file.proof_packs.iter().all(|pack| pack == "docs")
+        })
 }
 
 fn lane_to_selection(
@@ -647,6 +877,67 @@ mod tests {
         }
     }
 
+    fn test_lane(id: &str, blocking: bool, expensive: bool) -> Lane {
+        Lane {
+            id: id.into(),
+            workflow: "ci.yml".into(),
+            job: id.into(),
+            kind: "test".into(),
+            tier: "frontdoor".into(),
+            default_pr: !expensive,
+            blocking,
+            runner: "ubuntu_latest".into(),
+            base_lem: 1,
+            expensive,
+        }
+    }
+
+    fn route_test_whitelist() -> WhitelistFile {
+        WhitelistFile {
+            budget: Some(budget()),
+            runner_multipliers: BTreeMap::new(),
+            lane: vec![
+                test_lane("docs_check", true, false),
+                test_lane("rust_fast_gate", true, false),
+                test_lane("rust_coverage", false, true),
+                test_lane("build_test_windows", true, true),
+            ],
+        }
+    }
+
+    fn route_test_risk_packs() -> RiskPacksFile {
+        RiskPacksFile {
+            risk_pack: BTreeMap::from([
+                (
+                    "core".to_string(),
+                    RiskPack {
+                        description: "Core".into(),
+                        paths: vec!["crates/tokmd/**".into()],
+                        lanes: vec!["rust_fast_gate".into()],
+                        deep_lanes: vec!["build_test_windows".into()],
+                    },
+                ),
+                (
+                    "docs".to_string(),
+                    RiskPack {
+                        description: "Docs".into(),
+                        paths: vec!["docs/**".into(), "*.md".into()],
+                        lanes: vec!["docs_check".into()],
+                        deep_lanes: Vec::new(),
+                    },
+                ),
+            ]),
+        }
+    }
+
+    fn route_lane_index(whitelist: &WhitelistFile) -> BTreeMap<&str, &Lane> {
+        whitelist
+            .lane
+            .iter()
+            .map(|lane| (lane.id.as_str(), lane))
+            .collect()
+    }
+
     #[test]
     fn band_classification() {
         let b = budget();
@@ -692,6 +983,57 @@ mod tests {
         let globs = vec!["crates/tokmd/**".to_string()];
         let matched = match_paths(&globs, &files).expect("globs valid");
         assert_eq!(matched, vec!["crates/tokmd/src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn proof_pack_route_maps_files_and_unmatched_paths() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let risk_packs = route_test_risk_packs();
+        let changed = vec![
+            "crates/tokmd/src/main.rs".to_string(),
+            "unowned/input.txt".to_string(),
+        ];
+
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+
+        assert_eq!(route.changed_files.len(), 1);
+        assert_eq!(route.changed_files[0].path, "crates/tokmd/src/main.rs");
+        assert_eq!(route.changed_files[0].surface, "core");
+        assert_eq!(route.changed_files[0].proof_packs, vec!["core".to_string()]);
+        assert_eq!(route.changed_files[0].policy, "blocking");
+        assert_eq!(route.unmatched_files, vec!["unowned/input.txt".to_string()]);
+        assert_eq!(
+            route.matched_by_pack["core"],
+            vec!["crates/tokmd/src/main.rs".to_string()]
+        );
+
+        let selected_ids = BTreeSet::from(["rust_fast_gate".to_string()]);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "build_test_windows"
+                && skip.reason == "deep_lane_requires_label"
+                && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
+        }));
+    }
+
+    #[test]
+    fn skipped_policy_reports_docs_only_reason() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let risk_packs = route_test_risk_packs();
+        let changed = vec!["docs/ci/pr-plan.md".to_string()];
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+        let selected_ids = BTreeSet::from(["docs_check".to_string()]);
+
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "rust_coverage"
+                && skip.status == "skipped_by_policy"
+                && skip.reason == "docs_only_change"
+                && skip.matched_files == vec!["docs/ci/pr-plan.md".to_string()]
+        }));
     }
 
     #[test]
