@@ -1085,6 +1085,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd handoff crates/tokmd xtask --out-dir .handoff --budget 128k
+  tokmd handoff . --review-packet-dir .tokmd/review --proof-plan target/proof/proof-plan.json
 ```
 <!-- /HELP: handoff -->
 
@@ -1318,6 +1322,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd cockpit --base origin/main --head HEAD --format comment
+  tokmd cockpit --base origin/main --head HEAD --review-packet-dir .tokmd/review
 ```
 <!-- /HELP: cockpit -->
 

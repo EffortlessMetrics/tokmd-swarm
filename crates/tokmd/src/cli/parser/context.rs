@@ -127,6 +127,9 @@ pub enum ContextOutput {
 }
 
 #[derive(Args, Debug, Clone)]
+#[command(
+    after_help = "Examples:\n  tokmd handoff crates/tokmd xtask --out-dir .handoff --budget 128k\n  tokmd handoff . --review-packet-dir .tokmd/review --proof-plan target/proof/proof-plan.json"
+)]
 pub struct HandoffArgs {
     /// Paths to scan (directories, files, or globs). Defaults to ".".
     #[arg(value_name = "PATH")]
