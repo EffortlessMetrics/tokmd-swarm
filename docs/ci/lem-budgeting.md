@@ -41,7 +41,7 @@ PR Plan                       1 LEM
 Quality Gate                  8 LEM
 Proof Policy                  3 LEM
 Affected Proof Plan           4 LEM
-Scoped Rust fast gate        12 LEM
+Build & Test (Linux)        12 LEM
 ripr advisory                 2 LEM
 Typos                         1 LEM
 CI Required summary           1 LEM
