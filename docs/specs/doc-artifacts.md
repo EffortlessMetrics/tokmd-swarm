@@ -203,7 +203,8 @@ large documentation migration.
 
 ## Proof Requirements
 
-The implementation PR for `cargo xtask doc-artifacts --check` should run:
+Changes to this spec, the doc-artifacts policy, the checker implementation, or
+source-of-truth routing should run:
 
 ```bash
 cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json
@@ -215,7 +216,8 @@ cargo fmt-check
 git diff --check
 ```
 
-If the checker touches publish/package/export surfaces, also run:
+If a future checker or policy change touches publish/package/export surfaces,
+also run:
 
 ```bash
 cargo xtask publish-surface --json --verify-publish
@@ -225,6 +227,6 @@ cargo xtask publish-surface --json --verify-publish
 
 - Whether `docs/proposals/` should allow accepted proposals to remain in place
   forever or require an explicit link to the follow-on spec, ADR, or plan.
-- Whether the first implementation should enforce every section listed in
-  `policy/doc-artifacts.toml` or start with a reporting-only mode for older
-  ADRs and specs that predate this source-of-truth stack.
+- Whether future enforcement should require every section listed in
+  `policy/doc-artifacts.toml` for older ADRs and specs that predate this
+  source-of-truth stack.
