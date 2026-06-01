@@ -151,6 +151,7 @@ struct RouteSummary {
     routed_file_count: usize,
     unmatched_file_count: usize,
     skipped_lane_count: usize,
+    skipped_reason_counts: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -283,7 +284,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
     let skipped_by_policy = skipped_by_policy(&whitelist, &selected_ids, &route_analysis);
     let route_receipt = ProofPackRouteReceipt {
         schema: "tokmd.proof_pack_route.v1",
-        schema_version: 1,
+        schema_version: 2,
         base: args.base.clone(),
         head: args.head.clone(),
         labels: labels.clone(),
@@ -294,6 +295,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
             routed_file_count: route_analysis.changed_files.len(),
             unmatched_file_count: route_analysis.unmatched_files.len(),
             skipped_lane_count: skipped_by_policy.len(),
+            skipped_reason_counts: skipped_reason_counts(&skipped_by_policy),
         },
         skipped_by_policy,
     };
@@ -671,6 +673,14 @@ fn skipped_by_policy(
             })
         })
         .collect()
+}
+
+fn skipped_reason_counts(skipped: &[SkippedByPolicy]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for skip in skipped {
+        *counts.entry(skip.reason.clone()).or_insert(0) += 1;
+    }
+    counts
 }
 
 fn matched_files_for_lane(route: &RouteAnalysis, lane_id: &str, deep: bool) -> Vec<String> {
@@ -1091,6 +1101,9 @@ mod tests {
             !skipped.iter().any(|skip| skip.lane == "docs_check"),
             "unrelated non-expensive lanes should stay out of skipped-by-policy"
         );
+        let reason_counts = skipped_reason_counts(&skipped);
+        assert_eq!(reason_counts["deep_lane_requires_label"], 2);
+        assert_eq!(reason_counts["not_selected_for_changed_surface"], 1);
     }
 
     #[test]
@@ -1135,6 +1148,8 @@ mod tests {
                 && skip.reason == "docs_only_change"
                 && skip.matched_files == vec!["docs/ci/pr-plan.md".to_string()]
         }));
+        let reason_counts = skipped_reason_counts(&skipped);
+        assert_eq!(reason_counts["docs_only_change"], 2);
     }
 
     #[test]
