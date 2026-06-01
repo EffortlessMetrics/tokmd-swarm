@@ -694,8 +694,13 @@ base_lem         = 30
 owner            = "testing/oracle"
 intent           = "Generate Rust coverage report for the workspace and upload to Codecov when configured."
 failure_mode     = "Coverage drift goes unnoticed because no other lane measures it."
-proof_obligation = "Run cargo llvm-cov on the workspace; upload to Codecov when CODECOV_TOKEN is available."
-evidence         = ["lcov / codecov upload"]
+proof_obligation = "Preflight changed-surface routing, run cargo llvm-cov on the workspace, and upload to Codecov when CODECOV_TOKEN is available."
+evidence = [
+  "target/ci/coverage-plan.json",
+  "target/ci/proof-pack-route.json",
+  "target/coverage/coverage-receipt.json",
+  "lcov / codecov upload",
+]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 expensive        = true
 duplicate_of     = []

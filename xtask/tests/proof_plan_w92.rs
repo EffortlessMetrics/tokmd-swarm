@@ -551,6 +551,117 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
 }
 
 #[test]
+fn coverage_workflow_preflights_route_before_expensive_coverage() {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/coverage.yml"))
+        .expect("coverage workflow should be readable");
+
+    let route_step = workflow
+        .find("Generate coverage route receipt")
+        .expect("coverage workflow should generate a route receipt");
+    let coverage_step = workflow
+        .find("cargo llvm-cov clean --workspace")
+        .expect("coverage workflow should run cargo llvm-cov");
+
+    assert!(
+        route_step < coverage_step,
+        "coverage route receipt should be generated before the expensive llvm-cov run"
+    );
+    assert!(
+        workflow.contains("fetch-depth: 0"),
+        "coverage route planning should have enough git history for base/head diffs"
+    );
+    assert!(
+        workflow.contains("PUSH_BEFORE: ${{ github.event.before || '' }}"),
+        "coverage route planning should preserve push before-SHA routing"
+    );
+    assert!(
+        workflow.contains("elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then"),
+        "coverage route planning should fall back to the parent commit for manual runs"
+    );
+    assert!(
+        workflow.contains("--json-out target/ci/coverage-plan.json"),
+        "coverage workflow should write a plan receipt for route debugging"
+    );
+    assert!(
+        workflow.contains("--route-json-out target/ci/proof-pack-route.json"),
+        "coverage workflow should write the changed-file proof-pack route receipt"
+    );
+    assert!(
+        workflow.contains("name: coverage-route"),
+        "coverage workflow should upload route receipts separately from coverage output"
+    );
+    assert!(
+        workflow.contains("if-no-files-found: warn"),
+        "route upload should not hide the original route-generation failure"
+    );
+}
+
+#[test]
+fn ci_plan_writes_proof_pack_route_receipt_artifact() {
+    let root = workspace_root();
+    let plan = root
+        .join("target")
+        .join("ci-plan-route-w92")
+        .join("ci-plan.json");
+    let route = root
+        .join("target")
+        .join("ci-plan-route-w92")
+        .join("proof-pack-route.json");
+    for path in [&plan, &route] {
+        if path.exists() {
+            fs::remove_file(path).expect("stale ci-plan route fixture should be removable");
+        }
+    }
+
+    let plan_arg = plan.to_string_lossy().to_string();
+    let route_arg = route.to_string_lossy().to_string();
+    let (stdout, stderr, success) = run_xtask(&[
+        "ci-plan",
+        "--base",
+        "HEAD",
+        "--head",
+        "HEAD",
+        "--json-out",
+        &plan_arg,
+        "--route-json-out",
+        &route_arg,
+        "--no-budget-annotations",
+    ]);
+
+    assert!(
+        success,
+        "ci-plan --route-json-out failed. stdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("proof-pack route written"),
+        "stdout should mention the route receipt path: {stdout}"
+    );
+    assert!(plan.exists(), "ci-plan artifact should be written");
+    assert!(
+        route.exists(),
+        "proof-pack route artifact should be written"
+    );
+
+    let written = fs::read_to_string(route).expect("route artifact should be readable");
+    let value: serde_json::Value =
+        serde_json::from_str(&written).expect("route artifact should be valid JSON");
+
+    assert_eq!(value["schema"], "tokmd.proof_pack_route.v1");
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["base"], "HEAD");
+    assert_eq!(value["head"], "HEAD");
+    assert!(value["changed_files"].as_array().unwrap().is_empty());
+    assert!(value["unmatched_files"].as_array().unwrap().is_empty());
+    assert_eq!(value["summary"]["changed_file_count"], 0);
+    assert_eq!(value["summary"]["routed_file_count"], 0);
+    assert_eq!(value["summary"]["unmatched_file_count"], 0);
+    assert_eq!(
+        value["summary"]["skipped_lane_count"].as_u64().unwrap(),
+        value["skipped_by_policy"].as_array().unwrap().len() as u64
+    );
+}
+
+#[test]
 fn proof_plan_json_writes_plan_report_artifact() {
     let root = workspace_root();
     let path = root
