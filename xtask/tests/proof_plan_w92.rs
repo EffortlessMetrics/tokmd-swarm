@@ -605,6 +605,44 @@ fn coverage_workflow_preflights_route_before_expensive_coverage() {
 }
 
 #[test]
+fn coverage_workflow_uploads_status_before_failing_coverage() {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/coverage.yml"))
+        .expect("coverage workflow should be readable");
+
+    let upload_step = workflow
+        .find("Upload coverage artifacts")
+        .expect("coverage workflow should upload coverage artifacts");
+    let failure_step = workflow
+        .find("Fail on coverage command failure")
+        .expect("coverage workflow should fail after uploading status artifacts");
+
+    assert!(
+        upload_step < failure_step,
+        "coverage workflow should upload status artifacts before failing the job"
+    );
+    assert!(
+        workflow.contains("tokmd.coverage_workflow_status.v1"),
+        "coverage workflow should write a stable status receipt schema"
+    );
+    assert!(
+        workflow.contains("target/coverage/status.env"),
+        "coverage workflow should upload the raw status env receipt"
+    );
+    assert!(
+        workflow.contains("target/coverage/coverage-status.json"),
+        "coverage workflow should upload the JSON status receipt"
+    );
+    assert!(
+        workflow.contains("steps.coverage_run.outputs.overall_status == '0'"),
+        "coverage receipt and Codecov upload should run only after coverage commands pass"
+    );
+    assert!(
+        workflow.contains("steps.coverage_run.outputs.overall_status == '1'"),
+        "coverage command failures should be re-raised after artifact upload"
+    );
+}
+
+#[test]
 fn ci_plan_writes_proof_pack_route_receipt_artifact() {
     let root = workspace_root();
     let plan = root
