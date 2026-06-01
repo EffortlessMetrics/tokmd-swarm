@@ -28,17 +28,23 @@ leaves duration fields `null`. Missing timing is not coerced to zero.
 ## CI Workflow Artifact
 
 The `CI (Required)` aggregate job writes the raw needs payload to
-`target/ci/needs.json`, then writes `target/ci/ci-actuals.json` with
-`cargo xtask ci-actuals`. Both files are uploaded as the `ci-actuals`
-artifact before the aggregate job performs its final pass/fail status check.
+`target/ci/needs.json`, attempts to write hosted job durations to
+`target/ci/timings.json`, then writes `target/ci/ci-actuals.json` with
+`cargo xtask ci-actuals`. The job uploads the raw needs payload, any available
+timing sidecar, and the final receipt as the `ci-actuals` artifact before the
+aggregate job performs its final pass/fail status check.
 
 The uploaded receipt is observation-only. It does not change required-status
 selection, feed learned estimates back into `ci-plan`, or promote skipped lanes
 into passing evidence. The aggregate job attempts receipt setup, generation,
 and upload as best-effort telemetry; final pass/fail status remains owned by
-the aggregate status check over the original `needs` payload. Hosted runs
-currently omit the optional timing sidecar, so duration fields remain `null`
-until a separate timing collector is added.
+the aggregate status check over the original `needs` payload. Hosted timing
+collection uses the read-only GitHub Actions jobs API for the current run
+attempt, maps job display names back to aggregate `needs` keys, and records
+the first hosted runner label when GitHub exposes one. If that API lookup
+fails, or if a skipped/incomplete job has no start and completion time, the
+receipt still records `timing_status: "missing"` rather than inventing a
+duration.
 
 ## Output
 

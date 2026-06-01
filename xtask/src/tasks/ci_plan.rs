@@ -793,6 +793,9 @@ fn load_actuals(dir: &Path) -> Result<BTreeMap<String, Vec<f64>>> {
             continue;
         };
         for job in jobs {
+            if !actual_job_allows_learning(job) {
+                continue;
+            }
             let (Some(name), Some(seconds)) = (
                 job.get("name").and_then(|v| v.as_str()),
                 actual_duration_seconds(job),
@@ -806,6 +809,13 @@ fn load_actuals(dir: &Path) -> Result<BTreeMap<String, Vec<f64>>> {
         }
     }
     Ok(by_job)
+}
+
+fn actual_job_allows_learning(job: &serde_json::Value) -> bool {
+    match job.get("result").and_then(|v| v.as_str()) {
+        Some("success") | None => true,
+        Some(_) => false,
+    }
 }
 
 fn actual_duration_seconds(job: &serde_json::Value) -> Option<f64> {
@@ -1189,10 +1199,12 @@ mod tests {
             serde_json::to_string_pretty(&serde_json::json!({
                 "schema": "tokmd.ci_actuals.v1",
                 "jobs": [
-                    {"name": "build_test_linux", "duration_seconds": 600.0},
+                    {"name": "build_test_linux", "result": "success", "duration_seconds": 600.0},
                     {"name": "legacy_lane", "actual_seconds": 120.0},
                     {"name": "zero_lane", "duration_seconds": 0.0},
-                    {"name": "missing_lane"}
+                    {"name": "missing_lane"},
+                    {"name": "failed_lane", "result": "failure", "duration_seconds": 900.0},
+                    {"name": "skipped_lane", "result": "skipped", "duration_seconds": 300.0}
                 ]
             }))
             .expect("serialize fixture"),
@@ -1210,6 +1222,14 @@ mod tests {
         assert!(
             !actuals.contains_key("missing_lane"),
             "missing-duration jobs should not seed learned estimates"
+        );
+        assert!(
+            !actuals.contains_key("failed_lane"),
+            "failed jobs should not seed learned estimates"
+        );
+        assert!(
+            !actuals.contains_key("skipped_lane"),
+            "skipped jobs should not seed learned estimates"
         );
     }
 
