@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 jobs:
   droid-review:

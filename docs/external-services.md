@@ -58,8 +58,8 @@ The Droid workflows have these trust boundaries:
 Required secrets:
 
 - `FACTORY_API_KEY`: authorizes the Factory Droid action.
-- `MINIMAX_API_KEY`: configures the `custom:MiniMax-M2.7-0` BYOK model in
-  `$HOME/.factory/settings.local.json` during the workflow.
+- `MINIMAX_API_KEY`: configures the `custom:MiniMax-M3-0` BYOK model in
+  `$HOME/.factory/settings.json` during the workflow.
 
 Secret handling rules:
 
