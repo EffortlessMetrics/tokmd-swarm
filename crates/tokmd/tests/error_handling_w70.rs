@@ -9,6 +9,7 @@ mod common;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use tempfile::tempdir;
 
 fn tokmd_cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_tokmd"))
@@ -225,14 +226,23 @@ fn gate_with_nonexistent_policy_file_fails() {
 
 #[test]
 fn gate_with_nonexistent_receipt_file_fails() {
+    let dir = tempdir().unwrap();
+    let policy = dir.path().join("policy.toml");
+    std::fs::write(
+        &policy,
+        r#"
+[[rules]]
+name = "schema-version-exists"
+pointer = "/schema_version"
+op = "exists"
+level = "error"
+"#,
+    )
+    .unwrap();
+
     tokmd_cmd_fixture()
-        .args([
-            "gate",
-            "--receipt",
-            "nonexistent_receipt_w70.json",
-            "--policy",
-            "nonexistent_policy_w70.toml",
-        ])
+        .args(["gate", "nonexistent_receipt_w70.json", "--policy"])
+        .arg(policy)
         .assert()
         .failure();
 }
