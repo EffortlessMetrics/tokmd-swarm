@@ -43,8 +43,8 @@ target/tokmd/
 
 Open first:
 
-1. `.tokmd/review/review-map.md`
-2. `.tokmd/review/comment.md`
+1. `.tokmd/review/comment.md`
+2. `.tokmd/review/review-map.md`
 3. `.tokmd/review/evidence.json`
 4. `target/tokmd/review-packet-check.json`
 
@@ -52,8 +52,8 @@ What each file owns:
 
 | File | Owns |
 | --- | --- |
+| `comment.md` | Compact PR-comment-ready summary and best first screen. |
 | `review-map.md` | Human review order, reasons, evidence state, and reproduction commands. |
-| `comment.md` | Compact PR-comment-ready summary. |
 | `evidence.json` | Exact evidence availability: present, missing, stale, degraded, skipped, or unavailable. |
 | `manifest.json` | Packet-local inventory and hashes. |
 | `cockpit.json` | Full machine-readable cockpit receipt. |
