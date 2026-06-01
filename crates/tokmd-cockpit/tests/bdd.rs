@@ -1020,8 +1020,8 @@ fn scenario_review_map_orders_contract_paths_before_ordinary_low_priority_items(
     let mut receipt = minimal_receipt();
     receipt.review_plan = vec![
         ReviewItem {
-            path: "docs/NEXT.md".to_string(),
-            reason: "Program note changed".to_string(),
+            path: "docs/tutorial.md".to_string(),
+            reason: "Guide note changed".to_string(),
             priority: 3,
             complexity: Some(1),
             lines_changed: Some(4),
@@ -1050,7 +1050,7 @@ fn scenario_review_map_orders_contract_paths_before_ordinary_low_priority_items(
         review_map["items"][0]["evidence_refs"][0],
         "cockpit.json#/review_plan/1"
     );
-    assert_eq!(review_map["items"][1]["path"], "docs/NEXT.md");
+    assert_eq!(review_map["items"][1]["path"], "docs/tutorial.md");
     assert_eq!(review_map["items"][1]["source_index"], 0);
 
     let review_map_md = std::fs::read_to_string(out.join("review-map.md")).unwrap();
@@ -1058,7 +1058,7 @@ fn scenario_review_map_orders_contract_paths_before_ordinary_low_priority_items(
         .find("1. `crates/tokmd/schemas/review-map.schema.json`")
         .expect("schema contract item should be first");
     let ordinary_pos = review_map_md
-        .find("2. `docs/NEXT.md`")
+        .find("2. `docs/tutorial.md`")
         .expect("ordinary low-priority item should be second");
     assert!(
         schema_pos < ordinary_pos,
