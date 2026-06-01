@@ -206,12 +206,21 @@ fn unknown_flag_fails() {
 #[test]
 fn gate_nonexistent_receipt_file_fails() {
     let dir = tempdir().unwrap();
-    let policy = dir.path().join("policy.json");
-    std::fs::write(&policy, r#"{"rules":[]}"#).unwrap();
+    let policy = dir.path().join("policy.toml");
+    std::fs::write(
+        &policy,
+        r#"
+[[rules]]
+name = "schema-version-exists"
+pointer = "/schema_version"
+op = "exists"
+level = "error"
+"#,
+    )
+    .unwrap();
 
     tokmd_cmd()
         .arg("gate")
-        .arg("--receipt")
         .arg(dir.path().join("does_not_exist.json"))
         .arg("--policy")
         .arg(&policy)

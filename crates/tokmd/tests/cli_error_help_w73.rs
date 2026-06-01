@@ -264,11 +264,25 @@ fn help_diff_mentions_from_and_to() {
 
 #[test]
 fn help_gate_mentions_policy() {
-    tokmd_cmd()
-        .args(["gate", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("--policy"));
+    let assert = tokmd_cmd().args(["gate", "--help"]).assert().success();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("[INPUT]"),
+        "gate help should show positional INPUT"
+    );
+    assert!(
+        stdout.contains("--policy"),
+        "gate help should mention --policy"
+    );
+    assert!(
+        !stdout.contains("--receipt"),
+        "gate help should not advertise retired --receipt flag"
+    );
+    assert!(
+        !stdout.contains("--validate"),
+        "gate help should not advertise nonexistent --validate flag"
+    );
 }
 
 #[test]

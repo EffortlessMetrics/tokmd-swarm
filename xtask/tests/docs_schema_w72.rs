@@ -735,3 +735,32 @@ fn readme_and_reference_cli_list_same_subcommands() {
         );
     }
 }
+
+#[test]
+fn gate_user_docs_use_current_input_shape() {
+    let start_here = std::fs::read_to_string(workspace_root().join("docs/start-here.md"))
+        .expect("docs/start-here.md must exist");
+    let troubleshooting = std::fs::read_to_string(workspace_root().join("docs/troubleshooting.md"))
+        .expect("docs/troubleshooting.md must exist");
+
+    assert!(
+        start_here.contains("tokmd gate .runs/current/receipt.json --policy tokmd-gate.toml"),
+        "start-here should show gate INPUT as a positional receipt path"
+    );
+    assert!(
+        !start_here.contains("tokmd gate --receipt"),
+        "start-here should not mention retired gate --receipt flag"
+    );
+    assert!(
+        troubleshooting.contains("tokmd gate . --policy .tokmd-gates.toml --format json"),
+        "troubleshooting should validate policies with current gate flags"
+    );
+    assert!(
+        !troubleshooting.contains("--validate"),
+        "troubleshooting should not mention nonexistent gate --validate flag"
+    );
+    assert!(
+        !troubleshooting.contains("tokmd gate --policy .tokmd-gates.toml -v"),
+        "troubleshooting should not put global -v after the gate subcommand"
+    );
+}

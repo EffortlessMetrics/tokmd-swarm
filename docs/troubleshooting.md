@@ -691,7 +691,7 @@ Ensure you're using valid operators: `>`, `>=`, `<`, `<=`, `==`, `!=`
 
 Validate your policy file structure:
 ```bash
-tokmd gate --policy .tokmd-gates.toml --validate
+tokmd gate . --policy .tokmd-gates.toml --format json
 ```
 
 ---
@@ -753,14 +753,14 @@ Policy rules fail to evaluate or produce unexpected results.
 
 **Diagnosis**:
 
-**1. Run with verbose output**:
+**1. Run with JSON output**:
 ```bash
-tokmd gate --policy .tokmd-gates.toml -v
+tokmd gate . --policy .tokmd-gates.toml --format json
 ```
 
 **2. Check individual rule results**:
 ```bash
-tokmd gate --policy .tokmd-gates.toml --format json | jq '.rules'
+tokmd gate . --policy .tokmd-gates.toml --format json | jq '.policy.rule_results'
 ```
 
 **Common Causes**:
