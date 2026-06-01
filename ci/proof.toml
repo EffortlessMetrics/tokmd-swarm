@@ -87,10 +87,12 @@ paths = [
   "fuzz/corpus/**",
   "fuzz/dict/**",
   "fuzz/fuzz_targets/**",
+  "xtask/tests/fuzz_dict_w100.rs",
 ]
-packages = ["tokmd-fuzz"]
+packages = ["tokmd-fuzz", "xtask"]
 proof = [
   "cargo +nightly fuzz list",
+  "cargo test -p xtask fuzz_dictionaries_do_not_define_empty_tokens -- --exact",
 ]
 mutation = false
 coverage = false
