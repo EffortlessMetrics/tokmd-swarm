@@ -72,6 +72,9 @@ pub(crate) fn source_of_truth_path(path: &str) -> bool {
         || path == "docs/source-of-truth.md"
         || path == "docs/review-packet.md"
         || path == "docs/cockpit-proof-evidence.md"
+        || path == "docs/NEXT.md"
+        || path == "docs/NOW.md"
+        || path == "docs/ROADMAP.md"
         || path == "docs/agent-workflows/source-of-truth.md"
         || path == "docs/ci/swarm-routing.md"
         || path == "docs/contributing/spec-rails.md"
@@ -160,6 +163,9 @@ mod tests {
         assert!(source_of_truth_path("docs/source-of-truth.md"));
         assert!(source_of_truth_path("docs/review-packet.md"));
         assert!(source_of_truth_path("docs/cockpit-proof-evidence.md"));
+        assert!(source_of_truth_path("docs/NEXT.md"));
+        assert!(source_of_truth_path("docs/NOW.md"));
+        assert!(source_of_truth_path("docs/ROADMAP.md"));
         assert!(source_of_truth_path(
             "docs/agent-workflows/source-of-truth.md"
         ));
