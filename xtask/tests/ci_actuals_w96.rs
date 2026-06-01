@@ -109,6 +109,9 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
     let cache_idx = ci_required
         .find("Swatinem/rust-cache@v2")
         .expect("CI required cache step");
+    let timings_idx = ci_required
+        .find("Generate CI timings sidecar")
+        .expect("generate CI timings sidecar step");
     let generate_idx = ci_required
         .find("Generate CI actuals receipt")
         .expect("generate CI actuals receipt step");
@@ -120,8 +123,12 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
         .expect("check overall status step");
 
     assert!(
-        checkout_idx < toolchain_idx && toolchain_idx < cache_idx && cache_idx < generate_idx,
-        "setup should happen before receipt generation"
+        checkout_idx < toolchain_idx && toolchain_idx < cache_idx && cache_idx < timings_idx,
+        "setup should happen before timing collection"
+    );
+    assert!(
+        timings_idx < generate_idx,
+        "timing collection should happen before receipt generation"
     );
     assert!(
         generate_idx < upload_idx,
@@ -131,7 +138,8 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
         upload_idx < check_idx,
         "receipt upload must happen before final failure"
     );
-    let setup_block = &ci_required[checkout_idx..generate_idx];
+    let setup_block = &ci_required[checkout_idx..timings_idx];
+    let timings_block = &ci_required[timings_idx..generate_idx];
     let generate_block = &ci_required[generate_idx..upload_idx];
     let upload_block = &ci_required[upload_idx..check_idx];
     let check_block = &ci_required[check_idx..];
@@ -140,6 +148,38 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
         setup_block.matches("continue-on-error: true").count(),
         3,
         "checkout, toolchain, and cache should be best-effort telemetry setup"
+    );
+    assert!(
+        ci_required.contains("permissions:\n      contents: read\n      actions: read"),
+        "CI required job should request only read permissions needed for checkout and job timing lookup"
+    );
+    assert!(timings_block.contains("if: always()"));
+    assert!(timings_block.contains("continue-on-error: true"));
+    assert!(
+        timings_block.contains("GITHUB_TOKEN: ${{ github.token }}"),
+        "timing lookup should use the ephemeral workflow token"
+    );
+    assert!(
+        timings_block.contains("/attempts/{run_attempt}/jobs"),
+        "timing lookup should read the current run attempt"
+    );
+    assert!(
+        timings_block.contains("if job.get(\"conclusion\") != \"success\":"),
+        "timing sidecar should only collect successful job durations"
+    );
+    assert!(
+        timings_block.contains("\"Docs Check\": \"docs-check\"")
+            && timings_block.contains("\"Proof Policy\": \"proof-policy\""),
+        "timing lookup should map hosted job display names back to needs keys"
+    );
+    assert!(
+        timings_block.contains("target/ci/timings.json"),
+        "workflow should persist the timing sidecar"
+    );
+    assert!(
+        timings_block.contains("record = {\"duration_seconds\": duration_seconds}")
+            && timings_block.contains("record[\"runner\"] = runner"),
+        "timing sidecar should preserve duration and runner label observations"
     );
     assert!(generate_block.contains("if: always()"));
     assert!(generate_block.contains("continue-on-error: true"));
@@ -150,6 +190,13 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
     assert!(
         generate_block.contains("cargo xtask ci-actuals"),
         "workflow should call the ci-actuals command"
+    );
+    assert!(
+        generate_block.contains("timing_args=()")
+            && generate_block.contains("if [ -s target/ci/timings.json ]; then")
+            && generate_block.contains("timing_args=(--timings target/ci/timings.json)")
+            && generate_block.contains("\"${timing_args[@]}\""),
+        "workflow should use the timing sidecar only when it exists"
     );
     assert!(
         generate_block.contains("--output target/ci/ci-actuals.json"),
@@ -163,8 +210,9 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
     );
     assert!(
         upload_block.contains("target/ci/needs.json")
+            && upload_block.contains("target/ci/timings.json")
             && upload_block.contains("target/ci/ci-actuals.json"),
-        "workflow should upload both CI actuals files"
+        "workflow should upload CI actuals inputs and receipt"
     );
     assert!(
         upload_block.contains("if-no-files-found: warn"),
