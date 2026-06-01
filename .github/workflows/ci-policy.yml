@@ -47,14 +47,15 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Run CI lane whitelist linter (advisory)
+      - name: Run CI lane whitelist linter
         run: |
           mkdir -p target/tokmd/reports
           cargo xtask ci-lane-whitelist \
             --workflows .github/workflows \
             --whitelist policy/ci-lane-whitelist.toml \
             --exceptions policy/ci-whitelist-exceptions.toml \
-            --report-dir target/tokmd/reports
+            --report-dir target/tokmd/reports \
+            --strict
 
       - name: Upload lane whitelist report
         if: always()

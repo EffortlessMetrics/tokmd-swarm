@@ -40,11 +40,11 @@ and when it must be reviewed and retired.
 
 1. New lane added → entry in `ci-lane-whitelist.toml` + (if expensive
    default) entry in `ci-whitelist-exceptions.toml`.
-2. Linter (PR 03) verifies workflows match the whitelist and exceptions
-   are valid.
-3. As risk-pack routing lands (PR 12), expensive default lanes get demoted
-   and their exceptions retire.
-4. Exceptions never extend silently — `expires` is enforced.
+2. CI runs `cargo xtask ci-lane-whitelist --strict` so workflow jobs must
+   match whitelist metadata and active exceptions must stay valid.
+3. Local advisory runs can omit `--strict` to write a report without failing
+   on findings while a narrow follow-up is being prepared.
+4. Exceptions never extend silently — `expires` is enforced in strict mode.
 
 ## Budget
 
