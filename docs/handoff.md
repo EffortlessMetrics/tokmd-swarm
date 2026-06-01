@@ -46,10 +46,10 @@ tokmd handoff \
 
 Give the agent these files in order:
 
-1. `.handoff/manifest.json` for the authoritative artifact index, token budget,
-   exclusions, and included-file list.
-2. `.handoff/work-order.md` for the agent task map, best-effort linked
+1. `.handoff/work-order.md` for the agent task map, best-effort linked
    evidence summary, evidence handles, and guardrails.
+2. `.handoff/manifest.json` for the authoritative artifact index, token budget,
+   exclusions, included-file list, and packet-local hashes.
 3. `.handoff/intelligence.json` for tree, hotspot, complexity, and derived
    signals.
 4. `.handoff/code.txt` for the selected source bundle.
@@ -157,11 +157,13 @@ sources.
 
 ## Consumption Pattern
 
-1. **Read `manifest.json` first.**  
-   It is the authoritative index, lists artifacts, included files, and exclusions.
-2. **Read `work-order.md`** for the agent task map, changed surfaces,
+1. **Read `work-order.md` first.**
+   It is the agent-facing task map, changed surfaces,
    best-effort linked evidence summary, proof expectations, missing evidence,
    stop conditions, and guardrails.
+2. **Use `manifest.json` as the authoritative index.**
+   It lists artifacts, included files, exclusions, token-budget state, and
+   packet-local hashes.
 3. **Use `map.jsonl`** for full inventory or downstream tooling.
 4. **Use `intelligence.json`** as a warning label (tree, hotspots, derived).
 5. **Use `code.txt`** as the LLM bundle content.

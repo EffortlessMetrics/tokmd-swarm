@@ -108,8 +108,8 @@ each section.
 
 | Artifact | Usual path | Writer | Means | Does not mean | Verify or inspect |
 | --- | --- | --- | --- | --- | --- |
-| `manifest.json` | `.handoff/manifest.json` | `tokmd handoff` | Authoritative handoff bundle index: inputs, token budget, included/excluded files, capabilities, artifacts, and BLAKE3 hashes. | It does not verify external review or proof receipts linked beside the bundle. | Open first for bundle scope and artifact hashes. |
-| `work-order.md` | `.handoff/work-order.md` | `tokmd handoff` | Agent-readable task map, selected-file summary, linked-evidence summary, and guardrails. | It is not a verifier and should not be treated as proof execution. | Give this to the coding agent first. |
+| `manifest.json` | `.handoff/manifest.json` | `tokmd handoff` | Authoritative handoff bundle index: inputs, token budget, included/excluded files, capabilities, artifacts, and BLAKE3 hashes. | It does not verify external review or proof receipts linked beside the bundle. | Open after `work-order.md` when bundle scope, artifact hashes, or included/excluded paths matter. |
+| `work-order.md` | `.handoff/work-order.md` | `tokmd handoff` | Agent-readable task map, selected-file summary, linked-evidence summary, and guardrails. | It is not a verifier and should not be treated as proof execution. | Give this to the coding agent first; pair it with `manifest.json` for authoritative bundle inventory. |
 | `code.txt` | `.handoff/code.txt` | `tokmd handoff` | Token-budgeted source bundle selected for the agent. | It is not the whole repository unless the budget and policy allow it. | Check `.handoff/manifest.json` for included and excluded files. |
 | `map.jsonl` | `.handoff/map.jsonl` | `tokmd handoff` | Full file inventory sidecar for path lookup and downstream tooling. | It is not the selected source bundle. | Use when the agent needs to locate paths beyond `code.txt`. |
 | `intelligence.json` | `.handoff/intelligence.json` | `tokmd handoff` | Repository shape, hotspot, complexity, and derived signals for the bundle. | It is a warning label, not a proof result. | Use alongside `work-order.md` and review/proof receipts. |
