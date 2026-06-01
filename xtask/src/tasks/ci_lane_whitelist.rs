@@ -6,10 +6,10 @@
 //! evidence for blocking lanes), and that expensive default-PR lanes carry
 //! a non-expired exception in `policy/ci-whitelist-exceptions.toml`.
 //!
-//! The linter is intentionally advisory at first: it returns a non-zero
-//! exit only when the user passed `--strict` or a hard schema/parse error
-//! occurred. Day-to-day drift surfaces as a non-blocking report so the
-//! rollout can land before everything is clean.
+//! The linter can run in advisory mode when `--strict` is omitted: it returns
+//! a non-zero exit only for hard schema/parse errors. CI runs it with
+//! `--strict` so workflow drift fails the policy job while still writing the
+//! reviewable report artifact.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
