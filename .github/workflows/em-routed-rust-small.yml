@@ -571,6 +571,8 @@ jobs:
         env:
           TARGET: ${{ needs.route-rust-small.outputs.target }}
           REASON: ${{ needs.route-rust-small.outputs.reason }}
+          ROUTER_ERROR: ${{ needs.route-rust-small.outputs.error }}
+          TRUSTED_SELF_HOSTED: ${{ needs.route-rust-small.outputs.trusted_self_hosted }}
           FALLBACK_ALLOWED: ${{ needs.route-rust-small.outputs.fallback_allowed }}
           ROUTER_RESULT: ${{ needs.route-rust-small.result }}
           CPX42_RESULT: ${{ needs.rust-small-cpx42.result }}
@@ -583,6 +585,8 @@ jobs:
 
           echo "router_target=${TARGET:-<empty>}"
           echo "router_reason=${REASON:-<empty>}"
+          echo "router_error=${ROUTER_ERROR:-<empty>}"
+          echo "trusted_self_hosted=${TRUSTED_SELF_HOSTED:-<empty>}"
           echo "fallback_allowed=${FALLBACK_ALLOWED:-<empty>}"
           echo "router_result=${ROUTER_RESULT:-<empty>}"
           echo "cpx42_result=${CPX42_RESULT:-<empty>}"
@@ -639,6 +643,8 @@ jobs:
 
           export ROUTER_TARGET="${TARGET:-}"
           export ROUTER_REASON="${REASON:-}"
+          export ROUTER_ERROR="${ROUTER_ERROR:-}"
+          export ROUTER_TRUSTED_SELF_HOSTED="${TRUSTED_SELF_HOSTED:-}"
           export ROUTER_FALLBACK_ALLOWED="${FALLBACK_ALLOWED:-}"
           export ROUTER_RESULT="${ROUTER_RESULT:-}"
           export SELECTED_JOB="${selected_job}"
@@ -668,6 +674,8 @@ jobs:
               "router": {
                   "target": env("ROUTER_TARGET"),
                   "reason": env("ROUTER_REASON"),
+                  "error": env("ROUTER_ERROR"),
+                  "trusted_self_hosted": env("ROUTER_TRUSTED_SELF_HOSTED"),
                   "fallback_allowed": env("ROUTER_FALLBACK_ALLOWED"),
                   "result": env("ROUTER_RESULT"),
               },
@@ -703,6 +711,8 @@ jobs:
               echo "| status | \`${status}\` |"
               echo "| target | \`${TARGET:-<empty>}\` |"
               echo "| reason | \`${REASON:-<empty>}\` |"
+              echo "| router error | \`${ROUTER_ERROR:-<empty>}\` |"
+              echo "| trusted self-hosted | \`${TRUSTED_SELF_HOSTED:-<empty>}\` |"
               echo "| selected job | \`${selected_job:-<empty>}\` |"
               echo "| selected result | \`${selected_result:-<empty>}\` |"
               echo "| fallback allowed | \`${FALLBACK_ALLOWED:-<empty>}\` |"

@@ -533,6 +533,14 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
         "routed result receipt should record the selected implementation"
     );
     assert!(
+        workflow.contains("\"error\": env(\"ROUTER_ERROR\")"),
+        "routed result receipt should preserve the router error flag"
+    );
+    assert!(
+        workflow.contains("\"trusted_self_hosted\": env(\"ROUTER_TRUSTED_SELF_HOSTED\")"),
+        "routed result receipt should preserve the router trust decision"
+    );
+    assert!(
         workflow.contains("python -m json.tool target/ci/routed-rust-small-result.json"),
         "routed result job should validate the receipt as JSON"
     );
