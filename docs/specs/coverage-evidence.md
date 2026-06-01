@@ -1,8 +1,9 @@
 # Spec: Coverage Evidence
 
 - Status: active
-- Schema family, if any: `tokmd.coverage_receipt.v1`; scoped executor
-  artifacts use existing proof executor receipt families
+- Schema family, if any: `tokmd.coverage_receipt.v1`,
+  `tokmd.coverage_workflow_status.v1`; scoped executor artifacts use existing
+  proof executor receipt families
 - Related ADRs: `docs/adr/0009-proof-observation-promotion-boundary.md`
 - Related proof scopes: `proof_control_plane`, `project_truth_docs`
 
@@ -59,6 +60,7 @@ Current coverage outputs are:
 
 | Output | Producer | Means | Does not mean |
 | --- | --- | --- | --- |
+| `target/coverage/coverage-status.json` | Coverage workflow | Coverage command status receipt with `cargo-llvm-cov` exit codes, skipped report steps, and observed coverage artifact presence, uploaded before the workflow re-raises a command failure. | It does not prove coverage reports are complete, sufficient, uploaded to Codecov, or required. |
 | `coverage.json` | Coverage workflow | `cargo-llvm-cov` JSON report exists for the workspace run. | It does not prove assertion quality or merge readiness. |
 | `coverage.txt` | Coverage workflow | Human-readable coverage report exists for the workspace run. | It is not a required proof verdict. |
 | `lcov.info` | Coverage workflow | LCOV report exists and may be uploaded to Codecov. | It does not imply Codecov accepted the upload. |
@@ -70,9 +72,13 @@ Current coverage outputs are:
 | `target/proof/proof-executor-observation*.json` | Proof executor observation | Compact observation evidence for later aggregation. | It does not promote coverage. |
 | Codecov project or patch status | Codecov | Informational dashboard signal under `codecov.yml`. | It is not a blocking GitHub status. |
 
-`coverage-receipt.json` owns only artifact-presence and metadata facts for the
-whole-workspace coverage workflow. It is not a wrapper for all coverage evidence
-and does not replace scoped executor receipts.
+`coverage-status.json` owns workflow-step arbitration for the whole-workspace
+coverage workflow. It is available even when coverage command failure prevents
+`coverage-receipt.json` from being generated.
+
+`coverage-receipt.json` owns only artifact-presence and metadata facts for
+successful whole-workspace coverage reports. It is not a wrapper for all
+coverage evidence and does not replace scoped executor receipts.
 
 ## Compatibility
 
@@ -82,6 +88,7 @@ schemas, release behavior, or upload defaults.
 
 Existing artifacts remain authoritative for their own domains:
 
+- `coverage-status.json` owns whole-workspace coverage workflow command status;
 - `coverage-receipt.json` owns whole-workspace coverage artifact presence;
 - `executor-summary.json` and `executor-manifest.json` own scoped coverage
   execution and artifact inventory;
