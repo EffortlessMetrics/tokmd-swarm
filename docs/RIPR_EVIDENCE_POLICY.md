@@ -23,7 +23,9 @@ This file pins how we read ripr findings, when they are advisory, and when
 ## Advisory phase (PR 11 → PR 16)
 
 - ripr runs on production Rust diffs only.
-- Findings are uploaded as JSON / SARIF / Markdown artifacts.
+- Findings are uploaded as diff-scoped PR evidence
+  (`target/ripr/pr/repo-exposure.{json,md}`) and review guidance
+  (`target/ripr/review/comments.{json,md}`) artifacts.
 - The job does **not** block merge.
 - `mutation` / `full-ci` labels still run real `cargo-mutants`.
 
