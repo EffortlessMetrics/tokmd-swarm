@@ -208,6 +208,21 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "droid_security_evidence"
+kind = "non_rust"
+paths = [
+  ".factory/security/reports/**",
+  ".factory/threat-model/**",
+]
+proof = [
+  "cargo xtask docs --check",
+  "cargo xtask proof-policy --check",
+]
+reason = "Factory Droid scheduled security reports and generated threat models are evidence artifacts; route them through docs and proof-policy checks instead of treating them as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "nix_release_validation"
 kind = "non_rust"
 paths = [
