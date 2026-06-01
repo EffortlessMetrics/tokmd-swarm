@@ -872,12 +872,12 @@ fn render_step_summary(plan: &PlanOutput) -> String {
     }
 
     out.push_str("### Lanes selected\n\n");
-    out.push_str("| Lane | Tier | Runner | LEM | Reason |\n");
-    out.push_str("|------|------|--------|----:|--------|\n");
+    out.push_str("| Lane | Tier | Runner | LEM | Estimate | Reason |\n");
+    out.push_str("|------|------|--------|----:|----------|--------|\n");
     for lane in &plan.lanes_selected {
         out.push_str(&format!(
-            "| `{}` | `{}` | `{}` | {} | {} |\n",
-            lane.id, lane.tier, lane.runner, lane.estimated_lem, lane.reason
+            "| `{}` | `{}` | `{}` | {} | `{}` | {} |\n",
+            lane.id, lane.tier, lane.runner, lane.estimated_lem, lane.estimate_source, lane.reason
         ));
     }
     out
@@ -1351,6 +1351,37 @@ mod tests {
 
         assert!(emitted.is_empty());
         assert!(budget_requires_override(&plan));
+    }
+
+    #[test]
+    fn step_summary_shows_lane_estimate_source() {
+        let mut plan = plan_for_budget("normal", 12, Vec::new());
+        plan.lanes_selected = vec![LaneSelection {
+            id: "build_test_linux".to_string(),
+            workflow: ".github/workflows/ci.yml".to_string(),
+            job: "Build & Test (Linux)".to_string(),
+            kind: "rust".to_string(),
+            tier: "frontdoor".to_string(),
+            runner: "ubuntu_latest".to_string(),
+            blocking: true,
+            estimated_lem: 12,
+            estimate_source: "learned-p50".to_string(),
+            learned_p50_lem: Some(10.5),
+            learned_p90_lem: Some(14.0),
+            learned_p95_lem: Some(16.0),
+            reason: "default_pr".to_string(),
+        }];
+
+        let summary = render_step_summary(&plan);
+
+        assert!(
+            summary.contains("| Lane | Tier | Runner | LEM | Estimate | Reason |"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("| `build_test_linux` | `frontdoor` | `ubuntu_latest` | 12 | `learned-p50` | default_pr |"),
+            "{summary}"
+        );
     }
 
     fn plan_for_budget(band: &str, estimated_lem: u64, labels: Vec<String>) -> PlanOutput {

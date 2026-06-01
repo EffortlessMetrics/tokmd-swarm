@@ -93,7 +93,11 @@ without reading the lane catalogue by hand:
 
 The summary reason counts are an at-a-glance index over the detailed
 `skipped_by_policy` array. Use the per-lane entries for matched files and
-lane-specific evidence.
+lane-specific evidence. `deep_lane_requires_label` means a matching surface has
+label-gated deep proof that was not requested. `docs_only_change` means an
+expensive lane was skipped because all routed files were documentation.
+`not_selected_for_changed_surface` means the lane is known to the planner but
+does not apply to the current changed surface.
 
 The advisory plan keeps its existing shape. Treat `lanes_selected` as planner
 selection, not proof that those jobs executed or passed:
@@ -118,6 +122,7 @@ selection, not proof that those jobs executed or passed:
       "runner": "ubuntu_latest",
       "blocking": true,
       "estimated_lem": 12,
+      "estimate_source": "static",
       "reason": "default_pr"
     }
   ],
@@ -137,6 +142,9 @@ selection, not proof that those jobs executed or passed:
 - `cargo xtask ci-plan --route-json-out <path>` writes the changed-file route
   receipt used to see matched proof packs, unmatched files, and explicit
   skipped-by-policy lanes before broad CI proof starts.
+- The GitHub step summary shows each selected lane's estimate source so
+  reviewers can tell static floors from learned actuals without opening
+  `ci-plan.json`.
 - `--enforce` fails only the hard-ceiling band (`override-required`) when
   neither `ci-budget-override` nor `full-ci` is present. Lower bands emit
   warnings but do not fail the job.
