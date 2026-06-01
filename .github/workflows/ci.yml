@@ -759,6 +759,9 @@ jobs:
 
   ci-required:
     name: CI (Required)
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     if: always()
     needs:
@@ -791,6 +794,92 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Generate CI timings sidecar
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from datetime import datetime
+
+          token = os.environ.get("GITHUB_TOKEN", "")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+          if token:
+              headers["Authorization"] = f"Bearer {token}"
+
+          job_name_to_need_key = {
+              "Detect risk packs": "detect",
+              "MSRV Check": "msrv",
+              "Build & Test (Linux)": "build",
+              "Build & Test (Windows)": "build-windows",
+              "Build & Test (macOS)": "build-macos",
+              "Quality Gate": "gate",
+              "Cargo Deny": "deny",
+              "Wasm Compile & Test": "wasm-compile",
+              "Typos": "typos",
+              "Proptest Smoke": "proptest-smoke",
+              "Publish Surface": "publish-plan",
+              "Version consistency": "version-consistency",
+              "Docs Check": "docs-check",
+              "Nix PR Package Gate": "nix-pr",
+              "Mutation Testing": "mutation",
+              "Feature Boundaries": "feature-boundaries",
+              "Proof Policy": "proof-policy",
+          }
+
+          def parse_time(value):
+              if not value:
+                  return None
+              return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+          timings = {}
+          page = 1
+          while True:
+              url = (
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
+                  f"/attempts/{run_attempt}/jobs?per_page=100&page={page}"
+              )
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  payload = json.load(response)
+              jobs = payload.get("jobs", [])
+              for job in jobs:
+                  if job.get("conclusion") != "success":
+                      continue
+                  need_key = job_name_to_need_key.get(job.get("name"))
+                  started = parse_time(job.get("started_at"))
+                  completed = parse_time(job.get("completed_at"))
+                  if not need_key or not started or not completed:
+                      continue
+                  duration_seconds = max(0.0, (completed - started).total_seconds())
+                  record = {"duration_seconds": duration_seconds}
+                  labels = job.get("labels") or []
+                  runner = next((label for label in labels if isinstance(label, str) and label), None)
+                  if runner:
+                      record["runner"] = runner
+                  timings[need_key] = record
+              if len(jobs) < 100:
+                  break
+              page += 1
+
+          with open("target/ci/timings.json", "w", encoding="utf-8") as handle:
+              json.dump(timings, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          print(f"CI timings sidecar written with {len(timings)} job(s)")
+          PY
+
       - name: Generate CI actuals receipt
         if: always()
         continue-on-error: true
@@ -800,8 +889,13 @@ jobs:
           set -euo pipefail
           mkdir -p target/ci
           printf '%s\n' "${NEEDS_JSON}" > target/ci/needs.json
+          timing_args=()
+          if [ -s target/ci/timings.json ]; then
+            timing_args=(--timings target/ci/timings.json)
+          fi
           cargo xtask ci-actuals \
             --needs target/ci/needs.json \
+            "${timing_args[@]}" \
             --output target/ci/ci-actuals.json \
             --sha "${GITHUB_SHA}"
 
@@ -813,6 +907,7 @@ jobs:
           name: ci-actuals
           path: |
             target/ci/needs.json
+            target/ci/timings.json
             target/ci/ci-actuals.json
           if-no-files-found: warn
           retention-days: 14

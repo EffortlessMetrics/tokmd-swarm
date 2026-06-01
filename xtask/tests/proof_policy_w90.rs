@@ -272,7 +272,13 @@ fn proof_policy_includes_current_product_scopes() {
     assert!(fuzz_paths.contains("fuzz/corpus/**"));
     assert!(fuzz_paths.contains("fuzz/dict/**"));
     assert!(fuzz_paths.contains("fuzz/fuzz_targets/**"));
+    assert!(fuzz_paths.contains("xtask/tests/fuzz_dict_w100.rs"));
     assert!(fuzz_proof.contains("cargo +nightly fuzz list"));
+    assert!(
+        fuzz_proof.contains(
+            "cargo test -p xtask fuzz_dictionaries_do_not_define_empty_tokens -- --exact"
+        )
+    );
 
     let tokmd_cli = scopes
         .iter()

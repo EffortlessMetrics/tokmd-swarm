@@ -54,9 +54,10 @@ significantly with cache state.
 
 ## Outliers
 
-The current model uses simple sorted-rank percentiles. A failed run
-contributes `duration_seconds == 0`, which `load_actuals` filters out, so
-failures don't drag percentiles down. A pathological cold-cache run
+The current model uses simple sorted-rank percentiles. Jobs with an explicit
+non-`success` result are ignored by `load_actuals`, and zero-duration samples
+are filtered out, so failures and skipped lanes do not seed learned estimates.
+A pathological cold-cache run
 contributes a high p95 — that's intentional; reviewers should see the
 real worst-case.
 

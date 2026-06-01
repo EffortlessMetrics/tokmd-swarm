@@ -40,6 +40,23 @@ Open the packet in this order:
 4. `.tokmd/review/manifest.json` for packet-local artifact paths and hashes.
 5. `target/tokmd/review-packet-check.json` for the verifier receipt.
 
+The first two artifacts have different jobs. `comment.md` is the best first
+screen because it compresses the packet into a hosted-comment-sized status.
+`review-map.md` is the working artifact for the actual review: it names the
+review-first files, the reason each item is in front, any matching proof lines,
+and the commands to reproduce or repair evidence. Use `evidence.json` when a
+summary line needs exact availability, freshness, required/advisory status, or
+source-artifact detail.
+
+Interpret common states this way:
+
+| State seen in packet | Read as | Next action |
+| --- | --- | --- |
+| Required proof available and fresh | The named required evidence exists for this commit or scope. | Continue reviewing the changed files; do not treat the packet itself as merge approval. |
+| Advisory proof missing or skipped | Optional evidence did not run or was intentionally not requested. | Do not call it a failure unless policy made that proof required; use the reproduction command if the PR needs that signal. |
+| Required proof missing, stale, degraded, or failed | The packet lacks trustworthy required evidence for the relevant surface. | Regenerate or repair the named proof before claiming the packet is complete. |
+| Evidence unavailable | The runtime, checkout, or packet inputs could not support that evidence source. | Treat it as an explicit gap, not as passing evidence. |
+
 If the PR changes `.tokmd-spec/**`, source-of-truth docs, the swarm routing
 topology, agent workflow rails, plans, ADRs, templates, `.jules/goals/**`, or
 doc-artifact policy, generate and import the documentation-control receipt

@@ -15,7 +15,7 @@ install the tool or run the first local command, use
 | User job | Run first | Primary artifact | Open first | Meaning |
 | --- | --- | --- | --- | --- |
 | Inspect repo | `tokmd --format md --top 8` | Markdown summary | terminal output | Repo shape, language mix, and largest surfaces. |
-| Review PR | `tokmd cockpit --base origin/main --head HEAD --review-packet-dir .tokmd/review` | `.tokmd/review/` | `.tokmd/review/review-map.md` | Review order, evidence state, missing evidence, and reproduction commands. |
+| Review PR | `tokmd cockpit --base origin/main --head HEAD --review-packet-dir .tokmd/review` | `.tokmd/review/` | `.tokmd/review/comment.md`, then `.tokmd/review/review-map.md` | Compact status first, then review order, evidence state, missing evidence, and reproduction commands. |
 | Prepare agent handoff | `tokmd handoff --preset risk --budget 128k --strategy spread --out-dir .handoff` | `.handoff/` | `.handoff/work-order.md` | Bounded source/context bundle plus agent task map. |
 | Read CI proof evidence | `cargo xtask affected ...` then `cargo xtask proof --profile affected ... --plan` | `target/proof/` | `affected.json`, then `proof-plan.json` | Changed files, matched proof scopes, and required/advisory proof expectations. |
 | Try browser mode | Browser runner | downloaded browser-safe receipt | UI summary | No-install repo inspection over browser-supported inputs. |
@@ -74,8 +74,8 @@ Artifact: `.tokmd/review/`.
 
 Open first:
 
-1. `.tokmd/review/review-map.md`
-2. `.tokmd/review/comment.md`
+1. `.tokmd/review/comment.md`
+2. `.tokmd/review/review-map.md`
 3. `.tokmd/review/evidence.json`
 4. `target/tokmd/review-packet-check.json`
 
@@ -95,6 +95,7 @@ Does not mean:
 
 Next action:
 
+- Treat `comment.md` as the first screen, not the whole review.
 - Run the reproduction commands shown in `review-map.md`.
 - Inspect `evidence.json` for missing or degraded evidence before claiming the
   packet is complete.

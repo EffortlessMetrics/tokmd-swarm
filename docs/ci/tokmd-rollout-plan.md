@@ -27,7 +27,7 @@ fits in the ladder. Every PR in this stack has the same shape:
 | 10 | `ci/default-pr-gate-slimming`    | Make default PR gate cheap.                                              |
 | 11 | `ci/mutation-to-ripr-default`    | Move runtime mutation off default PR; add ripr advisory.                 |
 | 12 | `ci/risk-pack-routing`           | Route WASM, Windows, Nix, publish, proptest by risk pack.                |
-| 13 | `ci/nextest-junit-actuals`       | JUnit/nextest timing and `ci-actuals.json`.                              |
+| 13 | `ci/ci-actuals-timings`          | Hosted job timing sidecar and `ci-actuals.json`.                         |
 | 14 | `ci/soft-budget-guard`           | Warn >35/>75 LEM; fail >125 without override.                            |
 | 15 | `ci/learned-estimates`           | Use actuals for rolling p50/p90/p95 LEM estimates.                       |
 | 16 | `ripr/soft-gate-policy`          | Acknowledge high-confidence new oracle gaps.                             |
