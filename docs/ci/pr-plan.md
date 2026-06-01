@@ -52,7 +52,7 @@ without reading the lane catalogue by hand:
 ```json
 {
   "schema": "tokmd.proof_pack_route.v1",
-  "schema_version": 1,
+  "schema_version": 2,
   "changed_files": [
     {
       "path": "crates/tokmd/src/main.rs",
@@ -65,6 +65,15 @@ without reading the lane catalogue by hand:
     }
   ],
   "unmatched_files": [],
+  "summary": {
+    "changed_file_count": 1,
+    "routed_file_count": 1,
+    "unmatched_file_count": 0,
+    "skipped_lane_count": 2,
+    "skipped_reason_counts": {
+      "deep_lane_requires_label": 2
+    }
+  },
   "skipped_by_policy": [
     {
       "lane": "build_test_windows",
@@ -81,6 +90,10 @@ without reading the lane catalogue by hand:
   ]
 }
 ```
+
+The summary reason counts are an at-a-glance index over the detailed
+`skipped_by_policy` array. Use the per-lane entries for matched files and
+lane-specific evidence.
 
 The advisory plan keeps its existing shape. Treat `lanes_selected` as planner
 selection, not proof that those jobs executed or passed:

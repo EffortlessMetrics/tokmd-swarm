@@ -647,7 +647,7 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
         serde_json::from_str(&written).expect("route artifact should be valid JSON");
 
     assert_eq!(value["schema"], "tokmd.proof_pack_route.v1");
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema_version"], 2);
     assert_eq!(value["base"], "HEAD");
     assert_eq!(value["head"], "HEAD");
     assert!(value["changed_files"].as_array().unwrap().is_empty());
@@ -658,6 +658,18 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
     assert_eq!(
         value["summary"]["skipped_lane_count"].as_u64().unwrap(),
         value["skipped_by_policy"].as_array().unwrap().len() as u64
+    );
+    let reason_counts = value["summary"]["skipped_reason_counts"]
+        .as_object()
+        .expect("summary should include skipped reason counts");
+    let reason_total: u64 = reason_counts
+        .values()
+        .map(|count| count.as_u64().expect("reason count should be numeric"))
+        .sum();
+    assert_eq!(
+        value["summary"]["skipped_lane_count"].as_u64().unwrap(),
+        reason_total,
+        "summary reason counts should account for every skipped lane"
     );
 }
 
