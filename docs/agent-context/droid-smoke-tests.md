@@ -18,7 +18,7 @@ This document specifies the live smoke test procedures for validating Droid auto
 - [ ] `.github/workflows/droid-security-scan.yml` exists and is enabled
 - [ ] `.factory/rules/droid-review.md` exists with review guidance
 - [ ] `.factory/skills/review-guidelines/SKILL.md` exists with skill definition
-- [ ] Static checks pass: `cargo xtask gate --check`
+- [ ] Static checks pass: `cargo xtask proof-policy --check`
 
 ## Test Sequence
 
@@ -37,7 +37,7 @@ This document specifies the live smoke test procedures for validating Droid auto
 **Validation**:
 - [ ] Workflow shows "Checkout repository" step completed
 - [ ] "Configure MiniMax BYOK for Factory Droid" step runs without error
-- [ ] "Run Droid Auto Review with MiniMax M2.7 BYOK" step invokes the safe action
+- [ ] "Run Droid Auto Review with MiniMax M3 BYOK" step invokes the safe action
 
 **Failure Mode**: If workflow does not start:
 - Check that PR head is on the same repo (not a fork)
@@ -101,7 +101,7 @@ This document specifies the live smoke test procedures for validating Droid auto
 **Procedure**:
 1. Return to the draft PR page (Conversation tab)
 2. Scroll down to see all comments
-3. Look for a comment from "factory-bot" or the GitHub Actions bot
+3. Look for a review from `factory-droid[bot]` or the GitHub Actions bot
 
 **Expected Outcome**:
 - [ ] A review comment appears from an automated account
@@ -184,12 +184,17 @@ This document specifies the live smoke test procedures for validating Droid auto
 - [ ] Workflow run appears and progresses through steps
 - [ ] All steps complete successfully
 - [ ] Workflow logs show security scan completed
+- [ ] If the scan produces a report PR, it is opened by `factory-droid[bot]`
+- [ ] The report PR changes only generated security evidence under
+  `.factory/security/reports/**` and `.factory/threat-model/**`
 
 **Validation**:
 - [ ] Logs show: `security_scan_schedule: true`
 - [ ] Logs show: `security_severity_threshold: medium`
 - [ ] Logs show MiniMax API calls for security analysis
 - [ ] Workflow creates or updates a security-focused comment/issue (if findings present)
+- [ ] Generated report PRs route through `droid_security_evidence` in
+  `ci/proof.toml`, with no unknown files in the Affected Proof Plan
 
 **Failure Mode**: If workflow fails to start:
 - Verify `droid-security-scan.yml` exists in `.github/workflows/`
