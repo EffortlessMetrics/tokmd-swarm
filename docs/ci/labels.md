@@ -14,6 +14,7 @@ Labels select expensive lanes that ordinary PRs skip. The PR Plan job (PR
 | `release-check` | Add publish surface + version consistency + Nix. |
 | `mutation` | Add cargo-mutants on changed files. |
 | `property-tests` | Expand proptest smoke past the default short budget. |
+| `coverage` | Add the advisory Rust coverage lane. Coverage remains non-required and Codecov upload remains token-gated. |
 
 ## Budget labels
 
