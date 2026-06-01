@@ -97,6 +97,8 @@ struct Lane {
     review_after: Option<String>,
     #[serde(default)]
     expires: Option<String>,
+    #[serde(default)]
+    labels: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -303,6 +305,11 @@ fn validate_lane(
     }
     if lane.allowed_triggers.is_empty() {
         findings.push(format!("lane {}: missing allowed_triggers", lane.id));
+    }
+    for label in &lane.labels {
+        if label.trim().is_empty() {
+            findings.push(format!("lane {}: empty label selector", lane.id));
+        }
     }
     if let Some(date) = &lane.review_after
         && let Err(err) = NaiveDate::parse_from_str(date, "%Y-%m-%d")
@@ -672,6 +679,7 @@ jobs:
             duplicate_of: vec![],
             review_after: Some("2099-01-01".into()),
             expires: Some("2099-12-31".into()),
+            labels: Vec::new(),
         }
     }
 

@@ -63,6 +63,8 @@ struct Lane {
     base_lem: u64,
     #[serde(default)]
     expensive: bool,
+    #[serde(default)]
+    labels: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,6 +269,17 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
         }
     }
 
+    for (lane, label) in label_selected_lanes(&whitelist, &labels_set) {
+        selected.entry(lane.id.clone()).or_insert_with(|| {
+            lane_to_selection(
+                lane,
+                &whitelist.runner_multipliers,
+                &actuals,
+                &format!("label:{label}"),
+            )
+        });
+    }
+
     if want_full_ci {
         for lane in &whitelist.lane {
             selected.entry(lane.id.clone()).or_insert_with(|| {
@@ -379,6 +392,22 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn label_selected_lanes<'a>(
+    whitelist: &'a WhitelistFile,
+    labels_set: &BTreeSet<&str>,
+) -> Vec<(&'a Lane, &'a str)> {
+    whitelist
+        .lane
+        .iter()
+        .filter_map(|lane| {
+            lane.labels
+                .iter()
+                .find(|label| labels_set.contains(label.as_str()))
+                .map(|label| (lane, label.as_str()))
+        })
+        .collect()
 }
 
 fn budget_label_flags(labels: &[String]) -> (bool, bool) {
@@ -965,19 +994,27 @@ mod tests {
             runner: "ubuntu_latest".into(),
             base_lem: 1,
             expensive,
+            labels: Vec::new(),
         }
     }
 
     fn route_test_whitelist() -> WhitelistFile {
+        let mut rust_coverage = test_lane("rust_coverage", false, true);
+        rust_coverage.labels = vec!["coverage".to_string()];
+        let mut build_test_windows = test_lane("build_test_windows", true, true);
+        build_test_windows.labels = vec!["windows".to_string()];
+        let mut proptest_smoke = test_lane_with_default_pr("proptest_smoke", true, false, false);
+        proptest_smoke.labels = vec!["property-tests".to_string()];
+
         WhitelistFile {
             budget: Some(budget()),
             runner_multipliers: BTreeMap::new(),
             lane: vec![
                 test_lane("docs_check", true, false),
                 test_lane("rust_fast_gate", true, false),
-                test_lane("rust_coverage", false, true),
-                test_lane("build_test_windows", true, true),
-                test_lane_with_default_pr("proptest_smoke", true, false, false),
+                rust_coverage,
+                build_test_windows,
+                proptest_smoke,
             ],
         }
     }
@@ -1196,6 +1233,25 @@ mod tests {
     }
 
     #[test]
+    fn label_selected_lanes_follow_whitelist_metadata() {
+        let whitelist = route_test_whitelist();
+        let labels_set: BTreeSet<&str> = ["coverage", "windows"].into_iter().collect();
+
+        let selected = label_selected_lanes(&whitelist, &labels_set)
+            .into_iter()
+            .map(|(lane, label)| (lane.id.clone(), label.to_string()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            selected,
+            vec![
+                ("rust_coverage".to_string(), "coverage".to_string()),
+                ("build_test_windows".to_string(), "windows".to_string())
+            ]
+        );
+    }
+
+    #[test]
     fn lane_to_selection_uses_runner_multiplier() {
         let lane = Lane {
             id: "x".into(),
@@ -1208,6 +1264,7 @@ mod tests {
             runner: "windows_latest".into(),
             base_lem: 10,
             expensive: false,
+            labels: Vec::new(),
         };
         let mut multipliers = BTreeMap::new();
         multipliers.insert("windows_latest".into(), 2.0);
@@ -1237,6 +1294,7 @@ mod tests {
             runner: "ubuntu_latest".into(),
             base_lem: 5,
             expensive: false,
+            labels: Vec::new(),
         };
         let multipliers = BTreeMap::new();
         // p50 = 600s = 10 LEM × 1.15 = 11.5 → 12, beats static 5.

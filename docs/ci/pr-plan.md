@@ -23,8 +23,11 @@ split or an explicit override label is present.
 5. For each risk pack whose paths match a changed file: include its
    `lanes`, and (if a matching label or `full-ci` is set) its
    `deep_lanes`.
-6. Compute the runner-multiplied LEM estimate per lane and the total.
-7. Classify the band:
+6. Include any lane whose `policy/ci-lane-whitelist.toml` entry names a
+   matching lane-selection label, such as `windows`, `wasm`, `coverage`, or
+   `mutation`.
+7. Compute the runner-multiplied LEM estimate per lane and the total.
+8. Classify the band:
 
    | Band | LEM range |
    |------|-----------|
@@ -33,10 +36,10 @@ split or an explicit override label is present.
    | `high-cost` | <= hard_limit_lem (125) |
    | `override-required` | > hard_limit_lem |
 
-8. Write `target/ci/ci-plan.json`, write
+9. Write `target/ci/ci-plan.json`, write
    `target/ci/proof-pack-route.json`, emit budget annotations, and append a
    Markdown summary to `GITHUB_STEP_SUMMARY`.
-9. Upload both receipt files as a strict artifact. A missing PR plan or route
+10. Upload both receipt files as a strict artifact. A missing PR plan or route
    receipt is a workflow failure because reviewers lose the actionable routing
    evidence.
 
