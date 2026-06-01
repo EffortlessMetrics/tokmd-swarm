@@ -164,6 +164,10 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
         "timing lookup should read the current run attempt"
     );
     assert!(
+        timings_block.contains("if job.get(\"conclusion\") != \"success\":"),
+        "timing sidecar should only collect successful job durations"
+    );
+    assert!(
         timings_block.contains("\"Docs Check\": \"docs-check\"")
             && timings_block.contains("\"Proof Policy\": \"proof-policy\""),
         "timing lookup should map hosted job display names back to needs keys"

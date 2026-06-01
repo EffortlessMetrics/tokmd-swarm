@@ -40,11 +40,11 @@ into passing evidence. The aggregate job attempts receipt setup, generation,
 and upload as best-effort telemetry; final pass/fail status remains owned by
 the aggregate status check over the original `needs` payload. Hosted timing
 collection uses the read-only GitHub Actions jobs API for the current run
-attempt, maps job display names back to aggregate `needs` keys, and records
-the first hosted runner label when GitHub exposes one. If that API lookup
-fails, or if a skipped/incomplete job has no start and completion time, the
-receipt still records `timing_status: "missing"` rather than inventing a
-duration.
+attempt, maps successful job display names back to aggregate `needs` keys, and
+records the first hosted runner label when GitHub exposes one. If that API
+lookup fails, or if a skipped, failed, cancelled, or incomplete job has no
+successful timing sample, the receipt still records `timing_status: "missing"`
+rather than inventing a duration.
 
 ## Output
 

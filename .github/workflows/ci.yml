@@ -856,6 +856,8 @@ jobs:
                   payload = json.load(response)
               jobs = payload.get("jobs", [])
               for job in jobs:
+                  if job.get("conclusion") != "success":
+                      continue
                   need_key = job_name_to_need_key.get(job.get("name"))
                   started = parse_time(job.get("started_at"))
                   completed = parse_time(job.get("completed_at"))
