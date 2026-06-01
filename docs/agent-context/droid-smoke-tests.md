@@ -55,13 +55,13 @@ This document specifies the live smoke test procedures for validating Droid auto
 
 **Expected Outcome**:
 - [ ] Step completed successfully (green checkmark)
-- [ ] Logs show: `review_model: custom:MiniMax-M2.7-0`
-- [ ] Logs show: `security_model: custom:MiniMax-M2.7-0`
+- [ ] Logs show: `review_model: custom:MiniMax-M3-0`
+- [ ] Logs show: `security_model: custom:MiniMax-M3-0`
 - [ ] No authentication errors or API key issues in logs
 - [ ] MiniMax API calls are successful (check for rate limit or auth errors)
 
 **Validation**:
-- [ ] Model name is exactly `custom:MiniMax-M2.7-0` (not a different Claude model)
+- [ ] Model name is exactly `custom:MiniMax-M3-0` (not a different Claude model)
 - [ ] No fallback to default model appears in logs
 - [ ] API response time is reasonable (< 30 seconds per call)
 
@@ -212,7 +212,7 @@ This document specifies the live smoke test procedures for validating Droid auto
 
 **Validation**:
 - [ ] At least 1 call per workflow execution
-- [ ] Model name in logs matches `MiniMax-M2.7`
+- [ ] Model name in logs matches `MiniMax-M3`
 - [ ] Response times are reasonable
 
 **Failure Mode**: If no calls appear:
@@ -234,7 +234,7 @@ This document specifies the live smoke test procedures for validating Droid auto
 All 8 tests must pass:
 
 - [x] Auto review starts on PR creation
-- [x] Correct model (MiniMax-M2.7) is used
+- [x] Correct model (MiniMax-M3) is used
 - [x] No raw debug artifacts uploaded
 - [x] Auto review generates a comment with findings or clean review
 - [x] Manual `@droid review` command works
