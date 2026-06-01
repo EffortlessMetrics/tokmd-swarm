@@ -7,11 +7,11 @@ companion to `policy/ci-lane-whitelist.toml`. Update on rollout PRs.
 
 | Lane ID | Job | Runner | Base LEM | Notes |
 |---------|-----|--------|----------|-------|
-| `msrv_check` | MSRV Check | ubuntu | 5 | MSRV cargo check. PR 04 moves to 1.93. |
+| `msrv_check` | MSRV Check | ubuntu | 5 | MSRV cargo check. |
 | `quality_gate` | Quality Gate | ubuntu | 8 | `cargo xtask gate --check`. |
 | `proof_policy` | Proof Policy | ubuntu | 3 | `cargo xtask proof-policy --check`. |
-| `affected_proof_plan` | Affected Proof Plan | ubuntu | 4 | Wrapped by PR 08 PR Plan. |
-| `ci_detect_risk_packs` | Detect risk packs | ubuntu | 1 | Workflow path classifier. |
+| `affected_proof_plan` | Affected Proof Plan | ubuntu | 4 | PR affected proof artifacts. |
+| `ci_detect_risk_packs` | Detect risk packs | ubuntu | 1 | Rust-owned risk-pack output flags. |
 | `fast_proof_run_advisory` | Fast Proof Run (Advisory) | ubuntu | 5 | Advisory fast proof observation. |
 | `feature_boundaries` | Feature Boundaries | ubuntu | 10 | Analysis feature/module boundaries. |
 | `typos` | Typos | ubuntu | 1 | crate-ci/typos. |

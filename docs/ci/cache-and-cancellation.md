@@ -12,7 +12,7 @@ concurrency:
 
 **Why the conditional?** With plain `cancel-in-progress: true`, label
 add/remove on a PR cancels in-flight runs. That throws away work and
-makes lane routing (PR 08, PR 12) painful — adding the `wasm` label on a
+makes label and risk-pack routing painful — adding the `wasm` label on a
 PR with `Wasm Compile & Test` already running just kills the run instead
 of letting the new run start with the new label set.
 

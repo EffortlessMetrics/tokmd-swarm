@@ -4,10 +4,9 @@ owner = "release/ci"
 status = "active"
 
 # Carve-outs that allow current CI to pass the lane whitelist check while
-# the rollout (PRs 10–12) demotes expensive default-PR lanes to risk-pack
-# routing. Each exception MUST have an owner, a reason, a creation date,
-# and an expiry. Expired exceptions are surfaced by the lane whitelist
-# linter (PR 03).
+# a workflow/lane migration is in progress. Each exception MUST have an
+# owner, a reason, a creation date, and an expiry. Expired exceptions are
+# surfaced by `cargo xtask ci-lane-whitelist --strict`.
 
 # No active exceptions. Expensive lanes now run on push, explicit labels,
 # or risk-pack routing instead of ordinary PR defaults.

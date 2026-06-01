@@ -56,4 +56,4 @@ elevated_limit_lem    = 75
 hard_limit_lem        = 125
 ```
 
-These are the bands the PR Plan job (PR 08) and budget guard (PR 14) read.
+These are the bands the PR Plan job and budget guard read.

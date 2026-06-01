@@ -140,7 +140,7 @@ jobs:
   # Windows full-test moves off the default PR gate. It runs on push to
   # main and on PRs explicitly labelled `windows` or `full-ci`. Rust path
   # changes that are likely to behave differently on Windows go through
-  # the `git_io` risk pack (PR 12).
+  # the Rust-owned `git_io` risk pack output.
   build-windows:
     name: Build & Test (Windows)
     needs: detect

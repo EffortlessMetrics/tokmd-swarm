@@ -10,8 +10,9 @@
 //! It can also write `proof-pack-route.json`, a smaller changed-file to
 //! proof-pack receipt for CI routing/debugging.
 //!
-//! Advisory only — does not change which jobs actually run. PR 12 wires
-//! workflows to consume the plan; PR 14 layers in the budget warning.
+//! `ci-plan.json` is advisory evidence. Workflow-compatible output flags from
+//! the same planner drive risk-pack routing, and `--enforce` applies the hard
+//! LEM budget ceiling in PR Plan.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
