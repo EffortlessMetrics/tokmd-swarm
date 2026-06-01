@@ -45,7 +45,9 @@ split or an explicit override label is present.
 The route receipt is the first artifact to open when a path did not select the
 expected proof. `changed_files` records manifest matches, `unmatched_files`
 records paths with no route, and `skipped_by_policy` records lanes that were
-known but intentionally not selected:
+known but intentionally not selected. Route-relevant unselected lanes are
+reported even when they are not expensive, so deep proof packs can be audited
+without reading the lane catalogue by hand:
 
 ```json
 {
@@ -66,6 +68,12 @@ known but intentionally not selected:
   "skipped_by_policy": [
     {
       "lane": "build_test_windows",
+      "status": "skipped_by_policy",
+      "reason": "deep_lane_requires_label",
+      "matched_files": ["crates/tokmd/src/main.rs"]
+    },
+    {
+      "lane": "proptest_smoke",
       "status": "skipped_by_policy",
       "reason": "deep_lane_requires_label",
       "matched_files": ["crates/tokmd/src/main.rs"]

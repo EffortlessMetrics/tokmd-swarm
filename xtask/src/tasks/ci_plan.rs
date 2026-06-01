@@ -632,10 +632,18 @@ fn skipped_by_policy(
     whitelist
         .lane
         .iter()
-        .filter(|lane| lane.expensive && !selected_ids.contains(&lane.id))
-        .map(|lane| {
+        .filter_map(|lane| {
+            if selected_ids.contains(&lane.id) {
+                return None;
+            }
+
             let direct_matched_files = matched_files_for_lane(route, &lane.id, false);
             let deep_matched_files = matched_files_for_lane(route, &lane.id, true);
+
+            if !lane.expensive && direct_matched_files.is_empty() && deep_matched_files.is_empty() {
+                return None;
+            }
+
             let (reason, matched_files) = if !deep_matched_files.is_empty() {
                 ("deep_lane_requires_label", deep_matched_files)
             } else if !direct_matched_files.is_empty() {
@@ -655,12 +663,12 @@ fn skipped_by_policy(
                 ("not_selected_for_changed_surface", Vec::new())
             };
 
-            SkippedByPolicy {
+            Some(SkippedByPolicy {
                 lane: lane.id.clone(),
                 status: "skipped_by_policy".to_string(),
                 reason: reason.to_string(),
                 matched_files,
-            }
+            })
         })
         .collect()
 }
@@ -917,13 +925,22 @@ mod tests {
     }
 
     fn test_lane(id: &str, blocking: bool, expensive: bool) -> Lane {
+        test_lane_with_default_pr(id, blocking, !expensive, expensive)
+    }
+
+    fn test_lane_with_default_pr(
+        id: &str,
+        blocking: bool,
+        default_pr: bool,
+        expensive: bool,
+    ) -> Lane {
         Lane {
             id: id.into(),
             workflow: "ci.yml".into(),
             job: id.into(),
             kind: "test".into(),
             tier: "frontdoor".into(),
-            default_pr: !expensive,
+            default_pr,
             blocking,
             runner: "ubuntu_latest".into(),
             base_lem: 1,
@@ -940,6 +957,7 @@ mod tests {
                 test_lane("rust_fast_gate", true, false),
                 test_lane("rust_coverage", false, true),
                 test_lane("build_test_windows", true, true),
+                test_lane_with_default_pr("proptest_smoke", true, false, false),
             ],
         }
     }
@@ -953,7 +971,7 @@ mod tests {
                         description: "Core".into(),
                         paths: vec!["crates/tokmd/**".into()],
                         lanes: vec!["rust_fast_gate".into()],
-                        deep_lanes: vec!["build_test_windows".into()],
+                        deep_lanes: vec!["build_test_windows".into(), "proptest_smoke".into()],
                     },
                 ),
                 (
@@ -1054,6 +1072,15 @@ mod tests {
                 && skip.reason == "deep_lane_requires_label"
                 && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
         }));
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "proptest_smoke"
+                && skip.reason == "deep_lane_requires_label"
+                && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
+        }));
+        assert!(
+            !skipped.iter().any(|skip| skip.lane == "docs_check"),
+            "unrelated non-expensive lanes should stay out of skipped-by-policy"
+        );
     }
 
     #[test]
