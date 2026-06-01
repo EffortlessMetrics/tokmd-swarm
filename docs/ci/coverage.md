@@ -13,16 +13,27 @@ The coverage workflow runs on:
 - pull requests labeled `coverage`;
 - pull requests labeled `full-ci`.
 
-It uses Rust `1.92`, `cargo-llvm-cov`, `--workspace`, `--all-features`, and `--locked`.
+Before installing `cargo-llvm-cov`, the workflow runs `cargo xtask ci-plan`
+with the same risk-pack manifest used by CI detect. That writes
+`target/ci/coverage-plan.json` and `target/ci/proof-pack-route.json`, then
+uploads them as the `coverage-route` artifact. Route incoherence fails before
+the expensive coverage run starts, and later coverage failures still have the
+changed-surface routing receipt attached.
+
+Coverage execution uses Rust `1.92`, `cargo-llvm-cov`, `--workspace`,
+`--all-features`, and `--locked`.
 
 ## Artifacts
 
 Each run validates and uploads:
 
+- `target/ci/coverage-plan.json`;
+- `target/ci/proof-pack-route.json`;
 - `coverage.json`;
 - `coverage.txt`;
 - `lcov.info`;
 - `target/coverage/coverage-receipt.json`;
+- the `coverage-route` GitHub Actions artifact;
 - the `coverage-report` GitHub Actions artifact.
 
 When `CODECOV_TOKEN` is configured, the workflow uploads `lcov.info` to Codecov with the `rust` flag. Upload failures are allowed to fail `main` push runs, but pull request coverage remains label-gated and advisory.

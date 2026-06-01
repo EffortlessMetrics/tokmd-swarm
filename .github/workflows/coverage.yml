@@ -48,6 +48,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base ref
+        if: github.event_name == 'pull_request'
+        run: git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" || true
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -62,6 +68,43 @@ jobs:
         with:
           cache-directories: ${{ runner.temp }}/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Generate coverage route receipt
+        env:
+          LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels) || '[]' }}
+          PUSH_BEFORE: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="origin/${{ github.base_ref }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ -n "${PUSH_BEFORE}" ] && ! printf '%s' "${PUSH_BEFORE}" | grep -Eq '^0+$'; then
+            base_ref="${PUSH_BEFORE}"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base_ref="HEAD^"
+          else
+            base_ref="HEAD"
+          fi
+          cargo xtask ci-plan \
+            --base "${base_ref}" \
+            --head HEAD \
+            --labels-json "${LABELS_JSON}" \
+            --lanes policy/ci-lane-whitelist.toml \
+            --risk-packs policy/ci-risk-packs.toml \
+            --no-budget-annotations \
+            --json-out target/ci/coverage-plan.json \
+            --route-json-out target/ci/proof-pack-route.json
+
+      - name: Upload coverage route receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-route
+          path: |
+            target/ci/coverage-plan.json
+            target/ci/proof-pack-route.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
