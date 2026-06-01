@@ -780,7 +780,45 @@ jobs:
       - feature-boundaries
       - proof-policy
     steps:
+      - uses: actions/checkout@v6.0.2
+        continue-on-error: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        continue-on-error: true
+
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Generate CI actuals receipt
+        if: always()
+        continue-on-error: true
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci
+          printf '%s\n' "${NEEDS_JSON}" > target/ci/needs.json
+          cargo xtask ci-actuals \
+            --needs target/ci/needs.json \
+            --output target/ci/ci-actuals.json \
+            --sha "${GITHUB_SHA}"
+
+      - name: Upload CI actuals receipt
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-actuals
+          path: |
+            target/ci/needs.json
+            target/ci/ci-actuals.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Check overall status
+        if: always()
         env:
           NEEDS_JSON: ${{ toJson(needs) }}
         run: |

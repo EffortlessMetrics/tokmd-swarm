@@ -25,6 +25,21 @@ cargo xtask ci-actuals \
 When timing data is absent, the receipt records `timing_status: "missing"` and
 leaves duration fields `null`. Missing timing is not coerced to zero.
 
+## CI Workflow Artifact
+
+The `CI (Required)` aggregate job writes the raw needs payload to
+`target/ci/needs.json`, then writes `target/ci/ci-actuals.json` with
+`cargo xtask ci-actuals`. Both files are uploaded as the `ci-actuals`
+artifact before the aggregate job performs its final pass/fail status check.
+
+The uploaded receipt is observation-only. It does not change required-status
+selection, feed learned estimates back into `ci-plan`, or promote skipped lanes
+into passing evidence. The aggregate job attempts receipt setup, generation,
+and upload as best-effort telemetry; final pass/fail status remains owned by
+the aggregate status check over the original `needs` payload. Hosted runs
+currently omit the optional timing sidecar, so duration fields remain `null`
+until a separate timing collector is added.
+
 ## Output
 
 ```json
