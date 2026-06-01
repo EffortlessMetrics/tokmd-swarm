@@ -93,11 +93,19 @@ without reading the lane catalogue by hand:
 
 The summary reason counts are an at-a-glance index over the detailed
 `skipped_by_policy` array. Use the per-lane entries for matched files and
-lane-specific evidence. `deep_lane_requires_label` means a matching surface has
-label-gated deep proof that was not requested. `docs_only_change` means an
-expensive lane was skipped because all routed files were documentation.
-`not_selected_for_changed_surface` means the lane is known to the planner but
-does not apply to the current changed surface.
+lane-specific evidence:
+
+- `deep_lane_requires_label` means a matching surface has label-gated deep proof
+  that was not requested.
+- `not_selected_by_policy` means the lane matched the changed surface directly,
+  but the current planner policy did not select it for this run.
+- `docs_only_change` means an expensive lane was skipped because all routed
+  files were documentation.
+- `not_selected_for_changed_surface` means the lane is known to the planner but
+  does not apply to the current changed surface.
+- `no_changed_files` means the planner saw no changed paths for the comparison
+  range, so expensive lanes were reported as skipped rather than silently
+  omitted.
 
 The advisory plan keeps its existing shape. Treat `lanes_selected` as planner
 selection, not proof that those jobs executed or passed:

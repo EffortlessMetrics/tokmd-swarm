@@ -1153,6 +1153,49 @@ mod tests {
     }
 
     #[test]
+    fn skipped_policy_reports_unselected_direct_match_reason() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let risk_packs = route_test_risk_packs();
+        let changed = vec!["crates/tokmd/src/main.rs".to_string()];
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+        let selected_ids = BTreeSet::new();
+
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "rust_fast_gate"
+                && skip.status == "skipped_by_policy"
+                && skip.reason == "not_selected_by_policy"
+                && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
+        }));
+        let reason_counts = skipped_reason_counts(&skipped);
+        assert_eq!(reason_counts["not_selected_by_policy"], 1);
+    }
+
+    #[test]
+    fn skipped_policy_reports_no_changed_files_reason() {
+        let whitelist = route_test_whitelist();
+        let route = RouteAnalysis {
+            changed_files: Vec::new(),
+            unmatched_files: Vec::new(),
+            matched_by_pack: BTreeMap::new(),
+        };
+        let selected_ids = BTreeSet::new();
+
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "rust_coverage"
+                && skip.status == "skipped_by_policy"
+                && skip.reason == "no_changed_files"
+                && skip.matched_files.is_empty()
+        }));
+        let reason_counts = skipped_reason_counts(&skipped);
+        assert_eq!(reason_counts["no_changed_files"], 2);
+    }
+
+    #[test]
     fn lane_to_selection_uses_runner_multiplier() {
         let lane = Lane {
             id: "x".into(),
