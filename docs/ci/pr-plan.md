@@ -179,6 +179,14 @@ Treat the fields as telemetry, not a replacement verdict:
 - `jobs[].result` is the per-required-job result from GitHub Actions `needs`.
   Use it to find failed, cancelled, skipped, or successful inputs to the
   aggregate.
+- `jobs[].summary_key` is the aggregate `needs` key, while `jobs[].lane_id`
+  and `jobs[].aliases` make the row usable by canonical lane-id planning.
+- `jobs[].selected` records whether the workflow selected the job for
+  execution. Skipped rows include `skip_reason` when the workflow exposed one,
+  otherwise `github_actions_condition_false`.
+- `route_target`, `estimated_lem`, `actual_lem`, and `queue_seconds` are
+  nullable telemetry fields. Missing values mean the workflow did not observe
+  them.
 - `status.missing_timing` means timing telemetry was unavailable for those
   jobs. It is not a zero-second duration and not a job failure by itself.
 - `duration_seconds`, `duration_minutes`, `runner`, and `cache_hit` are cost

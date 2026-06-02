@@ -1,4 +1,5 @@
 use crate::cli::CiActualsArgs;
+use crate::tasks::ci_plan::{actual_lane_keys, ci_needs_key_lane_alias};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CI_ACTUALS_SCHEMA: &str = "tokmd.ci_actuals.v1";
+const CI_ACTUALS_SCHEMA: &str = "tokmd.ci_actuals.v2";
 
 #[derive(Debug, Deserialize)]
 struct NeedEntry {
@@ -27,6 +28,8 @@ enum TimingInput {
 struct TimingObject {
     duration_seconds: Option<f64>,
     seconds: Option<f64>,
+    queue_seconds: Option<f64>,
+    actual_lem: Option<f64>,
     runner: Option<String>,
     cache_hit: Option<bool>,
 }
@@ -34,6 +37,8 @@ struct TimingObject {
 #[derive(Debug, Clone, PartialEq)]
 struct TimingRecord {
     duration_seconds: Option<f64>,
+    queue_seconds: Option<f64>,
+    actual_lem: Option<f64>,
     runner: Option<String>,
     cache_hit: Option<bool>,
 }
@@ -61,7 +66,16 @@ struct GithubContext {
 #[derive(Debug, Serialize)]
 struct CiJobActual {
     name: String,
+    summary_key: String,
+    lane_id: String,
+    aliases: Vec<String>,
+    selected: bool,
     result: String,
+    route_target: Option<String>,
+    skip_reason: Option<String>,
+    estimated_lem: Option<f64>,
+    actual_lem: Option<f64>,
+    queue_seconds: Option<f64>,
     output_keys: Vec<String>,
     runner: Option<String>,
     duration_seconds: Option<f64>,
@@ -121,6 +135,35 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
             used_timings.insert(name.clone());
         }
 
+        let result = need.result.unwrap_or_else(|| "unknown".to_string());
+        let selected = job_selected(&result);
+        let route_target = output_string(
+            &need.outputs,
+            &[
+                "route_target",
+                "route-target",
+                "selected_target",
+                "selected-target",
+                "runner_target",
+                "runner-target",
+            ],
+        );
+        let skip_reason = job_skip_reason(&result, &need.outputs, selected);
+        let estimated_lem = output_f64(
+            &need.outputs,
+            &[
+                "estimated_lem",
+                "estimated-lem",
+                "lem_estimate",
+                "lem-estimate",
+            ],
+        );
+        let queue_seconds = timing
+            .and_then(|record| record.queue_seconds)
+            .or_else(|| output_f64(&need.outputs, &["queue_seconds", "queue-seconds"]));
+        let actual_lem = timing
+            .and_then(|record| record.actual_lem)
+            .or_else(|| output_f64(&need.outputs, &["actual_lem", "actual-lem"]));
         let duration_seconds = timing.and_then(|record| record.duration_seconds);
         let duration_minutes = duration_seconds.map(|seconds| seconds / 60.0);
         if duration_seconds.is_none() {
@@ -130,9 +173,19 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
         }
 
         let output_keys = need.outputs.keys().cloned().collect::<Vec<_>>();
+        let lane_id = canonical_lane_id(&name);
         jobs.push(CiJobActual {
-            name,
-            result: need.result.unwrap_or_else(|| "unknown".to_string()),
+            name: name.clone(),
+            summary_key: name.clone(),
+            lane_id,
+            aliases: actual_lane_keys(&name),
+            selected,
+            result,
+            route_target,
+            skip_reason,
+            estimated_lem,
+            actual_lem,
+            queue_seconds,
             output_keys,
             runner: timing.and_then(|record| record.runner.clone()),
             duration_seconds,
@@ -159,7 +212,7 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
 
     Ok(CiActualsReceipt {
         schema: CI_ACTUALS_SCHEMA.to_string(),
-        schema_version: 1,
+        schema_version: 2,
         repo: args.repo.clone(),
         workflow: args.workflow.clone(),
         sha: receipt_sha(args),
@@ -201,23 +254,112 @@ fn timing_record(input: TimingInput) -> Result<TimingRecord> {
     let record = match input {
         TimingInput::Seconds(seconds) => TimingRecord {
             duration_seconds: Some(seconds),
+            queue_seconds: None,
+            actual_lem: None,
             runner: None,
             cache_hit: None,
         },
         TimingInput::Object(object) => TimingRecord {
             duration_seconds: object.duration_seconds.or(object.seconds),
+            queue_seconds: object.queue_seconds,
+            actual_lem: object.actual_lem,
             runner: object.runner,
             cache_hit: object.cache_hit,
         },
     };
 
-    if let Some(seconds) = record.duration_seconds
-        && (!seconds.is_finite() || seconds < 0.0)
-    {
-        bail!("duration_seconds must be a finite non-negative number");
-    }
+    validate_non_negative("duration_seconds", record.duration_seconds)?;
+    validate_non_negative("queue_seconds", record.queue_seconds)?;
+    validate_non_negative("actual_lem", record.actual_lem)?;
 
     Ok(record)
+}
+
+fn canonical_lane_id(name: &str) -> String {
+    ci_needs_key_lane_alias(name)
+        .map(str::to_string)
+        .unwrap_or_else(|| name.replace('-', "_"))
+}
+
+fn job_selected(result: &str) -> bool {
+    !matches!(result.to_ascii_lowercase().as_str(), "skipped" | "unknown")
+}
+
+fn job_skip_reason(
+    result: &str,
+    outputs: &BTreeMap<String, Value>,
+    selected: bool,
+) -> Option<String> {
+    if selected {
+        return None;
+    }
+
+    output_string(
+        outputs,
+        &[
+            "skip_reason",
+            "skip-reason",
+            "skipped_reason",
+            "skipped-reason",
+            "reason",
+        ],
+    )
+    .or_else(|| {
+        if result.eq_ignore_ascii_case("skipped") {
+            Some("github_actions_condition_false".to_string())
+        } else {
+            Some("missing_needs_result".to_string())
+        }
+    })
+}
+
+fn output_string(outputs: &BTreeMap<String, Value>, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        outputs
+            .get(*key)
+            .and_then(value_to_string)
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn output_f64(outputs: &BTreeMap<String, Value>, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| outputs.get(*key).and_then(value_to_f64))
+}
+
+fn value_to_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(value) => value.as_f64(),
+        Value::String(value) => value.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+    .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn validate_non_negative(field: &str, value: Option<f64>) -> Result<()> {
+    if let Some(value) = value
+        && (!value.is_finite() || value < 0.0)
+    {
+        bail!("{field} must be a finite non-negative number");
+    }
+
+    Ok(())
 }
 
 fn receipt_sha(args: &CiActualsArgs) -> String {
@@ -281,6 +423,17 @@ mod tests {
         assert_eq!(receipt.status.job_count, 2);
         assert_eq!(receipt.status.timed_job_count, 0);
         assert_eq!(receipt.status.missing_timing, ["docs-check", "mutation"]);
+        assert_eq!(receipt.jobs[0].summary_key, "docs-check");
+        assert_eq!(receipt.jobs[0].lane_id, "docs_check");
+        assert!(receipt.jobs[0].selected);
+        assert_eq!(receipt.jobs[1].summary_key, "mutation");
+        assert_eq!(receipt.jobs[1].lane_id, "mutation_required");
+        assert_eq!(receipt.jobs[1].aliases, ["mutation", "mutation_required"]);
+        assert!(!receipt.jobs[1].selected);
+        assert_eq!(
+            receipt.jobs[1].skip_reason.as_deref(),
+            Some("github_actions_condition_false")
+        );
         assert!(
             receipt
                 .jobs
@@ -304,13 +457,26 @@ mod tests {
             &needs,
             &serde_json::json!({
                 "z-build": {"result": "success", "outputs": {}},
-                "a-docs": {"result": "success", "outputs": {"cache-hit": "true"}}
+                "a-docs": {
+                    "result": "success",
+                    "outputs": {
+                        "cache-hit": "true",
+                        "route_target": "hosted",
+                        "estimated_lem": "3.5"
+                    }
+                }
             }),
         );
         write_json(
             &timings,
             &serde_json::json!({
-                "a-docs": {"duration_seconds": 90.0, "runner": "ubuntu-latest", "cache_hit": true},
+                "a-docs": {
+                    "duration_seconds": 90.0,
+                    "queue_seconds": 4.0,
+                    "actual_lem": 2.0,
+                    "runner": "ubuntu-latest",
+                    "cache_hit": true
+                },
                 "unused": 12.0,
                 "z-build": 120.0
             }),
@@ -330,6 +496,10 @@ mod tests {
         assert_eq!(receipt.jobs[0].name, "a-docs");
         assert_eq!(receipt.jobs[0].duration_seconds, Some(90.0));
         assert_eq!(receipt.jobs[0].duration_minutes, Some(1.5));
+        assert_eq!(receipt.jobs[0].route_target.as_deref(), Some("hosted"));
+        assert_eq!(receipt.jobs[0].estimated_lem, Some(3.5));
+        assert_eq!(receipt.jobs[0].actual_lem, Some(2.0));
+        assert_eq!(receipt.jobs[0].queue_seconds, Some(4.0));
         assert_eq!(receipt.jobs[0].runner.as_deref(), Some("ubuntu-latest"));
         assert_eq!(receipt.jobs[0].cache_hit, Some(true));
         assert_eq!(receipt.jobs[1].name, "z-build");

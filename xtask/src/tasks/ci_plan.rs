@@ -853,7 +853,7 @@ fn load_actuals(dir: &Path) -> Result<BTreeMap<String, Vec<f64>>> {
     Ok(by_job)
 }
 
-fn actual_lane_keys(name: &str) -> Vec<String> {
+pub(crate) fn actual_lane_keys(name: &str) -> Vec<String> {
     let mut keys = BTreeSet::new();
     // Keep the raw key so ad-hoc actuals caches that already use lane ids or
     // custom telemetry names remain compatible. CI aggregate `needs` keys are
@@ -870,7 +870,7 @@ fn actual_lane_keys(name: &str) -> Vec<String> {
     keys.into_iter().collect()
 }
 
-fn ci_needs_key_lane_alias(name: &str) -> Option<&'static str> {
+pub(crate) fn ci_needs_key_lane_alias(name: &str) -> Option<&'static str> {
     match name {
         "detect" => Some("ci_detect_risk_packs"),
         "msrv" => Some("msrv_check"),
@@ -1350,7 +1350,7 @@ mod tests {
         fs::write(
             &path,
             serde_json::to_string_pretty(&serde_json::json!({
-                "schema": "tokmd.ci_actuals.v1",
+                "schema": "tokmd.ci_actuals.v2",
                 "jobs": [
                     {"name": "build_test_linux", "result": "success", "duration_seconds": 600.0},
                     {"name": "legacy_lane", "actual_seconds": 120.0},
@@ -1393,7 +1393,7 @@ mod tests {
         fs::write(
             &path,
             serde_json::to_string_pretty(&serde_json::json!({
-                "schema": "tokmd.ci_actuals.v1",
+                "schema": "tokmd.ci_actuals.v2",
                 "jobs": [
                     {"name": "detect", "result": "success", "duration_seconds": 60.0},
                     {"name": "msrv", "result": "success", "duration_seconds": 300.0},
