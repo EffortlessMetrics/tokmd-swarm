@@ -11,7 +11,11 @@ concurrency:
 
 jobs:
   droid-security-scan:
-    runs-on: ubuntu-latest
+    # Self-hosted review tier (CX23). Triggered only by workflow_dispatch and
+    # schedule, so there is no fork-PR exposure on the trusted-pr pool.
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, review-nano]
 
     env:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

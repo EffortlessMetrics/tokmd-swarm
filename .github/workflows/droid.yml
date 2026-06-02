@@ -42,7 +42,12 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
 
-    runs-on: ubuntu-latest
+    # Self-hosted review tier (CX23). The job's if: gate only admits same-repo
+    # PRs and OWNER/MEMBER/COLLABORATOR-authored events, so fork code never
+    # reaches the trusted-pr self-hosted pool. Queueing on em-ci-review is fine.
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, review-nano]
 
     env:
       MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}

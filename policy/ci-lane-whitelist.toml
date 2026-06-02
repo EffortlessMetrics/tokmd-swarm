@@ -22,6 +22,10 @@ macos_latest       = 10.0
 nix_build          = 4.0
 external_ai_review = 4.0
 em_ci_small        = 1.0
+# Shared EM self-hosted control-plane / review tiers (CX23). Cost-equivalent to
+# a hosted Linux minute for budgeting; queueing is acceptable backpressure.
+em_ci_nano         = 1.0
+em_ci_review       = 1.0
 
 # -----------------------------------------------------------------------
 # Frontdoor / cheap default-PR lanes
@@ -574,7 +578,7 @@ kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
 blocking         = true
-runner           = "ubuntu_latest"
+runner           = "em_ci_nano"
 base_lem         = 1
 owner            = "release/ci"
 intent           = "Reject bare self-hosted/linux/x64 runner routing before runner-group access expands."

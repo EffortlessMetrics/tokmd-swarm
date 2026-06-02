@@ -9,7 +9,11 @@ on:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # Non-build control-plane lane (label sync action only). Routed to the CX23
+    # nano tier; triggered by push to main / workflow_dispatch, so no fork PRs.
+    runs-on:
+      group: em-ci-nano
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, workflow-nano]
     permissions:
       contents: read
       issues: write

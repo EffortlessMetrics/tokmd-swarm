@@ -25,7 +25,11 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    # Non-build control-plane lane (pure shell policy check). Routed to the
+    # CX23 nano tier; gated to same-repo events so forks never hit self-hosted.
+    runs-on:
+      group: em-ci-nano
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, policy-nano]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
