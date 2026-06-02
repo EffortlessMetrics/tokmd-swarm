@@ -223,3 +223,39 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
         "final required-status arbitration must remain blocking"
     );
 }
+
+#[test]
+fn ci_actuals_docs_explain_receipt_status_and_timing_semantics() {
+    let root = workspace_root();
+    let artifacts = fs::read_to_string(root.join("docs/artifacts.md"))
+        .expect("artifact glossary should be readable");
+    let pr_plan = fs::read_to_string(root.join("docs/ci/pr-plan.md"))
+        .expect("PR Plan docs should be readable");
+
+    assert!(
+        artifacts.contains("Read CI actuals")
+            && artifacts.contains("target/ci/ci-actuals.json")
+            && artifacts.contains("target/ci/needs.json")
+            && artifacts.contains("target/ci/timings.json"),
+        "artifact glossary should name the CI actuals receipt and source inputs as the first reading surface"
+    );
+
+    for text in [
+        "`status.ok` means the receipt was generated successfully",
+        "every CI job passed",
+        "`jobs[].result` is the per-required-job result",
+        "`status.missing_timing` means timing telemetry was unavailable",
+        "It is not a zero-second duration",
+        "`duration_seconds`",
+        "`duration_minutes`",
+        "`runner`",
+        "`cache_hit`",
+        "They do not promote learned estimates",
+        "`status.unused_timing` records timing sidecar entries",
+    ] {
+        assert!(
+            pr_plan.contains(text),
+            "PR Plan docs should explain CI actuals reader guidance `{text}`"
+        );
+    }
+}

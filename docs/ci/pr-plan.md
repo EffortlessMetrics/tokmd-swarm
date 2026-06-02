@@ -166,6 +166,28 @@ selection, not proof that those jobs executed or passed:
   actuals with `--actuals-dir`, but the workflow must wire that directory in
   before hosted PRs use learned estimates.
 
+## CI Actuals Interpretation
+
+`target/ci/ci-actuals.json` is written by the `CI (Required)` aggregate job
+from the same run's `needs` payload. Open it when you need the observed
+required-job results and timing coverage behind the aggregate check.
+
+Treat the fields as telemetry, not a replacement verdict:
+
+- `status.ok` means the receipt was generated successfully. It does not mean
+  every CI job passed.
+- `jobs[].result` is the per-required-job result from GitHub Actions `needs`.
+  Use it to find failed, cancelled, skipped, or successful inputs to the
+  aggregate.
+- `status.missing_timing` means timing telemetry was unavailable for those
+  jobs. It is not a zero-second duration and not a job failure by itself.
+- `duration_seconds`, `duration_minutes`, `runner`, and `cache_hit` are cost
+  observations. They do not promote learned estimates, change required gates,
+  or make a skipped job passing evidence.
+- `status.unused_timing` records timing sidecar entries that did not match a
+  required job key, so routing or timing-name drift can be spotted without
+  treating the receipt as stronger proof.
+
 ## Routed Rust Small Interpretation
 
 `tokmd-swarm` has an additional routed Rust Small frontdoor. The lane catalogue
