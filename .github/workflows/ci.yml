@@ -897,6 +897,7 @@ jobs:
             --needs target/ci/needs.json \
             "${timing_args[@]}" \
             --output target/ci/ci-actuals.json \
+            --github-summary "$GITHUB_STEP_SUMMARY" \
             --sha "${GITHUB_SHA}"
 
       - name: Upload CI actuals receipt

@@ -336,6 +336,10 @@ pub struct CiActualsArgs {
     #[arg(long, default_value = "target/ci/ci-actuals.json")]
     pub output: std::path::PathBuf,
 
+    /// Optional path to GITHUB_STEP_SUMMARY for a human-readable actuals table
+    #[arg(long, value_name = "PATH")]
+    pub github_summary: Option<std::path::PathBuf>,
+
     /// Repository identifier recorded in the receipt
     #[arg(long, default_value = "tokmd")]
     pub repo: String,
@@ -355,6 +359,7 @@ impl Default for CiActualsArgs {
             needs: std::path::PathBuf::from("target/ci/needs.json"),
             timings: None,
             output: std::path::PathBuf::from("target/ci/ci-actuals.json"),
+            github_summary: None,
             repo: "tokmd".to_string(),
             workflow: "CI".to_string(),
             sha: None,

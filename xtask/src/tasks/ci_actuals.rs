@@ -76,6 +76,8 @@ struct CiJobActual {
     estimated_lem: Option<f64>,
     actual_lem: Option<f64>,
     queue_seconds: Option<f64>,
+    #[serde(skip_serializing)]
+    estimate_source: Option<String>,
     output_keys: Vec<String>,
     runner: Option<String>,
     duration_seconds: Option<f64>,
@@ -113,6 +115,19 @@ pub fn run(args: CiActualsArgs) -> Result<()> {
         receipt.status.job_count,
         receipt.status.timed_job_count
     );
+
+    if let Some(summary_path) = &args.github_summary {
+        let summary = render_step_summary(&receipt);
+        let path = resolve_path(&root, summary_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        let mut existing = fs::read_to_string(&path).unwrap_or_default();
+        existing.push_str(&summary);
+        fs::write(&path, existing).with_context(|| format!("append {}", path.display()))?;
+        println!("CI actuals summary appended to {}", path.display());
+    }
+
     Ok(())
 }
 
@@ -164,6 +179,15 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
         let actual_lem = timing
             .and_then(|record| record.actual_lem)
             .or_else(|| output_f64(&need.outputs, &["actual_lem", "actual-lem"]));
+        let estimate_source = output_string(
+            &need.outputs,
+            &[
+                "estimate_source",
+                "estimate-source",
+                "lem_estimate_source",
+                "lem-estimate-source",
+            ],
+        );
         let duration_seconds = timing.and_then(|record| record.duration_seconds);
         let duration_minutes = duration_seconds.map(|seconds| seconds / 60.0);
         if duration_seconds.is_none() {
@@ -186,6 +210,7 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
             estimated_lem,
             actual_lem,
             queue_seconds,
+            estimate_source,
             output_keys,
             runner: timing.and_then(|record| record.runner.clone()),
             duration_seconds,
@@ -231,6 +256,102 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
             unused_timing,
         },
     })
+}
+
+fn render_step_summary(receipt: &CiActualsReceipt) -> String {
+    let mut out = String::new();
+    out.push_str("\n## CI Actuals (advisory)\n\n");
+    out.push_str(&format!(
+        "- jobs observed: **{}** ({} timed)\n",
+        receipt.status.job_count, receipt.status.timed_job_count
+    ));
+    if !receipt.status.missing_timing.is_empty() {
+        out.push_str(&format!(
+            "- missing timing: {}\n",
+            receipt.status.missing_timing.join(", ")
+        ));
+    }
+    if !receipt.status.unused_timing.is_empty() {
+        out.push_str(&format!(
+            "- unused timing: {}\n",
+            receipt.status.unused_timing.join(", ")
+        ));
+    }
+    out.push_str(
+        "- advisory only: this summary does not change required status or proof selection\n\n",
+    );
+
+    out.push_str("| Lane | Result | Selected | Expected LEM | Actual LEM | Duration | Queue | Route | Learned estimate |\n");
+    out.push_str("|------|--------|----------|-------------:|-----------:|---------:|------:|-------|------------------|\n");
+    for job in &receipt.jobs {
+        out.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} |\n",
+            table_cell(&job.lane_id),
+            table_cell(&job.result),
+            if job.selected { "yes" } else { "no" },
+            format_optional_number(job.estimated_lem),
+            format_optional_number(job.actual_lem),
+            format_optional_seconds(job.duration_seconds),
+            format_optional_seconds(job.queue_seconds),
+            format_optional_text(job.route_target.as_deref()),
+            learned_estimate_label(job.estimate_source.as_deref()),
+        ));
+        if let Some(reason) = &job.skip_reason {
+            out.push_str(&format!(
+                "| `{}` skip reason |  |  |  |  |  |  |  | {} |\n",
+                table_cell(&job.summary_key),
+                table_cell(reason)
+            ));
+        }
+    }
+
+    out
+}
+
+fn learned_estimate_label(source: Option<&str>) -> String {
+    match source {
+        Some(source) if source.starts_with("learned-") => format!("yes (`{}`)", table_cell(source)),
+        Some(source) => format!("no (`{}`)", table_cell(source)),
+        None => "unknown".to_string(),
+    }
+}
+
+fn format_optional_number(value: Option<f64>) -> String {
+    value
+        .map(format_number)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn format_optional_seconds(value: Option<f64>) -> String {
+    value
+        .map(|seconds| format!("{}s", format_number(seconds)))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn format_optional_text(value: Option<&str>) -> String {
+    value
+        .map(table_cell)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn format_number(value: f64) -> String {
+    let formatted = format!("{value:.2}");
+    formatted
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+fn table_cell(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '|' => escaped.push_str("\\|"),
+            '\r' | '\n' => escaped.push(' '),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
@@ -462,7 +583,8 @@ mod tests {
                     "outputs": {
                         "cache-hit": "true",
                         "route_target": "hosted",
-                        "estimated_lem": "3.5"
+                        "estimated_lem": "3.5",
+                        "estimate_source": "learned-p50"
                     }
                 }
             }),
@@ -500,6 +622,10 @@ mod tests {
         assert_eq!(receipt.jobs[0].estimated_lem, Some(3.5));
         assert_eq!(receipt.jobs[0].actual_lem, Some(2.0));
         assert_eq!(receipt.jobs[0].queue_seconds, Some(4.0));
+        assert_eq!(
+            receipt.jobs[0].estimate_source.as_deref(),
+            Some("learned-p50")
+        );
         assert_eq!(receipt.jobs[0].runner.as_deref(), Some("ubuntu-latest"));
         assert_eq!(receipt.jobs[0].cache_hit, Some(true));
         assert_eq!(receipt.jobs[1].name, "z-build");
@@ -509,5 +635,85 @@ mod tests {
     fn negative_timing_is_rejected() {
         let result = timing_record(TimingInput::Seconds(-1.0));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn step_summary_shows_lane_actuals_and_skip_reasons() {
+        let receipt = CiActualsReceipt {
+            schema: CI_ACTUALS_SCHEMA.to_string(),
+            schema_version: 2,
+            repo: "tokmd".to_string(),
+            workflow: "CI".to_string(),
+            sha: "abc123".to_string(),
+            github: GithubContext {
+                run_id: None,
+                run_attempt: None,
+                event_name: None,
+                ref_name: None,
+            },
+            jobs: vec![
+                CiJobActual {
+                    name: "build".to_string(),
+                    summary_key: "build".to_string(),
+                    lane_id: "build_test_linux".to_string(),
+                    aliases: vec![],
+                    selected: true,
+                    result: "success".to_string(),
+                    route_target: Some("hosted".to_string()),
+                    skip_reason: None,
+                    estimated_lem: Some(8.0),
+                    actual_lem: Some(13.25),
+                    queue_seconds: Some(6.0),
+                    estimate_source: Some("learned-p50".to_string()),
+                    output_keys: vec![],
+                    runner: Some("ubuntu-latest".to_string()),
+                    duration_seconds: Some(123.4),
+                    duration_minutes: Some(2.056),
+                    timing_status: "measured".to_string(),
+                    cache_hit: None,
+                },
+                CiJobActual {
+                    name: "mutation".to_string(),
+                    summary_key: "mutation".to_string(),
+                    lane_id: "mutation_required".to_string(),
+                    aliases: vec![],
+                    selected: false,
+                    result: "skipped".to_string(),
+                    route_target: None,
+                    skip_reason: Some("not_selected_by_policy".to_string()),
+                    estimated_lem: None,
+                    actual_lem: None,
+                    queue_seconds: None,
+                    estimate_source: None,
+                    output_keys: vec![],
+                    runner: None,
+                    duration_seconds: None,
+                    duration_minutes: None,
+                    timing_status: "missing".to_string(),
+                    cache_hit: None,
+                },
+            ],
+            status: CiActualsStatus {
+                ok: true,
+                job_count: 2,
+                timed_job_count: 1,
+                missing_timing: vec!["mutation".to_string()],
+                unused_timing: vec![],
+            },
+        };
+
+        let summary = render_step_summary(&receipt);
+
+        assert!(summary.contains("## CI Actuals (advisory)"), "{summary}");
+        assert!(
+            summary.contains("| `build_test_linux` | `success` | yes | 8 | 13.25 | 123.4s | 6s | hosted | yes (`learned-p50`) |"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains(
+                "| `mutation` skip reason |  |  |  |  |  |  |  | not_selected_by_policy |"
+            ),
+            "{summary}"
+        );
     }
 }

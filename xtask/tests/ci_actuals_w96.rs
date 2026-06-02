@@ -43,11 +43,12 @@ fn ci_actuals_writes_schema_stable_receipt() {
     let needs = temp.path().join("needs.json");
     let timings = temp.path().join("timings.json");
     let output = temp.path().join("ci-actuals.json");
+    let summary = temp.path().join("step-summary.md");
     fs::write(
         &needs,
         r#"{
           "build": {"result": "failure", "outputs": {"actual_lem": "13"}},
-          "docs-check": {"result": "success", "outputs": {"docs": "ok", "route_target": "hosted", "estimated_lem": "3"}},
+          "docs-check": {"result": "success", "outputs": {"docs": "ok", "route_target": "hosted", "estimated_lem": "3", "estimate_source": "static"}},
           "mutation": {"result": "skipped", "outputs": {"skip_reason": "not_selected_by_policy"}}
         }"#,
     )
@@ -69,6 +70,8 @@ fn ci_actuals_writes_schema_stable_receipt() {
         timings.to_str().expect("timings path"),
         "--output",
         output.to_str().expect("output path"),
+        "--github-summary",
+        summary.to_str().expect("summary path"),
         "--sha",
         "abc123",
     ]);
@@ -76,6 +79,10 @@ fn ci_actuals_writes_schema_stable_receipt() {
     assert!(success, "ci-actuals failed. stderr: {stderr}");
     assert!(
         stdout.contains("CI actuals receipt written"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("CI actuals summary appended"),
         "stdout: {stdout}"
     );
     let value: serde_json::Value =
@@ -120,6 +127,20 @@ fn ci_actuals_writes_schema_stable_receipt() {
     assert_eq!(mutation["selected"].as_bool(), Some(false));
     assert_eq!(mutation["skip_reason"], "not_selected_by_policy");
     assert_eq!(mutation["timing_status"], "missing");
+
+    let summary_body = fs::read_to_string(summary).expect("summary body");
+    assert!(summary_body.contains("## CI Actuals (advisory)"));
+    assert!(
+        summary_body.contains(
+            "| `docs_check` | `success` | yes | 3 | 1.5 | 75s | unknown | hosted | no (`static`) |"
+        ),
+        "{summary_body}"
+    );
+    assert!(
+        summary_body
+            .contains("| `mutation` skip reason |  |  |  |  |  |  |  | not_selected_by_policy |"),
+        "{summary_body}"
+    );
 }
 
 #[test]
@@ -232,6 +253,10 @@ fn ci_required_uploads_ci_actuals_before_status_check() {
     assert!(
         generate_block.contains("--output target/ci/ci-actuals.json"),
         "workflow should write the stable ci-actuals path"
+    );
+    assert!(
+        generate_block.contains("--github-summary \"$GITHUB_STEP_SUMMARY\""),
+        "workflow should publish a human-readable CI actuals table"
     );
     assert!(upload_block.contains("if: always()"));
     assert!(upload_block.contains("continue-on-error: true"));

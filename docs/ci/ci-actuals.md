@@ -14,7 +14,8 @@ consume the receipt once enough observations exist.
 cargo xtask ci-actuals \
   --needs target/ci/needs.json \
   --timings target/ci/timings.json \
-  --output target/ci/ci-actuals.json
+  --output target/ci/ci-actuals.json \
+  --github-summary "$GITHUB_STEP_SUMMARY"
 ```
 
 - `--needs` reads the literal `${{ toJson(needs) }}` payload from an aggregate
@@ -24,6 +25,8 @@ cargo xtask ci-actuals \
   Timing objects may also include `queue_seconds` and `actual_lem` when a
   workflow can observe them.
 - `--output` writes the receipt path, creating parent directories as needed.
+- `--github-summary` is optional. It appends a compact Markdown table for
+  human workflow output without changing the JSON receipt or required gate.
 
 When timing data is absent, the receipt records `timing_status: "missing"` and
 leaves duration fields `null`. Missing timing is not coerced to zero.
@@ -36,6 +39,13 @@ The `CI (Required)` aggregate job writes the raw needs payload to
 `cargo xtask ci-actuals`. The job uploads the raw needs payload, any available
 timing sidecar, and the final receipt as the `ci-actuals` artifact before the
 aggregate job performs its final pass/fail status check.
+
+The same step also appends a `CI Actuals (advisory)` table to the workflow
+summary. The table names each canonical lane, the observed result, whether the
+job was selected, expected and actual LEM when available, duration, queue time,
+route target, whether a learned estimate source was observed, and explicit skip
+reasons. It is a reader aid over `ci-actuals.json`; the artifact remains the
+machine-readable source of truth.
 
 The uploaded receipt is observation-only. It does not change required-status
 selection, feed learned estimates back into `ci-plan`, or promote skipped lanes

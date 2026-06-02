@@ -196,6 +196,12 @@ Treat the fields as telemetry, not a replacement verdict:
   required job key, so routing or timing-name drift can be spotted without
   treating the receipt as stronger proof.
 
+The aggregate CI job also appends a `CI Actuals (advisory)` table to the
+workflow summary. Use it for first-read diagnosis of selected lanes, expected
+and actual LEM, duration, route target, learned-estimate source, and skip
+reasons. Download `ci-actuals.json` when you need the stable machine-readable
+receipt.
+
 ## Routed Rust Small Interpretation
 
 `tokmd-swarm` has an additional routed Rust Small frontdoor. The lane catalogue
