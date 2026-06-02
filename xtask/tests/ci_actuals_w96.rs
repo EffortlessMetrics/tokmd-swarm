@@ -46,15 +46,17 @@ fn ci_actuals_writes_schema_stable_receipt() {
     fs::write(
         &needs,
         r#"{
-          "docs-check": {"result": "success", "outputs": {"docs": "ok"}},
-          "mutation": {"result": "skipped", "outputs": {}}
+          "build": {"result": "failure", "outputs": {"actual_lem": "13"}},
+          "docs-check": {"result": "success", "outputs": {"docs": "ok", "route_target": "hosted", "estimated_lem": "3"}},
+          "mutation": {"result": "skipped", "outputs": {"skip_reason": "not_selected_by_policy"}}
         }"#,
     )
     .expect("needs json");
     fs::write(
         &timings,
         r#"{
-          "docs-check": {"duration_seconds": 75.0, "runner": "ubuntu-latest", "cache_hit": true}
+          "build": {"duration_seconds": 180.0, "queue_seconds": 12.0},
+          "docs-check": {"duration_seconds": 75.0, "actual_lem": 1.5, "runner": "ubuntu-latest", "cache_hit": true}
         }"#,
     )
     .expect("timings json");
@@ -79,16 +81,45 @@ fn ci_actuals_writes_schema_stable_receipt() {
     let value: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(output).expect("receipt body"))
             .expect("receipt json");
-    assert_eq!(value["schema"], "tokmd.ci_actuals.v1");
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema"], "tokmd.ci_actuals.v2");
+    assert_eq!(value["schema_version"], 2);
     assert_eq!(value["sha"], "abc123");
-    assert_eq!(value["status"]["job_count"], 2);
-    assert_eq!(value["status"]["timed_job_count"], 1);
+    assert_eq!(value["status"]["job_count"], 3);
+    assert_eq!(value["status"]["timed_job_count"], 2);
     assert_eq!(value["status"]["missing_timing"][0], "mutation");
-    assert_eq!(value["jobs"][0]["name"], "docs-check");
-    assert_eq!(value["jobs"][0]["timing_status"], "measured");
-    assert_eq!(value["jobs"][1]["name"], "mutation");
-    assert_eq!(value["jobs"][1]["timing_status"], "missing");
+    let jobs = value["jobs"].as_array().expect("jobs array");
+    let build = jobs
+        .iter()
+        .find(|job| job["name"] == "build")
+        .expect("build job");
+    assert_eq!(build["lane_id"], "build_test_linux");
+    assert_eq!(build["selected"].as_bool(), Some(true));
+    assert_eq!(build["result"], "failure");
+    assert_eq!(build["queue_seconds"].as_f64(), Some(12.0));
+    assert_eq!(build["actual_lem"].as_f64(), Some(13.0));
+
+    let docs = jobs
+        .iter()
+        .find(|job| job["name"] == "docs-check")
+        .expect("docs-check job");
+    assert_eq!(docs["summary_key"], "docs-check");
+    assert_eq!(docs["lane_id"], "docs_check");
+    assert_eq!(docs["aliases"][0], "docs-check");
+    assert_eq!(docs["aliases"][1], "docs_check");
+    assert_eq!(docs["selected"].as_bool(), Some(true));
+    assert_eq!(docs["route_target"], "hosted");
+    assert_eq!(docs["estimated_lem"].as_f64(), Some(3.0));
+    assert_eq!(docs["actual_lem"].as_f64(), Some(1.5));
+    assert_eq!(docs["timing_status"], "measured");
+
+    let mutation = jobs
+        .iter()
+        .find(|job| job["name"] == "mutation")
+        .expect("mutation job");
+    assert_eq!(mutation["lane_id"], "mutation_required");
+    assert_eq!(mutation["selected"].as_bool(), Some(false));
+    assert_eq!(mutation["skip_reason"], "not_selected_by_policy");
+    assert_eq!(mutation["timing_status"], "missing");
 }
 
 #[test]
@@ -229,6 +260,8 @@ fn ci_actuals_docs_explain_receipt_status_and_timing_semantics() {
     let root = workspace_root();
     let artifacts = fs::read_to_string(root.join("docs/artifacts.md"))
         .expect("artifact glossary should be readable");
+    let ci_actuals = fs::read_to_string(root.join("docs/ci/ci-actuals.md"))
+        .expect("CI actuals docs should be readable");
     let pr_plan = fs::read_to_string(root.join("docs/ci/pr-plan.md"))
         .expect("PR Plan docs should be readable");
 
@@ -239,11 +272,44 @@ fn ci_actuals_docs_explain_receipt_status_and_timing_semantics() {
             && artifacts.contains("target/ci/timings.json"),
         "artifact glossary should name the CI actuals receipt and source inputs as the first reading surface"
     );
+    assert!(
+        artifacts.contains("canonical lane id")
+            && artifacts.contains("selected/skipped status")
+            && artifacts.contains("optional skip reason"),
+        "artifact glossary should summarize stabilized CI actuals fields"
+    );
+
+    for text in [
+        "`summary_key`",
+        "`lane_id`",
+        "`aliases`",
+        "`selected`",
+        "`skip_reason`",
+        "`route_target`",
+        "`estimated_lem`",
+        "`actual_lem`",
+        "`queue_seconds`",
+        "This is an execution skip reason, not proof-policy authorization",
+    ] {
+        assert!(
+            ci_actuals.contains(text),
+            "CI actuals docs should explain stabilized field `{text}`"
+        );
+    }
 
     for text in [
         "`status.ok` means the receipt was generated successfully",
         "every CI job passed",
         "`jobs[].result` is the per-required-job result",
+        "`jobs[].summary_key`",
+        "`jobs[].lane_id`",
+        "`jobs[].aliases`",
+        "`jobs[].selected`",
+        "`skip_reason`",
+        "`route_target`",
+        "`estimated_lem`",
+        "`actual_lem`",
+        "`queue_seconds`",
         "`status.missing_timing` means timing telemetry was unavailable",
         "It is not a zero-second duration",
         "`duration_seconds`",
