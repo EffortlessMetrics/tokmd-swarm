@@ -531,10 +531,12 @@ The baseline is used by the ratchet system to enforce that complexity does not r
 tokmd handoff
 ```
 
-This creates a `.handoff/` directory with four artifacts:
+This creates a `.handoff/` directory with an agent work order plus bundle
+artifacts:
 
 | File | Purpose |
 |------|---------|
+| `work-order.md` | Agent task map, linked evidence summary, and stop conditions |
 | `manifest.json` | Bundle metadata, token budgets, capabilities |
 | `map.jsonl` | Complete file inventory (streaming format) |
 | `intelligence.json` | Tree, hotspots, complexity, and derived metrics |
@@ -563,7 +565,7 @@ tokmd handoff --budget 200k
 tokmd handoff --out-dir my-handoff/
 ```
 
-**What to do with the output**: Feed the `.handoff/` directory contents to your LLM. The manifest tells the AI what's available, the map provides the full file inventory, the intelligence file gives structural insights, and the code bundle contains the actual source within your token budget.
+**What to do with the output**: Feed the `.handoff/` directory contents to your LLM. Open `work-order.md` first; it tells the agent what to read, what evidence is linked, and when to stop. The manifest is the authoritative artifact index, the map provides the full file inventory, the intelligence file gives structural insights, and the code bundle contains the actual source within your token budget.
 
 ---
 

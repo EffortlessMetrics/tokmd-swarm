@@ -139,7 +139,8 @@ Open first:
 Means:
 
 - the bounded source bundle selected for the agent;
-- what external review/proof evidence is linked;
+- what external review/proof evidence is linked, including a packet-local proof
+  route when the review packet contains one;
 - where the agent should start;
 - what proof expectations should be checked before returning.
 
@@ -147,6 +148,7 @@ Does not mean:
 
 - the whole repo fit in the bundle;
 - linked review/proof artifacts were verified by handoff;
+- a proof-route receipt is executed proof;
 - planned proof has passed.
 
 Next action:

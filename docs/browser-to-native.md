@@ -103,6 +103,10 @@ tokmd handoff \
   --out-dir .handoff
 ```
 
+If `.tokmd/review/proof/proof-pack-route.json` exists, handoff links that
+packet-local route automatically. Pass `--proof-route <path>` only when a
+different route receipt should own the proof-route link.
+
 Open first:
 
 1. `.handoff/work-order.md`
@@ -135,6 +139,14 @@ cargo xtask affected \
   --head HEAD \
   --json-output target/proof/affected.json
 
+cargo xtask ci-plan \
+  --base origin/main \
+  --head HEAD \
+  --labels-json '[]' \
+  --json-out target/ci/ci-plan.json \
+  --route-json-out target/ci/proof-pack-route.json \
+  --no-budget-annotations
+
 cargo xtask proof \
   --profile affected \
   --base origin/main \
@@ -159,8 +171,9 @@ Use this order when moving from browser to native:
    later workflow needs it.
 4. `.tokmd/review/review-map.md`: review PR work in native mode.
 5. `.handoff/work-order.md`: give a coding agent the bounded work order.
-6. `target/proof/affected.json` and `target/proof/proof-plan.json`: read proof
-   routing and required/advisory expectations.
+6. `target/proof/affected.json`, `target/ci/proof-pack-route.json`, and
+   `target/proof/proof-plan.json`: read changed files, route ownership,
+   skipped-by-policy lanes, and required/advisory expectations.
 
 ## Boundaries
 

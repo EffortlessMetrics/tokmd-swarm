@@ -26,18 +26,21 @@ inspect before claiming proof.
 
 ## Inputs
 
-The work order is generated from explicit handoff inputs:
+The work order is generated from handoff inputs:
 
 - the handoff manifest and selected bundle metadata;
 - included files, excluded paths, smart exclusions, and token-budget state;
 - optional `--review-packet-dir` and `--review-packet-check` inputs;
 - optional `--proof-route`, `--affected`, and `--proof-plan` inputs;
+- the documented packet-local `proof/proof-pack-route.json` when
+  `--review-packet-dir` is supplied and `--proof-route` is omitted;
 - best-effort readable summaries of linked review/proof receipts when supplied.
 
 Input paths recorded in the handoff bundle must be repo-relative or
 operator-supplied paths represented as link handles. The work order must not
-discover hidden proof state, call GitHub APIs, fetch CI artifacts, execute proof
-commands, or mutate external review/proof receipts while rendering.
+discover hidden proof state beyond the documented packet-local proof-route
+fallback, call GitHub APIs, fetch CI artifacts, execute proof commands, or
+mutate external review/proof receipts while rendering.
 
 ## Outputs
 
@@ -53,10 +56,10 @@ content:
 - changed-surface or relevant-source summary when available;
 - review evidence handles when review packet links are supplied;
 - proof-route, affected-proof, and proof-plan handles when proof links are
-  supplied;
+  supplied or discovered from the review packet;
 - proof expectations when affected/proof-plan links are supplied;
 - route ownership, unmatched route files, and skipped-by-policy lane counts
-  when a proof-route link is supplied;
+  when a proof-route link is present;
 - missing, stale, degraded, skipped, or unavailable evidence as work to resolve;
 - agent stop conditions and boundaries;
 - pointers back to packet-local link artifacts when they exist.

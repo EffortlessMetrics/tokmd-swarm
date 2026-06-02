@@ -194,6 +194,8 @@ tokmd handoff \
 Give the agent `.handoff/work-order.md` first, then `.handoff/manifest.json`.
 The handoff bundle points at review and proof evidence; it does not verify those
 external receipts itself.
+When the linked proof evidence includes a proof route, treat it as route and
+skip-policy evidence, not proof execution.
 
 More detail:
 

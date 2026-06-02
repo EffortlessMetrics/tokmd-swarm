@@ -122,6 +122,10 @@ tokmd handoff \
   --out-dir .handoff
 ```
 
+If the review packet contains `.tokmd/review/proof/proof-pack-route.json`,
+handoff links that packet-local route automatically. Use `--proof-route <path>`
+only when a different route receipt should own the proof-route link.
+
 Open first:
 
 1. `.handoff/work-order.md`
@@ -130,7 +134,8 @@ Open first:
 4. `.handoff/review-links.json`
 5. `.handoff/proof-links.json`
 
-Give the agent `work-order.md` first. Treat missing, stale, degraded, or
+Give the agent `work-order.md` first. Treat proof routes as selection and
+skip-policy receipts, not execution proof. Treat missing, stale, degraded, or
 unavailable evidence as work to resolve, not as passing proof.
 
 ## Try Browser Mode, Then Move Native

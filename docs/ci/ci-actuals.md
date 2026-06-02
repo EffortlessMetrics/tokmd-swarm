@@ -5,8 +5,10 @@ GitHub Actions job results, stable lane identity, and optional measured
 durations.
 
 The command is intentionally receipt-only. It does not decide budget policy,
-change required gates, or infer learned estimates. Later CI-economics work can
-consume the receipt once enough observations exist.
+change required gates, or promote skipped lanes. Hosted PR Plan can consume
+recent successful `main` receipts as a best-effort cache for advisory learned
+estimates; when that cache is unavailable, static `base_lem` estimates remain
+the fallback.
 
 ## Inputs
 
@@ -48,10 +50,12 @@ reasons. It is a reader aid over `ci-actuals.json`; the artifact remains the
 machine-readable source of truth.
 
 The uploaded receipt is observation-only. It does not change required-status
-selection, feed learned estimates back into `ci-plan`, or promote skipped lanes
-into passing evidence. The aggregate job attempts receipt setup, generation,
-and upload as best-effort telemetry; final pass/fail status remains owned by
-the aggregate status check over the original `needs` payload. Hosted timing
+selection, make learned estimates gating, or promote skipped lanes into passing
+evidence. PR Plan may later read recent successful `main` `ci-actuals`
+artifacts with `--actuals-dir` to report advisory learned estimate sources, but
+final pass/fail status remains owned by the aggregate status check over the
+original `needs` payload. The aggregate job attempts receipt setup, generation,
+and upload as best-effort telemetry. Hosted timing
 collection uses the read-only GitHub Actions jobs API for the current run
 attempt, maps successful job display names back to aggregate `needs` keys, and
 records the first hosted runner label when GitHub exposes one. If that API

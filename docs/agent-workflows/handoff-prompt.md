@@ -27,10 +27,11 @@ evidence. Open the linked `review-map.md` for review order and reproduction
 commands, and open the linked review-packet verifier receipt before trusting
 packet-local hashes.
 
-If `.handoff/proof-links.json` exists, treat it as a handle to affected-proof
-and proof-plan evidence. A proof plan is expected proof, not executed proof.
-Do not claim proof passed until required proof commands have run or are
-explicitly deferred.
+If `.handoff/proof-links.json` exists, treat it as a handle to proof-route,
+affected-proof, and proof-plan evidence. A proof route is selection and
+skip-policy evidence, not executed proof. A proof plan is expected proof, not
+executed proof. Do not claim proof passed until required proof commands have
+run or are explicitly deferred.
 
 Treat missing, stale, degraded, skipped, or unavailable evidence as work to
 resolve, not as passing proof.

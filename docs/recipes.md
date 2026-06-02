@@ -744,7 +744,7 @@ Create optimized code bundles for handing off to AI assistants.
 tokmd handoff
 ```
 
-This creates a `.handoff/` directory with `manifest.json`, `map.jsonl`, `intelligence.json`, and `code.txt`.
+This creates a `.handoff/` directory with `work-order.md`, `manifest.json`, `map.jsonl`, `intelligence.json`, and `code.txt`.
 
 **Different intelligence presets**:
 ```bash
@@ -778,14 +778,17 @@ tokmd handoff --rank-by churn
 # Generate the bundle
 tokmd handoff --preset risk --budget 128k
 
-# The manifest tells the AI what's available
+# The work order tells the AI what to read first and when to stop
+cat .handoff/work-order.md
+
+# The manifest is the authoritative artifact index
 cat .handoff/manifest.json | jq '.artifacts'
 
 # Feed the code bundle to your LLM
 cat .handoff/code.txt
 ```
 
-Copy `code.txt` into your editor, clipboard manager, or chat tool using whatever is native on your platform.
+Give the agent `work-order.md` first, then `manifest.json` and `code.txt`. Copy the files into your editor, clipboard manager, or chat tool using whatever is native on your platform.
 
 **CI integration for automated handoffs**:
 ```yaml
