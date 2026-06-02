@@ -153,6 +153,14 @@ struct SkippedByPolicy {
     blocking: bool,
     expensive: bool,
     required_labels: Vec<String>,
+    estimated_lem: u64,
+    estimate_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    learned_p50_lem: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    learned_p90_lem: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    learned_p95_lem: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -302,10 +310,10 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
     }
 
     let selected_ids: BTreeSet<String> = selected.keys().cloned().collect();
-    let skipped_by_policy = skipped_by_policy(&whitelist, &selected_ids, &route_analysis);
+    let skipped_by_policy = skipped_by_policy(&whitelist, &selected_ids, &route_analysis, &actuals);
     let route_receipt = ProofPackRouteReceipt {
         schema: "tokmd.proof_pack_route.v1",
-        schema_version: 3,
+        schema_version: 4,
         base: args.base.clone(),
         head: args.head.clone(),
         labels: labels.clone(),
@@ -691,6 +699,7 @@ fn skipped_by_policy(
     whitelist: &WhitelistFile,
     selected_ids: &BTreeSet<String>,
     route: &RouteAnalysis,
+    actuals: &BTreeMap<String, Vec<f64>>,
 ) -> Vec<SkippedByPolicy> {
     let docs_only = is_docs_only_route(route);
 
@@ -728,6 +737,13 @@ fn skipped_by_policy(
                 ("not_selected_for_changed_surface", Vec::new())
             };
 
+            let estimate = lane_to_selection(
+                lane,
+                &whitelist.runner_multipliers,
+                actuals,
+                "skipped_by_policy",
+            );
+
             Some(SkippedByPolicy {
                 lane: lane.id.clone(),
                 status: "skipped_by_policy".to_string(),
@@ -738,6 +754,11 @@ fn skipped_by_policy(
                 blocking: lane.blocking,
                 expensive: lane.expensive,
                 required_labels: lane.labels.clone(),
+                estimated_lem: estimate.estimated_lem,
+                estimate_source: estimate.estimate_source,
+                learned_p50_lem: estimate.learned_p50_lem,
+                learned_p90_lem: estimate.learned_p90_lem,
+                learned_p95_lem: estimate.learned_p95_lem,
             })
         })
         .collect()
@@ -1258,7 +1279,7 @@ mod tests {
         );
 
         let selected_ids = BTreeSet::from(["rust_fast_gate".to_string()]);
-        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &BTreeMap::new());
         let windows_skip = skipped
             .iter()
             .find(|skip| skip.lane == "build_test_windows")
@@ -1322,7 +1343,7 @@ mod tests {
         );
 
         let selected_ids = BTreeSet::from(["docs_check".to_string()]);
-        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &BTreeMap::new());
         assert!(
             skipped
                 .iter()
@@ -1412,7 +1433,7 @@ mod tests {
         let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
         let selected_ids = BTreeSet::from(["docs_check".to_string()]);
 
-        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &BTreeMap::new());
 
         assert!(skipped.iter().any(|skip| {
             skip.lane == "rust_coverage"
@@ -1430,6 +1451,35 @@ mod tests {
     }
 
     #[test]
+    fn skipped_policy_rows_reuse_learned_estimates() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let risk_packs = route_test_risk_packs();
+        let changed = vec!["docs/ci/pr-plan.md".to_string()];
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+        let selected_ids = BTreeSet::from(["docs_check".to_string()]);
+        let mut actuals: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        actuals.insert(
+            "rust_coverage".to_string(),
+            vec![300.0, 400.0, 600.0, 700.0, 900.0],
+        );
+
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &actuals);
+
+        let coverage_skip = skipped
+            .iter()
+            .find(|skip| skip.lane == "rust_coverage")
+            .expect("coverage skip should be present");
+        assert_eq!(coverage_skip.status, "skipped_by_policy");
+        assert_eq!(coverage_skip.reason, "docs_only_change");
+        assert_eq!(coverage_skip.estimate_source, "learned-p50");
+        assert!(coverage_skip.estimated_lem >= 11);
+        assert!(coverage_skip.learned_p50_lem.is_some());
+        assert!(coverage_skip.learned_p90_lem.is_some());
+        assert!(coverage_skip.learned_p95_lem.is_some());
+    }
+
+    #[test]
     fn skipped_policy_reports_unselected_direct_match_reason() {
         let whitelist = route_test_whitelist();
         let lane_index = route_lane_index(&whitelist);
@@ -1438,7 +1488,7 @@ mod tests {
         let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
         let selected_ids = BTreeSet::new();
 
-        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &BTreeMap::new());
 
         assert!(skipped.iter().any(|skip| {
             skip.lane == "rust_fast_gate"
@@ -1460,7 +1510,7 @@ mod tests {
         };
         let selected_ids = BTreeSet::new();
 
-        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route, &BTreeMap::new());
 
         assert!(skipped.iter().any(|skip| {
             skip.lane == "rust_coverage"
@@ -1476,7 +1526,7 @@ mod tests {
     fn route_receipt_validation_rejects_missing_skipped_reason() {
         let receipt = ProofPackRouteReceipt {
             schema: "tokmd.proof_pack_route.v1",
-            schema_version: 3,
+            schema_version: 4,
             base: "origin/main".to_string(),
             head: "HEAD".to_string(),
             labels: Vec::new(),
@@ -1492,6 +1542,11 @@ mod tests {
                 blocking: false,
                 expensive: true,
                 required_labels: vec!["coverage".to_string()],
+                estimated_lem: 30,
+                estimate_source: "static".to_string(),
+                learned_p50_lem: None,
+                learned_p90_lem: None,
+                learned_p95_lem: None,
             }],
             summary: RouteSummary {
                 changed_file_count: 0,

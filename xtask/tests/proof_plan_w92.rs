@@ -879,7 +879,7 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
         serde_json::from_str(&written).expect("route artifact should be valid JSON");
 
     assert_eq!(value["schema"], "tokmd.proof_pack_route.v1");
-    assert_eq!(value["schema_version"], 3);
+    assert_eq!(value["schema_version"], 4);
     assert_eq!(value["base"], "HEAD");
     assert_eq!(value["head"], "HEAD");
     assert!(value["changed_files"].as_array().unwrap().is_empty());
@@ -919,6 +919,12 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
     assert_eq!(
         coverage_skip["required_labels"],
         serde_json::json!(["coverage"])
+    );
+    assert_eq!(coverage_skip["estimated_lem"], 30);
+    assert_eq!(coverage_skip["estimate_source"], "static");
+    assert!(
+        coverage_skip.get("learned_p50_lem").is_none(),
+        "static skipped rows should omit learned percentile fields"
     );
 }
 
