@@ -60,7 +60,7 @@ docs route as `handoff_review_packet` instead of also appearing as generic
 ```json
 {
   "schema": "tokmd.proof_pack_route.v1",
-  "schema_version": 3,
+  "schema_version": 4,
   "changed_files": [
     {
       "path": "crates/tokmd/src/main.rs",
@@ -92,7 +92,9 @@ docs route as `handoff_review_packet` instead of also appearing as generic
       "tier": "risk-gated",
       "blocking": true,
       "expensive": true,
-      "required_labels": ["windows"]
+      "required_labels": ["windows"],
+      "estimated_lem": 40,
+      "estimate_source": "static"
     },
     {
       "lane": "proptest_smoke",
@@ -103,7 +105,9 @@ docs route as `handoff_review_packet` instead of also appearing as generic
       "tier": "risk-gated",
       "blocking": true,
       "expensive": false,
-      "required_labels": ["property-tests"]
+      "required_labels": ["property-tests"],
+      "estimated_lem": 8,
+      "estimate_source": "static"
     }
   ]
 }
@@ -111,9 +115,12 @@ docs route as `handoff_review_packet` instead of also appearing as generic
 
 The summary reason counts are an at-a-glance index over the detailed
 `skipped_by_policy` array. Use the per-lane entries for matched files and
-lane-specific evidence. Route receipt v3 also records `lane_kind`, `tier`,
-`blocking`, `expensive`, and `required_labels` for each skipped row so skipped
-deep proof can be audited without opening the lane whitelist:
+lane-specific evidence. Route receipt v4 also records `lane_kind`, `tier`,
+`blocking`, `expensive`, `required_labels`, `estimated_lem`, `estimate_source`,
+and optional learned percentile fields for each skipped row so skipped deep
+proof can be audited without opening the lane whitelist. The estimate fields
+explain policy cost; they do not mean the skipped lane ran, passed, or seeded a
+learned estimate sample:
 
 - `deep_lane_requires_label` means a matching surface has label-gated deep proof
   that was not requested.

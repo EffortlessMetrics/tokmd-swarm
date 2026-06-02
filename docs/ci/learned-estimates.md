@@ -38,6 +38,10 @@ Each lane in `lanes_selected` now has:
 for the lane; `learned-p50` once one or more samples are present. The
 percentile fields are omitted when the estimate is static.
 
+`proof-pack-route.json` `skipped_by_policy` rows use the same estimate fields
+for skipped lanes. Those rows are policy and cost telemetry only: they do not
+mean the lane executed, and they do not feed the learned-estimate cache.
+
 ## Storage
 
 `ci-actuals.json` can be emitted by `cargo xtask ci-actuals`. For durable
