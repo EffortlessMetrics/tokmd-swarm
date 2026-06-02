@@ -6,7 +6,8 @@ use tokmd_types::cockpit::CommitMatch;
 
 use super::artifacts::ProofEvidenceArtifact;
 use super::model::{
-    NormalizedProofEvidence, ProofEvidenceInput, ProofEvidenceKind, ProofExecutionStatus,
+    NormalizedProofEvidence, ProofEvidenceAvailability, ProofEvidenceInput, ProofEvidenceKind,
+    ProofExecutionStatus,
 };
 use super::status::{
     availability_for, availability_with_commit_match, coverage_availability,
@@ -171,6 +172,33 @@ pub(crate) fn normalize_proof_evidence(
                 artifact_refs,
             }]
         }
+        ProofEvidenceArtifact::ProofPackRoute(route) => {
+            let availability =
+                availability_with_commit_match(ProofEvidenceAvailability::Available, commit_match);
+            vec![NormalizedProofEvidence {
+                source_path,
+                source_schema: route.schema.clone(),
+                kind: ProofEvidenceKind::ProofPackRoute,
+                profile: None,
+                scope: Some("proof_pack_route".to_string()),
+                command: Some(
+                    "cargo xtask ci-plan --route-json-out target/ci/proof-pack-route.json"
+                        .to_string(),
+                ),
+                required: false,
+                advisory: true,
+                execution_status: ProofExecutionStatus::Planned,
+                availability,
+                commit_match,
+                run_id: None,
+                run_attempt: None,
+                run_url: None,
+                workflow: None,
+                event_name: None,
+                ref_name: None,
+                artifact_refs: vec![format!("{source_ref}#/summary")],
+            }]
+        }
     }
 }
 
@@ -180,6 +208,7 @@ fn artifact_base(artifact: &ProofEvidenceArtifact) -> Option<&str> {
         ProofEvidenceArtifact::ProofRunObservation(artifact) => Some(&artifact.base),
         ProofEvidenceArtifact::ProofExecutorObservation(artifact) => Some(&artifact.base),
         ProofEvidenceArtifact::CoverageReceipt(_) => None,
+        ProofEvidenceArtifact::ProofPackRoute(artifact) => Some(&artifact.base),
     }
 }
 
@@ -193,10 +222,15 @@ fn classify_commit_match(
     let cockpit_head = non_empty(cockpit_head);
 
     match (artifact_head, cockpit_head) {
-        (Some(artifact_head), Some(cockpit_head)) if artifact_head == cockpit_head => {
-            CommitMatch::Exact
+        (Some(artifact_head), Some(cockpit_head))
+            if commitish_ref(artifact_head) && commitish_ref(cockpit_head) =>
+        {
+            if artifact_head == cockpit_head {
+                CommitMatch::Exact
+            } else {
+                CommitMatch::Stale
+            }
         }
-        (Some(_), Some(_)) => CommitMatch::Stale,
         _ if non_empty(artifact_base).is_some()
             || artifact_head.is_some()
             || non_empty(cockpit_base).is_some()
@@ -206,6 +240,11 @@ fn classify_commit_match(
         }
         _ => CommitMatch::Unknown,
     }
+}
+
+fn commitish_ref(value: &str) -> bool {
+    let value = value.trim();
+    value.len() >= 6 && value.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn non_empty(value: Option<&str>) -> Option<&str> {
@@ -261,7 +300,7 @@ mod tests {
 
     use super::*;
     use crate::proof_evidence::fixtures::{
-        coverage_receipt_artifact, proof_executor_observation_artifact,
+        coverage_receipt_artifact, proof_executor_observation_artifact, proof_pack_route_artifact,
         proof_run_observation_artifact, proof_run_summary_artifact,
     };
     use crate::proof_evidence::model::ProofEvidenceAvailability;
@@ -319,6 +358,20 @@ mod tests {
     }
 
     #[test]
+    fn symbolic_proof_observation_head_is_partial_not_exact() {
+        let artifact = proof_run_observation_artifact("HEAD");
+        let evidence = single_evidence(&artifact, "proof-run-observation.json", Some("HEAD"));
+
+        assert_eq!(evidence.kind, ProofEvidenceKind::ProofRunObservation);
+        assert_eq!(
+            evidence.execution_status,
+            ProofExecutionStatus::ExecutedPassed
+        );
+        assert_eq!(evidence.commit_match, CommitMatch::Partial);
+        assert_eq!(evidence.availability, ProofEvidenceAvailability::Degraded);
+    }
+
+    #[test]
     fn normalizes_executor_dry_run_as_advisory_skipped_evidence() {
         let artifact = proof_executor_observation_artifact("abc123");
         let evidence = single_evidence(
@@ -370,9 +423,42 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_proof_pack_route_as_advisory_planned_routing_evidence() {
+        let artifact = proof_pack_route_artifact("abc1234");
+        let evidence = single_evidence(&artifact, "proof/proof-pack-route.json", Some("abc1234"));
+
+        assert_eq!(evidence.kind, ProofEvidenceKind::ProofPackRoute);
+        assert_eq!(evidence.scope.as_deref(), Some("proof_pack_route"));
+        assert!(!evidence.required);
+        assert!(evidence.advisory);
+        assert_eq!(evidence.execution_status, ProofExecutionStatus::Planned);
+        assert_eq!(evidence.availability, ProofEvidenceAvailability::Available);
+        assert_eq!(evidence.commit_match, CommitMatch::Exact);
+        assert_eq!(
+            evidence.command.as_deref(),
+            Some("cargo xtask ci-plan --route-json-out target/ci/proof-pack-route.json")
+        );
+        assert_eq!(
+            evidence.artifact_refs,
+            vec!["proof/proof-pack-route.json#/summary"]
+        );
+    }
+
+    #[test]
+    fn symbolic_proof_pack_route_head_is_partial_not_exact() {
+        let artifact = proof_pack_route_artifact("HEAD");
+        let evidence = single_evidence(&artifact, "proof/proof-pack-route.json", Some("HEAD"));
+
+        assert_eq!(evidence.kind, ProofEvidenceKind::ProofPackRoute);
+        assert_eq!(evidence.execution_status, ProofExecutionStatus::Planned);
+        assert_eq!(evidence.commit_match, CommitMatch::Partial);
+        assert_eq!(evidence.availability, ProofEvidenceAvailability::Degraded);
+    }
+
+    #[test]
     fn stale_commit_marks_otherwise_available_evidence_stale() {
-        let artifact = coverage_receipt_artifact("old", true, true);
-        let evidence = single_evidence(&artifact, "coverage-receipt.json", Some("new"));
+        let artifact = coverage_receipt_artifact("abc123", true, true);
+        let evidence = single_evidence(&artifact, "coverage-receipt.json", Some("def456"));
 
         assert_eq!(evidence.commit_match, CommitMatch::Stale);
         assert_eq!(evidence.availability, ProofEvidenceAvailability::Stale);

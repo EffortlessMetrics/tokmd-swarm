@@ -89,7 +89,8 @@
             "proof_run_summary",
             "proof_run_observation",
             "proof_executor_observation",
-            "coverage_receipt"
+            "coverage_receipt",
+            "proof_pack_route"
           ]
         },
         "source": { "type": "string", "minLength": 1 },

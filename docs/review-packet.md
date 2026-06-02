@@ -111,6 +111,7 @@ The review packet directory is:
     proof-run-observation.json
     proof-executor-observation.json
     coverage-receipt.json
+    proof-pack-route.json
   docs/
     doc-artifacts-check.json
 ```
@@ -193,8 +194,8 @@ Recommended evidence availability values:
 Missing, stale, degraded, and unavailable evidence should be visible in
 `comment.md`, `evidence.json`, and `manifest.json` verdict metadata.
 When explicit proof artifacts are imported, `comment.md` also summarizes
-required proof, advisory proof, and freshness counts without listing raw
-commands.
+required proof, advisory proof, proof routing, and freshness counts without
+listing raw commands.
 
 Cockpit proof imports should follow
 [`cockpit-proof-evidence.md`](cockpit-proof-evidence.md). When proof artifacts
@@ -206,6 +207,13 @@ non-empty GitHub `run_id`, `run_attempt`, `workflow`, `event_name`, and
 `ref_name` values when the source receipt includes them, plus a derived
 `run_url` for safe GitHub repository/run ID pairs. Packet imports must not
 promote advisory proof into blocking evidence.
+
+Proof-pack route receipts imported with `--proof-route` are routing evidence,
+not execution proof. Cockpit copies them to
+`.tokmd/review/proof/proof-pack-route.json`, records a `proof_pack_route`
+entry in `evidence.json`, and may link matching changed files in the review
+map. The entry is rendered with planned execution status so skipped-by-policy
+lanes and selected proof packs remain visible without becoming passing proof.
 
 For a complete local workflow that plans proof, optionally executes guarded
 required proof, imports proof artifacts, and verifies the packet, see the

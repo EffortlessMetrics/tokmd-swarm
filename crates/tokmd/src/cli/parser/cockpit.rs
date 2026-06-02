@@ -55,6 +55,10 @@ pub struct CockpitArgs {
     #[arg(long, value_name = "PATH")]
     pub coverage_receipt: Option<PathBuf>,
 
+    /// Import proof-pack route evidence into review packets.
+    #[arg(long, value_name = "PATH")]
+    pub proof_route: Option<PathBuf>,
+
     /// Import doc-artifacts checker receipt evidence into review packets.
     #[arg(long, value_name = "PATH")]
     pub doc_artifacts_check: Option<PathBuf>,

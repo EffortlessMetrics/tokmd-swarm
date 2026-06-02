@@ -1309,6 +1309,9 @@ Options:
       --coverage-receipt <PATH>
           Import coverage receipt evidence into review packets
 
+      --proof-route <PATH>
+          Import proof-pack route evidence into review packets
+
       --doc-artifacts-check <PATH>
           Import doc-artifacts checker receipt evidence into review packets
 
@@ -1356,6 +1359,7 @@ Examples:
 | `--proof-observation <PATH>` | Import proof-run observation evidence into review packets. | `(none)` |
 | `--executor-observation <PATH>` | Import proof-executor observation evidence into review packets. | `(none)` |
 | `--coverage-receipt <PATH>` | Import coverage receipt evidence into review packets. | `(none)` |
+| `--proof-route <PATH>` | Import proof-pack route evidence into review packets. | `(none)` |
 | `--doc-artifacts-check <PATH>` | Import doc-artifacts checker receipt evidence into review packets. | `(none)` |
 | `--diff-range <MODE>` | Diff range syntax: `two-dot` or `three-dot`. | `two-dot` |
 | `--sensor-mode` | Run in sensor mode for CI integration (see below). | `false` |

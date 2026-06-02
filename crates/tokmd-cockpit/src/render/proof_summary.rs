@@ -1,7 +1,7 @@
 //! Compact proof evidence counts shared by packet renderers.
 
 use crate::proof_evidence::{
-    ProofEvidenceAvailability, ProofEvidenceInput, ProofExecutionStatus,
+    ProofEvidenceAvailability, ProofEvidenceInput, ProofEvidenceKind, ProofExecutionStatus,
     normalize_proof_evidence_inputs,
 };
 use crate::{CockpitReceipt, CommitMatch};
@@ -14,6 +14,12 @@ pub(super) struct ProofEvidenceSummary {
     pub(super) required_missing: usize,
     pub(super) advisory_available: usize,
     pub(super) advisory_missing: usize,
+    pub(super) routing_available: usize,
+    pub(super) routing_missing: usize,
+    pub(super) routing_degraded: usize,
+    pub(super) routing_stale: usize,
+    pub(super) routing_skipped: usize,
+    pub(super) routing_unavailable: usize,
     pub(super) exact: usize,
     pub(super) partial: usize,
     pub(super) stale: usize,
@@ -51,14 +57,25 @@ pub(super) fn proof_evidence_summary(
             _ => {}
         }
 
-        if matches!(
-            item.execution_status,
-            ProofExecutionStatus::Planned | ProofExecutionStatus::NotExecuted
-        ) {
+        if item.kind != ProofEvidenceKind::ProofPackRoute
+            && matches!(
+                item.execution_status,
+                ProofExecutionStatus::Planned | ProofExecutionStatus::NotExecuted
+            )
+        {
             counts.not_run += 1;
         }
 
-        if item.required {
+        if item.kind == ProofEvidenceKind::ProofPackRoute {
+            match item.availability {
+                ProofEvidenceAvailability::Available => counts.routing_available += 1,
+                ProofEvidenceAvailability::Missing => counts.routing_missing += 1,
+                ProofEvidenceAvailability::Degraded => counts.routing_degraded += 1,
+                ProofEvidenceAvailability::Stale => counts.routing_stale += 1,
+                ProofEvidenceAvailability::Skipped => counts.routing_skipped += 1,
+                ProofEvidenceAvailability::Unavailable => counts.routing_unavailable += 1,
+            }
+        } else if item.required {
             if item.execution_status == ProofExecutionStatus::ExecutedPassed
                 && item.availability == ProofEvidenceAvailability::Available
             {
@@ -73,7 +90,7 @@ pub(super) fn proof_evidence_summary(
             }
         }
 
-        if item.advisory {
+        if item.advisory && item.kind != ProofEvidenceKind::ProofPackRoute {
             if item.availability == ProofEvidenceAvailability::Available {
                 counts.advisory_available += 1;
             } else if matches!(

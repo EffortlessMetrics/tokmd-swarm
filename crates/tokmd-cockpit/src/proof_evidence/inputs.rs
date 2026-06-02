@@ -177,3 +177,68 @@ pub struct CoverageStatusInput {
     #[serde(default)]
     pub empty: Vec<String>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ProofPackRouteInput {
+    pub schema: String,
+    pub schema_version: u32,
+    pub base: String,
+    pub head: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub changed_files: Vec<ProofPackRouteChangedFileInput>,
+    #[serde(default)]
+    pub unmatched_files: Vec<String>,
+    #[serde(default)]
+    pub skipped_by_policy: Vec<ProofPackRouteSkippedLaneInput>,
+    #[serde(default)]
+    pub summary: ProofPackRouteSummaryInput,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ProofPackRouteChangedFileInput {
+    pub path: String,
+    pub surface: String,
+    #[serde(default)]
+    pub proof_packs: Vec<String>,
+    pub reason: String,
+    pub policy: String,
+    #[serde(default)]
+    pub lanes: Vec<String>,
+    #[serde(default)]
+    pub deep_lanes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ProofPackRouteSkippedLaneInput {
+    pub lane: String,
+    pub status: String,
+    pub reason: String,
+    #[serde(default)]
+    pub matched_files: Vec<String>,
+    pub lane_kind: String,
+    pub tier: String,
+    pub blocking: bool,
+    pub expensive: bool,
+    #[serde(default)]
+    pub required_labels: Vec<String>,
+    pub estimated_lem: u64,
+    pub estimate_source: String,
+    #[serde(default)]
+    pub learned_p50_lem: Option<f64>,
+    #[serde(default)]
+    pub learned_p90_lem: Option<f64>,
+    #[serde(default)]
+    pub learned_p95_lem: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ProofPackRouteSummaryInput {
+    pub changed_file_count: usize,
+    pub routed_file_count: usize,
+    pub unmatched_file_count: usize,
+    pub skipped_lane_count: usize,
+    #[serde(default)]
+    pub skipped_reason_counts: std::collections::BTreeMap<String, usize>,
+}

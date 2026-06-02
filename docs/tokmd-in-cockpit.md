@@ -79,6 +79,7 @@ Start with the smallest packet that can answer the review question:
 | --- | --- | --- |
 | Code-only change | `--review-packet-dir` | What changed, what to review first, and which cockpit evidence is available, missing, stale, degraded, skipped, or unavailable. |
 | `.tokmd-spec/**`, source-of-truth docs, plans, ADRs, templates, `.jules/goals/**`, or doc-artifact policy changed | `--doc-artifacts-check target/docs/doc-artifacts-check.json` | Whether the documentation-control checker receipt is present and whether source-of-truth artifact shape, links, active goal state, spec-index paths, and policy routing passed. |
+| Need to see which proof packs the changed files selected | `--proof-route target/ci/proof-pack-route.json` | Which changed files routed to which proof packs and which lanes were explicitly skipped by policy; this is routing evidence, not executed proof. |
 | Required proof was planned or run | `--proof-run-summary`, `--proof-observation` | Which required proof applied to the reviewed change, whether it passed, and whether imported proof freshness matches the cockpit head. |
 | Advisory proof or coverage exists | `--executor-observation`, `--coverage-receipt` | Which advisory evidence exists, which evidence is missing, and which evidence must not be treated as a required gate. |
 

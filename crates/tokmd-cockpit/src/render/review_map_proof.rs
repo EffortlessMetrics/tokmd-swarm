@@ -28,7 +28,8 @@ pub(super) fn review_map_proof_refs(
             Some(&receipt.base_ref),
             Some(&receipt.head_ref),
         );
-        let changed_files = unambiguous_changed_files(input.artifact.changed_files(), &normalized);
+        let changed_files = input.artifact.changed_files();
+        let changed_files = unambiguous_changed_files(&changed_files, &normalized);
 
         for proof in normalized {
             let mut refs = Vec::with_capacity(1 + proof.artifact_refs.len());
@@ -97,7 +98,9 @@ pub(super) fn review_map_item_proof(
 }
 
 fn review_map_proof_line(proof: &NormalizedProofEvidence) -> String {
-    let class = if proof.required {
+    let class = if proof.kind.as_str() == "proof_pack_route" {
+        "Routing"
+    } else if proof.required {
         "Required"
     } else {
         "Advisory"

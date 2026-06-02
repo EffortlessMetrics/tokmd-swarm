@@ -12,6 +12,7 @@ pub enum ProofEvidenceKind {
     ProofRunObservation,
     ProofExecutorObservation,
     CoverageReceipt,
+    ProofPackRoute,
 }
 
 impl ProofEvidenceKind {
@@ -21,6 +22,7 @@ impl ProofEvidenceKind {
             Self::ProofRunObservation => "proof_run_observation",
             Self::ProofExecutorObservation => "proof_executor_observation",
             Self::CoverageReceipt => "coverage_receipt",
+            Self::ProofPackRoute => "proof_pack_route",
         }
     }
 
@@ -30,6 +32,7 @@ impl ProofEvidenceKind {
             Self::ProofRunObservation => "proof-run-observation.json",
             Self::ProofExecutorObservation => "proof-executor-observation.json",
             Self::CoverageReceipt => "coverage-receipt.json",
+            Self::ProofPackRoute => "proof-pack-route.json",
         }
     }
 }
@@ -100,7 +103,7 @@ pub(crate) struct NormalizedProofEvidence {
     pub artifact_refs: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProofEvidenceInput {
     pub source_path: PathBuf,
     pub artifact: ProofEvidenceArtifact,
@@ -134,6 +137,10 @@ mod tests {
             ProofEvidenceKind::CoverageReceipt.as_str(),
             "coverage_receipt"
         );
+        assert_eq!(
+            ProofEvidenceKind::ProofPackRoute.as_str(),
+            "proof_pack_route"
+        );
     }
 
     #[test]
@@ -153,6 +160,10 @@ mod tests {
         assert_eq!(
             ProofEvidenceKind::CoverageReceipt.packet_file_name(),
             "coverage-receipt.json"
+        );
+        assert_eq!(
+            ProofEvidenceKind::ProofPackRoute.packet_file_name(),
+            "proof-pack-route.json"
         );
     }
 
