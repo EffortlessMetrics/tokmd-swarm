@@ -594,6 +594,22 @@ jobs:
           echo "cx53_result=${CX53_RESULT:-<empty>}"
           echo "github_result=${GITHUB_RESULT:-<empty>}"
 
+          run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
+          case "${run_attempt}" in
+            ''|*[!0-9]*)
+              rerun_count=0
+              ;;
+            *)
+              if [ "${run_attempt}" -gt 1 ]; then
+                rerun_count=$((run_attempt - 1))
+              else
+                rerun_count=0
+              fi
+              ;;
+          esac
+          echo "run_attempt=${run_attempt:-<empty>}"
+          echo "rerun_count=${rerun_count}"
+
           ok="false"
           status="failure"
           selected_result=""
@@ -656,6 +672,7 @@ jobs:
           export CX43_RESULT="${CX43_RESULT:-}"
           export CX53_RESULT="${CX53_RESULT:-}"
           export GITHUB_RESULT="${GITHUB_RESULT:-}"
+          export RERUN_COUNT="${rerun_count}"
 
           python - <<'PY'
           import json
@@ -693,6 +710,7 @@ jobs:
                   "event": env("GITHUB_EVENT_NAME"),
                   "run_id": env("GITHUB_RUN_ID"),
                   "run_attempt": env("GITHUB_RUN_ATTEMPT"),
+                  "rerun_count": int(env("RERUN_COUNT", "0")),
                   "sha": env("GITHUB_SHA"),
                   "ref": env("GITHUB_REF"),
               },
@@ -716,6 +734,8 @@ jobs:
               echo "| selected job | \`${selected_job:-<empty>}\` |"
               echo "| selected result | \`${selected_result:-<empty>}\` |"
               echo "| fallback allowed | \`${FALLBACK_ALLOWED:-<empty>}\` |"
+              echo "| run attempt | \`${run_attempt:-<empty>}\` |"
+              echo "| rerun count | \`${rerun_count}\` |"
               echo
               echo 'Receipt: `target/ci/routed-rust-small-result.json`'
             } >> "$GITHUB_STEP_SUMMARY"
