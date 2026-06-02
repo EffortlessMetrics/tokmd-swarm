@@ -541,6 +541,14 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
         "routed result receipt should preserve the router trust decision"
     );
     assert!(
+        workflow.contains("\"rerun_count\": int(env(\"RERUN_COUNT\", \"0\"))"),
+        "routed result receipt should expose derived rerun accounting"
+    );
+    assert!(
+        workflow.contains("| rerun count |"),
+        "routed result summary should expose derived rerun accounting"
+    );
+    assert!(
         workflow.contains("python -m json.tool target/ci/routed-rust-small-result.json"),
         "routed result job should validate the receipt as JSON"
     );
