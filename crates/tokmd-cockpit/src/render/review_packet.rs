@@ -210,6 +210,9 @@ fn proof_artifact_json(input: &ProofEvidenceInput) -> Result<String> {
         ProofEvidenceArtifact::CoverageReceipt(artifact) => {
             Ok(serde_json::to_string_pretty(artifact)?)
         }
+        ProofEvidenceArtifact::ProofPackRoute(artifact) => {
+            Ok(serde_json::to_string_pretty(artifact)?)
+        }
     }
 }
 

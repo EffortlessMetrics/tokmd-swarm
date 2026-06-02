@@ -4,8 +4,8 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use super::inputs::{
-    CoverageReceiptInput, ProofExecutorObservationInput, ProofRunObservationInput,
-    ProofRunSummaryInput,
+    CoverageReceiptInput, ProofExecutorObservationInput, ProofPackRouteInput,
+    ProofRunObservationInput, ProofRunSummaryInput,
 };
 use super::model::ProofEvidenceKind;
 
@@ -13,13 +13,15 @@ pub(super) const PROOF_RUN_SUMMARY_SCHEMA: &str = "tokmd.proof_run_summary.v1";
 pub(super) const PROOF_RUN_OBSERVATION_SCHEMA: &str = "tokmd.proof_run_observation.v1";
 pub(super) const PROOF_EXECUTOR_OBSERVATION_SCHEMA: &str = "tokmd.proof_executor_observation.v1";
 pub(super) const COVERAGE_RECEIPT_SCHEMA: &str = "tokmd.coverage_receipt.v1";
+pub(super) const PROOF_PACK_ROUTE_SCHEMA: &str = "tokmd.proof_pack_route.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProofEvidenceArtifact {
     ProofRunSummary(ProofRunSummaryInput),
     ProofRunObservation(ProofRunObservationInput),
     ProofExecutorObservation(ProofExecutorObservationInput),
     CoverageReceipt(CoverageReceiptInput),
+    ProofPackRoute(ProofPackRouteInput),
 }
 
 impl ProofEvidenceArtifact {
@@ -29,6 +31,7 @@ impl ProofEvidenceArtifact {
             Self::ProofRunObservation(_) => ProofEvidenceKind::ProofRunObservation,
             Self::ProofExecutorObservation(_) => ProofEvidenceKind::ProofExecutorObservation,
             Self::CoverageReceipt(_) => ProofEvidenceKind::CoverageReceipt,
+            Self::ProofPackRoute(_) => ProofEvidenceKind::ProofPackRoute,
         }
     }
 
@@ -38,6 +41,7 @@ impl ProofEvidenceArtifact {
             Self::ProofRunObservation(artifact) => &artifact.schema,
             Self::ProofExecutorObservation(artifact) => &artifact.schema,
             Self::CoverageReceipt(artifact) => &artifact.schema,
+            Self::ProofPackRoute(artifact) => &artifact.schema,
         }
     }
 
@@ -47,6 +51,7 @@ impl ProofEvidenceArtifact {
             Self::ProofRunObservation(artifact) => Some(&artifact.profile),
             Self::ProofExecutorObservation(artifact) => Some(&artifact.profile),
             Self::CoverageReceipt(_) => None,
+            Self::ProofPackRoute(_) => None,
         }
     }
 
@@ -56,15 +61,21 @@ impl ProofEvidenceArtifact {
             Self::ProofRunObservation(artifact) => Some(&artifact.head),
             Self::ProofExecutorObservation(artifact) => Some(&artifact.head),
             Self::CoverageReceipt(artifact) => Some(&artifact.sha),
+            Self::ProofPackRoute(artifact) => Some(&artifact.head),
         }
     }
 
-    pub(crate) fn changed_files(&self) -> &[String] {
+    pub(crate) fn changed_files(&self) -> Vec<String> {
         match self {
-            Self::ProofRunSummary(artifact) => &artifact.changed_files,
-            Self::ProofRunObservation(artifact) => &artifact.changed_files,
-            Self::ProofExecutorObservation(artifact) => &artifact.changed_files,
-            Self::CoverageReceipt(_) => &[],
+            Self::ProofRunSummary(artifact) => artifact.changed_files.clone(),
+            Self::ProofRunObservation(artifact) => artifact.changed_files.clone(),
+            Self::ProofExecutorObservation(artifact) => artifact.changed_files.clone(),
+            Self::CoverageReceipt(_) => Vec::new(),
+            Self::ProofPackRoute(artifact) => artifact
+                .changed_files
+                .iter()
+                .map(|file| file.path.clone())
+                .collect(),
         }
     }
 }
@@ -89,6 +100,9 @@ pub(super) fn parse_proof_evidence_json(raw: &str) -> Result<ProofEvidenceArtifa
         COVERAGE_RECEIPT_SCHEMA => Ok(ProofEvidenceArtifact::CoverageReceipt(
             serde_json::from_value(value).context("parse coverage receipt evidence")?,
         )),
+        PROOF_PACK_ROUTE_SCHEMA => Ok(ProofEvidenceArtifact::ProofPackRoute(
+            serde_json::from_value(value).context("parse proof-pack route evidence")?,
+        )),
         _ => bail!("unsupported proof evidence schema `{schema}`"),
     }
 }
@@ -97,7 +111,7 @@ pub(super) fn parse_proof_evidence_json(raw: &str) -> Result<ProofEvidenceArtifa
 mod tests {
     use super::*;
     use crate::proof_evidence::fixtures::{
-        coverage_receipt_artifact, proof_executor_observation_artifact,
+        coverage_receipt_artifact, proof_executor_observation_artifact, proof_pack_route_artifact,
         proof_run_observation_artifact, proof_run_summary_artifact,
     };
 
@@ -153,6 +167,19 @@ mod tests {
         assert_eq!(receipt.sha, "abc123");
         assert!(receipt.status.ok);
         assert_eq!(receipt.artifacts[0].kind, "lcov");
+    }
+
+    #[test]
+    fn parses_proof_pack_route() {
+        let artifact = proof_pack_route_artifact("abc123");
+
+        let ProofEvidenceArtifact::ProofPackRoute(route) = artifact else {
+            panic!("expected proof-pack route");
+        };
+        assert_eq!(route.schema, PROOF_PACK_ROUTE_SCHEMA);
+        assert_eq!(route.summary.changed_file_count, 1);
+        assert_eq!(route.changed_files[0].path, "new.rs");
+        assert_eq!(route.skipped_by_policy[0].lane, "coverage_lite_pr");
     }
 
     #[test]

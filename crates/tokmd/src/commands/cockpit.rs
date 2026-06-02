@@ -173,6 +173,11 @@ fn load_proof_evidence_inputs(
             args.coverage_receipt.as_deref(),
             tokmd_cockpit::ProofEvidenceKind::CoverageReceipt,
         ),
+        (
+            "--proof-route",
+            args.proof_route.as_deref(),
+            tokmd_cockpit::ProofEvidenceKind::ProofPackRoute,
+        ),
     ];
 
     let mut loaded = Vec::new();

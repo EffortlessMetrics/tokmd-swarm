@@ -34,6 +34,7 @@ Imported proof evidence should help a reviewer answer:
 - whether each proof signal was required or advisory;
 - what evidence is missing, stale, unavailable, skipped, or degraded;
 - which command or artifact reproduces the claim.
+- which proof packs were routed for changed files before execution.
 
 ## Accepted Inputs
 
@@ -46,6 +47,7 @@ Cockpit accepts these artifact families for validation and, when
 | `proof-run-observation.json` | `--proof-observation <PATH>` | Compact observation derived from a verified required proof-run summary; useful for routine fast-proof visibility. |
 | `proof-executor-observation.json` | `--executor-observation <PATH>` | Observation from scoped advisory executor artifacts, such as non-required coverage runs. |
 | `coverage-receipt.json` | `--coverage-receipt <PATH>` | Coverage artifact inventory and byte-count receipt; useful for proving a coverage artifact exists without treating coverage as required. |
+| `proof-pack-route.json` | `--proof-route <PATH>` | Changed-file proof-pack routing and skipped-by-policy lane evidence from `cargo xtask ci-plan --route-json-out ...`; useful for seeing what proof was selected or intentionally skipped before execution. |
 
 Inputs are optional. A missing artifact is not an error unless the caller
 explicitly requested that artifact. When an explicitly supplied artifact is
@@ -92,6 +94,7 @@ Then import the proof artifacts while writing the review packet:
 tokmd cockpit \
   --base origin/main \
   --head HEAD \
+  --proof-route target/ci/proof-pack-route.json \
   --proof-run-summary target/proof-run/proof-run-summary.json \
   --proof-observation target/proof-run/proof-run-observation.json \
   --review-packet-dir .tokmd/review
@@ -146,6 +149,13 @@ That lets packet consumers distinguish reruns and open the source Action while
 keeping the copied `proof/coverage-receipt.json` artifact as the full source
 payload.
 
+Proof-pack route receipts are normalized as routing evidence. Their packet
+entry uses execution status `planned` so reviewers can see changed-file routing
+and skipped-by-policy lanes without mistaking the receipt for executed proof.
+When an imported proof artifact and cockpit invocation both use symbolic refs
+such as `HEAD`, freshness is rendered as partial/degraded instead of exact
+because cockpit has not resolved those refs to matching commit IDs.
+
 Packet renderers refer back to packet-local source artifacts using stable refs
 rather than copying large proof payloads into every packet file.
 
@@ -169,6 +179,7 @@ the validated JSON input into canonical packet-local names:
 | proof run observation | `proof/proof-run-observation.json` |
 | proof executor observation | `proof/proof-executor-observation.json` |
 | coverage receipt | `proof/coverage-receipt.json` |
+| proof-pack route | `proof/proof-pack-route.json` |
 
 These copied artifacts are listed in `manifest.json` with BLAKE3 hashes. The
 review packet verifier treats them like any other packet artifact.
@@ -187,6 +198,8 @@ reviewed. Cockpit classifies imported proof with a commit match status:
 
 Stale or unknown proof must not be rendered as passing evidence. It may still
 be useful context, but packet outputs should show it as stale or degraded.
+Symbolic ref equality is not enough for an exact proof match; exact freshness
+requires matching commit-looking IDs.
 
 ## Required vs Advisory
 
@@ -201,6 +214,7 @@ artifacts.
 | Advisory proof passed | Display as available advisory evidence, not as a merge requirement. |
 | Advisory proof failed | Display as advisory failure or degraded evidence, depending on policy. |
 | Advisory proof not executed | Display as planned or skipped, not as passing. |
+| Proof route receipt available | Display as routing evidence with planned execution status, not as passed proof. |
 
 The review packet can show required/advisory status, but cockpit must not decide
 to promote advisory proof into required proof.
@@ -281,7 +295,7 @@ Absent optional inputs remain unavailable unless the caller provides them.
 - Attach imported proof entries to `evidence.json`. (done)
 - Copy supplied proof artifacts into packet-local `proof/*.json` files. (done)
 - Attach proof refs to review-map items without duplicating large artifacts. (done for direct changed-file matches)
-- Render packet-level and matching proof evidence in `review-map.md` without changing JSON schemas. (done; item-level links currently use direct changed-file matches)
+- Render packet-level and matching proof evidence in `review-map.md` with versioned schema updates when new evidence kinds are added. (done; item-level links currently use direct changed-file matches)
 - Render compact proof evidence totals in `comment.md` without listing raw commands. (done)
 - Keep review packet schemas versioned if output shape changes.
 - Keep proof-control-plane promotion decisions outside cockpit.

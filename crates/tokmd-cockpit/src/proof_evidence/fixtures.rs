@@ -1,8 +1,9 @@
 //! Shared proof-evidence JSON fixtures for owner-module tests.
 
 use super::artifacts::{
-    COVERAGE_RECEIPT_SCHEMA, PROOF_EXECUTOR_OBSERVATION_SCHEMA, PROOF_RUN_OBSERVATION_SCHEMA,
-    PROOF_RUN_SUMMARY_SCHEMA, ProofEvidenceArtifact, parse_proof_evidence_json,
+    COVERAGE_RECEIPT_SCHEMA, PROOF_EXECUTOR_OBSERVATION_SCHEMA, PROOF_PACK_ROUTE_SCHEMA,
+    PROOF_RUN_OBSERVATION_SCHEMA, PROOF_RUN_SUMMARY_SCHEMA, ProofEvidenceArtifact,
+    parse_proof_evidence_json,
 };
 
 fn parse_value(value: serde_json::Value) -> ProofEvidenceArtifact {
@@ -160,6 +161,52 @@ pub(super) fn coverage_receipt_artifact(
                 Vec::<String>::new()
             } else {
                 vec!["target/proof/coverage/tokmd-cockpit.lcov".to_string()]
+            }
+        }
+    }))
+}
+
+pub(super) fn proof_pack_route_artifact(head: &str) -> ProofEvidenceArtifact {
+    parse_value(serde_json::json!({
+        "schema": PROOF_PACK_ROUTE_SCHEMA,
+        "schema_version": 4,
+        "base": "origin/main",
+        "head": head,
+        "labels": [],
+        "changed_files": [
+            {
+                "path": "new.rs",
+                "surface": "tokmd-cockpit",
+                "proof_packs": ["tokmd-cockpit"],
+                "reason": "manifest_match",
+                "policy": "blocking",
+                "lanes": ["ci"],
+                "deep_lanes": ["coverage_lite_pr"]
+            }
+        ],
+        "unmatched_files": [],
+        "skipped_by_policy": [
+            {
+                "lane": "coverage_lite_pr",
+                "status": "skipped_by_policy",
+                "reason": "deep_lane_requires_label",
+                "matched_files": ["new.rs"],
+                "lane_kind": "coverage",
+                "tier": "deep",
+                "blocking": false,
+                "expensive": true,
+                "required_labels": ["coverage"],
+                "estimated_lem": 30,
+                "estimate_source": "static"
+            }
+        ],
+        "summary": {
+            "changed_file_count": 1,
+            "routed_file_count": 1,
+            "unmatched_file_count": 0,
+            "skipped_lane_count": 1,
+            "skipped_reason_counts": {
+                "deep_lane_requires_label": 1
             }
         }
     }))

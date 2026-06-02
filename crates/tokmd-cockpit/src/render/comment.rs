@@ -236,6 +236,24 @@ fn write_proof_evidence_summary(
         "- Advisory proof: {} available, {} missing",
         counts.advisory_available, counts.advisory_missing,
     );
+    if counts.routing_available > 0
+        || counts.routing_missing > 0
+        || counts.routing_degraded > 0
+        || counts.routing_stale > 0
+        || counts.routing_skipped > 0
+        || counts.routing_unavailable > 0
+    {
+        let _ = writeln!(
+            s,
+            "- Proof routing: {} available, {} missing, {} degraded, {} stale, {} skipped, {} unavailable",
+            counts.routing_available,
+            counts.routing_missing,
+            counts.routing_degraded,
+            counts.routing_stale,
+            counts.routing_skipped,
+            counts.routing_unavailable,
+        );
+    }
     let _ = writeln!(
         s,
         "- Proof freshness: {} exact, {} partial, {} stale, {} unknown",

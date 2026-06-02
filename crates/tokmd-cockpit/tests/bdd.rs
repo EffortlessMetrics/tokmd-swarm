@@ -1144,8 +1144,8 @@ fn scenario_write_review_packet_includes_imported_proof_evidence() {
     assert_eq!(proof[0]["required"], true);
     assert_eq!(proof[0]["advisory"], false);
     assert_eq!(proof[0]["execution_status"], "executed_passed");
-    assert_eq!(proof[0]["availability"], "available");
-    assert_eq!(proof[0]["commit_match"], "exact");
+    assert_eq!(proof[0]["availability"], "degraded");
+    assert_eq!(proof[0]["commit_match"], "partial");
     assert_eq!(
         proof[0]["refs"][0],
         "proof/proof-run-observation.json#/scopes/0"
@@ -1209,16 +1209,17 @@ fn scenario_write_review_packet_includes_imported_proof_evidence() {
 
     let review_map_md = std::fs::read_to_string(out.join("review-map.md")).unwrap();
     assert!(review_map_md.contains("Proof evidence overview:"));
-    assert!(review_map_md.contains("- Required proof: 1 passed, 0 failed, 0 missing"));
+    assert!(review_map_md.contains("- Required proof: 0 passed, 0 failed, 0 missing"));
     assert!(review_map_md.contains("- Advisory proof: 0 available, 0 missing"));
-    assert!(review_map_md.contains("- Freshness: 1 exact, 0 partial, 0 stale, 0 unknown"));
+    assert!(review_map_md.contains("- Freshness: 0 exact, 1 partial, 0 stale, 0 unknown"));
+    assert!(review_map_md.contains("- Other proof state: 1 degraded, 0 skipped, 0 unavailable"));
     assert_eq!(
         review_map_md.matches("   Proof:").count(),
         1,
         "only the matching review item should render imported proof evidence"
     );
     assert!(review_map_md.contains(
-        "Required: tokmd_cockpit passed (available, freshness: exact) - cargo test -p tokmd-cockpit"
+        "Required: tokmd_cockpit passed (degraded, freshness: partial) - cargo test -p tokmd-cockpit"
     ));
     assert!(review_map_md.contains("   Proof references:"));
     assert!(review_map_md.contains("evidence.json#/proof/0"));
@@ -1226,9 +1227,9 @@ fn scenario_write_review_packet_includes_imported_proof_evidence() {
 
     let comment_md = std::fs::read_to_string(out.join("comment.md")).unwrap();
     assert!(comment_md.contains("Proof evidence"));
-    assert!(comment_md.contains("Required proof: 1 passed, 0 failed, 0 missing"));
+    assert!(comment_md.contains("Required proof: 0 passed, 0 failed, 0 missing"));
     assert!(comment_md.contains("Advisory proof: 0 available, 0 missing"));
-    assert!(comment_md.contains("Proof freshness: 1 exact, 0 partial, 0 stale, 0 unknown"));
+    assert!(comment_md.contains("Proof freshness: 0 exact, 1 partial, 0 stale, 0 unknown"));
 }
 
 #[test]
@@ -1332,7 +1333,9 @@ fn scenario_write_review_packet_keeps_ambiguous_multiscope_proof_packet_level() 
 
     let review_map_md = std::fs::read_to_string(out.join("review-map.md")).unwrap();
     assert!(review_map_md.contains("Proof evidence overview:"));
-    assert!(review_map_md.contains("- Required proof: 2 passed, 0 failed, 0 missing"));
+    assert!(review_map_md.contains("- Required proof: 0 passed, 0 failed, 0 missing"));
+    assert!(review_map_md.contains("- Freshness: 0 exact, 2 partial, 0 stale, 0 unknown"));
+    assert!(review_map_md.contains("- Other proof state: 2 degraded, 0 skipped, 0 unavailable"));
     assert_eq!(
         review_map_md.matches("   Proof:").count(),
         0,
@@ -1607,8 +1610,9 @@ fn scenario_review_map_md_includes_packet_level_proof_overview() {
     let review_map_md = std::fs::read_to_string(out.join("review-map.md")).unwrap();
     assert!(review_map_md.contains("Proof evidence overview:"));
     assert!(review_map_md.contains("- Required proof: 0 passed, 0 failed, 0 missing"));
-    assert!(review_map_md.contains("- Advisory proof: 1 available, 0 missing"));
-    assert!(review_map_md.contains("- Freshness: 1 exact, 0 partial, 0 stale, 0 unknown"));
+    assert!(review_map_md.contains("- Advisory proof: 0 available, 0 missing"));
+    assert!(review_map_md.contains("- Freshness: 0 exact, 1 partial, 0 stale, 0 unknown"));
+    assert!(review_map_md.contains("- Other proof state: 1 degraded, 0 skipped, 0 unavailable"));
     assert!(
         !review_map_md.contains("   Proof:"),
         "coverage receipts without direct changed-file matches should stay packet-level"
