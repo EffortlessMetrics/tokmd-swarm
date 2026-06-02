@@ -81,6 +81,8 @@ struct RiskPack {
     #[serde(default)]
     paths: Vec<String>,
     #[serde(default)]
+    supersedes: Vec<String>,
+    #[serde(default)]
     lanes: Vec<String>,
     #[serde(default)]
     deep_lanes: Vec<String>,
@@ -548,7 +550,6 @@ fn route_changed_files(
     lane_index: &BTreeMap<&str, &Lane>,
 ) -> Result<RouteAnalysis> {
     let mut file_to_packs: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut matched_by_pack: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (name, pack) in &risk_packs.risk_pack {
         let matched = match_paths(&pack.paths, changed)?;
@@ -561,20 +562,27 @@ fn route_changed_files(
                 .or_default()
                 .push(name.clone());
         }
-        matched_by_pack.insert(name.clone(), matched);
     }
 
     let mut changed_files = Vec::new();
     let mut unmatched_files = Vec::new();
+    let mut matched_by_pack: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for file in changed {
-        let Some(pack_names) = file_to_packs.get(file) else {
+        let Some(raw_pack_names) = file_to_packs.get(file) else {
             unmatched_files.push(file.clone());
             continue;
         };
+        let pack_names = effective_pack_names(raw_pack_names, risk_packs);
+        for pack_name in &pack_names {
+            matched_by_pack
+                .entry(pack_name.clone())
+                .or_default()
+                .push(file.clone());
+        }
 
         let mut lanes: BTreeSet<String> = BTreeSet::new();
         let mut deep_lanes: BTreeSet<String> = BTreeSet::new();
-        for pack_name in pack_names {
+        for pack_name in &pack_names {
             if let Some(pack) = risk_packs.risk_pack.get(pack_name) {
                 lanes.extend(pack.lanes.iter().cloned());
                 deep_lanes.extend(pack.deep_lanes.iter().cloned());
@@ -604,6 +612,25 @@ fn route_changed_files(
         unmatched_files,
         matched_by_pack,
     })
+}
+
+fn effective_pack_names(pack_names: &[String], risk_packs: &RiskPacksFile) -> Vec<String> {
+    let superseded: BTreeSet<String> = pack_names
+        .iter()
+        .filter_map(|name| risk_packs.risk_pack.get(name))
+        .flat_map(|pack| pack.supersedes.iter().cloned())
+        .collect();
+    let mut effective: Vec<String> = pack_names
+        .iter()
+        .filter(|name| !superseded.contains(name.as_str()))
+        .cloned()
+        .collect();
+    if effective.is_empty() {
+        effective = pack_names.to_vec();
+    }
+    effective.sort();
+    effective.dedup();
+    effective
 }
 
 fn validate_risk_pack_lanes(
@@ -732,8 +759,13 @@ fn is_docs_only_route(route: &RouteAnalysis) -> bool {
     !route.changed_files.is_empty()
         && route.unmatched_files.is_empty()
         && route.changed_files.iter().all(|file| {
-            !file.proof_packs.is_empty() && file.proof_packs.iter().all(|pack| pack == "docs")
+            !file.proof_packs.is_empty()
+                && file.proof_packs.iter().all(|pack| is_docs_only_pack(pack))
         })
+}
+
+fn is_docs_only_pack(pack: &str) -> bool {
+    matches!(pack, "docs" | "handoff_review_packet" | "spec_index")
 }
 
 fn lane_to_selection(
@@ -1064,6 +1096,7 @@ mod tests {
                     RiskPack {
                         description: "Core".into(),
                         paths: vec!["crates/tokmd/**".into()],
+                        supersedes: Vec::new(),
                         lanes: vec!["rust_fast_gate".into()],
                         deep_lanes: vec!["build_test_windows".into(), "proptest_smoke".into()],
                     },
@@ -1073,6 +1106,7 @@ mod tests {
                     RiskPack {
                         description: "Docs".into(),
                         paths: vec!["docs/**".into(), "*.md".into()],
+                        supersedes: Vec::new(),
                         lanes: vec!["docs_check".into()],
                         deep_lanes: Vec::new(),
                     },
@@ -1181,6 +1215,96 @@ mod tests {
     }
 
     #[test]
+    fn specific_docs_pack_supersedes_generic_docs_pack() {
+        let whitelist = route_test_whitelist();
+        let lane_index = route_lane_index(&whitelist);
+        let mut risk_packs = route_test_risk_packs();
+        risk_packs.risk_pack.insert(
+            "handoff_review_packet".to_string(),
+            RiskPack {
+                description: "Handoff and review packet".into(),
+                paths: vec!["docs/handoff.md".into()],
+                supersedes: vec!["docs".into()],
+                lanes: vec!["docs_check".into()],
+                deep_lanes: Vec::new(),
+            },
+        );
+        let changed = vec!["docs/handoff.md".to_string()];
+
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+
+        assert_eq!(route.changed_files.len(), 1);
+        assert_eq!(route.changed_files[0].surface, "handoff_review_packet");
+        assert_eq!(
+            route.changed_files[0].proof_packs,
+            vec!["handoff_review_packet".to_string()]
+        );
+        assert_eq!(
+            route.matched_by_pack["handoff_review_packet"],
+            vec!["docs/handoff.md".to_string()]
+        );
+        assert!(
+            !route.matched_by_pack.contains_key("docs"),
+            "specific authority docs should not also hit the generic docs pack"
+        );
+
+        let selected_ids = BTreeSet::from(["docs_check".to_string()]);
+        let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
+        assert!(
+            skipped
+                .iter()
+                .any(|skip| { skip.lane == "rust_coverage" && skip.reason == "docs_only_change" }),
+            "authority docs remain docs-only for unrelated expensive proof skips"
+        );
+    }
+
+    #[test]
+    fn workspace_policy_routes_handoff_review_paths_to_named_pack() {
+        let root = workspace_root().expect("workspace root");
+        let whitelist: WhitelistFile = parse_toml(
+            &root.join("policy/ci-lane-whitelist.toml"),
+            "ci-lane-whitelist",
+        )
+        .expect("lane whitelist should parse");
+        let risk_packs: RiskPacksFile =
+            parse_toml(&root.join("policy/ci-risk-packs.toml"), "ci-risk-packs")
+                .expect("risk packs should parse");
+        let lane_index = route_lane_index(&whitelist);
+        let changed = vec![
+            "docs/handoff.md".to_string(),
+            "docs/review-packet.md".to_string(),
+            "docs/user-paths.md".to_string(),
+            "docs/specs/handoff-work-order.md".to_string(),
+            "docs/specs/proof-workflow-status.md".to_string(),
+        ];
+
+        let route = route_changed_files(&changed, &risk_packs, &lane_index).expect("route");
+
+        assert!(route.unmatched_files.is_empty());
+        assert_eq!(
+            route.matched_by_pack["handoff_review_packet"].len(),
+            changed.len()
+        );
+        assert!(
+            !route.matched_by_pack.contains_key("docs"),
+            "handoff/review authority paths should not be reported as generic docs"
+        );
+        for file in &route.changed_files {
+            assert_eq!(file.surface, "handoff_review_packet", "{file:?}");
+            assert_eq!(
+                file.proof_packs,
+                vec!["handoff_review_packet".to_string()],
+                "{file:?}"
+            );
+            assert!(file.lanes.contains(&"docs_check".to_string()), "{file:?}");
+            assert!(
+                file.lanes.contains(&"affected_proof_plan".to_string()),
+                "{file:?}"
+            );
+        }
+    }
+
+    #[test]
     fn risk_pack_lane_validation_rejects_unknown_lane_ids() {
         let whitelist = route_test_whitelist();
         let lane_index = route_lane_index(&whitelist);
@@ -1190,6 +1314,7 @@ mod tests {
                 RiskPack {
                     description: "Broken".into(),
                     paths: vec!["crates/tokmd/**".into()],
+                    supersedes: Vec::new(),
                     lanes: vec!["missing_lane".into()],
                     deep_lanes: vec!["missing_deep_lane".into()],
                 },

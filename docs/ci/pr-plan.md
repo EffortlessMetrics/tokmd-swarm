@@ -52,6 +52,11 @@ known but intentionally not selected. Route-relevant unselected lanes are
 reported even when they are not expensive, so deep proof packs can be audited
 without reading the lane catalogue by hand:
 
+Specific authority packs can supersede generic packs in
+`policy/ci-risk-packs.toml`. For example, handoff and review-packet contract
+docs route as `handoff_review_packet` instead of also appearing as generic
+`docs`, so the receipt names the surface that actually owns the proof.
+
 ```json
 {
   "schema": "tokmd.proof_pack_route.v1",

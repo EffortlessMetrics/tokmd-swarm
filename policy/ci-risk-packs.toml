@@ -2,7 +2,7 @@ schema_version = "1.0"
 policy = "ci-risk-packs"
 owner = "release/ci"
 status = "advisory"
-updated = "2026-05-07"
+updated = "2026-06-02"
 
 # Risk packs map paths in a PR's diff to the lanes that should run for
 # that risk surface. The PR Plan job (cargo xtask ci plan) reads this
@@ -17,6 +17,8 @@ updated = "2026-05-07"
 #                     this pack.
 #   deep_lanes      - lane IDs that should run when the pack is hit and
 #                     the PR has the matching label, or on main/nightly.
+#   supersedes      - generic packs to remove from the per-file route when
+#                     this more-specific pack also matches.
 
 [risk_pack.core_receipts]
 description = "Receipt generation, deterministic export, summaries, formats."
@@ -93,6 +95,29 @@ paths = [
 ]
 lanes = ["proof_policy", "quality_gate", "ci_lane_whitelist"]
 deep_lanes = ["build_test_windows"]
+
+[risk_pack.handoff_review_packet]
+description = "Handoff, review-packet, and proof-status authority docs."
+paths = [
+  "docs/handoff.md",
+  "docs/handoff-schema.md",
+  "docs/handoff.schema.json",
+  "docs/review-packet.md",
+  "docs/review-packet-manifest.schema.json",
+  "docs/review-packet-evidence.schema.json",
+  "docs/review-map.schema.json",
+  "docs/user-paths.md",
+  "docs/specs/handoff-work-order.md",
+  "docs/specs/review-packet.md",
+  "docs/specs/proof-workflow-status.md",
+  "docs/specs/proof-observation-decision-packet.md",
+  "docs/agent-workflows/handoff-prompt.md",
+  "docs/examples/handoff-tree.md",
+  "docs/examples/review-packet-tree.md",
+]
+supersedes = ["docs"]
+lanes = ["docs_check", "affected_proof_plan", "pr_cockpit_report", "typos"]
+deep_lanes = []
 
 [risk_pack.docs]
 description = "Documentation-only changes."
