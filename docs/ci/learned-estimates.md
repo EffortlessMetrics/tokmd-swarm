@@ -2,7 +2,7 @@
 
 `cargo xtask ci-plan` can consume past `ci-actuals.json` artifacts when
 `--actuals-dir <DIR>` is provided. The planner walks the directory, collects
-`duration_seconds` per job id, and computes:
+`duration_seconds` per lane id, and computes:
 
 ```text
 estimate     = max(static_floor, p50_recent_actual × 1.15)
@@ -44,6 +44,12 @@ percentile fields are omitted when the estimate is static.
 history across runs, copy artifacts into a long-lived store (for example, an
 object bucket or an ad-hoc nightly that aggregates recent runs) and pass that
 local cache as `--actuals-dir`.
+
+The aggregate `CI (Required)` receipt records GitHub Actions `needs` keys such
+as `build`, `msrv`, `docs-check`, `mutation`, and `nix-pr`. The planner normalizes
+hyphenated keys and maps known aggregate keys back to lane ids such as
+`build_test_linux`, `msrv_check`, `docs_check`, `mutation_required`, and
+`nix_pr_package_gate` before applying learned estimates.
 
 The planner also accepts legacy cached artifacts that used `actual_seconds`,
 but the Rust-owned `ci-actuals` receipt writes `duration_seconds`.

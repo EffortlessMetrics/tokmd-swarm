@@ -65,6 +65,11 @@ warning      = p90_recent_actual
 hard ceiling = p95_recent_actual
 ```
 
+The planner treats the uploaded CI aggregate `needs` keys as telemetry names,
+not lane ids. It normalizes hyphenated keys such as `docs-check` and maps
+known aggregate names such as `build`, `msrv`, `mutation`, and `nix-pr` to
+their lane ids before using the samples.
+
 The static floor still applies in learned mode so a brand-new lane never
 reports `0 LEM` because no data has been collected yet. The hosted PR Plan
 workflow currently uses static estimates unless a durable actuals cache is

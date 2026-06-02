@@ -799,7 +799,7 @@ fn percentile(samples: &[f64], p: f64) -> f64 {
 }
 
 /// Walk a directory of past `ci-actuals.json` artifacts and collect per-job
-/// `duration_seconds` samples keyed by job id. Files that fail to parse are
+/// `duration_seconds` samples keyed by lane id. Files that fail to parse are
 /// skipped — actuals are advisory.
 fn load_actuals(dir: &Path) -> Result<BTreeMap<String, Vec<f64>>> {
     let mut by_job: BTreeMap<String, Vec<f64>> = BTreeMap::new();
@@ -845,10 +845,46 @@ fn load_actuals(dir: &Path) -> Result<BTreeMap<String, Vec<f64>>> {
             if seconds <= 0.0 {
                 continue;
             }
-            by_job.entry(name.to_string()).or_default().push(seconds);
+            for key in actual_lane_keys(name) {
+                by_job.entry(key).or_default().push(seconds);
+            }
         }
     }
     Ok(by_job)
+}
+
+fn actual_lane_keys(name: &str) -> Vec<String> {
+    let mut keys = BTreeSet::new();
+    // Keep the raw key so ad-hoc actuals caches that already use lane ids or
+    // custom telemetry names remain compatible. CI aggregate `needs` keys are
+    // also normalized or aliased below before lane lookup.
+    keys.insert(name.to_string());
+
+    let normalized = name.replace('-', "_");
+    keys.insert(normalized);
+
+    if let Some(alias) = ci_needs_key_lane_alias(name) {
+        keys.insert(alias.to_string());
+    }
+
+    keys.into_iter().collect()
+}
+
+fn ci_needs_key_lane_alias(name: &str) -> Option<&'static str> {
+    match name {
+        "detect" => Some("ci_detect_risk_packs"),
+        "msrv" => Some("msrv_check"),
+        "build" => Some("build_test_linux"),
+        "build-windows" => Some("build_test_windows"),
+        "build-macos" => Some("build_test_macos"),
+        "gate" => Some("quality_gate"),
+        "deny" => Some("cargo_deny"),
+        "wasm-compile" => Some("wasm_compile_test"),
+        "publish-plan" => Some("publish_surface"),
+        "nix-pr" => Some("nix_pr_package_gate"),
+        "mutation" => Some("mutation_required"),
+        _ => None,
+    }
 }
 
 fn actual_job_allows_learning(job: &serde_json::Value) -> bool {
@@ -1348,6 +1384,57 @@ mod tests {
             !actuals.contains_key("skipped_lane"),
             "skipped jobs should not seed learned estimates"
         );
+    }
+
+    #[test]
+    fn load_actuals_aliases_ci_required_needs_keys_to_lane_ids() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("ci-actuals.json");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema": "tokmd.ci_actuals.v1",
+                "jobs": [
+                    {"name": "detect", "result": "success", "duration_seconds": 60.0},
+                    {"name": "msrv", "result": "success", "duration_seconds": 300.0},
+                    {"name": "build", "result": "success", "duration_seconds": 720.0},
+                    {"name": "build-windows", "result": "success", "duration_seconds": 900.0},
+                    {"name": "gate", "result": "success", "duration_seconds": 480.0},
+                    {"name": "deny", "result": "success", "duration_seconds": 120.0},
+                    {"name": "docs-check", "result": "success", "duration_seconds": 180.0},
+                    {"name": "feature-boundaries", "result": "success", "duration_seconds": 240.0},
+                    {"name": "mutation", "result": "success", "duration_seconds": 2700.0},
+                    {"name": "nix-pr", "result": "success", "duration_seconds": 600.0},
+                    {"name": "proof-policy", "result": "success", "duration_seconds": 150.0},
+                    {"name": "proptest-smoke", "result": "success", "duration_seconds": 420.0},
+                    {"name": "publish-plan", "result": "success", "duration_seconds": 240.0},
+                    {"name": "typos", "result": "success", "duration_seconds": 30.0},
+                    {"name": "version-consistency", "result": "success", "duration_seconds": 120.0},
+                    {"name": "wasm-compile", "result": "success", "duration_seconds": 360.0}
+                ]
+            }))
+            .expect("serialize fixture"),
+        )
+        .expect("write fixture");
+
+        let actuals = load_actuals(temp.path()).expect("load actuals");
+
+        assert_eq!(actuals["ci_detect_risk_packs"], vec![60.0]);
+        assert_eq!(actuals["msrv_check"], vec![300.0]);
+        assert_eq!(actuals["build_test_linux"], vec![720.0]);
+        assert_eq!(actuals["build_test_windows"], vec![900.0]);
+        assert_eq!(actuals["quality_gate"], vec![480.0]);
+        assert_eq!(actuals["cargo_deny"], vec![120.0]);
+        assert_eq!(actuals["docs_check"], vec![180.0]);
+        assert_eq!(actuals["feature_boundaries"], vec![240.0]);
+        assert_eq!(actuals["mutation_required"], vec![2700.0]);
+        assert_eq!(actuals["nix_pr_package_gate"], vec![600.0]);
+        assert_eq!(actuals["proof_policy"], vec![150.0]);
+        assert_eq!(actuals["proptest_smoke"], vec![420.0]);
+        assert_eq!(actuals["publish_surface"], vec![240.0]);
+        assert_eq!(actuals["typos"], vec![30.0]);
+        assert_eq!(actuals["version_consistency"], vec![120.0]);
+        assert_eq!(actuals["wasm_compile_test"], vec![360.0]);
     }
 
     #[test]
