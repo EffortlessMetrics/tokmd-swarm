@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CI_ACTUALS_SCHEMA: &str = "tokmd.ci_actuals.v2";
+const CI_ACTUALS_SCHEMA: &str = "tokmd.ci_actuals.v3";
 
 #[derive(Debug, Deserialize)]
 struct NeedEntry {
@@ -76,7 +76,6 @@ struct CiJobActual {
     estimated_lem: Option<f64>,
     actual_lem: Option<f64>,
     queue_seconds: Option<f64>,
-    #[serde(skip_serializing)]
     estimate_source: Option<String>,
     output_keys: Vec<String>,
     runner: Option<String>,
@@ -237,7 +236,7 @@ fn ci_actuals_receipt(root: &Path, args: &CiActualsArgs) -> Result<CiActualsRece
 
     Ok(CiActualsReceipt {
         schema: CI_ACTUALS_SCHEMA.to_string(),
-        schema_version: 2,
+        schema_version: 3,
         repo: args.repo.clone(),
         workflow: args.workflow.clone(),
         sha: receipt_sha(args),
@@ -641,7 +640,7 @@ mod tests {
     fn step_summary_shows_lane_actuals_and_skip_reasons() {
         let receipt = CiActualsReceipt {
             schema: CI_ACTUALS_SCHEMA.to_string(),
-            schema_version: 2,
+            schema_version: 3,
             repo: "tokmd".to_string(),
             workflow: "CI".to_string(),
             sha: "abc123".to_string(),

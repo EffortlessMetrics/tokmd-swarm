@@ -1,6 +1,6 @@
 # CI Actuals Receipt
 
-`cargo xtask ci-actuals` emits `tokmd.ci_actuals.v2`, a small receipt for
+`cargo xtask ci-actuals` emits `tokmd.ci_actuals.v3`, a small receipt for
 GitHub Actions job results, stable lane identity, and optional measured
 durations.
 
@@ -78,13 +78,17 @@ This is an execution skip reason, not proof-policy authorization.
 `route_target`, `estimated_lem`, `actual_lem`, and `queue_seconds` are nullable.
 They are populated only when the aggregate job outputs or timing sidecar provide
 them. Missing values mean the workflow did not observe that datum.
+`estimate_source` is also nullable and records whether the corresponding
+planner estimate came from a static floor or an advisory learned estimate when
+the aggregate job exposed that source. Missing values mean the workflow did not
+observe the planner estimate source.
 
 ## Output
 
 ```json
 {
-  "schema": "tokmd.ci_actuals.v2",
-  "schema_version": 2,
+  "schema": "tokmd.ci_actuals.v3",
+  "schema_version": 3,
   "repo": "tokmd",
   "workflow": "CI",
   "sha": "<commit>",
@@ -101,6 +105,7 @@ them. Missing values mean the workflow did not observe that datum.
       "estimated_lem": 3.0,
       "actual_lem": 1.25,
       "queue_seconds": null,
+      "estimate_source": "static",
       "output_keys": [],
       "runner": "ubuntu-latest",
       "duration_seconds": 75.0,

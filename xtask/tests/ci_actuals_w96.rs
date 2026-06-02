@@ -88,8 +88,8 @@ fn ci_actuals_writes_schema_stable_receipt() {
     let value: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(output).expect("receipt body"))
             .expect("receipt json");
-    assert_eq!(value["schema"], "tokmd.ci_actuals.v2");
-    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["schema"], "tokmd.ci_actuals.v3");
+    assert_eq!(value["schema_version"], 3);
     assert_eq!(value["sha"], "abc123");
     assert_eq!(value["status"]["job_count"], 3);
     assert_eq!(value["status"]["timed_job_count"], 2);
@@ -117,6 +117,7 @@ fn ci_actuals_writes_schema_stable_receipt() {
     assert_eq!(docs["route_target"], "hosted");
     assert_eq!(docs["estimated_lem"].as_f64(), Some(3.0));
     assert_eq!(docs["actual_lem"].as_f64(), Some(1.5));
+    assert_eq!(docs["estimate_source"], "static");
     assert_eq!(docs["timing_status"], "measured");
 
     let mutation = jobs
@@ -385,6 +386,7 @@ fn ci_actuals_docs_explain_receipt_status_and_timing_semantics() {
         "`estimated_lem`",
         "`actual_lem`",
         "`queue_seconds`",
+        "`estimate_source`",
         "This is an execution skip reason, not proof-policy authorization",
     ] {
         assert!(
@@ -406,6 +408,7 @@ fn ci_actuals_docs_explain_receipt_status_and_timing_semantics() {
         "`estimated_lem`",
         "`actual_lem`",
         "`queue_seconds`",
+        "`estimate_source`",
         "`status.missing_timing` means timing telemetry was unavailable",
         "It is not a zero-second duration",
         "`duration_seconds`",
