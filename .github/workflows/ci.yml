@@ -510,7 +510,15 @@ jobs:
 
   typos:
     name: Typos
-    runs-on: ubuntu-latest
+    # Non-build lint (spell check only). Routed to the CX23 nano tier and gated
+    # to same-repo events so fork code never reaches the trusted-pr pool; on a
+    # fork PR this lane skips, which the CI (Required) aggregator treats as pass.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      group: em-ci-nano
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, workflow-nano]
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: crate-ci/typos@v1
