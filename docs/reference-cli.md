@@ -1075,7 +1075,9 @@ Options:
           Hard cap on tokens per file (overrides percentage-based cap)
 
       --review-packet-dir <REVIEW_PACKET_DIR>
-          Link an existing cockpit review packet directory from the handoff bundle
+          Link an existing cockpit review packet directory from the handoff bundle.
+
+          If this packet contains proof/proof-pack-route.json and --proof-route is absent, handoff links that packet-local route as proof-route evidence.
 
       --review-packet-check <REVIEW_PACKET_CHECK>
           Link an existing review-packet verifier receipt from the handoff bundle

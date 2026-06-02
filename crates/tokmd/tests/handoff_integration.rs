@@ -4,6 +4,7 @@ mod common;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
+use std::path::Path;
 use tempfile::tempdir;
 
 fn tokmd_cmd() -> Command {
@@ -351,6 +352,123 @@ fn test_handoff_links_review_and_proof_artifacts() {
             "Treat missing, stale, degraded, skipped, or unavailable evidence as work to resolve, not as passing proof."
         )
     );
+}
+
+#[test]
+fn test_handoff_discovers_packet_local_proof_route() {
+    let dir = tempdir().unwrap();
+    let out_dir = dir.path().join("handoff_packet_route");
+    let review_dir = dir.path().join("review");
+    let packet_proof_dir = review_dir.join("proof");
+    fs::create_dir_all(&packet_proof_dir).unwrap();
+    let packet_route = packet_proof_dir.join("proof-pack-route.json");
+    fs::write(&packet_route, proof_route_json("packet_local_route")).unwrap();
+
+    let mut cmd = tokmd_cmd();
+    cmd.arg("handoff")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--review-packet-dir")
+        .arg(&review_dir)
+        .assert()
+        .success();
+
+    let proof_links: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("proof-links.json")).unwrap())
+            .unwrap();
+    assert_proof_route_link(&proof_links, &packet_route);
+
+    let work_order = fs::read_to_string(out_dir.join("work-order.md")).unwrap();
+    assert!(work_order.contains("packet_local_route"));
+    assert!(work_order.contains(
+        "Proof route: schema v4, 1 changed file(s), 1 routed, 0 unmatched, 0 skipped lane(s)"
+    ));
+    assert!(work_order.contains(
+        "Treat proof routes as selection and skip-policy receipts, not execution proof."
+    ));
+}
+
+#[test]
+fn test_handoff_explicit_proof_route_overrides_packet_local_route() {
+    let dir = tempdir().unwrap();
+    let out_dir = dir.path().join("handoff_explicit_route");
+    let review_dir = dir.path().join("review");
+    let packet_proof_dir = review_dir.join("proof");
+    let proof_dir = dir.path().join("proof");
+    fs::create_dir_all(&packet_proof_dir).unwrap();
+    fs::create_dir_all(&proof_dir).unwrap();
+    fs::write(
+        packet_proof_dir.join("proof-pack-route.json"),
+        proof_route_json("packet_local_route"),
+    )
+    .unwrap();
+    let explicit_route = proof_dir.join("proof-pack-route.json");
+    fs::write(&explicit_route, proof_route_json("explicit_route")).unwrap();
+
+    let mut cmd = tokmd_cmd();
+    cmd.arg("handoff")
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--review-packet-dir")
+        .arg(&review_dir)
+        .arg("--proof-route")
+        .arg(&explicit_route)
+        .assert()
+        .success();
+
+    let proof_links: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("proof-links.json")).unwrap())
+            .unwrap();
+    assert_proof_route_link(&proof_links, &explicit_route);
+
+    let work_order = fs::read_to_string(out_dir.join("work-order.md")).unwrap();
+    assert!(work_order.contains("explicit_route"));
+    assert!(!work_order.contains("packet_local_route"));
+}
+
+fn proof_route_json(surface: &str) -> String {
+    format!(
+        r#"{{
+          "schema":"tokmd.proof_pack_route.v1",
+          "schema_version":4,
+          "changed_files":[
+            {{
+              "path":"docs/handoff.md",
+              "surface":"{surface}",
+              "proof_packs":["{surface}"],
+              "reason":"manifest_match",
+              "policy":"blocking",
+              "lanes":["docs_check"],
+              "deep_lanes":[]
+            }}
+          ],
+          "unmatched_files":[],
+          "summary":{{
+            "changed_file_count":1,
+            "routed_file_count":1,
+            "unmatched_file_count":0,
+            "skipped_lane_count":0,
+            "skipped_reason_counts":{{}}
+          }},
+          "skipped_by_policy":[]
+        }}"#
+    )
+}
+
+fn assert_proof_route_link(proof_links: &serde_json::Value, proof_route: &Path) {
+    assert_eq!(
+        proof_links["schema"].as_str(),
+        Some("tokmd.handoff_proof_links.v1")
+    );
+    let expected_path = proof_route.display().to_string().replace('\\', "/");
+    let route = proof_links["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["name"] == "proof_route")
+        .expect("proof route link should be present");
+    assert_eq!(route["path"].as_str(), Some(expected_path.as_str()));
+    assert_eq!(route["exists"].as_bool(), Some(true));
 }
 
 fn assert_sections_in_order(content: &str, sections: &[&str]) {

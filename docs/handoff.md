@@ -81,6 +81,7 @@ tokmd cockpit \
   --base origin/main \
   --head HEAD \
   --doc-artifacts-check target/docs/doc-artifacts-check.json \
+  --proof-route target/ci/proof-pack-route.json \
   --review-packet-dir .tokmd/review
 
 cargo xtask review-packet-check \
@@ -95,9 +96,13 @@ tokmd handoff \
   --review-packet-check target/tokmd/review-packet-check.json \
   --affected target/proof/affected.json \
   --proof-plan target/proof/proof-plan.json \
-  --proof-route target/ci/proof-pack-route.json \
   --out-dir .handoff
 ```
+
+When `--proof-route` is omitted, `tokmd handoff` looks for the packet-local
+`.tokmd/review/proof/proof-pack-route.json` copied by `tokmd cockpit
+--proof-route ... --review-packet-dir ...`. Pass `--proof-route <path>` to
+override that packet-local route with another receipt.
 
 Then give the agent the handoff plus the linked review evidence:
 
@@ -108,9 +113,10 @@ Then give the agent the handoff plus the linked review evidence:
   commands.
 - `.tokmd/review/evidence.json` for available, missing, stale, degraded,
   skipped, and unavailable evidence.
-- `target/ci/proof-pack-route.json` for changed-file proof-pack routing,
-  unmatched files, skipped-by-policy lanes, and static or learned skipped-lane
-  estimate telemetry.
+- `target/ci/proof-pack-route.json` or the packet-local
+  `.tokmd/review/proof/proof-pack-route.json` for changed-file proof-pack
+  routing, unmatched files, skipped-by-policy lanes, and static or learned
+  skipped-lane estimate telemetry.
 - `target/proof/affected.json` for changed files and matched proof scopes.
 - `target/proof/proof-plan.json` for expected proof commands.
 - `target/tokmd/review-packet-check.json` for packet verification.
@@ -143,10 +149,13 @@ has already verified everything:
    task for the agent, not passing proof.
 4. Use `.tokmd/review/review-map.md` for review order and reproduction
    commands.
-5. Use `target/ci/proof-pack-route.json` to see changed-file route ownership,
-   unmatched files, and skipped-by-policy lanes. A proof route is routing and
-   skip-policy evidence; it is not an execution result and skipped lanes are
-   not passing proof.
+5. Use the proof route linked from `.handoff/proof-links.json` to see
+   changed-file route ownership, unmatched files, and skipped-by-policy lanes.
+   By default this can be the packet-local
+   `.tokmd/review/proof/proof-pack-route.json`; pass `--proof-route` to handoff
+   when a different route receipt should own the link. A proof route is routing
+   and skip-policy evidence; it is not an execution result and skipped lanes
+   are not passing proof.
 6. Use `target/proof/affected.json` to see which proof scopes matched the
    change and `target/proof/proof-plan.json` to see expected commands. A proof
    plan is planned evidence; it is not an execution result.

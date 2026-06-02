@@ -20,6 +20,10 @@ tokmd handoff \
   --out-dir .handoff
 ```
 
+If `.tokmd/review/proof/proof-pack-route.json` exists, `tokmd handoff` links it
+as the proof route. Pass `--proof-route <path>` to override the packet-local
+route.
+
 Sample layout:
 
 ```text
@@ -51,7 +55,7 @@ What each file owns:
 | `map.jsonl` | Full path inventory for lookup. |
 | `intelligence.json` | Repo shape, hotspot, and derived analysis signals. |
 | `review-links.json` | Pointers to external review packet artifacts and verifier receipt. |
-| `proof-links.json` | Pointers to external affected-proof and proof-plan artifacts. |
+| `proof-links.json` | Pointers to proof-route, affected-proof, and proof-plan artifacts. |
 
 What not to infer:
 

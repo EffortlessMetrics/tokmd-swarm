@@ -154,12 +154,20 @@ pub(crate) fn handle(args: cli::HandoffArgs, global: &cli::GlobalArgs) -> Result
         &selected,
         args.compress,
     )?;
+    let packet_local_proof_route = discover_packet_local_proof_route(
+        args.proof_route.as_deref(),
+        args.review_packet_dir.as_deref(),
+    );
+    let proof_route = args
+        .proof_route
+        .as_deref()
+        .or(packet_local_proof_route.as_deref());
     let link_inputs = HandoffLinkInputs {
         review_packet_dir: args.review_packet_dir.as_deref(),
         review_packet_check: args.review_packet_check.as_deref(),
         affected: args.affected.as_deref(),
         proof_plan: args.proof_plan.as_deref(),
-        proof_route: args.proof_route.as_deref(),
+        proof_route,
     };
     let mut link_artifacts = write_link_artifacts(&args.out_dir, &link_inputs)?;
     payloads.artifacts.append(&mut link_artifacts);
@@ -267,6 +275,20 @@ fn exclude_output_dir(
         path: pattern,
         reason: "output_dir".to_string(),
     }]
+}
+
+fn discover_packet_local_proof_route(
+    explicit_proof_route: Option<&Path>,
+    review_packet_dir: Option<&Path>,
+) -> Option<PathBuf> {
+    if explicit_proof_route.is_some() {
+        return None;
+    }
+
+    let proof_route = review_packet_dir?
+        .join("proof")
+        .join("proof-pack-route.json");
+    proof_route.is_file().then_some(proof_route)
 }
 
 /// Round a float to N decimal places.

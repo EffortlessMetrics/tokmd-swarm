@@ -199,6 +199,9 @@ pub struct HandoffArgs {
     pub max_file_tokens: Option<usize>,
 
     /// Link an existing cockpit review packet directory from the handoff bundle.
+    ///
+    /// If this packet contains proof/proof-pack-route.json and --proof-route is
+    /// absent, handoff links that packet-local route as proof-route evidence.
     #[arg(long)]
     pub review_packet_dir: Option<PathBuf>,
 
