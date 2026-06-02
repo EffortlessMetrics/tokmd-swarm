@@ -31,6 +31,13 @@ the summary — only `failure` and `cancelled` results do. So a default PR
 that skips Windows, WASM, Nix, mutation, and proptest will still see a
 green `CI (Required)` row provided the lanes that *did* run all passed.
 
+Default-PR lanes marked `always` and `blocking` must not be moved behind a
+same-repository guard unless the PR also adds a separate hosted fork-safe path.
+This includes cheap static proof such as `Typos` and the CI Policy workflow's
+`No Bare Self-Hosted Routing` guard. Because skipped jobs can still leave an
+aggregate row green, converting those lanes to same-repo-only proof would weaken
+fork PR coverage instead of routing it.
+
 ## Default-PR LEM after the slimming
 
 Roughly (per `docs/ci/inventory.md`, with advisory proof/cockpit lanes now

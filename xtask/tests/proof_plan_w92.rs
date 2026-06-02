@@ -487,6 +487,85 @@ fn ci_workflow_keeps_pr_docs_evidence_routable() {
 }
 
 #[test]
+fn blocking_default_pr_static_lanes_stay_fork_safe_on_hosted_runners() {
+    let root = workspace_root();
+    let ci = fs::read_to_string(root.join(".github/workflows/ci.yml"))
+        .expect("ci workflow should be readable");
+    let ci_policy = fs::read_to_string(root.join(".github/workflows/ci-policy.yml"))
+        .expect("ci-policy workflow should be readable");
+    let default_pr_gate = fs::read_to_string(root.join("docs/ci/default-pr-gate.md"))
+        .expect("default PR gate docs should be readable");
+    let lane_whitelist = fs::read_to_string(root.join("policy/ci-lane-whitelist.toml"))
+        .expect("CI lane whitelist should be readable");
+
+    let typos_section = ci
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .expect("CI workflow should define typos before proptest-smoke");
+    assert!(
+        typos_section.contains("runs-on: ubuntu-latest"),
+        "Typos must stay on a hosted runner so fork PRs keep cheap blocking typo proof"
+    );
+    assert!(
+        !typos_section.contains("head.repo.full_name == github.repository"),
+        "Typos must not be guarded to same-repository PRs"
+    );
+
+    let no_bare_section = ci_policy
+        .split("  no-bare-self-hosted:")
+        .nth(1)
+        .and_then(|section| section.split("  ci-lane-whitelist:").next())
+        .expect("CI policy workflow should define no-bare-self-hosted before ci-lane-whitelist");
+    assert!(
+        no_bare_section.contains("runs-on: ubuntu-latest"),
+        "No Bare Self-Hosted Routing must stay hosted because it scans workflow text only"
+    );
+    assert!(
+        !no_bare_section.contains("head.repo.full_name == github.repository"),
+        "No Bare Self-Hosted Routing must run on fork PRs instead of becoming skipped proof"
+    );
+
+    assert!(
+        default_pr_gate.contains("| `Typos` | always |"),
+        "default PR gate docs should keep Typos as an always-on lane"
+    );
+    assert!(
+        default_pr_gate.contains("`No Bare Self-Hosted Routing` guard"),
+        "default PR gate docs should name the static CI policy guard"
+    );
+
+    let whitelist: toml::Value =
+        toml::from_str(&lane_whitelist).expect("CI lane whitelist should parse as TOML");
+    let lanes = whitelist
+        .get("lane")
+        .and_then(toml::Value::as_array)
+        .expect("CI lane whitelist should have lane entries");
+    for lane_id in ["typos", "no_bare_self_hosted"] {
+        let lane = lanes
+            .iter()
+            .find(|lane| lane.get("id").and_then(toml::Value::as_str) == Some(lane_id))
+            .unwrap_or_else(|| panic!("lane {lane_id} should be listed in the CI whitelist"));
+
+        assert_eq!(
+            lane.get("default_pr").and_then(toml::Value::as_bool),
+            Some(true),
+            "lane {lane_id} should remain part of default PR proof"
+        );
+        assert_eq!(
+            lane.get("blocking").and_then(toml::Value::as_bool),
+            Some(true),
+            "lane {lane_id} should remain blocking proof"
+        );
+        assert_eq!(
+            lane.get("runner").and_then(toml::Value::as_str),
+            Some("ubuntu_latest"),
+            "lane {lane_id} should stay on the hosted runner unless a separate fork-safe path exists"
+        );
+    }
+}
+
+#[test]
 fn ci_detect_uses_parent_fallback_for_manual_receipts() {
     let ci = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
         .expect("ci workflow should be readable");
