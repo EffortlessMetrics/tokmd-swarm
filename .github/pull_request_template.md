@@ -75,8 +75,10 @@
 - **Proof summary:** <!-- commands run + result, hosted check IDs/URLs if useful -->
 - **Routed fallback note:** <!-- If `Tokmd Rust Small Result` first failed with
   `no_idle_runner`, record the failed run, the fallback authorization label or
-  dispatch used, and the newer successful routed run. Label-only edits do not
-  start a new routed check. -->
+  dispatch used, and the newer successful routed run. Open the matching
+  `routed-rust-small-result` artifact and include its `run_attempt` and
+  `rerun_count` values when a rerun or fallback attempt is part of the evidence.
+  Label-only edits do not start a new routed check. -->
 
 - [ ] `cargo build` compiles
 - [ ] `cargo test` passes
