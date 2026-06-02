@@ -213,6 +213,9 @@ Treat the fields as telemetry, not a replacement verdict:
 - `route_target`, `estimated_lem`, `actual_lem`, and `queue_seconds` are
   nullable telemetry fields. Missing values mean the workflow did not observe
   them.
+- `estimate_source` is nullable telemetry copied from aggregate job outputs
+  when available. Use it to distinguish static LEM floors from advisory learned
+  estimate sources in both the workflow summary and `ci-actuals.json`.
 - `status.missing_timing` means timing telemetry was unavailable for those
   jobs. It is not a zero-second duration and not a job failure by itself.
 - `duration_seconds`, `duration_minutes`, `runner`, and `cache_hit` are cost
