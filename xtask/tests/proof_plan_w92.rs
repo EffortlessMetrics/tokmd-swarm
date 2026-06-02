@@ -567,6 +567,40 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
 }
 
 #[test]
+fn routed_rust_small_docs_explain_result_receipt_fields() {
+    let artifacts = fs::read_to_string(workspace_root().join("docs/artifacts.md"))
+        .expect("artifact glossary should be readable");
+    let routing = fs::read_to_string(workspace_root().join("docs/ci/swarm-routing.md"))
+        .expect("swarm routing docs should be readable");
+
+    assert!(
+        artifacts.contains("Debug routed Rust Small")
+            && artifacts.contains("target/ci/routed-rust-small-result.json")
+            && artifacts.contains("selected implementation job log"),
+        "artifact glossary should name the routed result receipt as the first debug surface"
+    );
+    for field in [
+        "router.target",
+        "router.reason",
+        "router.error",
+        "trusted_self_hosted",
+        "fallback_allowed",
+        "selected.job/result",
+        "run.run_attempt",
+        "run.rerun_count",
+    ] {
+        assert!(
+            routing.contains(field),
+            "swarm routing docs should explain routed result field `{field}`"
+        );
+    }
+    assert!(
+        routing.contains("Open the receipt before reading runner logs"),
+        "swarm routing docs should preserve the routed result reading order"
+    );
+}
+
+#[test]
 fn coverage_workflow_preflights_route_before_expensive_coverage() {
     let workflow = fs::read_to_string(workspace_root().join(".github/workflows/coverage.yml"))
         .expect("coverage workflow should be readable");

@@ -27,6 +27,7 @@ each section.
 | Review a PR | `.tokmd/review/comment.md`, then `.tokmd/review/review-map.md` | Gives the summary, review-first order, evidence state, and reproduction commands. |
 | Verify a review packet | `target/tokmd/review-packet-check.json` | Shows whether packet-local manifest paths, schemas, and hashes were checked. |
 | Understand CI evidence | `target/proof/affected.json`, then `target/proof/proof-plan.json` | Shows changed files, matched proof scopes, and selected proof commands. |
+| Debug routed Rust Small | `target/ci/routed-rust-small-result.json`, then the selected implementation job log | Shows the router decision, selected job/result, sibling job results, and rerun accounting before reading runner logs. |
 | Check executed required proof | `target/proof-run/proof-run-summary.json` | Shows which required proof commands actually ran and passed or failed. |
 | Prepare an agent | `.handoff/work-order.md`, then `.handoff/manifest.json` | Gives the agent task map, linked evidence summary, bundle index, and guardrails. |
 | Audit source-of-truth changes | `target/docs/doc-artifacts-check.json` | Shows source-of-truth artifact shape, `.tokmd-spec` index paths, links, active-goal state, and policy checks. |
