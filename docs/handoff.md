@@ -147,9 +147,13 @@ has already verified everything:
    into the agent work order. Open the linked receipts for source-of-truth
    details. Missing, stale, degraded, skipped, or unavailable evidence is a
    task for the agent, not passing proof.
-4. Use `.tokmd/review/review-map.md` for review order and reproduction
+4. If the review-packet verifier summary lists verified packet-local
+   `proof/*.json` artifacts, treat that as hash-verified packet inventory. It
+   identifies copied route/proof receipts but does not mean those receipts were
+   executed or promoted.
+5. Use `.tokmd/review/review-map.md` for review order and reproduction
    commands.
-5. Use the proof route linked from `.handoff/proof-links.json` to see
+6. Use the proof route linked from `.handoff/proof-links.json` to see
    changed-file route ownership, unmatched files, and skipped-by-policy lanes.
    By default this can be the packet-local
    `.tokmd/review/proof/proof-pack-route.json`; pass `--proof-route` to handoff

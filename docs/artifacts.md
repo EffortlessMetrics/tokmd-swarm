@@ -60,7 +60,7 @@ each section.
 
 | Artifact | Usual path | Writer | Means | Does not mean | Verify or inspect |
 | --- | --- | --- | --- | --- | --- |
-| `review-packet-check.json` | `target/tokmd/review-packet-check.json` | `cargo xtask review-packet-check --json <path>` | Verifier receipt for a specific review packet: schema checks, packet-local path checks, artifact count, and hash verification. | It does not verify artifacts outside the packet, hosted comment copies, or future packet mutations. | Open this before trusting a packet; regenerate after any packet-local artifact changes. |
+| `review-packet-check.json` | `target/tokmd/review-packet-check.json` | `cargo xtask review-packet-check --json <path>` | Verifier receipt for a specific review packet: schema checks, packet-local path checks, artifact count, hash verification, and verified artifact schema/media metadata. | It does not verify artifacts outside the packet, hosted comment copies, future packet mutations, or proof execution. | Open this before trusting a packet; regenerate after any packet-local artifact changes. |
 
 ## Proof And CI Evidence
 

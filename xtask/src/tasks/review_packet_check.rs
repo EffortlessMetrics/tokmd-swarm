@@ -52,6 +52,8 @@ struct ReviewPacketCheckReport {
 struct VerifiedReviewPacketArtifact {
     id: String,
     path: String,
+    schema: String,
+    media_type: String,
     hash_algo: String,
     hash: String,
 }
@@ -65,6 +67,8 @@ struct ReviewPacketManifest {
 struct ReviewPacketArtifact {
     id: String,
     path: String,
+    schema: String,
+    media_type: String,
     hash: ReviewPacketArtifactHash,
 }
 
@@ -217,6 +221,8 @@ fn verified_artifacts(artifacts: &[ReviewPacketArtifact]) -> Vec<VerifiedReviewP
         .map(|artifact| VerifiedReviewPacketArtifact {
             id: artifact.id.clone(),
             path: artifact.path.clone(),
+            schema: artifact.schema.clone(),
+            media_type: artifact.media_type.clone(),
             hash_algo: artifact.hash.algo.clone(),
             hash: artifact.hash.hash.clone(),
         })
@@ -340,6 +346,11 @@ mod tests {
         );
         assert_eq!(receipt["errors"], json!([]));
         assert_eq!(receipt["artifacts"][0]["path"], "cockpit.json");
+        assert_eq!(
+            receipt["artifacts"][0]["schema"],
+            "tokmd.cockpit_receipt.v3"
+        );
+        assert_eq!(receipt["artifacts"][0]["media_type"], "application/json");
         assert_eq!(receipt["artifacts"][0]["hash_algo"], "blake3");
     }
 
@@ -450,6 +461,13 @@ mod tests {
         let report = validate_review_packet_dir(dir.path()).expect("valid packet should pass");
 
         assert_eq!(report.artifact_count, 6);
+        let proof_artifact = report
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.path == "proof/proof-run-observation.json")
+            .expect("proof artifact should be verified");
+        assert_eq!(proof_artifact.schema, "tokmd.proof_run_observation.v1");
+        assert_eq!(proof_artifact.media_type, "application/json");
     }
 
     fn write_valid_packet(dir: &Path) {

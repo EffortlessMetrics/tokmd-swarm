@@ -120,7 +120,30 @@ fn test_handoff_links_review_and_proof_artifacts() {
     let proof_route = proof_dir.join("proof-pack-route.json");
     fs::write(
         &review_check,
-        r#"{"schema":"tokmd.review_packet_check.v1","ok":true,"artifact_count":7,"hashes_verified":7}"#,
+        r#"{
+          "schema":"tokmd.review_packet_check.v1",
+          "ok":true,
+          "artifact_count":7,
+          "hashes_verified":7,
+          "artifacts":[
+            {
+              "id":"cockpit",
+              "path":"cockpit.json",
+              "schema":"tokmd.cockpit_receipt.v3",
+              "media_type":"application/json",
+              "hash_algo":"blake3",
+              "hash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            },
+            {
+              "id":"proof-route",
+              "path":"proof/proof-pack-route.json",
+              "schema":"tokmd.proof_pack_route.v1",
+              "media_type":"application/json",
+              "hash_algo":"blake3",
+              "hash":"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+            }
+          ]
+        }"#,
     )
     .unwrap();
     fs::write(
@@ -269,6 +292,15 @@ fn test_handoff_links_review_and_proof_artifacts() {
     );
     assert!(work_order.contains("## Linked Evidence Summary"));
     assert!(work_order.contains("Review packet verifier: ok=true"));
+    assert!(work_order.contains("Verified packet-local proof artifact(s): 1"));
+    assert!(
+        work_order.contains(
+            "`proof/proof-pack-route.json` (tokmd.proof_pack_route.v1, application/json)"
+        )
+    );
+    assert!(work_order.contains(
+        "Verified packet-local proof artifacts are hash/inventory evidence, not proof execution."
+    ));
     assert!(work_order.contains("Review map: 1 item(s)"));
     assert!(work_order.contains("`docs/handoff.md`: handoff behavior changed"));
     assert!(work_order.contains(

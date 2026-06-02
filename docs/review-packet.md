@@ -166,9 +166,12 @@ cargo xtask review-packet-check \
 ```
 
 The receipt uses schema `tokmd.review_packet_check.v1` and records the verified
-schemas, artifact count, hash count, packet-local artifact paths, and verifier
-errors. It is a verifier artifact for CI and downstream systems; it is not
-listed in the packet manifest.
+schemas, artifact count, hash count, packet-local artifact paths, artifact
+schemas, media types, and verifier errors. When packet-local `proof/*.json`
+artifacts are present, downstream handoff output may list their verified path
+and schema as inventory evidence. That still does not make route receipts
+executed proof or promote imported proof gates. The verifier receipt is a CI and
+downstream-system artifact; it is not listed in the packet manifest.
 
 ## Evidence Semantics
 

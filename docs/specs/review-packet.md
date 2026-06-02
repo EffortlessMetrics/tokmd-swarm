@@ -112,9 +112,12 @@ needs hosted metadata, it must write that hosted block to a separate
 
 The verifier receipt written by `cargo xtask review-packet-check --json <PATH>`
 uses schema `tokmd.review_packet_check.v1`. It verifies packet schemas,
-packet-local paths, listed artifacts, and manifest hashes. It is intentionally
-outside the packet manifest because it verifies the final packet instead of
-being part of the packet.
+packet-local paths, listed artifacts, and manifest hashes. Its `artifacts[]`
+entries preserve the manifest path, schema, media type, and hash fields for each
+verified packet-local artifact so downstream handoff output can identify
+verified `proof/*.json` inventory without treating it as executed proof. It is
+intentionally outside the packet manifest because it verifies the final packet
+instead of being part of the packet.
 
 ## Compatibility
 
