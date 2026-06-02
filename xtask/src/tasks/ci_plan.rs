@@ -148,6 +148,11 @@ struct SkippedByPolicy {
     status: String,
     reason: String,
     matched_files: Vec<String>,
+    lane_kind: String,
+    tier: String,
+    blocking: bool,
+    expensive: bool,
+    required_labels: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -300,7 +305,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
     let skipped_by_policy = skipped_by_policy(&whitelist, &selected_ids, &route_analysis);
     let route_receipt = ProofPackRouteReceipt {
         schema: "tokmd.proof_pack_route.v1",
-        schema_version: 2,
+        schema_version: 3,
         base: args.base.clone(),
         head: args.head.clone(),
         labels: labels.clone(),
@@ -315,6 +320,7 @@ pub fn run(args: CiPlanArgs) -> Result<()> {
         },
         skipped_by_policy,
     };
+    validate_route_receipt(&route_receipt)?;
 
     let lanes_selected: Vec<LaneSelection> = selected.into_values().collect();
     let estimated_lem: u64 = lanes_selected.iter().map(|l| l.estimated_lem).sum();
@@ -727,9 +733,67 @@ fn skipped_by_policy(
                 status: "skipped_by_policy".to_string(),
                 reason: reason.to_string(),
                 matched_files,
+                lane_kind: lane.kind.clone(),
+                tier: lane.tier.clone(),
+                blocking: lane.blocking,
+                expensive: lane.expensive,
+                required_labels: lane.labels.clone(),
             })
         })
         .collect()
+}
+
+fn validate_route_receipt(receipt: &ProofPackRouteReceipt) -> Result<()> {
+    if receipt.summary.skipped_lane_count != receipt.skipped_by_policy.len() {
+        bail!(
+            "proof-pack route receipt skipped count drift: summary {} != rows {}",
+            receipt.summary.skipped_lane_count,
+            receipt.skipped_by_policy.len()
+        );
+    }
+
+    let expected_reason_counts = skipped_reason_counts(&receipt.skipped_by_policy);
+    if receipt.summary.skipped_reason_counts != expected_reason_counts {
+        bail!("proof-pack route receipt skipped reason count drift");
+    }
+
+    for skip in &receipt.skipped_by_policy {
+        if skip.lane.trim().is_empty() {
+            bail!("proof-pack route receipt skipped row is missing lane id");
+        }
+        if skip.status != "skipped_by_policy" {
+            bail!(
+                "proof-pack route receipt skipped row for lane {} has invalid status {:?}",
+                skip.lane,
+                skip.status
+            );
+        }
+        if skip.reason.trim().is_empty() {
+            bail!(
+                "proof-pack route receipt skipped row for lane {} is missing reason",
+                skip.lane
+            );
+        }
+        if matches!(
+            skip.reason.as_str(),
+            "deep_lane_requires_label" | "not_selected_by_policy" | "docs_only_change"
+        ) && skip.matched_files.is_empty()
+        {
+            bail!(
+                "proof-pack route receipt skipped row for lane {} with reason {} is missing matched_files",
+                skip.lane,
+                skip.reason
+            );
+        }
+        if skip.reason == "deep_lane_requires_label" && skip.required_labels.is_empty() {
+            bail!(
+                "proof-pack route receipt skipped row for lane {} is missing required_labels",
+                skip.lane
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn skipped_reason_counts(skipped: &[SkippedByPolicy]) -> BTreeMap<String, usize> {
@@ -1195,11 +1259,20 @@ mod tests {
 
         let selected_ids = BTreeSet::from(["rust_fast_gate".to_string()]);
         let skipped = skipped_by_policy(&whitelist, &selected_ids, &route);
-        assert!(skipped.iter().any(|skip| {
-            skip.lane == "build_test_windows"
-                && skip.reason == "deep_lane_requires_label"
-                && skip.matched_files == vec!["crates/tokmd/src/main.rs".to_string()]
-        }));
+        let windows_skip = skipped
+            .iter()
+            .find(|skip| skip.lane == "build_test_windows")
+            .expect("windows deep lane should be skipped by policy");
+        assert_eq!(windows_skip.reason, "deep_lane_requires_label");
+        assert_eq!(
+            windows_skip.matched_files,
+            vec!["crates/tokmd/src/main.rs".to_string()]
+        );
+        assert_eq!(windows_skip.lane_kind, "test");
+        assert_eq!(windows_skip.tier, "frontdoor");
+        assert!(windows_skip.blocking);
+        assert!(windows_skip.expensive);
+        assert_eq!(windows_skip.required_labels, vec!["windows".to_string()]);
         assert!(skipped.iter().any(|skip| {
             skip.lane == "proptest_smoke"
                 && skip.reason == "deep_lane_requires_label"
@@ -1346,6 +1419,11 @@ mod tests {
                 && skip.status == "skipped_by_policy"
                 && skip.reason == "docs_only_change"
                 && skip.matched_files == vec!["docs/ci/pr-plan.md".to_string()]
+                && skip.lane_kind == "test"
+                && skip.tier == "frontdoor"
+                && !skip.blocking
+                && skip.expensive
+                && skip.required_labels == vec!["coverage".to_string()]
         }));
         let reason_counts = skipped_reason_counts(&skipped);
         assert_eq!(reason_counts["docs_only_change"], 2);
@@ -1392,6 +1470,41 @@ mod tests {
         }));
         let reason_counts = skipped_reason_counts(&skipped);
         assert_eq!(reason_counts["no_changed_files"], 2);
+    }
+
+    #[test]
+    fn route_receipt_validation_rejects_missing_skipped_reason() {
+        let receipt = ProofPackRouteReceipt {
+            schema: "tokmd.proof_pack_route.v1",
+            schema_version: 3,
+            base: "origin/main".to_string(),
+            head: "HEAD".to_string(),
+            labels: Vec::new(),
+            changed_files: Vec::new(),
+            unmatched_files: Vec::new(),
+            skipped_by_policy: vec![SkippedByPolicy {
+                lane: "rust_coverage".to_string(),
+                status: "skipped_by_policy".to_string(),
+                reason: String::new(),
+                matched_files: Vec::new(),
+                lane_kind: "coverage".to_string(),
+                tier: "deep".to_string(),
+                blocking: false,
+                expensive: true,
+                required_labels: vec!["coverage".to_string()],
+            }],
+            summary: RouteSummary {
+                changed_file_count: 0,
+                routed_file_count: 0,
+                unmatched_file_count: 0,
+                skipped_lane_count: 1,
+                skipped_reason_counts: BTreeMap::from([(String::new(), 1)]),
+            },
+        };
+
+        let err = validate_route_receipt(&receipt).expect_err("missing reason should fail");
+
+        assert!(err.to_string().contains("missing reason"));
     }
 
     #[test]

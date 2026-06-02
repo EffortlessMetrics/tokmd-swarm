@@ -879,7 +879,7 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
         serde_json::from_str(&written).expect("route artifact should be valid JSON");
 
     assert_eq!(value["schema"], "tokmd.proof_pack_route.v1");
-    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["schema_version"], 3);
     assert_eq!(value["base"], "HEAD");
     assert_eq!(value["head"], "HEAD");
     assert!(value["changed_files"].as_array().unwrap().is_empty());
@@ -902,6 +902,23 @@ fn ci_plan_writes_proof_pack_route_receipt_artifact() {
         value["summary"]["skipped_lane_count"].as_u64().unwrap(),
         reason_total,
         "summary reason counts should account for every skipped lane"
+    );
+    let skipped_rows = value["skipped_by_policy"]
+        .as_array()
+        .expect("skipped rows should be an array");
+    let coverage_skip = skipped_rows
+        .iter()
+        .find(|row| row["lane"] == "rust_coverage")
+        .expect("rust coverage should be represented as a skipped policy row");
+    assert_eq!(coverage_skip["status"], "skipped_by_policy");
+    assert_eq!(coverage_skip["reason"], "no_changed_files");
+    assert_eq!(coverage_skip["lane_kind"], "coverage");
+    assert_eq!(coverage_skip["tier"], "deep");
+    assert_eq!(coverage_skip["blocking"], false);
+    assert_eq!(coverage_skip["expensive"], true);
+    assert_eq!(
+        coverage_skip["required_labels"],
+        serde_json::json!(["coverage"])
     );
 }
 

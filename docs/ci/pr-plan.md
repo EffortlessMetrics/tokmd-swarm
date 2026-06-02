@@ -60,7 +60,7 @@ docs route as `handoff_review_packet` instead of also appearing as generic
 ```json
 {
   "schema": "tokmd.proof_pack_route.v1",
-  "schema_version": 2,
+  "schema_version": 3,
   "changed_files": [
     {
       "path": "crates/tokmd/src/main.rs",
@@ -87,13 +87,23 @@ docs route as `handoff_review_packet` instead of also appearing as generic
       "lane": "build_test_windows",
       "status": "skipped_by_policy",
       "reason": "deep_lane_requires_label",
-      "matched_files": ["crates/tokmd/src/main.rs"]
+      "matched_files": ["crates/tokmd/src/main.rs"],
+      "lane_kind": "rust",
+      "tier": "risk-gated",
+      "blocking": true,
+      "expensive": true,
+      "required_labels": ["windows"]
     },
     {
       "lane": "proptest_smoke",
       "status": "skipped_by_policy",
       "reason": "deep_lane_requires_label",
-      "matched_files": ["crates/tokmd/src/main.rs"]
+      "matched_files": ["crates/tokmd/src/main.rs"],
+      "lane_kind": "property",
+      "tier": "risk-gated",
+      "blocking": true,
+      "expensive": false,
+      "required_labels": ["property-tests"]
     }
   ]
 }
@@ -101,7 +111,9 @@ docs route as `handoff_review_packet` instead of also appearing as generic
 
 The summary reason counts are an at-a-glance index over the detailed
 `skipped_by_policy` array. Use the per-lane entries for matched files and
-lane-specific evidence:
+lane-specific evidence. Route receipt v3 also records `lane_kind`, `tier`,
+`blocking`, `expensive`, and `required_labels` for each skipped row so skipped
+deep proof can be audited without opening the lane whitelist:
 
 - `deep_lane_requires_label` means a matching surface has label-gated deep proof
   that was not requested.
