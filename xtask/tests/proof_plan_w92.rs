@@ -601,6 +601,63 @@ fn routed_rust_small_docs_explain_result_receipt_fields() {
 }
 
 #[test]
+fn generic_ci_docs_open_route_receipt_before_proof_plan() {
+    let artifacts = fs::read_to_string(workspace_root().join("docs/artifacts.md"))
+        .expect("artifact glossary should be readable");
+    let user_paths = fs::read_to_string(workspace_root().join("docs/user-paths.md"))
+        .expect("user paths docs should be readable");
+    let workflows = fs::read_to_string(workspace_root().join("docs/workflows.md"))
+        .expect("workflow docs should be readable");
+    let user_ci = user_paths
+        .split("## Read CI Proof Evidence")
+        .nth(1)
+        .expect("user paths should include the CI proof evidence section")
+        .split("## Try Browser Mode")
+        .next()
+        .expect("user paths CI section should end before browser mode");
+    let workflow_ci = workflows
+        .split("## Plan CI Proof Evidence")
+        .nth(1)
+        .expect("workflows should include the CI proof evidence section")
+        .split("## Summarize Proof Observations")
+        .next()
+        .expect("workflow CI section should end before proof observations");
+
+    assert!(
+        artifacts.contains(
+            "target/proof/affected.json`, `target/ci/proof-pack-route.json`, then `target/proof/proof-plan.json"
+        ),
+        "artifact glossary should put proof-pack-route.json between affected and proof-plan"
+    );
+
+    for docs in [user_ci, workflow_ci] {
+        assert!(
+            docs.contains("--route-json-out target/ci/proof-pack-route.json"),
+            "generic CI docs should show how to write the route receipt"
+        );
+        let affected_idx = docs
+            .find("target/proof/affected.json")
+            .expect("docs should mention affected.json");
+        let route_idx = docs
+            .find("target/ci/proof-pack-route.json")
+            .expect("docs should mention proof-pack-route.json");
+        let proof_plan_idx = docs
+            .find("target/proof/proof-plan.json")
+            .expect("docs should mention proof-plan.json");
+        assert!(
+            affected_idx < route_idx && route_idx < proof_plan_idx,
+            "generic CI docs should open affected, then proof-pack-route, then proof-plan"
+        );
+        assert!(
+            docs.contains("skipped-by-policy")
+                || docs.contains("skipped_by_policy")
+                || docs.contains("skipped by policy"),
+            "generic CI docs should explain skipped-by-policy route evidence"
+        );
+    }
+}
+
+#[test]
 fn coverage_workflow_preflights_route_before_expensive_coverage() {
     let workflow = fs::read_to_string(workspace_root().join(".github/workflows/coverage.yml"))
         .expect("coverage workflow should be readable");

@@ -53,6 +53,14 @@ cargo xtask affected \
   --head HEAD \
   --json-output target/proof/affected.json
 
+cargo xtask ci-plan \
+  --base origin/main \
+  --head HEAD \
+  --labels-json '[]' \
+  --json-out target/ci/ci-plan.json \
+  --route-json-out target/ci/proof-pack-route.json \
+  --no-budget-annotations
+
 cargo xtask proof \
   --profile affected \
   --base origin/main \
@@ -65,11 +73,14 @@ cargo xtask proof \
 Open first:
 
 1. `target/proof/affected.json`
-2. `target/proof/proof-plan.json`
-3. `target/proof/proof-evidence.json`
+2. `target/ci/proof-pack-route.json`
+3. `target/proof/proof-plan.json`
+4. `target/proof/proof-evidence.json`
 
 This tells you which files changed, which proof scopes matched, and which
-commands are required or advisory. It does not execute the planned proof.
+CI risk/proof packs and skipped-by-policy lanes explain route selection before
+reading which commands are required or advisory. It does not execute the
+planned proof.
 
 ## Summarize Proof Observations
 

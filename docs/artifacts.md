@@ -26,7 +26,7 @@ each section.
 | Inspect a repo | Markdown command output or `receipt.json` | Gives the smallest stable repo-shape fact set. |
 | Review a PR | `.tokmd/review/comment.md`, then `.tokmd/review/review-map.md` | Gives the summary, review-first order, evidence state, and reproduction commands. |
 | Verify a review packet | `target/tokmd/review-packet-check.json` | Shows whether packet-local manifest paths, schemas, and hashes were checked. |
-| Understand CI evidence | `target/proof/affected.json`, then `target/proof/proof-plan.json` | Shows changed files, matched proof scopes, and selected proof commands. |
+| Understand CI evidence | `target/proof/affected.json`, `target/ci/proof-pack-route.json`, then `target/proof/proof-plan.json` | Shows changed files, matched proof scopes, CI risk/proof-pack routing, skipped-by-policy lanes, and selected proof commands. |
 | Read CI actuals | `target/ci/ci-actuals.json`, then `target/ci/needs.json` and `target/ci/timings.json` if uploaded | Shows aggregate job inputs, per-required-job results, and timing coverage; use hosted checks for the merge verdict. |
 | Debug routed Rust Small | `target/ci/routed-rust-small-result.json`, then the selected implementation job log | Shows the router decision, selected job/result, sibling job results, and rerun accounting before reading runner logs. |
 | Check executed required proof | `target/proof-run/proof-run-summary.json` | Shows which required proof commands actually ran and passed or failed. |
