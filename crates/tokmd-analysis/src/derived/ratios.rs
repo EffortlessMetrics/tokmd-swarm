@@ -13,8 +13,16 @@ pub(super) fn build_doc_density_report(
         "total",
         comments,
         code_and_comments,
-        group_ratio(rows, |r| r.lang.as_str(), |r| (r.comments, r.code)),
-        group_ratio(rows, |r| r.module.as_str(), |r| (r.comments, r.code)),
+        group_ratio(
+            rows,
+            |r| r.lang.as_str(),
+            |r| (r.comments, r.comments + r.code),
+        ),
+        group_ratio(
+            rows,
+            |r| r.module.as_str(),
+            |r| (r.comments, r.comments + r.code),
+        ),
     )
 }
 

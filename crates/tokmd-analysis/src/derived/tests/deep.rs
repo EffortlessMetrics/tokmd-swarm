@@ -79,6 +79,32 @@ mod density {
     }
 
     #[test]
+    fn doc_density_by_lang_caps_pure_markdown_at_one() {
+        let rows = vec![make_row(
+            "docs/guide.md",
+            "docs",
+            "Markdown",
+            0,
+            7110,
+            0,
+            100_000,
+            20_000,
+        )];
+        let report = derive_report(&export(rows), None);
+        let markdown = report
+            .doc_density
+            .by_lang
+            .iter()
+            .find(|row| row.key == "Markdown")
+            .expect("Markdown doc density row");
+
+        assert_eq!(markdown.numerator, 7110);
+        assert_eq!(markdown.denominator, 7110);
+        assert_eq!(markdown.denominator - markdown.numerator, 0);
+        assert!((markdown.ratio - 1.0).abs() < 0.001);
+    }
+
+    #[test]
     fn whitespace_ratio_is_blanks_over_code_plus_comments() {
         let rows = vec![make_row("src/a.rs", "src", "Rust", 60, 20, 20, 4000, 800)];
         let report = derive_report(&export(rows), None);
@@ -96,10 +122,10 @@ mod density {
         ];
         let report = derive_report(&export(rows), None);
         assert_eq!(report.doc_density.by_lang.len(), 2);
-        // by_lang ratio = comments / code (not code+comments)
-        // Python: 50/50 = 1.0, Rust: 20/80 = 0.25
+        // by_lang ratio = comments / (code + comments).
+        // Python: 50/100 = 0.5, Rust: 20/100 = 0.2.
         assert_eq!(report.doc_density.by_lang[0].key, "Python");
-        assert!((report.doc_density.by_lang[0].ratio - 1.0).abs() < 0.001);
+        assert!((report.doc_density.by_lang[0].ratio - 0.5).abs() < 0.001);
     }
 }
 

@@ -496,3 +496,22 @@ fn derived_file_table_renders_dash_for_missing_optional_metrics() {
         "expected dashes for missing optional metrics, got:\n{md}"
     );
 }
+
+#[test]
+fn derived_doc_density_by_lang_renders_pure_markdown_as_full_docs_zero_code() {
+    let mut derived = sample_derived();
+    derived.doc_density.by_lang = vec![RatioRow {
+        key: "Markdown".to_string(),
+        numerator: 7110,
+        denominator: 7110,
+        ratio: 1.0,
+    }];
+    let mut receipt = minimal_receipt();
+    receipt.derived = Some(derived);
+    let md = render_md(&receipt);
+
+    assert!(
+        md.contains("|Markdown|100.0%|7110|0|"),
+        "expected pure Markdown to render as 100.0% with Code=0, got:\n{md}"
+    );
+}
