@@ -62,8 +62,15 @@ pub fn build_effort_report(
         build_drivers(&size_basis, derived, git, complexity, api_surface, dup);
 
     let delta = match (&req.base_ref, &req.head_ref) {
-        (Some(base), Some(head)) if has_host_root(root) => {
-            build_delta(root, export, git, base.as_str(), head.as_str()).ok()
+        (Some(base), Some(head)) if has_host_root(root) => Some(build_delta(
+            root,
+            export,
+            git,
+            base.as_str(),
+            head.as_str(),
+        )?),
+        (Some(_), Some(_)) => {
+            anyhow::bail!("effort delta skipped: host root unavailable for base/head references")
         }
         _ => None,
     };

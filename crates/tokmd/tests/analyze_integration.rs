@@ -134,6 +134,101 @@ fn analyze_health_skips_dangling_symlink_without_partial_status() {
 }
 
 #[test]
+fn analyze_effort_bad_base_ref_fails_with_ref_name() {
+    if !common::git_available() {
+        return;
+    }
+    let dir = tempdir().expect("should create temp dir");
+    if !common::init_git_repo(dir.path()) {
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("src")).expect("create src dir");
+    std::fs::write(dir.path().join("src/main.rs"), "pub const X: i32 = 1;\n")
+        .expect("write src file");
+    assert!(common::git_add_commit(dir.path(), "initial"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .arg("--no-progress")
+        .arg("analyze")
+        .arg(".")
+        .arg("--preset")
+        .arg("estimate")
+        .arg("--format")
+        .arg("json")
+        .arg("--effort-base-ref")
+        .arg("nope-xyz-123")
+        .arg("--effort-head-ref")
+        .arg("HEAD")
+        .output()
+        .expect("failed to execute tokmd analyze");
+
+    assert!(
+        !output.status.success(),
+        "bad effort ref should fail instead of writing a generic receipt"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("invalid UTF-8");
+    assert!(
+        stderr.contains("could not resolve ref 'nope-xyz-123'"),
+        "stderr should name the unresolved ref, got: {stderr}"
+    );
+}
+
+#[test]
+fn analyze_effort_valid_refs_emit_delta() {
+    if !common::git_available() {
+        return;
+    }
+    let dir = tempdir().expect("should create temp dir");
+    if !common::init_git_repo(dir.path()) {
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("src")).expect("create src dir");
+    let file = dir.path().join("src/main.rs");
+    std::fs::write(&file, "pub const X: i32 = 1;\n").expect("write initial file");
+    assert!(common::git_add_commit(dir.path(), "initial"));
+    std::fs::write(&file, "pub const X: i32 = 1;\npub const Y: i32 = 2;\n")
+        .expect("write changed file");
+    assert!(common::git_add_commit(dir.path(), "change"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .arg("--no-progress")
+        .arg("analyze")
+        .arg(".")
+        .arg("--preset")
+        .arg("estimate")
+        .arg("--format")
+        .arg("json")
+        .arg("--effort-base-ref")
+        .arg("HEAD~1")
+        .arg("--effort-head-ref")
+        .arg("HEAD")
+        .output()
+        .expect("failed to execute tokmd analyze");
+
+    assert!(
+        output.status.success(),
+        "valid effort refs should succeed: {:?}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("invalid UTF-8");
+    let json: Value = serde_json::from_str(&stdout).expect("invalid JSON output");
+    let delta = json["effort"]["delta"]
+        .as_object()
+        .expect("effort delta should be present");
+
+    assert_eq!(delta["base"].as_str(), Some("HEAD~1"));
+    assert_eq!(delta["head"].as_str(), Some("HEAD"));
+    assert!(
+        delta["files_changed"].as_u64().unwrap_or(0) >= 1,
+        "expected changed files in delta: {delta:?}"
+    );
+}
+
+#[test]
 fn analyze_writes_json_to_output_dir() {
     let dir = tempdir().expect("should create temp dir");
     let out = dir.path();
