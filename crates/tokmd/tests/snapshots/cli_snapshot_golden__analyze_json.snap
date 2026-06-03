@@ -68,14 +68,14 @@ expression: normalize(&stdout)
         {
           "key": "Markdown",
           "numerator": 6,
-          "denominator": 4,
-          "ratio": 1.5
+          "denominator": 10,
+          "ratio": 0.6
         },
         {
           "key": "Rust",
           "numerator": 2,
-          "denominator": 13,
-          "ratio": 0.1538
+          "denominator": 15,
+          "ratio": 0.1333
         },
         {
           "key": "JavaScript",
@@ -94,8 +94,8 @@ expression: normalize(&stdout)
         {
           "key": "(root)",
           "numerator": 8,
-          "denominator": 23,
-          "ratio": 0.3478
+          "denominator": 31,
+          "ratio": 0.2581
         },
         {
           "key": "src",
