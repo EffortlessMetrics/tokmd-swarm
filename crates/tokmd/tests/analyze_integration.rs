@@ -44,6 +44,49 @@ fn analyze_receipt_preset_json_smoke() {
 }
 
 #[test]
+fn analyze_health_scoped_directory_does_not_scan_unrelated_todos() {
+    let dir = tempdir().expect("should create temp dir");
+    let src_dir = dir.path().join("src");
+    let test_dir = dir.path().join("test");
+    std::fs::create_dir_all(&src_dir).expect("create src dir");
+    std::fs::create_dir_all(&test_dir).expect("create test dir");
+    std::fs::create_dir_all(dir.path().join(".git")).expect("create .git marker");
+    std::fs::write(src_dir.join("main.rs"), "pub const X: i32 = 1;\n").expect("write src file");
+    std::fs::write(
+        test_dir.join("leak.rs"),
+        "// TODO unrelated one\n// TODO unrelated two\npub const Y: i32 = 1;\n",
+    )
+    .expect("write unrelated file");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .arg("--no-progress")
+        .arg("analyze")
+        .arg("src")
+        .arg("--preset")
+        .arg("health")
+        .arg("--format")
+        .arg("json")
+        .arg("--no-git")
+        .output()
+        .expect("failed to execute tokmd analyze");
+
+    assert!(
+        output.status.success(),
+        "tokmd analyze failed: {:?}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("invalid UTF-8");
+    let json: Value = serde_json::from_str(&stdout).expect("invalid JSON output");
+
+    assert_eq!(json["status"], "complete");
+    assert_eq!(json["derived"]["todo"]["total"].as_u64(), Some(0));
+    assert_eq!(json["derived"]["totals"]["files"].as_u64(), Some(1));
+}
+
+#[test]
 fn analyze_writes_json_to_output_dir() {
     let dir = tempdir().expect("should create temp dir");
     let out = dir.path();

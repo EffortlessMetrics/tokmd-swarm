@@ -64,6 +64,7 @@ fn preset_plan(preset: AnalysisPreset) -> PresetPlan {
 pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisReceipt> {
     let mut warnings = Vec::new();
     let mut derived = setup::build_derived(&ctx.export, &req);
+    let analysis_roots = files::analysis_roots(&ctx.source);
     let source = setup::source_with_signature(ctx.source, derived.integrity.hash.clone());
 
     let plan = preset_plan(req.preset);
@@ -71,6 +72,7 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
     let has_host_root = files::has_host_root(&ctx.root);
     let files = files::collect_required_files(
         &ctx.root,
+        &analysis_roots,
         &plan,
         req.limits.max_files,
         has_host_root,
