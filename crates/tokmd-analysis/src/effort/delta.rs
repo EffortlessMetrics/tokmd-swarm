@@ -39,6 +39,12 @@ pub fn build_delta(
     #[cfg(feature = "git")]
     {
         let repo_root = tokmd_git::repo_root(root).context("failed to locate git repository")?;
+        if !tokmd_git::rev_exists(&repo_root, &base) {
+            anyhow::bail!("effort delta skipped: could not resolve ref '{}'", base);
+        }
+        if !tokmd_git::rev_exists(&repo_root, &head) {
+            anyhow::bail!("effort delta skipped: could not resolve ref '{}'", head);
+        }
 
         let changed = tokmd_git::get_added_lines(&repo_root, &base, &head, GitRangeMode::TwoDot)
             .context("failed to compute changed files")?;
@@ -214,5 +220,51 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = build_delta(dir.path(), &export, None, "HEAD~1", "HEAD").unwrap_err();
         assert!(err.to_string().contains("tokmd-git feature"));
+    }
+
+    #[cfg(feature = "git")]
+    #[test]
+    fn build_delta_reports_unresolved_refs() {
+        if !tokmd_git::git_available() {
+            return;
+        }
+
+        let export = ExportData {
+            rows: Vec::new(),
+            module_roots: Vec::new(),
+            module_depth: 1,
+            children: tokmd_types::ChildIncludeMode::Separate,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        git(&dir).arg("init").status().unwrap();
+        git(&dir)
+            .args(["config", "user.email", "tokmd@example.com"])
+            .status()
+            .unwrap();
+        git(&dir)
+            .args(["config", "user.name", "tokmd"])
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+        git(&dir).args(["add", "main.rs"]).status().unwrap();
+        git(&dir)
+            .args(["commit", "-m", "initial"])
+            .status()
+            .unwrap();
+
+        let err = build_delta(dir.path(), &export, None, "nope-xyz-123", "HEAD").unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("could not resolve ref 'nope-xyz-123'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[cfg(feature = "git")]
+    fn git(dir: &tempfile::TempDir) -> std::process::Command {
+        let mut cmd = tokmd_git::git_cmd();
+        cmd.arg("-C").arg(dir.path());
+        cmd
     }
 }

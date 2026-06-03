@@ -168,6 +168,8 @@ fn analysis_receipt_with_all_none_enrichers_roundtrips() {
 fn preset_names_stable() {
     let known_presets = [
         "receipt",
+        "estimate",
+        "bun-ub",
         "health",
         "risk",
         "supply",

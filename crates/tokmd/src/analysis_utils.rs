@@ -29,10 +29,7 @@ pub(crate) fn child_include_to_string(mode: tokmd_types::ChildIncludeMode) -> St
 }
 
 pub(crate) fn preset_to_string(preset: cli::AnalysisPreset) -> String {
-    let key = format!("{:?}", preset).to_lowercase();
-    analysis::PresetKind::from_str(&key)
-        .map(|preset| preset.as_str().to_string())
-        .unwrap_or(key)
+    map_preset(preset).as_str().to_string()
 }
 
 pub(crate) fn format_to_string(format: tokmd_types::AnalysisFormat) -> String {
@@ -61,6 +58,7 @@ pub(crate) fn map_preset(preset: cli::AnalysisPreset) -> analysis::AnalysisPrese
     match preset {
         cli::AnalysisPreset::Receipt => analysis::AnalysisPreset::Receipt,
         cli::AnalysisPreset::Estimate => analysis::AnalysisPreset::Estimate,
+        cli::AnalysisPreset::BunUb => analysis::AnalysisPreset::BunUb,
         cli::AnalysisPreset::Health => analysis::AnalysisPreset::Health,
         cli::AnalysisPreset::Risk => analysis::AnalysisPreset::Risk,
         cli::AnalysisPreset::Supply => analysis::AnalysisPreset::Supply,
@@ -162,6 +160,7 @@ mod tests {
     fn test_preset_to_string_all_variants() {
         assert_eq!(preset_to_string(cli::AnalysisPreset::Receipt), "receipt");
         assert_eq!(preset_to_string(cli::AnalysisPreset::Estimate), "estimate");
+        assert_eq!(preset_to_string(cli::AnalysisPreset::BunUb), "bun-ub");
         assert_eq!(preset_to_string(cli::AnalysisPreset::Health), "health");
         assert_eq!(preset_to_string(cli::AnalysisPreset::Risk), "risk");
         assert_eq!(preset_to_string(cli::AnalysisPreset::Supply), "supply");
@@ -215,6 +214,10 @@ mod tests {
         assert!(matches!(
             map_preset(cli::AnalysisPreset::Estimate),
             analysis::AnalysisPreset::Estimate
+        ));
+        assert!(matches!(
+            map_preset(cli::AnalysisPreset::BunUb),
+            analysis::AnalysisPreset::BunUb
         ));
         assert!(matches!(
             map_preset(cli::AnalysisPreset::Health),

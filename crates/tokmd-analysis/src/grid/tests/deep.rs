@@ -26,6 +26,7 @@ mod preset_names {
     const DOCUMENTED_PRESETS: &[&str] = &[
         "receipt",
         "estimate",
+        "bun-ub",
         "health",
         "risk",
         "supply",
@@ -73,12 +74,12 @@ mod preset_names {
     }
 
     #[test]
-    fn as_str_values_are_all_lowercase_alphabetic() {
+    fn as_str_values_are_all_lowercase_kebab_case() {
         for kind in PresetKind::all() {
             let name = kind.as_str();
             assert!(
-                name.chars().all(|c| c.is_ascii_lowercase()),
-                "Preset name '{}' contains non-lowercase-alpha characters",
+                name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+                "Preset name '{}' contains non-lowercase-kebab-case characters",
                 name
             );
             assert!(!name.is_empty(), "Preset name should not be empty");
@@ -348,7 +349,7 @@ mod enricher_selection {
     }
 
     #[test]
-    fn receipt_estimate_and_deep_enable_dup() {
+    fn receipt_estimate_bun_ub_and_deep_enable_dup() {
         let with_dup: Vec<PresetKind> = PRESET_GRID
             .iter()
             .filter(|r| r.plan.dup)
@@ -356,24 +357,26 @@ mod enricher_selection {
             .collect();
         assert!(with_dup.contains(&PresetKind::Receipt));
         assert!(with_dup.contains(&PresetKind::Estimate));
+        assert!(with_dup.contains(&PresetKind::BunUb));
         assert!(with_dup.contains(&PresetKind::Deep));
-        assert_eq!(with_dup.len(), 3);
+        assert_eq!(with_dup.len(), 4);
     }
 
     #[test]
-    fn only_architecture_and_deep_enable_imports() {
+    fn architecture_bun_ub_and_deep_enable_imports() {
         let with_imports: Vec<PresetKind> = PRESET_GRID
             .iter()
             .filter(|r| r.plan.imports)
             .map(|r| r.preset)
             .collect();
         assert!(with_imports.contains(&PresetKind::Architecture));
+        assert!(with_imports.contains(&PresetKind::BunUb));
         assert!(with_imports.contains(&PresetKind::Deep));
-        assert_eq!(with_imports.len(), 2);
+        assert_eq!(with_imports.len(), 3);
     }
 
     #[test]
-    fn receipt_estimate_risk_identity_git_deep_enable_git_flag() {
+    fn receipt_estimate_bun_ub_risk_identity_git_deep_enable_git_flag() {
         let with_git: Vec<PresetKind> = PRESET_GRID
             .iter()
             .filter(|r| r.plan.git)
@@ -381,11 +384,12 @@ mod enricher_selection {
             .collect();
         assert!(with_git.contains(&PresetKind::Receipt));
         assert!(with_git.contains(&PresetKind::Estimate));
+        assert!(with_git.contains(&PresetKind::BunUb));
         assert!(with_git.contains(&PresetKind::Risk));
         assert!(with_git.contains(&PresetKind::Identity));
         assert!(with_git.contains(&PresetKind::Git));
         assert!(with_git.contains(&PresetKind::Deep));
-        assert_eq!(with_git.len(), 6);
+        assert_eq!(with_git.len(), 7);
     }
 
     #[test]
@@ -447,7 +451,7 @@ mod enricher_selection {
     }
 
     #[test]
-    fn receipt_estimate_health_risk_deep_enable_complexity() {
+    fn receipt_estimate_bun_ub_health_risk_deep_enable_complexity() {
         let with_complexity: Vec<PresetKind> = PRESET_GRID
             .iter()
             .filter(|r| r.plan.complexity)
@@ -455,14 +459,15 @@ mod enricher_selection {
             .collect();
         assert!(with_complexity.contains(&PresetKind::Receipt));
         assert!(with_complexity.contains(&PresetKind::Estimate));
+        assert!(with_complexity.contains(&PresetKind::BunUb));
         assert!(with_complexity.contains(&PresetKind::Health));
         assert!(with_complexity.contains(&PresetKind::Risk));
         assert!(with_complexity.contains(&PresetKind::Deep));
-        assert_eq!(with_complexity.len(), 5);
+        assert_eq!(with_complexity.len(), 6);
     }
 
     #[test]
-    fn receipt_estimate_architecture_deep_enable_api_surface() {
+    fn receipt_estimate_bun_ub_architecture_deep_enable_api_surface() {
         let with_api: Vec<PresetKind> = PRESET_GRID
             .iter()
             .filter(|r| r.plan.api_surface)
@@ -470,9 +475,10 @@ mod enricher_selection {
             .collect();
         assert!(with_api.contains(&PresetKind::Receipt));
         assert!(with_api.contains(&PresetKind::Estimate));
+        assert!(with_api.contains(&PresetKind::BunUb));
         assert!(with_api.contains(&PresetKind::Architecture));
         assert!(with_api.contains(&PresetKind::Deep));
-        assert_eq!(with_api.len(), 4);
+        assert_eq!(with_api.len(), 5);
     }
 }
 
@@ -537,7 +543,7 @@ mod deep_superset {
     }
 
     #[test]
-    fn deep_enables_all_twelve_non_fun_flags() {
+    fn deep_enables_all_non_fun_flags() {
         let plan = preset_plan_for(PresetKind::Deep);
         assert!(plan.assets);
         assert!(plan.deps);

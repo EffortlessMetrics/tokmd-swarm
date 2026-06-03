@@ -38,7 +38,7 @@ fn as_str_values_are_all_lowercase_ascii() {
     for kind in PresetKind::all() {
         let s = kind.as_str();
         assert!(
-            s.bytes().all(|b| b.is_ascii_lowercase()),
+            s.bytes().all(|b| b.is_ascii_lowercase() || b == b'-'),
             "as_str for {:?} has non-lowercase chars",
             kind
         );
@@ -62,8 +62,8 @@ fn as_str_values_contain_no_whitespace() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn all_returns_exactly_twelve_presets() {
-    assert_eq!(PresetKind::all().len(), 12);
+fn all_returns_exactly_thirteen_presets() {
+    assert_eq!(PresetKind::all().len(), 13);
 }
 
 #[test]

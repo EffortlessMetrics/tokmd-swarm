@@ -8,8 +8,8 @@ use crate::grid::{
 // ── Scenario: PRESET_KINDS array completeness ──────────────────────────
 
 #[test]
-fn preset_kinds_array_has_exactly_12_entries() {
-    assert_eq!(PRESET_KINDS.len(), 12);
+fn preset_kinds_array_has_exactly_13_entries() {
+    assert_eq!(PRESET_KINDS.len(), 13);
 }
 
 #[test]
@@ -56,8 +56,8 @@ fn from_str_returns_none_for_unknown_names() {
 // ── Scenario: PRESET_GRID coverage ─────────────────────────────────────
 
 #[test]
-fn preset_grid_has_exactly_12_rows() {
-    assert_eq!(PRESET_GRID.len(), 12);
+fn preset_grid_has_exactly_13_rows() {
+    assert_eq!(PRESET_GRID.len(), 13);
 }
 
 #[test]
@@ -134,6 +134,24 @@ fn receipt_preset_enables_core_enrichers() {
 #[test]
 fn receipt_preset_needs_files() {
     assert!(preset_plan_for(PresetKind::Receipt).needs_files());
+}
+
+#[test]
+fn bun_ub_preset_enables_on_diff_review_signals() {
+    let plan = preset_plan_for(PresetKind::BunUb);
+    assert!(!plan.assets);
+    assert!(!plan.deps);
+    assert!(!plan.todo);
+    assert!(plan.dup);
+    assert!(plan.imports);
+    assert!(plan.git);
+    assert!(!plan.fun);
+    assert!(!plan.archetype);
+    assert!(!plan.topics);
+    assert!(!plan.entropy);
+    assert!(!plan.license);
+    assert!(plan.complexity);
+    assert!(plan.api_surface);
 }
 
 // ── Scenario: Deep preset enables everything (except fun) ──────────────
@@ -270,6 +288,7 @@ fn needs_files_is_true_when_any_file_dependent_flag_is_set() {
     let needs_files_presets = [
         PresetKind::Receipt,      // dup, complexity, api_surface
         PresetKind::Estimate,     // dup, complexity, api_surface
+        PresetKind::BunUb,        // dup, imports, git, complexity, api_surface
         PresetKind::Health,       // todo
         PresetKind::Supply,       // assets, deps
         PresetKind::Architecture, // imports, api_surface
@@ -301,7 +320,7 @@ fn needs_files_is_false_when_no_file_dependent_flags_set() {
 // ── Scenario: Presets with git flag set ─────────────────────────────────
 
 #[test]
-fn presets_requiring_git_include_receipt_estimate_risk_identity_git_deep() {
+fn presets_requiring_git_include_receipt_estimate_bun_ub_risk_identity_git_deep() {
     let git_presets: Vec<PresetKind> = PRESET_GRID
         .iter()
         .filter(|r| r.plan.git)
@@ -309,11 +328,12 @@ fn presets_requiring_git_include_receipt_estimate_risk_identity_git_deep() {
         .collect();
     assert!(git_presets.contains(&PresetKind::Receipt));
     assert!(git_presets.contains(&PresetKind::Estimate));
+    assert!(git_presets.contains(&PresetKind::BunUb));
     assert!(git_presets.contains(&PresetKind::Risk));
     assert!(git_presets.contains(&PresetKind::Identity));
     assert!(git_presets.contains(&PresetKind::Git));
     assert!(git_presets.contains(&PresetKind::Deep));
-    assert_eq!(git_presets.len(), 6);
+    assert_eq!(git_presets.len(), 7);
 }
 
 // ── Scenario: DisabledFeature exhaustive warnings ──────────────────────
@@ -451,7 +471,7 @@ fn all_preset_names_are_lowercase_ascii() {
     for kind in PresetKind::all() {
         let name = kind.as_str();
         assert!(
-            name.chars().all(|c| c.is_ascii_lowercase()),
+            name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
             "preset name {name:?} contains non-lowercase-ascii chars"
         );
     }

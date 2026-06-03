@@ -31,7 +31,7 @@ proptest! {
     fn as_str_always_returns_lowercase_ascii(kind in preset_kind_strategy()) {
         let name = kind.as_str();
         prop_assert!(!name.is_empty());
-        prop_assert!(name.chars().all(|c| c.is_ascii_lowercase()));
+        prop_assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
     }
 
     /// For any PresetKind, preset_plan_for matches the grid entry.

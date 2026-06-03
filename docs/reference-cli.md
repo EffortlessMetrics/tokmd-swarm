@@ -300,7 +300,7 @@ Options:
       --analysis <ANALYSIS>
           Also emit analysis receipts using this preset
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --redact <REDACT>
           Redact paths (and optionally module names) for safer copy/paste into LLMs
@@ -368,7 +368,7 @@ Options:
       --preset <PRESET>
           Analysis preset to run [default: receipt]
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --format <FORMAT>
           Output format [default: md]
@@ -490,6 +490,7 @@ Examples:
 | :--- | :--- |
 | `receipt` | Core derived metrics (totals, density, distribution, COCOMO) |
 | `estimate` | Effort-focused analysis with model selection and optional base/head deltas |
+| `bun-ub` | Scoped Bun UB review evidence: effort delta, git/churn, imports, complexity, API surface, and duplicate signals |
 | `health` | `receipt` + TODO density |
 | `risk` | `health` + git hotspots, coupling, freshness |
 | `supply` | `risk` + assets + dependency lockfile summary |
@@ -514,6 +515,9 @@ tokmd analyze --preset deep --format json --output-dir .runs/analysis
 
 # Analyze a previous run
 tokmd analyze .runs/baseline --preset health
+
+# Produce scoped Bun UB review-bot evidence
+tokmd analyze src/runtime/api --preset bun-ub --effort-base-ref BASE --effort-head-ref HEAD --format md --no-progress
 ```
 
 ### `tokmd baseline`
@@ -611,7 +615,7 @@ Options:
       --preset <PRESET>
           Optional analysis preset to use for the badge
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --git
           Force-enable git-based metrics
@@ -1552,7 +1556,7 @@ Options:
       --preset <PRESET>
           Analysis preset (for compute-then-gate mode)
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --format <FORMAT>
           Output format

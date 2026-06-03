@@ -103,11 +103,14 @@ pub(crate) fn handle(args: cli::CockpitArgs, _global: &cli::GlobalArgs) -> Resul
             tokmd_cockpit::render::write_artifacts(artifacts_dir, &receipt)?;
         }
         if let Some(review_packet_dir) = &args.review_packet_dir {
-            tokmd_cockpit::render::write_review_packet_with_imported_evidence(
+            let bun_ub_sensor =
+                tokmd_cockpit::render::BunUbSensorEvidence::from_repo_root(&repo_root);
+            tokmd_cockpit::render::write_review_packet_with_imported_evidence_and_bun_ub_sensor(
                 review_packet_dir,
                 &receipt,
                 &proof_evidence_inputs,
                 doc_artifacts_evidence.as_ref(),
+                bun_ub_sensor,
             )?;
         }
 
