@@ -170,8 +170,8 @@ fn preset_kind_from_str_unknown_returns_none() {
 
 #[test]
 fn preset_kinds_count() {
-    assert_eq!(PRESET_KINDS.len(), 12);
-    assert_eq!(PresetKind::all().len(), 12);
+    assert_eq!(PRESET_KINDS.len(), 13);
+    assert_eq!(PresetKind::all().len(), 13);
 }
 
 #[test]

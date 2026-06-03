@@ -4,6 +4,7 @@
 pub enum PresetKind {
     Receipt,
     Estimate,
+    BunUb,
     Health,
     Risk,
     Supply,
@@ -21,6 +22,7 @@ impl PresetKind {
         match self {
             Self::Receipt => "receipt",
             Self::Estimate => "estimate",
+            Self::BunUb => "bun-ub",
             Self::Health => "health",
             Self::Risk => "risk",
             Self::Supply => "supply",
@@ -39,6 +41,7 @@ impl PresetKind {
         match value {
             "receipt" => Some(Self::Receipt),
             "estimate" => Some(Self::Estimate),
+            "bun-ub" => Some(Self::BunUb),
             "health" => Some(Self::Health),
             "risk" => Some(Self::Risk),
             "supply" => Some(Self::Supply),
@@ -54,9 +57,10 @@ impl PresetKind {
     }
 }
 
-pub const PRESET_KINDS: [PresetKind; 12] = [
+pub const PRESET_KINDS: [PresetKind; 13] = [
     PresetKind::Receipt,
     PresetKind::Estimate,
+    PresetKind::BunUb,
     PresetKind::Health,
     PresetKind::Risk,
     PresetKind::Supply,
@@ -70,7 +74,7 @@ pub const PRESET_KINDS: [PresetKind; 12] = [
 ];
 
 impl PresetKind {
-    pub const fn all() -> &'static [PresetKind; 12] {
+    pub const fn all() -> &'static [PresetKind; 13] {
         &PRESET_KINDS
     }
 }
@@ -127,7 +131,7 @@ pub struct PresetGridRow {
     pub plan: PresetPlan,
 }
 
-pub const PRESET_GRID: [PresetGridRow; 12] = [
+pub const PRESET_GRID: [PresetGridRow; 13] = [
     PresetGridRow {
         preset: PresetKind::Receipt,
         plan: PresetPlan {
@@ -160,6 +164,30 @@ pub const PRESET_GRID: [PresetGridRow; 12] = [
             todo: false,
             dup: true,
             imports: false,
+            git: true,
+            fun: false,
+            archetype: false,
+            topics: false,
+            entropy: false,
+            license: false,
+            complexity: true,
+            api_surface: true,
+            #[cfg(all(feature = "halstead", feature = "content", feature = "walk"))]
+            halstead: false,
+            #[cfg(feature = "git")]
+            churn: true,
+            #[cfg(feature = "git")]
+            fingerprint: false,
+        },
+    },
+    PresetGridRow {
+        preset: PresetKind::BunUb,
+        plan: PresetPlan {
+            assets: false,
+            deps: false,
+            todo: false,
+            dup: true,
+            imports: true,
             git: true,
             fun: false,
             archetype: false,

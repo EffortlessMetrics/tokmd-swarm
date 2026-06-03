@@ -116,3 +116,9 @@ id = "spec-rails-style-guide"
 kind = "style-guide"
 path = "docs/spec-style.md"
 status = "active"
+
+[[artifact]]
+id = "repo-control-plane-tool-substrate"
+kind = "adr"
+path = "docs/adr/0012-repo-control-plane-tool-substrate.md"
+status = "accepted"

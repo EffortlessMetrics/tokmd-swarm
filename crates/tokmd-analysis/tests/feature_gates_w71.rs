@@ -514,7 +514,7 @@ fn content_disabled_features_mention_content() {
     }
 }
 
-/// Grid has exactly 12 presets matching PRESET_KINDS.
+/// Grid has every preset matching PRESET_KINDS.
 #[test]
 fn grid_covers_all_preset_kinds() {
     assert_eq!(PRESET_GRID.len(), PRESET_KINDS.len());

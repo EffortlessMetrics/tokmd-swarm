@@ -4,6 +4,9 @@ use crate::doc_artifacts_evidence::DocArtifactsEvidenceInput;
 use crate::proof_evidence::ProofEvidenceInput;
 use crate::{CockpitReceipt, GateStatus, RiskLevel};
 
+use super::bun_ub_sensor::{
+    BUN_UB_ANALYZE_JSON_PATH, BUN_UB_ANALYZE_MD_PATH, BunUbSensorEvidence, receipt_has_bun_ub_scope,
+};
 use super::evidence::{doc_artifacts_expected, evidence_counts};
 use super::proof_summary::proof_evidence_summary;
 
@@ -163,18 +166,42 @@ pub(super) fn render_review_packet_comment_md(
     receipt: &CockpitReceipt,
     proof_inputs: &[ProofEvidenceInput],
     doc_artifacts: Option<&DocArtifactsEvidenceInput>,
+    bun_ub_sensor: BunUbSensorEvidence,
 ) -> String {
     use std::fmt::Write;
 
     let mut s = render_comment_md(receipt);
     write_proof_evidence_summary(&mut s, receipt, proof_inputs);
     write_doc_artifacts_summary(&mut s, receipt, doc_artifacts);
+    write_bun_ub_sensor_summary(&mut s, receipt, bun_ub_sensor);
     let _ = writeln!(s, "**Review packet artifacts**:");
     let _ = writeln!(s, "- [Evidence gates](evidence.json)");
     let _ = writeln!(s, "- [Review map](review-map.md)");
     let _ = writeln!(s, "- [Full cockpit receipt](cockpit.json)");
     let _ = writeln!(s);
     s
+}
+
+fn write_bun_ub_sensor_summary(
+    s: &mut String,
+    receipt: &CockpitReceipt,
+    sensor: BunUbSensorEvidence,
+) {
+    use std::fmt::Write;
+
+    if !receipt_has_bun_ub_scope(receipt) {
+        return;
+    }
+
+    let _ = writeln!(s, "**Bun UB sensor artifacts**: {}.", sensor.status());
+    let _ = writeln!(s, "- {BUN_UB_ANALYZE_MD_PATH}");
+    let _ = writeln!(s, "- {BUN_UB_ANALYZE_JSON_PATH}");
+    let missing = sensor.missing_paths();
+    if !missing.is_empty() {
+        let _ = writeln!(s, "- Missing: {}", missing.join(", "));
+    }
+    let _ = writeln!(s, "- Regeneration commands are listed in review-map.md.");
+    let _ = writeln!(s);
 }
 
 fn write_doc_artifacts_summary(

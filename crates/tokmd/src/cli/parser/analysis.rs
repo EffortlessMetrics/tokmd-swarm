@@ -128,6 +128,7 @@ pub struct CliAnalyzeArgs {
 pub enum AnalysisPreset {
     Receipt,
     Estimate,
+    BunUb,
     Health,
     Risk,
     Supply,
@@ -184,6 +185,7 @@ mod tests {
         for variant in [
             AnalysisPreset::Receipt,
             AnalysisPreset::Estimate,
+            AnalysisPreset::BunUb,
             AnalysisPreset::Health,
             AnalysisPreset::Risk,
             AnalysisPreset::Supply,
@@ -210,6 +212,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&AnalysisPreset::Deep).unwrap(),
             "\"deep\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AnalysisPreset::BunUb).unwrap(),
+            "\"bun-ub\""
         );
     }
 

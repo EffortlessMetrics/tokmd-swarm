@@ -445,14 +445,14 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(22))]
 
     #[test]
-    fn analysis_preset_names_valid(idx in 0usize..12) {
+    fn analysis_preset_names_valid(idx in 0usize..13) {
         let presets = [
-            "receipt", "estimate", "health", "risk", "supply", "architecture",
+            "receipt", "estimate", "bun-ub", "health", "risk", "supply", "architecture",
             "topics", "security", "identity", "git", "deep", "fun",
         ];
         let preset = presets[idx];
         prop_assert!(!preset.is_empty());
-        prop_assert!(preset.chars().all(|c| c.is_ascii_lowercase()));
+        prop_assert!(preset.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
     }
 }
 

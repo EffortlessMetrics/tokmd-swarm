@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::cli;
 use anyhow::{Context, Result, bail};
 use tokmd_analysis as analysis;
@@ -77,7 +79,14 @@ pub(crate) fn handle(args: cli::CliAnalyzeArgs, global: &cli::GlobalArgs) -> Res
         Some(cli::NearDupScope::Lang) => analysis::NearDupScope::Lang,
         Some(cli::NearDupScope::Global) => analysis::NearDupScope::Global,
     };
-    let effort = parse_effort_request(&args, preset == cli::AnalysisPreset::Estimate)?;
+    let effort = parse_effort_request(
+        &args,
+        matches!(
+            preset,
+            cli::AnalysisPreset::Estimate | cli::AnalysisPreset::BunUb
+        ),
+    )?;
+    validate_effort_refs(&bundle.root, effort.as_ref())?;
 
     let request = analysis::AnalysisRequest {
         preset: analysis_utils::map_preset(preset),
@@ -169,6 +178,43 @@ fn parse_effort_request(
         mc_iterations,
         mc_seed: args.mc_seed,
     }))
+}
+
+#[cfg(feature = "git")]
+fn validate_effort_refs(root: &Path, effort: Option<&analysis::EffortRequest>) -> Result<()> {
+    let Some(effort) = effort else {
+        return Ok(());
+    };
+    let (Some(base_ref), Some(head_ref)) = (&effort.base_ref, &effort.head_ref) else {
+        return Ok(());
+    };
+
+    if root.as_os_str().is_empty() {
+        bail!("effort delta skipped: host root unavailable for base/head references");
+    }
+    let repo_root = tokmd_git::repo_root(root).with_context(|| {
+        format!(
+            "effort delta skipped: failed to locate git repository from {}",
+            root.display()
+        )
+    })?;
+    for rev in [base_ref, head_ref] {
+        if !tokmd_git::rev_exists(&repo_root, rev) {
+            bail!("effort delta skipped: could not resolve ref '{}'", rev);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "git"))]
+fn validate_effort_refs(_root: &Path, effort: Option<&analysis::EffortRequest>) -> Result<()> {
+    let Some(effort) = effort else {
+        return Ok(());
+    };
+    if effort.base_ref.is_some() || effort.head_ref.is_some() {
+        bail!("effort delta skipped: delta estimation requires the tokmd-git feature");
+    }
+    Ok(())
 }
 
 fn map_effort_model(model: cli::EffortModelKind) -> Result<analysis::EffortModelKind> {

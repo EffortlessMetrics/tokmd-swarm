@@ -18,8 +18,8 @@ use crate::grid::{
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn grid_has_exactly_twelve_entries() {
-    assert_eq!(PRESET_GRID.len(), 12);
+fn grid_has_exactly_thirteen_entries() {
+    assert_eq!(PRESET_GRID.len(), 13);
 }
 
 #[test]
@@ -31,8 +31,8 @@ fn grid_covers_every_preset_kind() {
 }
 
 #[test]
-fn preset_kinds_array_has_twelve_entries() {
-    assert_eq!(PRESET_KINDS.len(), 12);
+fn preset_kinds_array_has_thirteen_entries() {
+    assert_eq!(PRESET_KINDS.len(), 13);
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn as_str_all_lowercase() {
     for kind in PresetKind::all() {
         let name = kind.as_str();
         assert!(
-            name.chars().all(|c| c.is_ascii_lowercase()),
+            name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
             "as_str for {:?} should be all lowercase: {}",
             kind,
             name
