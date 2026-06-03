@@ -7,8 +7,8 @@ use crate::grid::{
 // ── PresetKind basics ───────────────────────────────────────────────
 
 #[test]
-fn preset_kind_all_returns_twelve() {
-    assert_eq!(PresetKind::all().len(), 12);
+fn preset_kind_all_returns_thirteen() {
+    assert_eq!(PresetKind::all().len(), 13);
 }
 
 #[test]
@@ -59,8 +59,8 @@ fn preset_kind_clone_eq() {
 // ── PRESET_GRID ─────────────────────────────────────────────────────
 
 #[test]
-fn grid_has_twelve_rows() {
-    assert_eq!(PRESET_GRID.len(), 12);
+fn grid_has_thirteen_rows() {
+    assert_eq!(PRESET_GRID.len(), 13);
 }
 
 #[test]

@@ -171,6 +171,7 @@ fn needs_files_true_for_file_dependent_presets() {
     let file_presets = [
         PresetKind::Receipt,
         PresetKind::Estimate,
+        PresetKind::BunUb,
         PresetKind::Health,
         PresetKind::Supply,
         PresetKind::Architecture,
@@ -184,14 +185,14 @@ fn needs_files_true_for_file_dependent_presets() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// § 12. PRESET_GRID has exactly 12 entries
+// § 12. PRESET_GRID has exactly 13 entries
 // ═══════════════════════════════════════════════════════════════════
 
 #[test]
-fn grid_has_twelve_entries() {
-    assert_eq!(PRESET_GRID.len(), 12);
-    assert_eq!(PRESET_KINDS.len(), 12);
-    assert_eq!(PresetKind::all().len(), 12);
+fn grid_has_thirteen_entries() {
+    assert_eq!(PRESET_GRID.len(), 13);
+    assert_eq!(PRESET_KINDS.len(), 13);
+    assert_eq!(PresetKind::all().len(), 13);
 }
 
 // ═══════════════════════════════════════════════════════════════════

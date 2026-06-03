@@ -15,13 +15,13 @@ use crate::grid::{
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn preset_grid_has_12_entries() {
-    assert_eq!(PRESET_GRID.len(), 12);
+fn preset_grid_has_13_entries() {
+    assert_eq!(PRESET_GRID.len(), 13);
 }
 
 #[test]
-fn preset_kinds_has_12_entries() {
-    assert_eq!(PRESET_KINDS.len(), 12);
+fn preset_kinds_has_13_entries() {
+    assert_eq!(PRESET_KINDS.len(), 13);
 }
 
 #[test]

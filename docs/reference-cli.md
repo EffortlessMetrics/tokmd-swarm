@@ -300,7 +300,7 @@ Options:
       --analysis <ANALYSIS>
           Also emit analysis receipts using this preset
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --redact <REDACT>
           Redact paths (and optionally module names) for safer copy/paste into LLMs
@@ -368,7 +368,7 @@ Options:
       --preset <PRESET>
           Analysis preset to run [default: receipt]
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --format <FORMAT>
           Output format [default: md]
@@ -611,7 +611,7 @@ Options:
       --preset <PRESET>
           Optional analysis preset to use for the badge
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --git
           Force-enable git-based metrics
@@ -1552,7 +1552,7 @@ Options:
       --preset <PRESET>
           Analysis preset (for compute-then-gate mode)
 
-          [possible values: receipt, estimate, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
 
       --format <FORMAT>
           Output format

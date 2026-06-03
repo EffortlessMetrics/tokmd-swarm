@@ -977,6 +977,7 @@ name = "tokmd_cli"
 kind = "rust"
 paths = [
   "crates/tokmd/src/bin/**",
+  "crates/tokmd/src/analysis_utils.rs",
   "crates/tokmd/src/cli/**",
   "crates/tokmd/src/commands/**",
   "crates/tokmd/src/config.rs",

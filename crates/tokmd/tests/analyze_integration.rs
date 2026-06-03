@@ -44,6 +44,26 @@ fn analyze_receipt_preset_json_smoke() {
 }
 
 #[test]
+fn analyze_help_lists_bun_ub_preset() {
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .arg("analyze")
+        .arg("--help")
+        .output()
+        .expect("failed to execute tokmd analyze --help");
+
+    assert!(
+        output.status.success(),
+        "tokmd analyze --help failed: {:?}",
+        output.status
+    );
+    let stdout = String::from_utf8(output.stdout).expect("invalid UTF-8");
+    assert!(
+        stdout.contains("bun-ub"),
+        "help should list bun-ub as an analyze preset:\n{stdout}"
+    );
+}
+
+#[test]
 fn analyze_health_scoped_directory_does_not_scan_unrelated_todos() {
     let dir = tempdir().expect("should create temp dir");
     let src_dir = dir.path().join("src");
@@ -226,6 +246,80 @@ fn analyze_effort_valid_refs_emit_delta() {
         delta["files_changed"].as_u64().unwrap_or(0) >= 1,
         "expected changed files in delta: {delta:?}"
     );
+}
+
+#[test]
+fn analyze_bun_ub_valid_refs_emit_scoped_review_packet() {
+    if !common::git_available() {
+        return;
+    }
+    let dir = tempdir().expect("should create temp dir");
+    if !common::init_git_repo(dir.path()) {
+        return;
+    }
+    let src_dir = dir.path().join("src");
+    let test_dir = dir.path().join("test");
+    std::fs::create_dir_all(&src_dir).expect("create src dir");
+    std::fs::create_dir_all(&test_dir).expect("create test dir");
+    let file = src_dir.join("main.rs");
+    std::fs::write(
+        &file,
+        "use std::ffi::c_void;\npub unsafe fn native(value: *mut c_void) -> bool { !value.is_null() }\n",
+    )
+    .expect("write initial file");
+    std::fs::write(test_dir.join("leak.rs"), "pub const UNRELATED: i32 = 1;\n")
+        .expect("write unrelated file");
+    assert!(common::git_add_commit(dir.path(), "initial"));
+    std::fs::write(
+        &file,
+        "use std::ffi::c_void;\npub unsafe fn native(value: *mut c_void) -> bool { !value.is_null() }\npub fn boundary_name() -> &'static str { \"bun\" }\n",
+    )
+    .expect("write changed file");
+    assert!(common::git_add_commit(dir.path(), "change"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .arg("--no-progress")
+        .arg("analyze")
+        .arg("src")
+        .arg("--preset")
+        .arg("bun-ub")
+        .arg("--format")
+        .arg("json")
+        .arg("--effort-base-ref")
+        .arg("HEAD~1")
+        .arg("--effort-head-ref")
+        .arg("HEAD")
+        .output()
+        .expect("failed to execute tokmd analyze");
+
+    assert!(
+        output.status.success(),
+        "bun-ub should accept valid refs: {:?}\nstderr: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("invalid UTF-8");
+    let json: Value = serde_json::from_str(&stdout).expect("invalid JSON output");
+    assert_eq!(json["args"]["preset"].as_str(), Some("bun-ub"));
+    assert_eq!(json["source"]["inputs"][0].as_str(), Some("src"));
+    assert_eq!(json["derived"]["totals"]["files"].as_u64(), Some(1));
+    assert!(json["effort"]["delta"].is_object(), "effort delta missing");
+    assert!(json["imports"].is_object(), "imports signal missing");
+    assert!(json["dup"].is_object(), "duplication signal missing");
+    assert!(json["complexity"].is_object(), "complexity signal missing");
+    assert!(
+        json["api_surface"].is_object(),
+        "api surface signal missing"
+    );
+    assert!(json["assets"].is_null(), "bun-ub should not enable assets");
+    assert!(json["deps"].is_null(), "bun-ub should not enable deps");
+    assert!(
+        json["license"].is_null(),
+        "bun-ub should not enable license"
+    );
+    assert!(json["fun"].is_null(), "bun-ub should not enable fun");
 }
 
 #[test]

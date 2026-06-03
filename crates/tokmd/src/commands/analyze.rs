@@ -79,7 +79,13 @@ pub(crate) fn handle(args: cli::CliAnalyzeArgs, global: &cli::GlobalArgs) -> Res
         Some(cli::NearDupScope::Lang) => analysis::NearDupScope::Lang,
         Some(cli::NearDupScope::Global) => analysis::NearDupScope::Global,
     };
-    let effort = parse_effort_request(&args, preset == cli::AnalysisPreset::Estimate)?;
+    let effort = parse_effort_request(
+        &args,
+        matches!(
+            preset,
+            cli::AnalysisPreset::Estimate | cli::AnalysisPreset::BunUb
+        ),
+    )?;
     validate_effort_refs(&bundle.root, effort.as_ref())?;
 
     let request = analysis::AnalysisRequest {

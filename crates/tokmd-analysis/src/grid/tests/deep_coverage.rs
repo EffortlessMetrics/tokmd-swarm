@@ -54,7 +54,7 @@ fn preset_plan_for_name_matches_preset_plan_for() {
 #[test]
 fn grid_length_matches_kinds_length() {
     assert_eq!(PRESET_GRID.len(), PRESET_KINDS.len());
-    assert_eq!(PRESET_GRID.len(), 12);
+    assert_eq!(PRESET_GRID.len(), 13);
 }
 
 #[test]
@@ -89,6 +89,24 @@ fn receipt_preset_enables_core_enrichers() {
     assert!(!plan.todo);
     assert!(plan.dup);
     assert!(!plan.imports);
+    assert!(plan.git);
+    assert!(!plan.fun);
+    assert!(!plan.archetype);
+    assert!(!plan.topics);
+    assert!(!plan.entropy);
+    assert!(!plan.license);
+    assert!(plan.complexity);
+    assert!(plan.api_surface);
+}
+
+#[test]
+fn bun_ub_preset_enables_review_signals_without_supply_or_fun() {
+    let plan = preset_plan_for(PresetKind::BunUb);
+    assert!(!plan.assets);
+    assert!(!plan.deps);
+    assert!(!plan.todo);
+    assert!(plan.dup);
+    assert!(plan.imports);
     assert!(plan.git);
     assert!(!plan.fun);
     assert!(!plan.archetype);
@@ -250,6 +268,7 @@ fn grid_order_is_stable() {
     let expected = vec![
         "receipt",
         "estimate",
+        "bun-ub",
         "health",
         "risk",
         "supply",
