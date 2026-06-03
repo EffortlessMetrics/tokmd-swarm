@@ -1468,6 +1468,181 @@ fn test_cockpit_review_packet_dir() {
 }
 
 #[test]
+fn test_cockpit_review_packet_bun_ub_sensor_refs() {
+    // Given: A Bun-shaped scoped change with no sensor artifacts yet
+    // When: User emits a cockpit review packet, then creates sensors/tokmd artifacts and emits another
+    // Then: The review map and comment expose Bun UB sensor refs, state, and regeneration commands
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+
+    if !common::init_git_repo(dir.path()) {
+        return;
+    }
+
+    let api_dir = dir.path().join("src").join("runtime").join("api");
+    std::fs::create_dir_all(&api_dir).unwrap();
+    let api_path = api_dir.join("MarkdownObject.rs");
+    std::fs::write(&api_path, "pub fn markdown_object() {}\n").unwrap();
+    if !common::git_add_commit(dir.path(), "Initial") {
+        return;
+    }
+
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", "test"])
+        .current_dir(dir.path())
+        .status();
+
+    std::fs::write(
+        &api_path,
+        "pub fn markdown_object() {}\npub fn native_boundary() {}\n",
+    )
+    .unwrap();
+    if !common::git_add_commit(dir.path(), "Bun API change") {
+        return;
+    }
+
+    let missing_packet_dir_arg = std::path::PathBuf::from(".tokmd").join("review-missing");
+    let missing_packet_dir = dir.path().join(&missing_packet_dir_arg);
+
+    let mut missing_cmd = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    missing_cmd
+        .current_dir(dir.path())
+        .arg("cockpit")
+        .arg("--base")
+        .arg("main")
+        .arg("--review-packet-dir")
+        .arg(&missing_packet_dir_arg)
+        .assert()
+        .success();
+
+    let missing_review_map: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(missing_packet_dir.join("review-map.json")).unwrap(),
+    )
+    .expect("valid review map JSON");
+    assert_validates_against_schema(
+        REVIEW_MAP_SCHEMA_JSON,
+        &missing_review_map,
+        "missing Bun UB review map",
+    );
+    let missing_items = missing_review_map["items"]
+        .as_array()
+        .expect("review map items");
+    let missing_item = missing_items
+        .iter()
+        .find(|item| item["path"] == "src/runtime/api/MarkdownObject.rs")
+        .expect("Bun UB review-map item");
+    assert_eq!(missing_item["bun_ub_sensor"]["status"], "missing");
+    assert!(
+        missing_item["bun_ub_sensor"]["missing"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == "sensors/tokmd/analyze.md")
+    );
+    assert!(
+        missing_item["bun_ub_sensor"]["missing"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == "sensors/tokmd/analyze.json")
+    );
+    assert!(
+        missing_item["reproduce"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|command| command.as_str().unwrap_or("").contains(
+                "tokmd analyze --preset bun-ub --format md --effort-base-ref main --effort-head-ref HEAD --no-progress src/runtime/api/MarkdownObject.rs > sensors/tokmd/analyze.md"
+            ))
+    );
+    assert!(
+        missing_item["reproduce"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|command| command.as_str().unwrap_or("").contains(
+                "tokmd analyze --preset bun-ub --format json --effort-base-ref main --effort-head-ref HEAD --no-progress src/runtime/api/MarkdownObject.rs > sensors/tokmd/analyze.json"
+            ))
+    );
+
+    let missing_review_map_md =
+        std::fs::read_to_string(missing_packet_dir.join("review-map.md")).unwrap();
+    assert!(missing_review_map_md.contains("Bun UB sensor artifacts: missing."));
+    assert!(missing_review_map_md.contains("Bun UB sensor: missing"));
+    assert!(missing_review_map_md.contains("sensors/tokmd/analyze.md"));
+    assert!(missing_review_map_md.contains("sensors/tokmd/analyze.json"));
+    let missing_comment_md =
+        std::fs::read_to_string(missing_packet_dir.join("comment.md")).unwrap();
+    assert!(missing_comment_md.contains("Bun UB sensor artifacts"));
+    assert!(missing_comment_md.contains("missing."));
+    assert!(missing_comment_md.contains("Regeneration commands are listed in review-map.md."));
+
+    let sensor_dir = dir.path().join("sensors").join("tokmd");
+    std::fs::create_dir_all(&sensor_dir).unwrap();
+    std::fs::write(sensor_dir.join("analyze.md"), "# Bun UB analyze\n").unwrap();
+    std::fs::write(sensor_dir.join("analyze.json"), r#"{"preset":"bun-ub"}"#).unwrap();
+
+    let available_packet_dir_arg = std::path::PathBuf::from(".tokmd").join("review-available");
+    let available_packet_dir = dir.path().join(&available_packet_dir_arg);
+
+    let mut available_cmd = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    available_cmd
+        .current_dir(dir.path())
+        .arg("cockpit")
+        .arg("--base")
+        .arg("main")
+        .arg("--review-packet-dir")
+        .arg(&available_packet_dir_arg)
+        .assert()
+        .success();
+
+    let available_review_map: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(available_packet_dir.join("review-map.json")).unwrap(),
+    )
+    .expect("valid review map JSON");
+    assert_validates_against_schema(
+        REVIEW_MAP_SCHEMA_JSON,
+        &available_review_map,
+        "available Bun UB review map",
+    );
+    let available_items = available_review_map["items"]
+        .as_array()
+        .expect("review map items");
+    let available_item = available_items
+        .iter()
+        .find(|item| item["path"] == "src/runtime/api/MarkdownObject.rs")
+        .expect("Bun UB review-map item");
+    assert_eq!(available_item["bun_ub_sensor"]["status"], "available");
+    assert!(
+        available_item["bun_ub_sensor"]["missing"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        available_item["bun_ub_sensor"]["available"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == "sensors/tokmd/analyze.md")
+    );
+    assert!(
+        available_item["bun_ub_sensor"]["available"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == "sensors/tokmd/analyze.json")
+    );
+    let available_comment_md =
+        std::fs::read_to_string(available_packet_dir.join("comment.md")).unwrap();
+    assert!(available_comment_md.contains("Bun UB sensor artifacts"));
+    assert!(available_comment_md.contains("available."));
+}
+
+#[test]
 fn test_cockpit_not_in_git_repo() {
     // Given: A directory that is not a git repo
     let dir = tempdir().unwrap();

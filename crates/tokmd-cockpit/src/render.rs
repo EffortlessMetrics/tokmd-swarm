@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use crate::CockpitReceipt;
 
 mod artifacts;
+mod bun_ub_sensor;
 mod comment;
 mod evidence;
 mod manifest;
@@ -20,10 +21,12 @@ mod sections;
 pub use artifacts::write_artifacts;
 #[cfg(feature = "git")]
 pub use artifacts::write_sensor_artifacts;
+pub use bun_ub_sensor::BunUbSensorEvidence;
 pub use comment::render_comment_md;
 pub use markdown::render_markdown;
 pub use review_packet::{
     write_review_packet, write_review_packet_with_imported_evidence,
+    write_review_packet_with_imported_evidence_and_bun_ub_sensor,
     write_review_packet_with_proof_evidence,
 };
 pub use sections::render_sections;

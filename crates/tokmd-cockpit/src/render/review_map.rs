@@ -6,6 +6,10 @@ use crate::doc_artifacts_evidence::{DOC_ARTIFACTS_PACKET_PATH, DocArtifactsEvide
 use crate::proof_evidence::ProofEvidenceInput;
 use crate::{CockpitReceipt, GateMeta, ReviewItem};
 
+use super::bun_ub_sensor::{
+    BUN_UB_ANALYZE_JSON_PATH, BUN_UB_ANALYZE_MD_PATH, BunUbSensorEvidence, bun_ub_analyze_commands,
+    bun_ub_sensor_refs, receipt_has_bun_ub_scope, review_item_is_bun_ub_scope,
+};
 use super::evidence::{
     doc_artifacts_expected, evidence_availability_optional, evidence_counts,
     review_item_is_source_of_truth, review_packet_evidence_capabilities,
@@ -21,6 +25,7 @@ pub(super) fn review_packet_review_map(
     proof_inputs: &[ProofEvidenceInput],
     doc_artifacts: Option<&DocArtifactsEvidenceInput>,
     review_packet_dir: &str,
+    bun_ub_sensor: BunUbSensorEvidence,
 ) -> Value {
     let proof_refs = review_map_proof_refs(receipt, proof_inputs);
     let has_doc_artifacts_evidence = doc_artifacts.is_some() || doc_artifacts_expected(receipt);
@@ -32,6 +37,7 @@ pub(super) fn review_packet_review_map(
         proof_refs: &proof_refs,
         doc_artifacts,
         review_packet_dir,
+        bun_ub_sensor,
     };
     let items: Vec<_> = ordered_items
         .iter()
@@ -67,6 +73,7 @@ struct ReviewMapRenderContext<'a> {
     proof_refs: &'a [ReviewMapProofRef],
     doc_artifacts: Option<&'a DocArtifactsEvidenceInput>,
     review_packet_dir: &'a str,
+    bun_ub_sensor: BunUbSensorEvidence,
 }
 
 fn review_map_item(
@@ -80,7 +87,7 @@ fn review_map_item(
     let doc_artifacts_refs = review_map_item_doc_artifacts_refs(item, context.doc_artifacts);
     let reproduce = review_map_item_reproduce(item, context.receipt, context.review_packet_dir);
 
-    json!({
+    let mut item_json = json!({
         "rank": rank,
         "source_index": source_index,
         "path": &item.path,
@@ -106,7 +113,11 @@ fn review_map_item(
             "refs": ["evidence.json#/gates"],
         },
         "reproduce": reproduce,
-    })
+    });
+    if review_item_is_bun_ub_scope(&item.path) {
+        item_json["bun_ub_sensor"] = review_map_item_bun_ub_sensor(context.bun_ub_sensor);
+    }
+    item_json
 }
 
 struct OrderedReviewMapItem<'a> {
@@ -255,8 +266,24 @@ fn review_map_item_reproduce(
                 .to_string(),
         );
     }
+    if review_item_is_bun_ub_scope(&item.path) {
+        commands.extend(bun_ub_analyze_commands(
+            &item.path,
+            &receipt.base_ref,
+            &receipt.head_ref,
+        ));
+    }
 
     commands
+}
+
+fn review_map_item_bun_ub_sensor(sensor: BunUbSensorEvidence) -> Value {
+    json!({
+        "status": sensor.status(),
+        "refs": bun_ub_sensor_refs(),
+        "available": sensor.available_paths(),
+        "missing": sensor.missing_paths(),
+    })
 }
 
 fn review_map_evidence_refs(
@@ -358,6 +385,7 @@ pub(super) fn render_review_map_md(
     proof_inputs: &[ProofEvidenceInput],
     doc_artifacts: Option<&DocArtifactsEvidenceInput>,
     review_packet_dir: &str,
+    bun_ub_sensor: BunUbSensorEvidence,
 ) -> String {
     use std::fmt::Write;
 
@@ -388,6 +416,7 @@ pub(super) fn render_review_map_md(
     let _ = writeln!(s);
     write_proof_overview(&mut s, receipt, proof_inputs);
     write_doc_artifacts_overview(&mut s, receipt, doc_artifacts);
+    write_bun_ub_sensor_overview(&mut s, receipt, bun_ub_sensor);
 
     if receipt.review_plan.is_empty() {
         let _ = writeln!(s, "No prioritized files were identified.");
@@ -430,26 +459,14 @@ pub(super) fn render_review_map_md(
         write_evidence_list(&mut s, "Evidence skipped", &evidence.skipped);
         write_evidence_list(&mut s, "Evidence unavailable", &evidence.unavailable);
         write_doc_artifacts_block(&mut s, item, doc_artifacts);
+        write_bun_ub_sensor_block(&mut s, item, bun_ub_sensor);
         write_proof_block(&mut s, &proof);
         let _ = writeln!(s, "   Evidence references:");
         let _ = writeln!(s, "   - cockpit.json#/review_plan/{source_index}");
         let _ = writeln!(s, "   - evidence.json#/gates");
         let _ = writeln!(s, "   Reproduce:");
-        let _ = writeln!(
-            s,
-            "   - `tokmd cockpit --base {} --head {} --format json`",
-            receipt.base_ref, receipt.head_ref
-        );
-        let _ = writeln!(
-            s,
-            "   - `tokmd cockpit --base {} --head {} --review-packet-dir {}`",
-            receipt.base_ref, receipt.head_ref, review_packet_dir
-        );
-        if review_item_is_source_of_truth(item) {
-            let _ = writeln!(
-                s,
-                "   - `cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json`"
-            );
+        for command in review_map_item_reproduce(item, receipt, review_packet_dir) {
+            let _ = writeln!(s, "   - `{command}`");
         }
         let _ = writeln!(s);
     }
@@ -493,6 +510,27 @@ fn write_doc_artifacts_overview(
     }
 }
 
+fn write_bun_ub_sensor_overview(
+    s: &mut String,
+    receipt: &CockpitReceipt,
+    sensor: BunUbSensorEvidence,
+) {
+    use std::fmt::Write;
+
+    if !receipt_has_bun_ub_scope(receipt) {
+        return;
+    }
+
+    let _ = writeln!(s, "Bun UB sensor artifacts: {}.", sensor.status());
+    let _ = writeln!(s, "- {BUN_UB_ANALYZE_MD_PATH}");
+    let _ = writeln!(s, "- {BUN_UB_ANALYZE_JSON_PATH}");
+    let missing = sensor.missing_paths();
+    if !missing.is_empty() {
+        let _ = writeln!(s, "- Missing: {}", missing.join(", "));
+    }
+    let _ = writeln!(s);
+}
+
 fn write_doc_artifacts_block(
     s: &mut String,
     item: &ReviewItem,
@@ -521,6 +559,22 @@ fn write_doc_artifacts_block(
         None => {
             let _ = writeln!(s, "   Doc artifacts: missing");
         }
+    }
+}
+
+fn write_bun_ub_sensor_block(s: &mut String, item: &ReviewItem, sensor: BunUbSensorEvidence) {
+    use std::fmt::Write;
+
+    if !review_item_is_bun_ub_scope(&item.path) {
+        return;
+    }
+
+    let _ = writeln!(s, "   Bun UB sensor: {}", sensor.status());
+    let _ = writeln!(s, "   - {BUN_UB_ANALYZE_MD_PATH}");
+    let _ = writeln!(s, "   - {BUN_UB_ANALYZE_JSON_PATH}");
+    let missing = sensor.missing_paths();
+    if !missing.is_empty() {
+        let _ = writeln!(s, "   Sensor missing: {}", missing.join(", "));
     }
 }
 

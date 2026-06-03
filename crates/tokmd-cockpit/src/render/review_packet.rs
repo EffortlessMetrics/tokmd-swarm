@@ -9,6 +9,7 @@ use crate::doc_artifacts_evidence::{DOC_ARTIFACTS_PACKET_PATH, DocArtifactsEvide
 use crate::proof_evidence::ProofEvidenceArtifact;
 use crate::{CockpitReceipt, ProofEvidenceInput};
 
+use super::bun_ub_sensor::BunUbSensorEvidence;
 use super::comment::render_review_packet_comment_md;
 use super::evidence::review_packet_evidence;
 use super::manifest::{ReviewPacketArtifactContent, review_packet_manifest};
@@ -43,6 +44,24 @@ pub fn write_review_packet_with_imported_evidence(
     proof_evidence: &[ProofEvidenceInput],
     doc_artifacts: Option<&DocArtifactsEvidenceInput>,
 ) -> Result<()> {
+    write_review_packet_with_imported_evidence_and_bun_ub_sensor(
+        dir,
+        receipt,
+        proof_evidence,
+        doc_artifacts,
+        BunUbSensorEvidence::missing(),
+    )
+}
+
+/// Write review packet artifacts and include imported proof/documentation
+/// evidence plus Bun UB sensor artifact availability in the review map.
+pub fn write_review_packet_with_imported_evidence_and_bun_ub_sensor(
+    dir: &Path,
+    receipt: &CockpitReceipt,
+    proof_evidence: &[ProofEvidenceInput],
+    doc_artifacts: Option<&DocArtifactsEvidenceInput>,
+    bun_ub_sensor: BunUbSensorEvidence,
+) -> Result<()> {
     std::fs::create_dir_all(dir)?;
     let review_packet_dir = review_packet_dir_for_reproduction(dir);
     let proof_artifacts = packet_proof_artifacts(proof_evidence)?;
@@ -63,15 +82,21 @@ pub fn write_review_packet_with_imported_evidence(
         &packet_proof_inputs,
         doc_artifacts.as_ref(),
         &review_packet_dir,
+        bun_ub_sensor,
     ))?;
     let review_map_md = render_review_map_md(
         receipt,
         &packet_proof_inputs,
         doc_artifacts.as_ref(),
         &review_packet_dir,
+        bun_ub_sensor,
     );
-    let comment_md =
-        render_review_packet_comment_md(receipt, &packet_proof_inputs, doc_artifacts.as_ref());
+    let comment_md = render_review_packet_comment_md(
+        receipt,
+        &packet_proof_inputs,
+        doc_artifacts.as_ref(),
+        bun_ub_sensor,
+    );
 
     std::fs::write(dir.join("cockpit.json"), &cockpit_json)?;
     std::fs::write(dir.join("evidence.json"), &evidence_json)?;
