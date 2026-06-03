@@ -29,13 +29,7 @@ pub(crate) fn child_include_to_string(mode: tokmd_types::ChildIncludeMode) -> St
 }
 
 pub(crate) fn preset_to_string(preset: cli::AnalysisPreset) -> String {
-    if preset == cli::AnalysisPreset::BunUb {
-        return "bun-ub".to_string();
-    }
-    let key = format!("{:?}", preset).to_lowercase();
-    analysis::PresetKind::from_str(&key)
-        .map(|preset| preset.as_str().to_string())
-        .unwrap_or(key)
+    map_preset(preset).as_str().to_string()
 }
 
 pub(crate) fn format_to_string(format: tokmd_types::AnalysisFormat) -> String {
