@@ -292,6 +292,7 @@ fn proof_policy_includes_current_product_scopes() {
         .collect::<BTreeSet<_>>();
 
     assert!(tokmd_cli_paths.contains("crates/tokmd/tests/cli_*.rs"));
+    assert!(tokmd_cli_paths.contains("crates/tokmd/tests/snapshots/cli_*.snap"));
     assert!(tokmd_cli_paths.contains("crates/tokmd/tests/error_handling.rs"));
     assert!(tokmd_cli_paths.contains("crates/tokmd/tests/error_handling_w70.rs"));
 
