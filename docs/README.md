@@ -30,6 +30,9 @@ schemas, and verification policy for `tokmd`.
   native review packets, handoff bundles, and CI evidence.
 - [analyze/bun-ub.md](analyze/bun-ub.md) — scoped `bun-ub` analysis artifacts
   for Bun undefined-behavior review bots, local reviewers, and agent handoff.
+- [integrations/ub-review.md](integrations/ub-review.md) - copy-ready
+  `ub-review` sensor recipe for `sensors/tokmd/analyze.md`,
+  `sensors/tokmd/analyze.json`, and `sensors/tokmd/context.md`.
 - [VERIFICATION.md](VERIFICATION.md) — README badge meanings, generated endpoints, and PR evidence boundaries.
 - [agent-workflows/handoff-prompt.md](agent-workflows/handoff-prompt.md) —
   copy-ready prompt template for coding agents consuming `.handoff/` bundles.
