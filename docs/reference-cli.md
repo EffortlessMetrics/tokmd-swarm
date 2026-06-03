@@ -490,6 +490,7 @@ Examples:
 | :--- | :--- |
 | `receipt` | Core derived metrics (totals, density, distribution, COCOMO) |
 | `estimate` | Effort-focused analysis with model selection and optional base/head deltas |
+| `bun-ub` | Scoped Bun UB review evidence: effort delta, git/churn, imports, complexity, API surface, and duplicate signals |
 | `health` | `receipt` + TODO density |
 | `risk` | `health` + git hotspots, coupling, freshness |
 | `supply` | `risk` + assets + dependency lockfile summary |
@@ -514,6 +515,9 @@ tokmd analyze --preset deep --format json --output-dir .runs/analysis
 
 # Analyze a previous run
 tokmd analyze .runs/baseline --preset health
+
+# Produce scoped Bun UB review-bot evidence
+tokmd analyze src/runtime/api --preset bun-ub --effort-base-ref BASE --effort-head-ref HEAD --format md --no-progress
 ```
 
 ### `tokmd baseline`
