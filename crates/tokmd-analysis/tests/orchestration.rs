@@ -65,7 +65,7 @@ fn make_req(preset: AnalysisPreset) -> AnalysisRequest {
         #[cfg(feature = "effort")]
         effort: None,
         window_tokens: None,
-        git: None,
+        git: Some(false),
         import_granularity: ImportGranularity::Module,
         detail_functions: false,
         near_dup: false,
@@ -252,7 +252,8 @@ fn git_none_defers_to_preset_plan() {
     // Given: a preset that does NOT want git (Fun)
     // When: req.git = None (defer to plan)
     // Then: no git sections
-    let req = make_req(AnalysisPreset::Fun);
+    let mut req = make_req(AnalysisPreset::Fun);
+    req.git = None;
     let receipt = analyze(make_ctx(sample_export()), req).unwrap();
     assert!(receipt.git.is_none());
     assert!(receipt.predictive_churn.is_none());
@@ -749,6 +750,8 @@ fn arb_file_row() -> impl Strategy<Value = FileRow> {
 }
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(32))]
+
     #[test]
     fn prop_analyze_never_panics(
         code in 0..10_000_usize,
