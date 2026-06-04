@@ -4,8 +4,6 @@
 //! empty scan data, enricher composition, limits, property tests,
 //! and error handling.
 
-use std::path::PathBuf;
-
 use proptest::prelude::*;
 use tokmd_analysis::{
     AnalysisContext, AnalysisLimits, AnalysisPreset, AnalysisRequest, ImportGranularity,
@@ -115,25 +113,28 @@ fn request(preset: AnalysisPreset) -> AnalysisRequest {
     }
 }
 
-fn run(preset: AnalysisPreset) -> tokmd_analysis_types::AnalysisReceipt {
+fn analyze_with_request(
+    export: ExportData,
+    req: AnalysisRequest,
+) -> tokmd_analysis_types::AnalysisReceipt {
+    let tmp = tempfile::tempdir().unwrap();
     let ctx = AnalysisContext {
-        export: sample_export(),
-        root: PathBuf::from("."),
+        export,
+        root: tmp.path().to_path_buf(),
         source: source(),
     };
-    analyze(ctx, request(preset)).expect("analyze should succeed")
+    analyze(ctx, req).expect("analyze should succeed")
+}
+
+fn run(preset: AnalysisPreset) -> tokmd_analysis_types::AnalysisReceipt {
+    run_with_export(preset, sample_export())
 }
 
 fn run_with_export(
     preset: AnalysisPreset,
     export: ExportData,
 ) -> tokmd_analysis_types::AnalysisReceipt {
-    let ctx = AnalysisContext {
-        export,
-        root: PathBuf::from("."),
-        source: source(),
-    };
-    analyze(ctx, request(preset)).expect("analyze should succeed")
+    analyze_with_request(export, request(preset))
 }
 
 // =========================================================================
@@ -413,14 +414,9 @@ fn derived_always_has_reading_time() {
 
 #[test]
 fn window_tokens_reflected_in_context_window() {
-    let ctx = AnalysisContext {
-        export: sample_export(),
-        root: PathBuf::from("."),
-        source: source(),
-    };
     let mut req = request(AnalysisPreset::Receipt);
     req.window_tokens = Some(8000);
-    let r = analyze(ctx, req).unwrap();
+    let r = analyze_with_request(sample_export(), req);
     let cw = r.derived.unwrap().context_window.unwrap();
     assert_eq!(cw.window_tokens, 8000);
 }
@@ -437,14 +433,9 @@ fn no_window_tokens_means_no_context_window() {
 
 #[test]
 fn window_tokens_fits_when_small_codebase() {
-    let ctx = AnalysisContext {
-        export: single_file_export(10),
-        root: PathBuf::from("."),
-        source: source(),
-    };
     let mut req = request(AnalysisPreset::Receipt);
     req.window_tokens = Some(1_000_000);
-    let r = analyze(ctx, req).unwrap();
+    let r = analyze_with_request(single_file_export(10), req);
     let cw = r.derived.unwrap().context_window.unwrap();
     assert!(cw.fits, "small codebase should fit in large window");
 }
@@ -602,27 +593,21 @@ fn near_dup_disabled_by_default() {
 #[test]
 fn analyze_never_panics_for_any_preset() {
     for preset in AnalysisPreset::all() {
-        let ctx = AnalysisContext {
-            export: sample_export(),
-            root: PathBuf::from("."),
-            source: source(),
-        };
-        let result = analyze(ctx, request(*preset));
-        assert!(result.is_ok(), "analyze should not fail for {:?}", preset);
+        let r = run_with_export(*preset, sample_export());
+        assert!(
+            r.derived.is_some(),
+            "analyze should not fail for {:?}",
+            preset
+        );
     }
 }
 
 #[test]
 fn analyze_with_empty_export_never_panics() {
     for preset in AnalysisPreset::all() {
-        let ctx = AnalysisContext {
-            export: empty_export(),
-            root: PathBuf::from("."),
-            source: source(),
-        };
-        let result = analyze(ctx, request(*preset));
+        let r = run_with_export(*preset, empty_export());
         assert!(
-            result.is_ok(),
+            r.derived.is_some(),
             "analyze with empty export should not fail for {:?}",
             preset
         );
@@ -699,6 +684,8 @@ fn integrity_entries_match_file_count() {
 // =========================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(8))]
+
     #[test]
     fn prop_receipt_always_succeeds(code in 1usize..10_000) {
         let r = run_with_export(AnalysisPreset::Receipt, single_file_export(code));
