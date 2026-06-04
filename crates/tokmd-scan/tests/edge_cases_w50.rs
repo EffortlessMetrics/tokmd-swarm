@@ -24,8 +24,10 @@ fn default_opts() -> ScanOptions {
 
 #[test]
 fn scan_nonexistent_path_errors_not_panics() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("missing-child");
     let opts = default_opts();
-    let result = scan(&[PathBuf::from("/this/path/does/not/exist")], &opts);
+    let result = scan(&[missing], &opts);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("Path not found"), "unexpected error: {msg}");
