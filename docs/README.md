@@ -30,6 +30,9 @@ schemas, and verification policy for `tokmd`.
   native review packets, handoff bundles, and CI evidence.
 - [analyze/bun-ub.md](analyze/bun-ub.md) — scoped `bun-ub` analysis artifacts
   for Bun undefined-behavior review bots, local reviewers, and agent handoff.
+- [evidence-packet.md](evidence-packet.md) - versioned
+  `sensors/tokmd/manifest.json` packet contract over `analyze.md`,
+  `analyze.json`, and `context.md`.
 - [integrations/ub-review.md](integrations/ub-review.md) - copy-ready
   `ub-review` sensor recipe for `sensors/tokmd/analyze.md`,
   `sensors/tokmd/analyze.json`, and `sensors/tokmd/context.md`.

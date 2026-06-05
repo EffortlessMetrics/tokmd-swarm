@@ -76,6 +76,13 @@ Open `sensors/tokmd/analyze.md` first for the human review summary. Use
 `sensors/tokmd/analyze.json` for bot ingestion, ledger storage, and exact field
 checks.
 
+When a workflow needs a single packet index, write
+`sensors/tokmd/manifest.json` using the [evidence packet contract](../evidence-packet.md).
+The manifest records the `tokmd` version, preset, refs, scoped paths, artifact
+paths, status, warnings, errors, non-claims, and reproduction commands. Current
+`tokmd` commands emit the underlying receipts; the manifest contract defines
+the producer and consumer shape for the packet wrapper.
+
 ## Required Refs
 
 For review-bot evidence, pass both refs explicitly:

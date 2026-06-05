@@ -1157,6 +1157,7 @@ paths = [
   "docs/action-quickstart.md",
   "docs/browser.md",
   "docs/browser-to-native.md",
+  "docs/evidence-packet.md",
   "docs/examples/**",
   "docs/install-and-try.md",
   "docs/integrations/**",

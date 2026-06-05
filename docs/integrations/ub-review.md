@@ -67,9 +67,15 @@ Attach these artifacts:
 
 | Artifact | Consumer | Use |
 | --- | --- | --- |
+| `sensors/tokmd/manifest.json` | bot, ledger, agent | Packet index with refs, paths, status, artifact paths, warnings, errors, non-claims, and reproduction commands. |
 | `sensors/tokmd/analyze.md` | reviewer | First-read human summary of scoped risk evidence. |
 | `sensors/tokmd/analyze.json` | bot, ledger, agent | Machine-readable receipt with preset, refs, warnings, and signals. |
 | `sensors/tokmd/context.md` | reviewer, agent | Context budget audit showing included, truncated, and skipped files. |
+
+Use the [evidence packet contract](../evidence-packet.md) for
+`sensors/tokmd/manifest.json`. Until `tokmd` has a first-class manifest
+emitter, review-bot glue can write the manifest from the same `BASE`, `HEAD`,
+and changed paths used to generate the three receipts.
 
 ## Local Reviewer Recipe
 
