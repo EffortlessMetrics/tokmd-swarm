@@ -1518,6 +1518,70 @@ tokmd sensor --base origin/main --head feature-branch --output ci/report.json
 tokmd sensor --format md
 ```
 
+### `tokmd syntax`
+
+Emits advisory Tree-sitter syntax receipts for explicitly scoped files or
+directories. This command is available only when the `tokmd` binary is built
+with the `ast` feature. It does not change default `analyze`, `cockpit`,
+`context`, or `handoff` behavior.
+
+<!-- HELP: syntax -->
+```text
+Emit feature-gated Tree-sitter syntax receipts
+
+Usage: tokmd syntax [OPTIONS] <PATH>...
+
+Arguments:
+  <PATH>...
+          Paths to parse into advisory syntax receipts
+
+Options:
+      --exclude <PATTERN>
+          Exclude pattern(s) using gitignore syntax. Repeatable.
+          
+          Examples: --exclude target --exclude "**/*.min.js"
+          
+          [aliases: --ignore]
+
+      --max-bytes <MAX_BYTES>
+          Maximum bytes per file before syntax parsing is skipped
+          
+          [default: 1048576]
+
+      --include-generated-vendor
+          Include generated and vendor paths instead of recording policy skips
+
+      --no-progress
+          Disable progress spinners
+
+      --profile <PROFILE>
+          Configuration profile to use (e.g., "llm_safe", "ci")
+          
+          [aliases: --view]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  tokmd syntax src/runtime/api
+  tokmd syntax --max-bytes 262144 src/runtime/api src/bun.js/bindings
+```
+<!-- /HELP: syntax -->
+
+**Usage**: `tokmd syntax [OPTIONS] <PATH>...`
+
+Use `tokmd syntax` when a review workflow needs syntax-backed receipt evidence
+over a named path scope. The packet schema is `tokmd.syntax_receipts.v1`; each
+file receipt uses `tokmd.syntax_receipt.v1` and records parse status,
+degradation, advisory review signals, and non-claims.
+
+**Examples**:
+```bash
+tokmd syntax src/runtime/api
+
+tokmd syntax --max-bytes 262144 src/runtime/api src/bun.js/bindings
+```
+
 ### `tokmd evidence-packet`
 
 Writes a scoped evidence packet manifest over existing sensor artifacts.
