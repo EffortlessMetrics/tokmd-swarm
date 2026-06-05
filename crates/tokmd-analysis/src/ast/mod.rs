@@ -18,8 +18,8 @@ pub use capability::{
     SYNTAX_RECEIPT_SCHEMA_VERSION, capabilities,
 };
 pub use facts::{
-    SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxRiskSeam, SyntaxSpan,
-    SyntaxSymbol,
+    SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxReviewSeverity,
+    SyntaxReviewSignal, SyntaxRiskSeam, SyntaxSpan, SyntaxSymbol,
 };
 pub use registry::{
     DEFAULT_MAX_SYNTAX_BYTES, SyntaxParseOptions, SyntaxParseReceipt, SyntaxParseStatus,

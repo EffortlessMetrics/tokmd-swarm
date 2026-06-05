@@ -133,6 +133,58 @@ impl SyntaxRiskSeam {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum SyntaxReviewSeverity {
+    High,
+    Medium,
+    Low,
+}
+
+impl SyntaxReviewSeverity {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+
+    #[must_use]
+    pub const fn score(self) -> u8 {
+        match self {
+            Self::High => 90,
+            Self::Medium => 60,
+            Self::Low => 30,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SyntaxReviewSignal {
+    pub severity: SyntaxReviewSeverity,
+    pub category: String,
+    pub kind: String,
+    pub reason: String,
+    pub evidence: String,
+    pub span: SyntaxSpan,
+}
+
+impl SyntaxReviewSignal {
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        json!({
+            "category": self.category,
+            "severity": self.severity.as_str(),
+            "score": self.severity.score(),
+            "kind": self.kind,
+            "reason": self.reason,
+            "evidence": self.evidence,
+            "span": self.span.to_value(),
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SyntaxFacts {
     pub symbols: Vec<SyntaxSymbol>,
@@ -185,5 +237,238 @@ impl SyntaxFacts {
             .iter()
             .map(SyntaxRiskSeam::to_value)
             .collect()
+    }
+
+    #[must_use]
+    pub fn review_signals(&self) -> Vec<SyntaxReviewSignal> {
+        let mut signals = Vec::new();
+
+        for symbol in &self.symbols {
+            if symbol.public_surface {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::Medium,
+                    category: "public_surface".to_owned(),
+                    kind: symbol.kind.clone(),
+                    reason: "public/API-ish symbol should be reviewed before private implementation details"
+                        .to_owned(),
+                    evidence: symbol.name.clone(),
+                    span: symbol.span,
+                });
+            } else if symbol.exported {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::Low,
+                    category: "exported_symbol".to_owned(),
+                    kind: symbol.kind.clone(),
+                    reason: "exported symbol contributes to review surface".to_owned(),
+                    evidence: symbol.name.clone(),
+                    span: symbol.span,
+                });
+            }
+        }
+
+        for import in &self.imports {
+            if import.dynamic {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::Medium,
+                    category: "dynamic_import".to_owned(),
+                    kind: import.kind.clone(),
+                    reason: "dynamic import changes runtime load behavior".to_owned(),
+                    evidence: import
+                        .module
+                        .clone()
+                        .unwrap_or_else(|| "dynamic import".to_owned()),
+                    span: import.span,
+                });
+            }
+
+            if import
+                .module
+                .as_deref()
+                .is_some_and(looks_native_boundary_evidence)
+                || import
+                    .imported
+                    .iter()
+                    .any(|name| looks_native_boundary_evidence(name))
+            {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::High,
+                    category: "native_boundary".to_owned(),
+                    kind: import.kind.clone(),
+                    reason: "import names a native, FFI, or binding-ish boundary".to_owned(),
+                    evidence: import
+                        .module
+                        .clone()
+                        .unwrap_or_else(|| import.imported.join(", ")),
+                    span: import.span,
+                });
+            }
+        }
+
+        for call_site in &self.call_sites {
+            if call_site.dynamic {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::Medium,
+                    category: "dynamic_execution".to_owned(),
+                    kind: call_site.kind.clone(),
+                    reason: "dynamic call site may obscure runtime target".to_owned(),
+                    evidence: call_site.callee.clone(),
+                    span: call_site.span,
+                });
+            }
+            if looks_native_boundary_evidence(&call_site.callee) {
+                signals.push(SyntaxReviewSignal {
+                    severity: SyntaxReviewSeverity::High,
+                    category: "native_boundary".to_owned(),
+                    kind: call_site.kind.clone(),
+                    reason: "call site names a native, FFI, or binding-ish boundary".to_owned(),
+                    evidence: call_site.callee.clone(),
+                    span: call_site.span,
+                });
+            }
+        }
+
+        for seam in &self.risk_seams {
+            let (severity, category, reason) = review_signal_for_risk_kind(&seam.kind);
+            signals.push(SyntaxReviewSignal {
+                severity,
+                category: category.to_owned(),
+                kind: seam.kind.clone(),
+                reason: reason.to_owned(),
+                evidence: seam.evidence.clone(),
+                span: seam.span,
+            });
+        }
+
+        signals.sort();
+        signals.dedup();
+        signals
+    }
+
+    #[must_use]
+    pub fn review_signals_value(&self) -> Vec<Value> {
+        self.review_signals()
+            .iter()
+            .map(SyntaxReviewSignal::to_value)
+            .collect()
+    }
+}
+
+fn review_signal_for_risk_kind(kind: &str) -> (SyntaxReviewSeverity, &'static str, &'static str) {
+    match kind {
+        "native_boundary_hint" => (
+            SyntaxReviewSeverity::High,
+            "native_boundary",
+            "native, FFI, or binding-ish boundary hint",
+        ),
+        "subprocess_call" => (
+            SyntaxReviewSeverity::High,
+            "process_boundary",
+            "subprocess or shell boundary should be reviewed early",
+        ),
+        "dynamic_eval" => (
+            SyntaxReviewSeverity::High,
+            "dynamic_execution",
+            "dynamic code execution should be reviewed early",
+        ),
+        "unwrap"
+        | "expect"
+        | "fallible_conversion_expect"
+        | "indexing"
+        | "capacity_allocation"
+        | "panic_macro"
+        | "assert_macro"
+        | "unreachable_macro"
+        | "todo_macro" => (
+            SyntaxReviewSeverity::High,
+            "panic_seam",
+            "panic, assertion, indexing, or allocation seam can abort or trap",
+        ),
+        "risky_cast" | "non_null_assertion" => (
+            SyntaxReviewSeverity::Medium,
+            "type_assertion",
+            "type assertion or non-null assertion can hide runtime mismatch",
+        ),
+        "dynamic_call" => (
+            SyntaxReviewSeverity::Medium,
+            "dynamic_execution",
+            "dynamic call may obscure runtime target",
+        ),
+        "dynamic_import" => (
+            SyntaxReviewSeverity::Medium,
+            "dynamic_import",
+            "dynamic import changes runtime load behavior",
+        ),
+        "file_io" => (
+            SyntaxReviewSeverity::Medium,
+            "io_boundary",
+            "file I/O boundary may depend on runtime inputs",
+        ),
+        "exception_raise" | "exception_handler" => (
+            SyntaxReviewSeverity::Medium,
+            "exception_path",
+            "exception path affects error and recovery behavior",
+        ),
+        "entrypoint" => (
+            SyntaxReviewSeverity::Medium,
+            "entrypoint",
+            "entrypoint-like code concentrates review impact",
+        ),
+        "fallible_conversion" => (
+            SyntaxReviewSeverity::Medium,
+            "fallible_conversion",
+            "fallible conversion changes type or bounds assumptions",
+        ),
+        "guard_evidence" => (
+            SyntaxReviewSeverity::Low,
+            "guard_evidence",
+            "nearby guard evidence may bound a higher-risk seam",
+        ),
+        _ => (
+            SyntaxReviewSeverity::Medium,
+            "language_risk",
+            "language-specific risk seam should be reviewed",
+        ),
+    }
+}
+
+fn looks_native_boundary_evidence(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("native")
+        || lower.contains("binding")
+        || contains_ffi_hint(&lower)
+        || lower.contains("ctypes")
+        || lower.contains("cffi")
+        || lower.contains("dlopen")
+        || lower.contains("cdll")
+        || lower.contains("pydll")
+}
+
+fn contains_ffi_hint(value: &str) -> bool {
+    value == "ffi"
+        || value.starts_with("ffi")
+        || value.contains(":ffi")
+        || value.contains("/ffi")
+        || value.contains("-ffi")
+        || value.contains("_ffi")
+        || value.contains(".ffi")
+        || value.contains("ffi:")
+        || value.contains("ffi/")
+        || value.contains("ffi-")
+        || value.contains("ffi_")
+        || value.contains("ffi.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::looks_native_boundary_evidence;
+
+    #[test]
+    fn native_boundary_hint_avoids_interior_ffi_noise() {
+        assert!(!looks_native_boundary_evidence("efficient_parser"));
+        assert!(!looks_native_boundary_evidence("office_cache"));
+        assert!(looks_native_boundary_evidence("bun:ffi"));
+        assert!(looks_native_boundary_evidence("ffi_object"));
+        assert!(looks_native_boundary_evidence("nativeBinding"));
+        assert!(looks_native_boundary_evidence("ctypes.CDLL"));
     }
 }

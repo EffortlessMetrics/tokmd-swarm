@@ -94,6 +94,7 @@ impl SyntaxParseReceipt {
             "exports": self.facts.exports_value(),
             "call_sites": self.facts.call_sites_value(),
             "risk_seams": self.facts.risk_seams_value(),
+            "review_signals": self.facts.review_signals_value(),
         })
     }
 }
@@ -649,6 +650,67 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_review_signals_across_supported_languages() {
+        let cases = [
+            (
+                "src/runtime/native_boundary.ts",
+                include_str!("../../../../fixtures/syntax/typescript/native_boundary.ts"),
+                vec![
+                    "native_boundary",
+                    "dynamic_execution",
+                    "dynamic_import",
+                    "entrypoint",
+                    "public_surface",
+                    "type_assertion",
+                ],
+            ),
+            (
+                "src/runtime/panic_seams.rs",
+                include_str!("../../../../fixtures/syntax/rust/panic_seams.rs"),
+                vec!["panic_seam", "guard_evidence", "public_surface"],
+            ),
+            (
+                "tools/native_boundary.py",
+                include_str!("../../../../fixtures/syntax/python/native_boundary.py"),
+                vec![
+                    "native_boundary",
+                    "process_boundary",
+                    "dynamic_execution",
+                    "dynamic_import",
+                    "io_boundary",
+                    "exception_path",
+                    "public_surface",
+                ],
+            ),
+        ];
+
+        for (path, source, expected_categories) in cases {
+            let receipt = parse_syntax_receipt(path, source, SyntaxParseOptions::default());
+            let value = receipt.to_value();
+            let review_signals = value["review_signals"].as_array().unwrap();
+            assert!(!review_signals.is_empty(), "{path}");
+            assert_eq!(
+                review_signals[0]["severity"], "high",
+                "highest-priority signal should sort first for {path}"
+            );
+            assert_eq!(
+                review_signals[0]["score"], 90,
+                "highest-priority score should sort first for {path}"
+            );
+
+            for category in expected_categories {
+                assert!(
+                    review_signals
+                        .iter()
+                        .any(|entry| entry["category"] == category),
+                    "{path} missing {category}: {}",
+                    serde_json::to_string_pretty(&review_signals).unwrap()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn malformed_syntax_degrades_explicitly() {
         let receipt = parse_syntax_receipt(
             "src/lib.rs",
@@ -672,6 +734,12 @@ mod tests {
         assert_eq!(receipt.to_value()["schema"], "tokmd.syntax_receipt.v1");
         assert_eq!(receipt.to_value()["status"], "unsupported_language");
         assert_eq!(receipt.to_value()["advisory"], true);
+        assert!(
+            receipt.to_value()["review_signals"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

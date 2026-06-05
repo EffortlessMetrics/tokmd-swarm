@@ -81,7 +81,9 @@ Every receipt records:
 - source byte count;
 - optional root node kind;
 - parser error state.
-- syntax fact arrays for symbols, imports, exports, call sites, and risk seams.
+- syntax fact arrays for symbols, imports, exports, call sites, and risk seams;
+- derived review signals that normalize language-specific seams into advisory
+  categories for later review-priority consumers.
 
 The output must avoid timestamps, absolute paths, environment-specific temporary
 directories, and nondeterministic ordering.
@@ -167,6 +169,22 @@ A syntax parse receipt uses schema family `tokmd.syntax_receipt.v1`:
         "end_column": 3
       }
     }
+  ],
+  "review_signals": [
+    {
+      "category": "native_boundary",
+      "severity": "high",
+      "score": 90,
+      "kind": "native_boundary_hint",
+      "reason": "native, FFI, or binding-ish boundary hint",
+      "evidence": "dlopen",
+      "span": {
+        "start_line": 5,
+        "start_column": 23,
+        "end_line": 9,
+        "end_column": 3
+      }
+    }
   ]
 }
 ```
@@ -186,7 +204,28 @@ Every status except `complete` must set `advisory` to `true` and include a
 reason suitable for a human reviewer and a bot log.
 
 Fact arrays are deterministic and may be empty. Spans use 1-based line and
-column numbers. The TypeScript/TSX first slice populates:
+column numbers.
+
+Review signals are deterministic, derived from the fact arrays, and may be
+empty. They are advisory ordering hints for later evidence packets and review
+priority summaries, not semantic reachability or bug claims. Signal categories
+are intentionally language-agnostic so consumers can rank review targets without
+knowing every parser-specific seam kind:
+
+| Category | Typical source |
+| --- | --- |
+| `native_boundary` | FFI, native, binding, `dlopen`, `ctypes`, or similar evidence. |
+| `panic_seam` | Rust panic, assertion, unwrap/expect, indexing, or allocation seams. |
+| `dynamic_execution` | Dynamic eval/call sites or dynamic constructors. |
+| `dynamic_import` | Runtime imports. |
+| `process_boundary` | Subprocess or shell-call seams. |
+| `io_boundary` | File I/O seams. |
+| `exception_path` | Python exception raise/handler seams. |
+| `entrypoint` | Entrypoint-like call or `__main__` patterns. |
+| `public_surface` | Exported or public/API-ish symbols. |
+| `guard_evidence` | Nearby guard evidence that may bound a higher-risk seam. |
+
+The TypeScript/TSX first slice populates:
 
 - exported functions, classes, members, and variables as symbols and exports;
 - static imports and dynamic `import(...)` calls;
@@ -255,6 +294,9 @@ The parser registry proof must cover:
 - Python fixtures prove module/class/function symbols, imports, call sites,
   entrypoints, subprocess/eval/dynamic import/call and file-open seams, native
   or FFI-ish hints, exception signals, and guard evidence.
+- cross-language review signal normalization proves TypeScript/TSX, Rust, and
+  Python fixtures emit comparable categories and rank high-severity signals
+  first.
 
 The first implementation is library-facing only. A later PR may choose where
 syntax receipts are emitted in evidence packets, review priority summaries, or
