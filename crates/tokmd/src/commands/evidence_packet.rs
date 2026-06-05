@@ -78,6 +78,11 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
             &mut errors,
         );
     }
+    if let Some(path) = &syntax_json
+        && path.is_file()
+    {
+        inspect_syntax_json(path, &normalize_paths(&args.paths), &mut warnings);
+    }
 
     let status = if !errors.is_empty() {
         EvidencePacketStatus::Failed
@@ -257,6 +262,103 @@ fn inspect_analyze_json(
             }
         }
         None => push_unique(errors, "analyze.json is missing warnings"),
+    }
+}
+
+fn inspect_syntax_json(path: &Path, expected_paths: &[String], warnings: &mut Vec<String>) {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) => {
+            push_unique(
+                warnings,
+                &format!("failed to read syntax_json {}: {err}", display_path(path)),
+            );
+            return;
+        }
+    };
+    let json: Value = match serde_json::from_str(&content) {
+        Ok(json) => json,
+        Err(err) => {
+            push_unique(
+                warnings,
+                &format!("failed to parse syntax_json {}: {err}", display_path(path)),
+            );
+            return;
+        }
+    };
+
+    match json.get("schema").and_then(Value::as_str) {
+        Some("tokmd.syntax_receipts.v1") => {}
+        Some(other) => push_unique(
+            warnings,
+            &format!("syntax_json has unsupported schema '{other}'"),
+        ),
+        None => push_unique(warnings, "syntax_json is missing schema"),
+    }
+
+    match json.get("status").and_then(Value::as_str) {
+        Some("complete") => {}
+        Some("partial") => push_unique(warnings, "syntax_json status is partial"),
+        Some("failed") => push_unique(warnings, "syntax_json status is failed"),
+        Some(other) => push_unique(
+            warnings,
+            &format!("syntax_json has unsupported status '{other}'"),
+        ),
+        None => push_unique(warnings, "syntax_json is missing status"),
+    }
+
+    match json.get("paths").and_then(Value::as_array) {
+        Some(inputs) => {
+            let actual: Vec<String> = inputs
+                .iter()
+                .filter_map(Value::as_str)
+                .map(normalize_manifest_path)
+                .collect();
+            if actual.len() != inputs.len() {
+                push_unique(warnings, "syntax_json paths contains non-string values");
+            } else if actual != expected_paths {
+                push_unique(
+                    warnings,
+                    &format!(
+                        "syntax_json paths {:?} do not match requested paths {:?}",
+                        actual, expected_paths
+                    ),
+                );
+            }
+        }
+        None => push_unique(warnings, "syntax_json is missing paths"),
+    }
+
+    match json.get("warnings").and_then(Value::as_array) {
+        Some(items) => {
+            for item in items {
+                match item.as_str() {
+                    Some(warning) if !warning.is_empty() => {
+                        push_unique(warnings, &format!("syntax_json warning: {warning}"))
+                    }
+                    Some(_) => {}
+                    None => {
+                        push_unique(warnings, "syntax_json warnings contains non-string values")
+                    }
+                }
+            }
+        }
+        None => push_unique(warnings, "syntax_json is missing warnings"),
+    }
+
+    match json.get("errors").and_then(Value::as_array) {
+        Some(items) => {
+            for item in items {
+                match item.as_str() {
+                    Some(error) if !error.is_empty() => {
+                        push_unique(warnings, &format!("syntax_json error: {error}"))
+                    }
+                    Some(_) => {}
+                    None => push_unique(warnings, "syntax_json errors contains non-string values"),
+                }
+            }
+        }
+        None => push_unique(warnings, "syntax_json is missing errors"),
     }
 }
 

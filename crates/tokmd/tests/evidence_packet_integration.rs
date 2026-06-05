@@ -18,16 +18,32 @@ fn write_sensor_artifacts(root: &std::path::Path, analyze_json: &str) {
 }
 
 fn write_syntax_artifact(root: &std::path::Path) {
+    write_syntax_artifact_with(
+        root,
+        "complete",
+        &[],
+        &[],
+        &["src/runtime/api/MarkdownObject.rs"],
+    );
+}
+
+fn write_syntax_artifact_with(
+    root: &std::path::Path,
+    status: &str,
+    warnings: &[&str],
+    errors: &[&str],
+    paths: &[&str],
+) {
     let sensor_dir = root.join("sensors").join("tokmd");
     std::fs::write(
         sensor_dir.join("syntax.json"),
         serde_json::json!({
             "schema": "tokmd.syntax_receipts.v1",
-            "status": "complete",
-            "paths": ["src/runtime/api/MarkdownObject.rs"],
+            "status": status,
+            "paths": paths,
             "receipts": [],
-            "warnings": [],
-            "errors": []
+            "warnings": warnings,
+            "errors": errors
         })
         .to_string(),
     )
@@ -172,6 +188,52 @@ fn evidence_packet_manifest_records_optional_syntax_artifact() {
             .unwrap()
             .iter()
             .any(|cmd| { cmd.as_str().unwrap().contains("tokmd syntax --no-progress") })
+    );
+}
+
+#[test]
+fn evidence_packet_manifest_preserves_syntax_warnings_as_partial() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+    write_syntax_artifact_with(
+        dir.path(),
+        "partial",
+        &["parser recovered with syntax errors"],
+        &[],
+        &["src/runtime/api/MarkdownObject.rs"],
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"partial\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(manifest["status"], "partial");
+    let warnings = manifest["warnings"].as_array().unwrap();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w == "syntax_json status is partial")
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| { w == "syntax_json warning: parser recovered with syntax errors" })
     );
 }
 
