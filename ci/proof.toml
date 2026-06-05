@@ -609,6 +609,7 @@ paths = [
   "docs/plans/ast-function-boundary-candidate.md",
   "docs/plans/ast-shadow-comparison-runner.md",
   "docs/specs/ast-shadow.md",
+  "docs/specs/syntax-receipts.md",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
