@@ -7,6 +7,7 @@
 
 mod capability;
 mod facts;
+mod python;
 mod registry;
 mod rust;
 mod shadow;

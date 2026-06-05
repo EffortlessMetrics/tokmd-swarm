@@ -1,5 +1,6 @@
 use super::capability::{AstLanguage, SYNTAX_RECEIPT_SCHEMA_VERSION};
 use super::facts::SyntaxFacts;
+use super::python::extract_python_facts;
 use super::rust::extract_rust_facts;
 use super::typescript::extract_typescript_facts;
 use serde_json::{Value, json};
@@ -225,7 +226,7 @@ pub fn parse_syntax_receipt(
     let facts = match capability.language {
         AstLanguage::Rust => extract_rust_facts(root, source),
         AstLanguage::TypeScript | AstLanguage::Tsx => extract_typescript_facts(root, source),
-        AstLanguage::Python => SyntaxFacts::default(),
+        AstLanguage::Python => extract_python_facts(root, source),
     };
 
     SyntaxParseReceipt {
@@ -572,6 +573,68 @@ mod tests {
             "indexing",
             "panic_macro",
             "assert_macro",
+            "guard_evidence",
+        ] {
+            assert!(
+                value["risk_seams"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|entry| entry["kind"] == kind),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn extracts_python_review_facts_from_native_boundary_fixture() {
+        let receipt = parse_syntax_receipt(
+            "tools/native_boundary.py",
+            include_str!("../../../../fixtures/syntax/python/native_boundary.py"),
+            SyntaxParseOptions::default(),
+        );
+        let value = receipt.to_value();
+
+        assert_eq!(receipt.status, SyntaxParseStatus::Complete);
+        assert_eq!(receipt.root_kind.as_deref(), Some("module"));
+        assert!(
+            value["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "module" && entry["name"] == "<module>")
+        );
+        assert!(
+            value["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "NativeBridge" && entry["public_surface"] == true)
+        );
+        assert!(value["imports"].as_array().unwrap().iter().any(|entry| {
+            entry["imported"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == "ctypes")
+        }));
+        assert!(
+            value["call_sites"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["callee"] == "subprocess.run")
+        );
+        for kind in [
+            "entrypoint",
+            "native_boundary_hint",
+            "dynamic_import",
+            "dynamic_call",
+            "subprocess_call",
+            "dynamic_eval",
+            "file_io",
+            "exception_raise",
+            "exception_handler",
             "guard_evidence",
         ] {
             assert!(

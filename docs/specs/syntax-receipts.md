@@ -203,8 +203,16 @@ The Rust first slice populates:
   capacity/allocation calls, panic/assert/unreachable/todo macros, and nearby
   `if`/`match` guard evidence as risk seams.
 
-Python receipts keep these arrays empty until their fixture slice adds
-language-specific extraction.
+The Python first slice populates:
+
+- module, class, and function symbols, with public names surfaced as exports;
+- `import` and `from ... import ...` declarations;
+- call sites;
+- `if __name__ == "__main__"` and common `main`/`app.run` entrypoints,
+  `subprocess`/`os.system` calls, `eval`/`exec`/`compile`, dynamic imports,
+  dynamic calls, file-open calls, native or FFI-ish hints such as
+  `ctypes`/`cffi`, exception raises/handlers, and nearby `if`/`try`/`with`
+  guard evidence as risk seams.
 
 ## Compatibility
 
@@ -244,6 +252,9 @@ The parser registry proof must cover:
 - Rust fixtures prove public symbols, `use` imports, call and macro sites,
   unwrap/expect, fallible conversion plus `expect`, indexing, capacity
   allocation, panic/assert macros, and guard evidence.
+- Python fixtures prove module/class/function symbols, imports, call sites,
+  entrypoints, subprocess/eval/dynamic import/call and file-open seams, native
+  or FFI-ish hints, exception signals, and guard evidence.
 
 The first implementation is library-facing only. A later PR may choose where
 syntax receipts are emitted in evidence packets, review priority summaries, or
