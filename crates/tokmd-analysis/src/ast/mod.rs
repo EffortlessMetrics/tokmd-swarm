@@ -6,13 +6,19 @@
 //! receipt semantics.
 
 mod capability;
+mod facts;
 mod registry;
 mod rust;
 mod shadow;
+mod typescript;
 
 pub use capability::{
     AST_SHADOW_SCHEMA_VERSION, AstCapability, AstLanguage, AstParserStatus,
     SYNTAX_RECEIPT_SCHEMA_VERSION, capabilities,
+};
+pub use facts::{
+    SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxRiskSeam, SyntaxSpan,
+    SyntaxSymbol,
 };
 pub use registry::{
     DEFAULT_MAX_SYNTAX_BYTES, SyntaxParseOptions, SyntaxParseReceipt, SyntaxParseStatus,

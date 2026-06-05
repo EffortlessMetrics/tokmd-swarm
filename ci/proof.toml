@@ -604,6 +604,7 @@ paths = [
   "crates/tokmd-analysis/examples/ast_shadow_perf.rs",
   "crates/tokmd-analysis/src/ast/**",
   "fixtures/ast-shadow/**",
+  "fixtures/syntax/**",
   "policy/ast-shadow-corpus.toml",
   "docs/adr/0008-ast-foundation.md",
   "docs/plans/ast-function-boundary-candidate.md",

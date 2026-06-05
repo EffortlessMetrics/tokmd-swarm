@@ -1,4 +1,6 @@
 use super::capability::{AstLanguage, SYNTAX_RECEIPT_SCHEMA_VERSION};
+use super::facts::SyntaxFacts;
+use super::typescript::extract_typescript_facts;
 use serde_json::{Value, json};
 use tree_sitter::{Language, Parser};
 
@@ -67,6 +69,7 @@ pub struct SyntaxParseReceipt {
     pub source_bytes: usize,
     pub root_kind: Option<String>,
     pub has_error: bool,
+    pub facts: SyntaxFacts,
 }
 
 impl SyntaxParseReceipt {
@@ -84,6 +87,11 @@ impl SyntaxParseReceipt {
             "source_bytes": self.source_bytes,
             "root_kind": self.root_kind.as_deref(),
             "has_error": self.has_error,
+            "symbols": self.facts.symbols_value(),
+            "imports": self.facts.imports_value(),
+            "exports": self.facts.exports_value(),
+            "call_sites": self.facts.call_sites_value(),
+            "risk_seams": self.facts.risk_seams_value(),
         })
     }
 }
@@ -213,6 +221,11 @@ pub fn parse_syntax_receipt(
 
     let root = tree.root_node();
     let has_error = root.has_error();
+    let facts = match capability.language {
+        AstLanguage::TypeScript | AstLanguage::Tsx => extract_typescript_facts(root, source),
+        AstLanguage::Python | AstLanguage::Rust => SyntaxFacts::default(),
+    };
+
     SyntaxParseReceipt {
         path: normalized_path,
         language: Some(capability.language),
@@ -227,6 +240,7 @@ pub fn parse_syntax_receipt(
         source_bytes,
         root_kind: Some(root.kind().to_owned()),
         has_error,
+        facts,
     }
 }
 
@@ -247,6 +261,7 @@ fn advisory_receipt(
         source_bytes,
         root_kind: None,
         has_error: false,
+        facts: SyntaxFacts::default(),
     }
 }
 
@@ -398,6 +413,117 @@ mod tests {
     }
 
     #[test]
+    fn extracts_typescript_review_facts_from_native_boundary_fixture() {
+        let receipt = parse_syntax_receipt(
+            "src/runtime/native_boundary.ts",
+            include_str!("../../../../fixtures/syntax/typescript/native_boundary.ts"),
+            SyntaxParseOptions::default(),
+        );
+        let value = receipt.to_value();
+
+        assert_eq!(receipt.status, SyntaxParseStatus::Complete);
+        let symbol_names = value["symbols"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["name"].as_str())
+            .collect::<Vec<_>>();
+        for expected in ["bindNative", "loadPlugin", "RuntimeBridge", "main"] {
+            assert!(symbol_names.contains(&expected), "{expected}");
+        }
+        assert!(
+            value["imports"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["module"] == "bun:ffi" && entry["dynamic"] == false)
+        );
+        assert!(
+            value["imports"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "dynamic" && entry["dynamic"] == true)
+        );
+        assert!(
+            value["exports"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "bindNative")
+        );
+        assert!(
+            value["call_sites"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["callee"] == "Bun.serve")
+        );
+        assert!(
+            value["risk_seams"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "risky_cast")
+        );
+        assert!(
+            value["risk_seams"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "dynamic_import")
+        );
+        assert!(
+            value["risk_seams"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "native_boundary_hint")
+        );
+        assert!(
+            value["risk_seams"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "entrypoint")
+        );
+    }
+
+    #[test]
+    fn extracts_tsx_exports_and_cast_seams() {
+        let receipt = parse_syntax_receipt(
+            "src/runtime/component.tsx",
+            include_str!("../../../../fixtures/syntax/typescript/component.tsx"),
+            SyntaxParseOptions::default(),
+        );
+        let value = receipt.to_value();
+
+        assert_eq!(receipt.status, SyntaxParseStatus::Complete);
+        assert_eq!(receipt.root_kind.as_deref(), Some("program"));
+        assert!(
+            value["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "NativeButton" && entry["public_surface"] == true)
+        );
+        assert!(
+            value["exports"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "NativeButton")
+        );
+        assert!(
+            value["risk_seams"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["kind"] == "risky_cast")
+        );
+    }
+
+    #[test]
     fn malformed_syntax_degrades_explicitly() {
         let receipt = parse_syntax_receipt(
             "src/lib.rs",
@@ -458,6 +584,7 @@ mod tests {
         assert_eq!(receipt.status, SyntaxParseStatus::SkippedTooLarge);
         assert_eq!(receipt.language.unwrap().as_str(), "rust");
         assert_eq!(receipt.source_bytes, "fn main() {}\n".len());
+        assert!(receipt.facts.symbols.is_empty());
         assert!(
             receipt
                 .reason

@@ -81,6 +81,7 @@ Every receipt records:
 - source byte count;
 - optional root node kind;
 - parser error state.
+- syntax fact arrays for symbols, imports, exports, call sites, and risk seams.
 
 The output must avoid timestamps, absolute paths, environment-specific temporary
 directories, and nondeterministic ordering.
@@ -101,7 +102,72 @@ A syntax parse receipt uses schema family `tokmd.syntax_receipt.v1`:
   "reason": null,
   "source_bytes": 128,
   "root_kind": "program",
-  "has_error": false
+  "has_error": false,
+  "symbols": [
+    {
+      "kind": "function",
+      "name": "bindNative",
+      "span": {
+        "start_line": 10,
+        "start_column": 1,
+        "end_line": 13,
+        "end_column": 2
+      },
+      "exported": true,
+      "public_surface": true
+    }
+  ],
+  "imports": [
+    {
+      "kind": "static",
+      "module": "bun:ffi",
+      "imported": ["FFIType", "dlopen"],
+      "dynamic": false,
+      "span": {
+        "start_line": 1,
+        "start_column": 1,
+        "end_line": 1,
+        "end_column": 41
+      }
+    }
+  ],
+  "exports": [
+    {
+      "kind": "function",
+      "name": "bindNative",
+      "span": {
+        "start_line": 10,
+        "start_column": 1,
+        "end_line": 13,
+        "end_column": 2
+      }
+    }
+  ],
+  "call_sites": [
+    {
+      "kind": "call",
+      "callee": "dlopen",
+      "dynamic": false,
+      "span": {
+        "start_line": 5,
+        "start_column": 23,
+        "end_line": 9,
+        "end_column": 3
+      }
+    }
+  ],
+  "risk_seams": [
+    {
+      "kind": "native_boundary_hint",
+      "evidence": "dlopen",
+      "span": {
+        "start_line": 5,
+        "start_column": 23,
+        "end_line": 9,
+        "end_column": 3
+      }
+    }
+  ]
 }
 ```
 
@@ -118,6 +184,18 @@ Supported statuses:
 
 Every status except `complete` must set `advisory` to `true` and include a
 reason suitable for a human reviewer and a bot log.
+
+Fact arrays are deterministic and may be empty. Spans use 1-based line and
+column numbers. The TypeScript/TSX first slice populates:
+
+- exported functions, classes, members, and variables as symbols and exports;
+- static imports and dynamic `import(...)` calls;
+- function and constructor call sites;
+- risky casts/assertions, non-null assertions, dynamic imports, dynamic calls,
+  native or binding-ish hints, and entrypoint-like calls such as `Bun.serve`.
+
+Rust and Python receipts keep these arrays empty until their fixture slices add
+language-specific extraction.
 
 ## Compatibility
 
@@ -151,6 +229,9 @@ The parser registry proof must cover:
 - large-file skip receipts with the configured byte limit;
 - non-Rust shadow inputs remain unsupported in the AST shadow comparison path
   until a later comparison runner promotes them.
+- TypeScript and TSX fixtures prove exports, imports, dynamic imports,
+  entrypoint calls, native or binding-ish hints, call sites, and risky
+  cast/assertion seams.
 
 The first implementation is library-facing only. A later PR may choose where
 syntax receipts are emitted in evidence packets, review priority summaries, or
