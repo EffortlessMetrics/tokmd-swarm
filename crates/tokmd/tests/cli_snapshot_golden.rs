@@ -205,6 +205,11 @@ fn snapshot_version() {
 #[test]
 fn snapshot_help() {
     let stdout = run_tokmd(&["--help"]);
+    let snapshot_name = if cfg!(feature = "ast") {
+        "help_ast"
+    } else {
+        "help"
+    };
     // Normalize the version in the help header.
-    assert_snapshot_normalized("help", &stdout);
+    assert_snapshot_normalized(snapshot_name, &stdout);
 }
