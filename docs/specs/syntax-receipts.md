@@ -67,8 +67,11 @@ The syntax receipt path must not require:
 
 ## Outputs
 
-The first output is a library-facing `tokmd.syntax_receipt.v1` value. It is not
-yet emitted by default CLI commands or language bindings.
+The single-file output is a library-facing `tokmd.syntax_receipt.v1` value. The
+feature-gated CLI producer emits a top-level `tokmd.syntax_receipts.v1` packet
+that indexes one or more file receipts for a scoped path set. It is not emitted
+by default `tokmd analyze`, cockpit, context, handoff, FFI, Python, Node, or
+WASM paths.
 
 Every receipt records:
 
@@ -89,6 +92,37 @@ The output must avoid timestamps, absolute paths, environment-specific temporary
 directories, and nondeterministic ordering.
 
 ## Receipt Shape
+
+The explicit syntax producer is available only when the `tokmd` binary is built
+with the `ast` feature:
+
+```bash
+tokmd syntax src/runtime/api src/bun.js/bindings
+```
+
+It emits a packet with schema family `tokmd.syntax_receipts.v1`:
+
+```json
+{
+  "schema": "tokmd.syntax_receipts.v1",
+  "status": "partial",
+  "paths": ["src/runtime/api"],
+  "max_bytes": 1048576,
+  "skip_generated_vendor": true,
+  "receipts": [],
+  "warnings": [],
+  "errors": [],
+  "non_claims": [
+    "syntax receipts package advisory parser evidence; they do not prove reachability, bug presence, UB presence, safety, or merge readiness"
+  ]
+}
+```
+
+Packet status is `complete` when all file receipts are complete, `partial` when
+one or more file receipts are advisory or the scoped path set is empty, and
+`failed` when requested inputs are missing, unreadable, or cannot be walked. A
+failed packet is printed before the command exits nonzero so bots can attach or
+inspect the named error.
 
 A syntax parse receipt uses schema family `tokmd.syntax_receipt.v1`:
 
@@ -298,6 +332,8 @@ The parser registry proof must cover:
   Python fixtures emit comparable categories and rank high-severity signals
   first.
 
-The first implementation is library-facing only. A later PR may choose where
-syntax receipts are emitted in evidence packets, review priority summaries, or
-specialized panic-seam receipts.
+The `tokmd syntax` command is the first explicit producer for these receipts.
+Default analysis, cockpit, context, handoff, FFI, Python, Node, and WASM outputs
+remain unchanged. A later PR may wire the resulting `syntax.json` artifact into
+evidence packet manifests, review priority summaries, or specialized panic-seam
+receipts.

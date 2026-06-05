@@ -34,6 +34,8 @@ mod lang;
 mod module;
 mod run;
 mod sensor;
+#[cfg(feature = "ast")]
+mod syntax;
 mod tools;
 mod value_enums;
 
@@ -58,6 +60,8 @@ pub use lang::CliLangArgs;
 pub use module::CliModuleArgs;
 pub use run::RunArgs;
 pub use sensor::{SensorArgs, SensorFormat};
+#[cfg(feature = "ast")]
+pub use syntax::SyntaxArgs;
 pub use tools::ToolsArgs;
 pub use value_enums::{
     AnalysisFormat, ChildIncludeMode, ChildrenMode, ConfigMode, ExportFormat, RedactMode,

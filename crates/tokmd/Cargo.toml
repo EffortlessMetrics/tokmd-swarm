@@ -41,6 +41,7 @@ content = ["tokmd-analysis/content"]
 fun = ["tokmd-analysis/fun", "tokmd-core/fun"]
 topics = ["tokmd-analysis/topics"]
 archetype = ["tokmd-analysis/archetype"]
+ast = ["tokmd-analysis/ast"]
 ui = ["dep:dialoguer", "dep:console", "dep:toml", "dep:indicatif"]
 
 [[bin]]

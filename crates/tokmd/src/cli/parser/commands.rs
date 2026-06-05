@@ -11,6 +11,9 @@ use super::{
     EvidencePacketArgs, HandoffArgs, InitArgs, RunArgs, SensorArgs, ToolsArgs,
 };
 
+#[cfg(feature = "ast")]
+use super::SyntaxArgs;
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Language summary (default).
@@ -65,6 +68,10 @@ pub enum Commands {
 
     /// Run as a conforming sensor, producing a SensorReport.
     Sensor(SensorArgs),
+
+    /// Emit feature-gated Tree-sitter syntax receipts.
+    #[cfg(feature = "ast")]
+    Syntax(SyntaxArgs),
 
     /// Write a scoped evidence packet manifest.
     EvidencePacket(EvidencePacketArgs),

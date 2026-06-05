@@ -27,6 +27,8 @@ const PARSER_SUBCOMMANDS: &[&str] = &[
     "baseline",
     "handoff",
     "sensor",
+    #[cfg(feature = "ast")]
+    "syntax",
     "evidence-packet",
 ];
 
