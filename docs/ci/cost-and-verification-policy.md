@@ -17,9 +17,17 @@ evidence that serious agentic workflows need *more* verification with
 - Rust makes local checks fast.
 - Clippy catches bad local code shapes.
 - TOML policy ledgers make exceptions reviewable.
-- ripr gives mutation-testing-lite static oracle-gap signal.
+- ripr gives static mutation-exposure signal for weak test/oracle gaps.
 - LEM budgeting makes cost visible.
 - CI routing spends expensive lanes only where they buy proof.
+
+## Evidence-machine doctrine
+
+The repo style is defined in `docs/REPO_STYLE.md`: strict defaults, owned
+exceptions, static signal first, runtime proof where it pays, receipts
+everywhere, and one review-fast PR at a time. CI economics exists to preserve
+proof by routing expensive lanes where they buy the most evidence, not to
+weaken the gate.
 
 ## Operating principle
 
@@ -36,7 +44,7 @@ From cheapest to most expensive:
 
 1. `cargo check` / Clippy — local code shape.
 2. Unit / oracle tests — deterministic proof.
-3. `ripr` — static mutation-shaped oracle-gap signal.
+3. `ripr` — static mutation-exposure signal for weak test/oracle gaps.
 4. Property tests — randomized invariant proof.
 5. Coverage — surfaces what is and isn't exercised.
 6. Runtime mutation testing — confirms tests kill concrete mutants.
