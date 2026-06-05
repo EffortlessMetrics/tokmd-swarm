@@ -138,15 +138,24 @@ pub fn build_shadow_artifacts(
         let mut heuristic_landmarks = input.heuristic_landmarks.to_vec();
         heuristic_landmarks.sort();
 
-        let ast_shadow = match input.language {
-            AstLanguage::Rust => parse_rust_landmarks(input.source)?,
+        let (mut ast_landmarks, parse_degraded, unsupported, parser_status) = match input.language {
+            AstLanguage::Rust => {
+                let ast_shadow = parse_rust_landmarks(input.source)?;
+                (
+                    shadow_landmarks_from_rust(&ast_shadow),
+                    ast_shadow.has_error,
+                    false,
+                    AstParserStatus::ParserBackedShadow,
+                )
+            }
+            AstLanguage::Python | AstLanguage::TypeScript | AstLanguage::Tsx => {
+                (Vec::new(), false, true, AstParserStatus::Unsupported)
+            }
         };
-        let mut ast_landmarks = shadow_landmarks_from_rust(&ast_shadow);
         ast_landmarks.sort();
 
         let diff = compare_landmarks(&heuristic_landmarks, &ast_landmarks);
-        let parse_degraded = ast_shadow.has_error;
-        diff_summary.add_file(&diff, parse_degraded, false);
+        diff_summary.add_file(&diff, parse_degraded, unsupported);
 
         heuristic_files.push(json!({
             "path": path,
@@ -157,16 +166,22 @@ pub fn build_shadow_artifacts(
         ast_files.push(json!({
             "path": path,
             "language": input.language.as_str(),
-            "parser_status": parser_status_value(AstParserStatus::ParserBackedShadow),
+            "parser_status": parser_status_value(parser_status),
             "has_error": parse_degraded,
             "landmarks": landmarks_value(&ast_landmarks),
         }));
         diff_files.push(json!({
             "path": path,
             "language": input.language.as_str(),
-            "status": if parse_degraded { "parse_degraded" } else { "compared" },
+            "status": if unsupported {
+                "unsupported"
+            } else if parse_degraded {
+                "parse_degraded"
+            } else {
+                "compared"
+            },
             "parse_degraded": parse_degraded,
-            "unsupported": false,
+            "unsupported": unsupported,
             "matches": landmarks_value(&diff.matches),
             "heuristic_only": landmarks_value(&diff.heuristic_only),
             "ast_only": landmarks_value(&diff.ast_only),
@@ -255,6 +270,7 @@ fn capabilities_value() -> Vec<Value> {
 fn parser_status_value(status: AstParserStatus) -> &'static str {
     match status {
         AstParserStatus::ParserBackedShadow => "parser_backed_shadow",
+        AstParserStatus::Unsupported => "unsupported",
     }
 }
 
@@ -458,6 +474,26 @@ mod tests {
         assert_eq!(artifacts.diff["files"][0]["status"], "parse_degraded");
         assert_eq!(artifacts.diff["files"][0]["parse_degraded"], true);
         assert_eq!(artifacts.diff["summary"]["parse_degraded"], 1);
+    }
+
+    #[test]
+    fn marks_non_rust_shadow_inputs_as_unsupported_without_failing() {
+        let heuristic = [ShadowLandmark::function("run", 1, 1)];
+        let files = [ShadowFileInput {
+            path: "tools/run.py",
+            language: AstLanguage::Python,
+            source: "def run():\n    return 1\n",
+            heuristic_landmarks: &heuristic,
+        }];
+
+        let artifacts =
+            build_shadow_artifacts(&files).expect("unsupported shadow language should be advisory");
+
+        assert_eq!(artifacts.ast["files"][0]["parser_status"], "unsupported");
+        assert_eq!(artifacts.diff["files"][0]["status"], "unsupported");
+        assert_eq!(artifacts.diff["files"][0]["unsupported"], true);
+        assert_eq!(artifacts.diff["summary"]["unsupported"], 1);
+        assert_eq!(artifacts.diff["summary"]["heuristic_only"], 1);
     }
 
     #[test]
