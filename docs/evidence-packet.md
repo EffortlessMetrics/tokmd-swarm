@@ -58,6 +58,7 @@ Required fields:
 | `paths` | array of strings | Requested changed paths or review scope. |
 | `status` | string | Packet status: `complete`, `partial`, or `failed`. |
 | `artifacts` | object | Relative packet artifact paths. |
+| `review_priority` | array | Optional first-read items derived from packet artifacts. |
 | `warnings` | array | Non-fatal packet warnings. |
 | `errors` | array | Fatal packet or artifact errors. |
 | `non_claims` | array of strings | Claims this packet explicitly does not make. |
@@ -76,6 +77,12 @@ Producers may add fields when they do not change the meaning of required
 fields. Consumers should ignore unknown fields and fail closed when required
 fields are missing.
 
+When `syntax_json` includes `review_signals`, `tokmd evidence-packet` may add a
+`review_priority` array. These items are sorted first by syntax signal score,
+then severity and path. They are advisory first-read hints for reviewers and
+agents. They do not prove reachability, bug presence, safety, or merge
+readiness.
+
 ## Example
 
 ```json
@@ -93,6 +100,19 @@ fields are missing.
     "context_md": "sensors/tokmd/context.md",
     "syntax_json": "sensors/tokmd/syntax.json"
   },
+  "review_priority": [
+    {
+      "rank": 1,
+      "path": "src/runtime/api/MarkdownObject.rs",
+      "category": "panic_seam",
+      "severity": "high",
+      "score": 95,
+      "kind": "expect_call",
+      "reason": "panic-like seam near review scope",
+      "evidence": "expect",
+      "refs": ["sensors/tokmd/syntax.json#/receipts/0/review_signals/1"]
+    }
+  ],
   "warnings": [],
   "errors": [],
   "non_claims": [
@@ -165,7 +185,9 @@ Do not attach a packet marked `complete` when the real state is `partial` or
 7. When `sensors/tokmd/syntax.json` exists, include it as `syntax_json`; when
    syntax evidence is explicitly requested but missing, keep the packet
    `partial` and name the missing optional artifact.
-8. Prefer `tokmd evidence-packet` over hand-written manifest glue so preset,
+8. When syntax `review_signals` exist, surface them in `review_priority` with
+   refs back to `syntax_json`.
+9. Prefer `tokmd evidence-packet` over hand-written manifest glue so preset,
    path, artifact, warning, and status checks stay consistent.
 
 ## Consumer Rules
@@ -179,7 +201,9 @@ Do not attach a packet marked `complete` when the real state is `partial` or
    skipped before handing the packet to an agent.
 7. Use `syntax_json` only as advisory parser evidence; missing or degraded
    syntax evidence is not a proof failure unless your workflow requires it.
-8. Do not infer CI proof, safety, or whole-repo coverage from this packet.
+8. Use `review_priority` as a reading order, not as a verdict. Open the
+   referenced receipt entries before making a review claim.
+9. Do not infer CI proof, safety, or whole-repo coverage from this packet.
 
 ## Bun UB Non-Claims
 

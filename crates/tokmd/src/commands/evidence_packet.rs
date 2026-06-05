@@ -5,10 +5,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use tokmd_types::{
-    EVIDENCE_PACKET_SCHEMA, EvidencePacketArtifacts, EvidencePacketManifest, EvidencePacketStatus,
+    EVIDENCE_PACKET_SCHEMA, EvidencePacketArtifacts, EvidencePacketManifest,
+    EvidencePacketReviewPriorityItem, EvidencePacketStatus,
 };
 
 use crate::cli;
+
+const MAX_REVIEW_PRIORITY_ITEMS: usize = 10;
 
 struct PacketArtifactPaths<'a> {
     analyze_md: &'a Path,
@@ -60,6 +63,8 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
 
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
+    let mut review_priority = Vec::new();
+    let paths = normalize_paths(&args.paths);
 
     validate_refs(&cwd, &args.base, &args.head, &mut errors);
     require_artifact("analyze_md", &analyze_md, &mut errors);
@@ -70,18 +75,18 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
     }
 
     if analyze_json.is_file() {
-        inspect_analyze_json(
-            &analyze_json,
-            preset,
-            &normalize_paths(&args.paths),
-            &mut warnings,
-            &mut errors,
-        );
+        inspect_analyze_json(&analyze_json, preset, &paths, &mut warnings, &mut errors);
     }
     if let Some(path) = &syntax_json
         && path.is_file()
     {
-        inspect_syntax_json(path, &normalize_paths(&args.paths), &mut warnings);
+        inspect_syntax_json(
+            path,
+            &paths,
+            &manifest_path(path, &cwd),
+            &mut warnings,
+            &mut review_priority,
+        );
     }
 
     let status = if !errors.is_empty() {
@@ -98,7 +103,7 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
         context_md: manifest_path(&context_md, &cwd),
         syntax_json: syntax_json.as_ref().map(|path| manifest_path(path, &cwd)),
     };
-    let paths = normalize_paths(&args.paths);
+    let review_priority = rank_review_priority(review_priority);
 
     Ok(EvidencePacketManifest {
         schema: EVIDENCE_PACKET_SCHEMA.to_string(),
@@ -109,6 +114,7 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
         paths: paths.clone(),
         status,
         artifacts,
+        review_priority,
         warnings,
         errors,
         non_claims: non_claims_for_preset(preset),
@@ -265,7 +271,13 @@ fn inspect_analyze_json(
     }
 }
 
-fn inspect_syntax_json(path: &Path, expected_paths: &[String], warnings: &mut Vec<String>) {
+fn inspect_syntax_json(
+    path: &Path,
+    expected_paths: &[String],
+    artifact_ref: &str,
+    warnings: &mut Vec<String>,
+    review_priority: &mut Vec<EvidencePacketReviewPriorityItem>,
+) {
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
         Err(err) => {
@@ -359,6 +371,162 @@ fn inspect_syntax_json(path: &Path, expected_paths: &[String], warnings: &mut Ve
             }
         }
         None => push_unique(warnings, "syntax_json is missing errors"),
+    }
+
+    collect_syntax_review_priority(&json, artifact_ref, warnings, review_priority);
+}
+
+fn collect_syntax_review_priority(
+    json: &Value,
+    artifact_ref: &str,
+    warnings: &mut Vec<String>,
+    review_priority: &mut Vec<EvidencePacketReviewPriorityItem>,
+) {
+    let receipts = match json.get("receipts").and_then(Value::as_array) {
+        Some(receipts) => receipts,
+        None => {
+            push_unique(warnings, "syntax_json is missing receipts");
+            return;
+        }
+    };
+
+    for (receipt_index, receipt) in receipts.iter().enumerate() {
+        let Some(path) = receipt.get("path").and_then(Value::as_str) else {
+            push_unique(
+                warnings,
+                &format!("syntax_json receipt {receipt_index} is missing path"),
+            );
+            continue;
+        };
+        let Some(signals) = receipt.get("review_signals").and_then(Value::as_array) else {
+            push_unique(
+                warnings,
+                &format!("syntax_json receipt {receipt_index} is missing review_signals"),
+            );
+            continue;
+        };
+
+        for (signal_index, signal) in signals.iter().enumerate() {
+            let Some(category) =
+                syntax_signal_string(signal, "category", receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+            let Some(severity) =
+                syntax_signal_string(signal, "severity", receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+            let Some(kind) =
+                syntax_signal_string(signal, "kind", receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+            let Some(reason) =
+                syntax_signal_string(signal, "reason", receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+            let Some(evidence) =
+                syntax_signal_string(signal, "evidence", receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+            let Some(score) = syntax_signal_score(signal, receipt_index, signal_index, warnings)
+            else {
+                continue;
+            };
+
+            review_priority.push(EvidencePacketReviewPriorityItem {
+                rank: 0,
+                path: normalize_manifest_path(path),
+                category,
+                severity,
+                score,
+                kind,
+                reason,
+                evidence,
+                refs: vec![format!(
+                    "{artifact_ref}#/receipts/{receipt_index}/review_signals/{signal_index}"
+                )],
+            });
+        }
+    }
+}
+
+fn syntax_signal_string(
+    signal: &Value,
+    field: &str,
+    receipt_index: usize,
+    signal_index: usize,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
+    match signal.get(field).and_then(Value::as_str) {
+        Some(value) if !value.is_empty() => Some(value.to_string()),
+        Some(_) => {
+            push_unique(
+                warnings,
+                &format!(
+                    "syntax_json receipt {receipt_index} review_signals {signal_index} has empty {field}"
+                ),
+            );
+            None
+        }
+        None => {
+            push_unique(
+                warnings,
+                &format!(
+                    "syntax_json receipt {receipt_index} review_signals {signal_index} is missing {field}"
+                ),
+            );
+            None
+        }
+    }
+}
+
+fn syntax_signal_score(
+    signal: &Value,
+    receipt_index: usize,
+    signal_index: usize,
+    warnings: &mut Vec<String>,
+) -> Option<u32> {
+    let Some(score) = signal.get("score").and_then(Value::as_u64) else {
+        push_unique(
+            warnings,
+            &format!(
+                "syntax_json receipt {receipt_index} review_signals {signal_index} is missing score"
+            ),
+        );
+        return None;
+    };
+    Some(u32::try_from(score).unwrap_or(u32::MAX))
+}
+
+fn rank_review_priority(
+    mut items: Vec<EvidencePacketReviewPriorityItem>,
+) -> Vec<EvidencePacketReviewPriorityItem> {
+    items.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| severity_rank(&a.severity).cmp(&severity_rank(&b.severity)))
+            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| a.category.cmp(&b.category))
+            .then_with(|| a.kind.cmp(&b.kind))
+            .then_with(|| a.evidence.cmp(&b.evidence))
+    });
+    items.truncate(MAX_REVIEW_PRIORITY_ITEMS);
+    for (index, item) in items.iter_mut().enumerate() {
+        item.rank = u32::try_from(index + 1).unwrap_or(u32::MAX);
+    }
+    items
+}
+
+fn severity_rank(severity: &str) -> u8 {
+    match severity {
+        "high" => 0,
+        "medium" => 1,
+        "low" => 2,
+        _ => 3,
     }
 }
 

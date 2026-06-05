@@ -334,6 +334,7 @@ The parser registry proof must cover:
 
 The `tokmd syntax` command is the first explicit producer for these receipts.
 Default analysis, cockpit, context, handoff, FFI, Python, Node, and WASM outputs
-remain unchanged. A later PR may wire the resulting `syntax.json` artifact into
-evidence packet manifests, review priority summaries, or specialized panic-seam
-receipts.
+remain unchanged. Evidence packet manifests may index `syntax.json` and surface
+its `review_signals` as advisory `review_priority` items with refs back to the
+syntax receipt. Specialized panic-seam receipts remain a later, separate
+contract.

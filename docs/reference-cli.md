@@ -1666,8 +1666,9 @@ Run this after producing `sensors/tokmd/analyze.md`,
 writes `sensors/tokmd/manifest.json` by default, validates the artifact paths,
 checks `analyze.json` preset/path/status coherence, preserves analysis
 warnings, records optional `syntax_json` when `sensors/tokmd/syntax.json`
-exists or `--syntax-json` is supplied, and exits nonzero for failed packets
-while leaving the manifest on disk for inspection.
+exists or `--syntax-json` is supplied, surfaces syntax `review_signals` as
+optional advisory `review_priority` items, and exits nonzero for failed
+packets while leaving the manifest on disk for inspection.
 
 **Examples**:
 ```bash

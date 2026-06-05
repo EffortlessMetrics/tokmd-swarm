@@ -667,8 +667,22 @@ fn test_evidence_packet_example_validates() -> Result<()> {
         "artifacts": {
             "analyze_md": "sensors/tokmd/analyze.md",
             "analyze_json": "sensors/tokmd/analyze.json",
-            "context_md": "sensors/tokmd/context.md"
+            "context_md": "sensors/tokmd/context.md",
+            "syntax_json": "sensors/tokmd/syntax.json"
         },
+        "review_priority": [
+            {
+                "rank": 1,
+                "path": "src/runtime/api/MarkdownObject.rs",
+                "category": "panic_seam",
+                "severity": "high",
+                "score": 95,
+                "kind": "expect_call",
+                "reason": "panic-like seam near review scope",
+                "evidence": "expect",
+                "refs": ["sensors/tokmd/syntax.json#/receipts/0/review_signals/1"]
+            }
+        ],
         "warnings": [],
         "errors": [],
         "non_claims": [

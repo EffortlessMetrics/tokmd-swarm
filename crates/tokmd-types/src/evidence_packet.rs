@@ -20,6 +20,8 @@ pub struct EvidencePacketManifest {
     pub paths: Vec<String>,
     pub status: EvidencePacketStatus,
     pub artifacts: EvidencePacketArtifacts,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_priority: Vec<EvidencePacketReviewPriorityItem>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub non_claims: Vec<String>,
@@ -43,6 +45,20 @@ pub enum EvidencePacketStatus {
     Complete,
     Partial,
     Failed,
+}
+
+/// Advisory first-read item derived from packet artifacts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidencePacketReviewPriorityItem {
+    pub rank: u32,
+    pub path: String,
+    pub category: String,
+    pub severity: String,
+    pub score: u32,
+    pub kind: String,
+    pub reason: String,
+    pub evidence: String,
+    pub refs: Vec<String>,
 }
 
 #[cfg(test)]
@@ -81,6 +97,7 @@ mod tests {
                 context_md: "sensors/tokmd/context.md".to_string(),
                 syntax_json: Some("sensors/tokmd/syntax.json".to_string()),
             },
+            review_priority: vec![],
             warnings: vec![],
             errors: vec![],
             non_claims: vec![
@@ -96,5 +113,53 @@ mod tests {
         let json = serde_json::to_string(&manifest).unwrap();
         let roundtrip: EvidencePacketManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtrip, manifest);
+    }
+
+    #[test]
+    fn evidence_packet_manifest_defaults_missing_review_priority() {
+        let json = serde_json::json!({
+            "schema": EVIDENCE_PACKET_SCHEMA,
+            "tokmd_version": "1.12.0",
+            "preset": "bun-ub",
+            "base": "origin/main",
+            "head": "HEAD",
+            "paths": ["src/runtime/api"],
+            "status": "complete",
+            "artifacts": {
+                "analyze_md": "sensors/tokmd/analyze.md",
+                "analyze_json": "sensors/tokmd/analyze.json",
+                "context_md": "sensors/tokmd/context.md"
+            },
+            "warnings": [],
+            "errors": [],
+            "non_claims": [],
+            "reproduce": []
+        });
+
+        let manifest: EvidencePacketManifest = serde_json::from_value(json).unwrap();
+        assert!(manifest.review_priority.is_empty());
+    }
+
+    #[test]
+    fn evidence_packet_review_priority_item_serializes() {
+        let item = EvidencePacketReviewPriorityItem {
+            rank: 1,
+            path: "src/runtime/api/MarkdownObject.rs".to_string(),
+            category: "panic_seam".to_string(),
+            severity: "high".to_string(),
+            score: 95,
+            kind: "expect_call".to_string(),
+            reason: "panic-like seam".to_string(),
+            evidence: "expect".to_string(),
+            refs: vec!["sensors/tokmd/syntax.json#/receipts/0/review_signals/1".to_string()],
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["rank"], 1);
+        assert_eq!(json["category"], "panic_seam");
+        assert_eq!(
+            json["refs"][0],
+            "sensors/tokmd/syntax.json#/receipts/0/review_signals/1"
+        );
     }
 }

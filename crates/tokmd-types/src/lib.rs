@@ -45,7 +45,8 @@ pub use context::{
 };
 pub use diff::{DiffReceipt, DiffRow, DiffTotals};
 pub use evidence_packet::{
-    EVIDENCE_PACKET_SCHEMA, EvidencePacketArtifacts, EvidencePacketManifest, EvidencePacketStatus,
+    EVIDENCE_PACKET_SCHEMA, EvidencePacketArtifacts, EvidencePacketManifest,
+    EvidencePacketReviewPriorityItem, EvidencePacketStatus,
 };
 pub use inventory::{
     AnalysisFormat, ChildIncludeMode, ChildrenMode, CommitIntentKind, ConfigMode, ExportArgs,

@@ -34,6 +34,24 @@ fn write_syntax_artifact_with(
     errors: &[&str],
     paths: &[&str],
 ) {
+    write_syntax_artifact_with_receipts(
+        root,
+        status,
+        warnings,
+        errors,
+        paths,
+        serde_json::json!([]),
+    );
+}
+
+fn write_syntax_artifact_with_receipts(
+    root: &std::path::Path,
+    status: &str,
+    warnings: &[&str],
+    errors: &[&str],
+    paths: &[&str],
+    receipts: Value,
+) {
     let sensor_dir = root.join("sensors").join("tokmd");
     std::fs::write(
         sensor_dir.join("syntax.json"),
@@ -41,7 +59,7 @@ fn write_syntax_artifact_with(
             "schema": "tokmd.syntax_receipts.v1",
             "status": status,
             "paths": paths,
-            "receipts": [],
+            "receipts": receipts,
             "warnings": warnings,
             "errors": errors
         })
@@ -189,6 +207,78 @@ fn evidence_packet_manifest_records_optional_syntax_artifact() {
             .iter()
             .any(|cmd| { cmd.as_str().unwrap().contains("tokmd syntax --no-progress") })
     );
+}
+
+#[test]
+fn evidence_packet_manifest_ranks_syntax_review_signals() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+    write_syntax_artifact_with_receipts(
+        dir.path(),
+        "complete",
+        &[],
+        &[],
+        &["src/runtime/api/MarkdownObject.rs"],
+        serde_json::json!([
+            {
+                "schema": "tokmd.syntax_receipt.v1",
+                "path": "src/runtime/api/MarkdownObject.rs",
+                "status": "complete",
+                "review_signals": [
+                    {
+                        "category": "public_surface",
+                        "severity": "medium",
+                        "score": 40,
+                        "kind": "public_function",
+                        "reason": "public or exported symbol changed",
+                        "evidence": "pub fn new_boundary"
+                    },
+                    {
+                        "category": "panic_seam",
+                        "severity": "high",
+                        "score": 95,
+                        "kind": "expect_call",
+                        "reason": "panic-like seam near review scope",
+                        "evidence": "expect"
+                    }
+                ]
+            }
+        ]),
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"review_priority\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(manifest["status"], "complete");
+    let items = manifest["review_priority"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["rank"], 1);
+    assert_eq!(items[0]["category"], "panic_seam");
+    assert_eq!(items[0]["severity"], "high");
+    assert_eq!(items[0]["score"], 95);
+    assert_eq!(
+        items[0]["refs"][0],
+        "sensors/tokmd/syntax.json#/receipts/0/review_signals/1"
+    );
+    assert_eq!(items[1]["rank"], 2);
+    assert_eq!(items[1]["category"], "public_surface");
 }
 
 #[test]
