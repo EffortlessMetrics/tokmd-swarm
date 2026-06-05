@@ -1,17 +1,24 @@
 use super::rust;
 
 pub const AST_SHADOW_SCHEMA_VERSION: &str = "tokmd.ast_shadow.v1";
+pub const SYNTAX_RECEIPT_SCHEMA_VERSION: &str = "tokmd.syntax_receipt.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AstLanguage {
+    Python,
     Rust,
+    TypeScript,
+    Tsx,
 }
 
 impl AstLanguage {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Python => "python",
             Self::Rust => "rust",
+            Self::TypeScript => "typescript",
+            Self::Tsx => "tsx",
         }
     }
 }
@@ -19,6 +26,7 @@ impl AstLanguage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AstParserStatus {
     ParserBackedShadow,
+    Unsupported,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,7 +57,10 @@ pub fn capabilities() -> &'static [AstCapability] {
 
 #[cfg(test)]
 mod tests {
-    use super::{AstCapability, AstLanguage, AstParserStatus};
+    use super::{
+        AST_SHADOW_SCHEMA_VERSION, AstCapability, AstLanguage, AstParserStatus,
+        SYNTAX_RECEIPT_SCHEMA_VERSION,
+    };
 
     #[test]
     fn parser_backed_shadow_constructor_never_changes_default_receipts() {
@@ -62,5 +73,19 @@ mod tests {
         );
         assert!(capability.shadow_only);
         assert!(!capability.changes_default_receipts);
+    }
+
+    #[test]
+    fn syntax_languages_have_stable_wire_values() {
+        assert_eq!(AstLanguage::Python.as_str(), "python");
+        assert_eq!(AstLanguage::Rust.as_str(), "rust");
+        assert_eq!(AstLanguage::TypeScript.as_str(), "typescript");
+        assert_eq!(AstLanguage::Tsx.as_str(), "tsx");
+    }
+
+    #[test]
+    fn schema_names_are_stable() {
+        assert_eq!(AST_SHADOW_SCHEMA_VERSION, "tokmd.ast_shadow.v1");
+        assert_eq!(SYNTAX_RECEIPT_SCHEMA_VERSION, "tokmd.syntax_receipt.v1");
     }
 }

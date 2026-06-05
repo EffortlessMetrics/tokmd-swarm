@@ -785,9 +785,9 @@ fn effort_delta_infers_changed_files_modules_and_blast_radius() {
         mc_seed: None,
     };
 
-    let report =
-        build_effort_report(&repo, &export, &derived, None, None, None, None, &req).unwrap();
+    let report = build_effort_report(&repo, &export, &derived, None, None, None, None, &req);
     if cfg!(feature = "git") {
+        let report = report.unwrap();
         let delta = report
             .delta
             .expect("delta should be populated when base/head refs are provided");
@@ -805,7 +805,11 @@ fn effort_delta_infers_changed_files_modules_and_blast_radius() {
         assert!(delta.effort_pm_low > 0.0);
         assert!(delta.effort_pm_high >= delta.effort_pm_est);
     } else {
-        assert!(report.delta.is_none());
+        let err = report.expect_err("delta refs should require the git feature");
+        assert!(
+            err.to_string()
+                .contains("delta estimation requires the tokmd-git feature")
+        );
     }
 }
 

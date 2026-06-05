@@ -1,0 +1,157 @@
+# Spec: Syntax Receipts
+
+- Status: draft
+- Schema family, if any: `tokmd.syntax_receipt.v1`
+- Related ADRs: `docs/adr/0008-ast-foundation.md`
+- Related proof scopes: `analysis_ast_shadow`
+
+## Contract
+
+Syntax receipts are feature-gated parser availability and parse-status evidence
+for future review packets. They exist to prove that tokmd can parse selected
+languages deterministically and report degradation explicitly before syntax
+facts are promoted into default analysis output.
+
+The first syntax receipt slice must:
+
+- stay behind the explicit `ast` feature;
+- lock parser support to TypeScript, TSX, Rust, and Python;
+- report unsupported, skipped, parse-degraded, and parser-failed files as
+  advisory receipt states instead of silent omissions;
+- keep generated and vendor paths skipped by policy unless explicitly included
+  by a future caller;
+- keep large-file skips bounded by a recorded byte limit;
+- avoid network access, global parser discovery, timestamps, absolute paths,
+  and nondeterministic ordering;
+- leave default `tokmd analyze`, `tokmd cockpit`, `tokmd context`,
+  `tokmd handoff`, FFI, Python, Node, and WASM outputs unchanged until a later
+  schema-reviewed receipt promotion.
+
+Syntax receipts must not claim that AST evidence proves undefined behavior,
+panic reachability, semantic call edges, public reachability, or parser risk.
+Those claims require separate receipts with their own proof and schema review.
+
+## Parser Registry
+
+The locked parser registry is:
+
+| Language | Extensions | Parser crate | Grammar symbol |
+| --- | --- | --- | --- |
+| Rust | `rs` | `tree-sitter-rust` | `tree_sitter_rust` |
+| TypeScript | `ts`, `mts`, `cts` | `tree-sitter-typescript` | `tree_sitter_typescript` |
+| TSX | `tsx` | `tree-sitter-typescript` | `tree_sitter_tsx` |
+| Python | `py`, `pyw` | `tree-sitter-python` | `tree_sitter_python` |
+
+Adding a language is a schema-affecting registry change. It must include parser
+metadata, extension routing tests, degradation tests, and proof that the parser
+does not require network or environment-specific setup.
+
+## Inputs
+
+The first syntax receipt builder accepts:
+
+- a normalized or normalizable repository-relative path;
+- caller-supplied source text;
+- a parser option set containing the maximum syntax byte limit and generated or
+  vendor skip policy;
+- the feature-gated locked parser registry compiled into `tokmd-analysis`.
+
+The syntax receipt path must not require:
+
+- network access;
+- runtime parser downloads;
+- GitHub Actions metadata;
+- Codecov upload;
+- evidencebus runtime dependencies;
+- browser, WASM, Python, or Node binding support.
+
+## Outputs
+
+The first output is a library-facing `tokmd.syntax_receipt.v1` value. It is not
+yet emitted by default CLI commands or language bindings.
+
+Every receipt records:
+
+- normalized path;
+- optional language wire value;
+- optional parser crate and grammar symbol;
+- parse status;
+- advisory flag;
+- optional human-readable reason;
+- source byte count;
+- optional root node kind;
+- parser error state.
+
+The output must avoid timestamps, absolute paths, environment-specific temporary
+directories, and nondeterministic ordering.
+
+## Receipt Shape
+
+A syntax parse receipt uses schema family `tokmd.syntax_receipt.v1`:
+
+```json
+{
+  "schema": "tokmd.syntax_receipt.v1",
+  "path": "src/runtime/api/example.ts",
+  "language": "typescript",
+  "parser_crate": "tree-sitter-typescript",
+  "grammar_symbol": "tree_sitter_typescript",
+  "status": "complete",
+  "advisory": false,
+  "reason": null,
+  "source_bytes": 128,
+  "root_kind": "program",
+  "has_error": false
+}
+```
+
+Supported statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `complete` | The locked parser produced a tree and the root node has no syntax errors. |
+| `parse_degraded` | The parser recovered a tree, but syntax errors were present. |
+| `parser_failed` | The parser could not be loaded or produced no tree. |
+| `skipped_generated_or_vendor` | Policy skipped a generated or vendor path. |
+| `skipped_too_large` | The file exceeded the configured syntax byte limit. |
+| `unsupported_language` | No locked parser exists for the file extension. |
+
+Every status except `complete` must set `advisory` to `true` and include a
+reason suitable for a human reviewer and a bot log.
+
+## Compatibility
+
+This slice is additive and feature-gated. It adds optional parser dependencies
+behind the existing `ast` feature and does not change default receipt schemas or
+default CLI behavior.
+
+Compatibility requirements:
+
+- builds without `--features ast` must not require the new parser crates;
+- default `tokmd analyze`, `tokmd cockpit`, `tokmd context`, `tokmd handoff`,
+  FFI, Python, Node, and WASM outputs remain unchanged;
+- AST shadow comparison artifacts keep schema family `tokmd.ast_shadow.v1`;
+- non-Rust shadow inputs are reported as unsupported rather than parsed until a
+  later comparison-runner PR promotes a language;
+- parser failures and parse degradation remain advisory evidence, not proof
+  promotion or merge verdicts.
+
+## Proof Requirements
+
+The parser registry proof must cover:
+
+- stable language wire values and schema name;
+- parser crate and grammar symbol metadata for TypeScript, TSX, Rust, and
+  Python;
+- extension routing, including uppercase extension normalization;
+- successful parse receipts for supported languages;
+- explicit `parse_degraded` receipts for malformed syntax;
+- `unsupported_language` receipts for files outside the locked registry;
+- generated/vendor policy skips;
+- large-file skip receipts with the configured byte limit;
+- non-Rust shadow inputs remain unsupported in the AST shadow comparison path
+  until a later comparison runner promotes them.
+
+The first implementation is library-facing only. A later PR may choose where
+syntax receipts are emitted in evidence packets, review priority summaries, or
+specialized panic-seam receipts.
