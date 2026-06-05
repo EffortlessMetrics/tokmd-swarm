@@ -1,5 +1,6 @@
 use super::capability::{AstLanguage, SYNTAX_RECEIPT_SCHEMA_VERSION};
 use super::facts::SyntaxFacts;
+use super::rust::extract_rust_facts;
 use super::typescript::extract_typescript_facts;
 use serde_json::{Value, json};
 use tree_sitter::{Language, Parser};
@@ -222,8 +223,9 @@ pub fn parse_syntax_receipt(
     let root = tree.root_node();
     let has_error = root.has_error();
     let facts = match capability.language {
+        AstLanguage::Rust => extract_rust_facts(root, source),
         AstLanguage::TypeScript | AstLanguage::Tsx => extract_typescript_facts(root, source),
-        AstLanguage::Python | AstLanguage::Rust => SyntaxFacts::default(),
+        AstLanguage::Python => SyntaxFacts::default(),
     };
 
     SyntaxParseReceipt {
@@ -521,6 +523,66 @@ mod tests {
                 .iter()
                 .any(|entry| entry["kind"] == "risky_cast")
         );
+    }
+
+    #[test]
+    fn extracts_rust_review_facts_from_panic_seam_fixture() {
+        let receipt = parse_syntax_receipt(
+            "src/runtime/panic_seams.rs",
+            include_str!("../../../../fixtures/syntax/rust/panic_seams.rs"),
+            SyntaxParseOptions::default(),
+        );
+        let value = receipt.to_value();
+
+        assert_eq!(receipt.status, SyntaxParseStatus::Complete);
+        assert_eq!(receipt.root_kind.as_deref(), Some("source_file"));
+        assert!(
+            value["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "load_packet" && entry["public_surface"] == true)
+        );
+        assert!(
+            value["exports"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["name"] == "ffi_entry")
+        );
+        assert!(value["imports"].as_array().unwrap().iter().any(|entry| {
+            entry["imported"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name.as_str().is_some_and(|name| name.contains("TryFrom")))
+        }));
+        assert!(
+            value["call_sites"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["callee"] == "panic!")
+        );
+        for kind in [
+            "expect",
+            "fallible_conversion_expect",
+            "unwrap",
+            "capacity_allocation",
+            "indexing",
+            "panic_macro",
+            "assert_macro",
+            "guard_evidence",
+        ] {
+            assert!(
+                value["risk_seams"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|entry| entry["kind"] == kind),
+                "{kind}"
+            );
+        }
     }
 
     #[test]

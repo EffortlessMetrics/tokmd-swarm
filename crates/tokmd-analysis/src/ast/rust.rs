@@ -1,4 +1,8 @@
 use super::capability::{AstCapability, AstLanguage};
+use super::facts::{
+    SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxRiskSeam, SyntaxSpan,
+    SyntaxSymbol,
+};
 use std::error::Error;
 use std::fmt;
 use tree_sitter::{Node, Parser};
@@ -80,6 +84,175 @@ pub fn parse_rust_landmarks(source: &str) -> Result<RustAstShadow, RustAstError>
     })
 }
 
+#[must_use]
+pub fn extract_rust_facts(root: Node<'_>, source: &str) -> SyntaxFacts {
+    let mut facts = SyntaxFacts::default();
+    visit_syntax_node(root, source, &mut facts);
+    facts.normalize();
+    facts
+}
+
+fn visit_syntax_node(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+    match node.kind() {
+        "function_item" => push_rust_symbol(node, source, "function", facts),
+        "struct_item" => push_rust_symbol(node, source, "struct", facts),
+        "enum_item" => push_rust_symbol(node, source, "enum", facts),
+        "trait_item" => push_rust_symbol(node, source, "trait", facts),
+        "use_declaration" => push_rust_import(node, source, facts),
+        "call_expression" => push_rust_call(node, source, facts),
+        "macro_invocation" => push_rust_macro(node, source, facts),
+        "index_expression" => {
+            push_rust_risk("indexing", node_text(source, node), node, facts);
+            push_guard_evidence(node, source, facts);
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        visit_syntax_node(child, source, facts);
+    }
+}
+
+fn push_rust_symbol(node: Node<'_>, source: &str, kind: &str, facts: &mut SyntaxFacts) {
+    let name = node
+        .child_by_field_name("name")
+        .and_then(|name| node_text_checked(source, name))
+        .map(compact_text)
+        .or_else(|| first_identifier_text(node, source))
+        .unwrap_or_else(|| "<anonymous>".to_owned());
+    let exported = is_public_surface(node, source);
+    let span = SyntaxSpan::from_node(node);
+
+    facts.symbols.push(SyntaxSymbol {
+        kind: kind.to_owned(),
+        name: name.clone(),
+        span,
+        exported,
+        public_surface: exported,
+    });
+
+    if exported {
+        facts.exports.push(SyntaxExport {
+            kind: kind.to_owned(),
+            name,
+            span,
+        });
+    }
+}
+
+fn push_rust_import(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+    if let Some(imported) = normalized_node_text_str(node, source) {
+        let imported = imported
+            .strip_prefix("use ")
+            .unwrap_or(&imported)
+            .trim_end_matches(';')
+            .trim()
+            .to_owned();
+        facts.imports.push(SyntaxImport {
+            kind: "use".to_owned(),
+            module: None,
+            imported: vec![imported],
+            dynamic: false,
+            span: SyntaxSpan::from_node(node),
+        });
+    }
+}
+
+fn push_rust_call(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+    let callee = node
+        .child_by_field_name("function")
+        .and_then(|function| node_text_checked(source, function))
+        .map(compact_text)
+        .or_else(|| first_named_child_text(node, source))
+        .unwrap_or_else(|| "<unknown>".to_owned());
+    let span = SyntaxSpan::from_node(node);
+
+    facts.call_sites.push(SyntaxCallSite {
+        kind: "call".to_owned(),
+        callee: callee.clone(),
+        dynamic: false,
+        span,
+    });
+
+    if is_capacity_callee(&callee) {
+        push_rust_risk("capacity_allocation", callee.as_str(), node, facts);
+        push_guard_evidence(node, source, facts);
+    }
+    if is_fallible_conversion_callee(&callee) {
+        push_rust_risk("fallible_conversion", callee.as_str(), node, facts);
+    }
+    if let Some(method) = method_name_from_callee(&callee) {
+        match method.as_str() {
+            "unwrap" | "unwrap_unchecked" => {
+                push_rust_risk("unwrap", callee.as_str(), node, facts);
+                push_guard_evidence(node, source, facts);
+            }
+            "expect" => {
+                if callee.contains("try_from") || callee.contains("try_into") {
+                    push_rust_risk("fallible_conversion_expect", callee.as_str(), node, facts);
+                } else {
+                    push_rust_risk("expect", callee.as_str(), node, facts);
+                }
+                push_guard_evidence(node, source, facts);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn push_rust_macro(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+    let macro_name = node
+        .child_by_field_name("macro")
+        .and_then(|macro_node| node_text_checked(source, macro_node))
+        .map(|name| name.trim_end_matches('!').to_owned())
+        .or_else(|| macro_name_from_text(node_text(source, node)))
+        .map(|name| last_path_segment(name.as_str()).to_owned())
+        .unwrap_or_else(|| "<unknown>".to_owned());
+    let span = SyntaxSpan::from_node(node);
+
+    facts.call_sites.push(SyntaxCallSite {
+        kind: "macro".to_owned(),
+        callee: format!("{macro_name}!"),
+        dynamic: false,
+        span,
+    });
+
+    if let Some(kind) = risky_macro_kind(macro_name.as_str()) {
+        push_rust_risk(kind, node_text(source, node), node, facts);
+        push_guard_evidence(node, source, facts);
+    }
+}
+
+fn push_rust_risk(kind: &str, evidence: &str, node: Node<'_>, facts: &mut SyntaxFacts) {
+    facts.risk_seams.push(SyntaxRiskSeam {
+        kind: kind.to_owned(),
+        evidence: compact_text(evidence),
+        span: SyntaxSpan::from_node(node),
+    });
+}
+
+fn push_guard_evidence(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+    let Some(guard) = nearest_guard(node) else {
+        return;
+    };
+    facts.risk_seams.push(SyntaxRiskSeam {
+        kind: "guard_evidence".to_owned(),
+        evidence: compact_text(node_text(source, guard)),
+        span: SyntaxSpan::from_node(guard),
+    });
+}
+
+fn nearest_guard(mut node: Node<'_>) -> Option<Node<'_>> {
+    for _ in 0..8 {
+        node = node.parent()?;
+        if matches!(node.kind(), "if_expression" | "match_expression") {
+            return Some(node);
+        }
+    }
+    None
+}
+
 fn collect_landmarks(node: Node<'_>, source: &[u8], landmarks: &mut Vec<RustLandmark>) {
     match node.kind() {
         "function_item" => {
@@ -132,6 +305,102 @@ fn normalized_node_text(node: Node<'_>, source: &[u8]) -> Option<String> {
         .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
+fn node_text<'source>(source: &'source str, node: Node<'_>) -> &'source str {
+    source.get(node.byte_range()).unwrap_or("")
+}
+
+fn node_text_checked<'source>(source: &'source str, node: Node<'_>) -> Option<&'source str> {
+    source.get(node.byte_range())
+}
+
+fn normalized_node_text_str(node: Node<'_>, source: &str) -> Option<String> {
+    node_text_checked(source, node).map(compact_text)
+}
+
+fn first_identifier_text(node: Node<'_>, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if matches!(
+            child.kind(),
+            "identifier" | "type_identifier" | "field_identifier"
+        ) {
+            return Some(compact_text(node_text(source, child)));
+        }
+    }
+    None
+}
+
+fn first_named_child_text(node: Node<'_>, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .next()
+        .map(|child| compact_text(node_text(source, child)))
+}
+
+fn method_name_from_callee(callee: &str) -> Option<String> {
+    callee
+        .rsplit_once('.')
+        .map(|(_, method)| method.trim().to_owned())
+        .filter(|method| !method.is_empty())
+}
+
+fn last_path_segment(text: &str) -> &str {
+    text.rsplit_once("::").map_or(text, |(_, segment)| segment)
+}
+
+fn macro_name_from_text(text: &str) -> Option<String> {
+    text.split_once('!')
+        .map(|(name, _)| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+}
+
+fn compact_text(text: &str) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() > 120 {
+        let shortened = compact.chars().take(117).collect::<String>();
+        format!("{shortened}...")
+    } else {
+        compact
+    }
+}
+
+fn is_public_surface(node: Node<'_>, source: &str) -> bool {
+    let text = node_text(source, node);
+    text.contains("pub ")
+        || text.contains("pub(")
+        || text.contains("extern \"")
+        || text.contains("#[no_mangle]")
+        || text.contains("#[export_name")
+}
+
+fn is_capacity_callee(callee: &str) -> bool {
+    callee.ends_with("::with_capacity")
+        || callee.ends_with("::reserve")
+        || callee.ends_with("::reserve_exact")
+        || callee.ends_with("::try_reserve")
+        || callee.ends_with("::try_reserve_exact")
+        || callee.ends_with(".reserve")
+        || callee.ends_with(".reserve_exact")
+        || callee.ends_with(".try_reserve")
+        || callee.ends_with(".try_reserve_exact")
+}
+
+fn is_fallible_conversion_callee(callee: &str) -> bool {
+    callee.ends_with("::try_from") || callee.ends_with("::try_into")
+}
+
+fn risky_macro_kind(name: &str) -> Option<&'static str> {
+    match name {
+        "panic" => Some("panic_macro"),
+        "assert" | "assert_eq" | "assert_ne" | "debug_assert" | "debug_assert_eq"
+        | "debug_assert_ne" => Some("assert_macro"),
+        "unreachable" => Some("unreachable_macro"),
+        "todo" => Some("todo_macro"),
+        "unimplemented" => Some("unimplemented_macro"),
+        _ => None,
+    }
+}
+
 fn control_flow_name(kind: &str) -> Option<&'static str> {
     match kind {
         "if_expression" => Some("if"),
@@ -163,7 +432,8 @@ fn push_landmark(
 
 #[cfg(test)]
 mod tests {
-    use super::{RustLandmarkKind, parse_rust_landmarks};
+    use super::{RustLandmarkKind, extract_rust_facts, parse_rust_landmarks};
+    use tree_sitter::Parser;
 
     #[test]
     fn parses_top_level_and_impl_function_landmarks() {
@@ -266,5 +536,66 @@ fn compute(value: i32) {
                 (RustLandmarkKind::ControlFlow, "loop"),
             ]
         );
+    }
+
+    #[test]
+    fn extracts_call_expression_method_risks_from_locked_grammar() {
+        let facts = parse_facts(
+            r#"
+fn main(value: Option<i32>, count: i64, index: usize) -> i32 {
+    let count = usize::try_from(count).expect("count fits");
+    let mut values = Vec::with_capacity(count);
+    values.reserve(index);
+    if index < values.len() {
+        return values[index];
+    }
+    value.unwrap()
+}
+"#,
+        );
+
+        let risk_kinds = facts
+            .risk_seams
+            .iter()
+            .map(|risk| risk.kind.as_str())
+            .collect::<Vec<_>>();
+        for expected in [
+            "fallible_conversion",
+            "fallible_conversion_expect",
+            "capacity_allocation",
+            "indexing",
+            "guard_evidence",
+            "unwrap",
+        ] {
+            assert!(risk_kinds.contains(&expected), "{expected}");
+        }
+    }
+
+    #[test]
+    fn normalizes_path_qualified_macro_names() {
+        let facts = parse_facts(
+            r#"
+fn main() {
+    std::panic!("boom");
+}
+"#,
+        );
+
+        assert!(facts.call_sites.iter().any(|call| call.callee == "panic!"));
+        assert!(
+            facts
+                .risk_seams
+                .iter()
+                .any(|risk| risk.kind == "panic_macro")
+        );
+    }
+
+    fn parse_facts(source: &str) -> super::SyntaxFacts {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .expect("Rust parser should load");
+        let tree = parser.parse(source, None).expect("source should parse");
+        extract_rust_facts(tree.root_node(), source)
     }
 }

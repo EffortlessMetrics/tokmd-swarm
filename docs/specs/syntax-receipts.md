@@ -194,7 +194,16 @@ column numbers. The TypeScript/TSX first slice populates:
 - risky casts/assertions, non-null assertions, dynamic imports, dynamic calls,
   native or binding-ish hints, and entrypoint-like calls such as `Bun.serve`.
 
-Rust and Python receipts keep these arrays empty until their fixture slices add
+The Rust first slice populates:
+
+- public/API-ish functions, structs, enums, and traits as symbols and exports;
+- `use` declarations as imports;
+- function calls, method calls, and macro invocations as call sites;
+- `unwrap`, `expect`, `try_from(...).expect(...)`, indexing expressions,
+  capacity/allocation calls, panic/assert/unreachable/todo macros, and nearby
+  `if`/`match` guard evidence as risk seams.
+
+Python receipts keep these arrays empty until their fixture slice adds
 language-specific extraction.
 
 ## Compatibility
@@ -232,6 +241,9 @@ The parser registry proof must cover:
 - TypeScript and TSX fixtures prove exports, imports, dynamic imports,
   entrypoint calls, native or binding-ish hints, call sites, and risky
   cast/assertion seams.
+- Rust fixtures prove public symbols, `use` imports, call and macro sites,
+  unwrap/expect, fallible conversion plus `expect`, indexing, capacity
+  allocation, panic/assert macros, and guard evidence.
 
 The first implementation is library-facing only. A later PR may choose where
 syntax receipts are emitted in evidence packets, review priority summaries, or
