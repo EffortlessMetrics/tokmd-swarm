@@ -17,6 +17,23 @@ fn write_sensor_artifacts(root: &std::path::Path, analyze_json: &str) {
     std::fs::write(sensor_dir.join("context.md"), "# Context\n").unwrap();
 }
 
+fn write_syntax_artifact(root: &std::path::Path) {
+    let sensor_dir = root.join("sensors").join("tokmd");
+    std::fs::write(
+        sensor_dir.join("syntax.json"),
+        serde_json::json!({
+            "schema": "tokmd.syntax_receipts.v1",
+            "status": "complete",
+            "paths": ["src/runtime/api/MarkdownObject.rs"],
+            "receipts": [],
+            "warnings": [],
+            "errors": []
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
 fn init_repo_with_scope() -> tempfile::TempDir {
     let dir = tempdir().unwrap();
     assert!(common::init_git_repo(dir.path()));
@@ -105,6 +122,7 @@ fn evidence_packet_manifest_complete_when_artifacts_match() {
         manifest["artifacts"]["analyze_md"],
         "sensors/tokmd/analyze.md"
     );
+    assert!(manifest["artifacts"].get("syntax_json").is_none());
     assert!(
         manifest["non_claims"][0]
             .as_str()
@@ -115,6 +133,84 @@ fn evidence_packet_manifest_complete_when_artifacts_match() {
         cmd.as_str()
             .unwrap()
             .contains("tokmd analyze --preset bun-ub --format json")
+    }));
+}
+
+#[test]
+fn evidence_packet_manifest_records_optional_syntax_artifact() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+    write_syntax_artifact(dir.path());
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"complete\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(
+        manifest["artifacts"]["syntax_json"],
+        "sensors/tokmd/syntax.json"
+    );
+    assert!(
+        manifest["reproduce"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|cmd| { cmd.as_str().unwrap().contains("tokmd syntax --no-progress") })
+    );
+}
+
+#[test]
+fn evidence_packet_manifest_warns_for_explicit_missing_syntax_artifact() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--syntax-json",
+            "sensors/tokmd/syntax.json",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"partial\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(manifest["status"], "partial");
+    assert_eq!(
+        manifest["artifacts"]["syntax_json"],
+        "sensors/tokmd/syntax.json"
+    );
+    assert!(manifest["warnings"].as_array().unwrap().iter().any(|err| {
+        err.as_str()
+            .unwrap()
+            .contains("optional artifact syntax_json missing")
     }));
 }
 

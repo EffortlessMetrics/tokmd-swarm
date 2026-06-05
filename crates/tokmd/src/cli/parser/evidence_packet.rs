@@ -44,6 +44,10 @@ pub struct EvidencePacketArgs {
     #[arg(long = "context-md", value_name = "PATH")]
     pub context_md: Option<PathBuf>,
 
+    /// Path to the optional syntax JSON artifact.
+    #[arg(long = "syntax-json", value_name = "PATH")]
+    pub syntax_json: Option<PathBuf>,
+
     /// Context budget used for the context artifact reproduction command.
     #[arg(long = "context-budget", default_value = "64000")]
     pub context_budget: String,

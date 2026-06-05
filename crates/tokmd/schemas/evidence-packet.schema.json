@@ -68,6 +68,10 @@
         "context_md": {
           "type": "string",
           "minLength": 1
+        },
+        "syntax_json": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

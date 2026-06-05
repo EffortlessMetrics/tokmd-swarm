@@ -33,6 +33,7 @@ sensors/tokmd/
   analyze.md
   analyze.json
   context.md
+  syntax.json        # optional when syntax receipts are produced
 ```
 
 The manifest is the packet index. The receipts remain the source evidence.
@@ -69,6 +70,7 @@ Recommended artifact keys:
 | `analyze_md` | `sensors/tokmd/analyze.md` | Human-first scoped analysis summary. |
 | `analyze_json` | `sensors/tokmd/analyze.json` | Machine-readable analysis receipt. |
 | `context_md` | `sensors/tokmd/context.md` | Context budget audit for reviewer or agent handoff. |
+| `syntax_json` | `sensors/tokmd/syntax.json` | Optional syntax receipt packet for parser-backed review signals. |
 
 Producers may add fields when they do not change the meaning of required
 fields. Consumers should ignore unknown fields and fail closed when required
@@ -88,7 +90,8 @@ fields are missing.
   "artifacts": {
     "analyze_md": "sensors/tokmd/analyze.md",
     "analyze_json": "sensors/tokmd/analyze.json",
-    "context_md": "sensors/tokmd/context.md"
+    "context_md": "sensors/tokmd/context.md",
+    "syntax_json": "sensors/tokmd/syntax.json"
   },
   "warnings": [],
   "errors": [],
@@ -99,6 +102,7 @@ fields are missing.
     "tokmd analyze --preset bun-ub --format md --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.md",
     "tokmd analyze --preset bun-ub --format json --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.json",
     "tokmd context --budget 64000 src/runtime/api > sensors/tokmd/context.md",
+    "tokmd syntax --no-progress src/runtime/api > sensors/tokmd/syntax.json",
     "tokmd evidence-packet --base origin/main --head HEAD src/runtime/api"
   ]
 }
@@ -158,7 +162,10 @@ Do not attach a packet marked `complete` when the real state is `partial` or
    that the packet packages review evidence and does not prove UB exists or is
    absent.
 6. Keep reproduction commands copy-ready and scoped to the same paths.
-7. Prefer `tokmd evidence-packet` over hand-written manifest glue so preset,
+7. When `sensors/tokmd/syntax.json` exists, include it as `syntax_json`; when
+   syntax evidence is explicitly requested but missing, keep the packet
+   `partial` and name the missing optional artifact.
+8. Prefer `tokmd evidence-packet` over hand-written manifest glue so preset,
    path, artifact, warning, and status checks stay consistent.
 
 ## Consumer Rules
@@ -170,7 +177,9 @@ Do not attach a packet marked `complete` when the real state is `partial` or
 5. Use `analyze.json` for bot, ledger, and agent ingestion.
 6. Use `context.md` to check which source files were included, truncated, or
    skipped before handing the packet to an agent.
-7. Do not infer CI proof, safety, or whole-repo coverage from this packet.
+7. Use `syntax_json` only as advisory parser evidence; missing or degraded
+   syntax evidence is not a proof failure unless your workflow requires it.
+8. Do not infer CI proof, safety, or whole-repo coverage from this packet.
 
 ## Bun UB Non-Claims
 

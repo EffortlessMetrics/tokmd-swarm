@@ -10,6 +10,13 @@ use tokmd_types::{
 
 use crate::cli;
 
+struct PacketArtifactPaths<'a> {
+    analyze_md: &'a Path,
+    analyze_json: &'a Path,
+    context_md: &'a Path,
+    syntax_json: Option<&'a Path>,
+}
+
 pub(crate) fn handle(args: cli::EvidencePacketArgs) -> Result<()> {
     let manifest = build_manifest(&args)?;
     write_manifest(&args.output, &manifest)?;
@@ -45,6 +52,11 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
         .context_md
         .clone()
         .unwrap_or_else(|| output_dir.join("context.md"));
+    let default_syntax_json = output_dir.join("syntax.json");
+    let syntax_json = args
+        .syntax_json
+        .clone()
+        .or_else(|| default_syntax_json.is_file().then_some(default_syntax_json));
 
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
@@ -53,6 +65,9 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
     require_artifact("analyze_md", &analyze_md, &mut errors);
     require_artifact("analyze_json", &analyze_json, &mut errors);
     require_artifact("context_md", &context_md, &mut errors);
+    if let Some(path) = &syntax_json {
+        optional_artifact("syntax_json", path, &mut warnings);
+    }
 
     if analyze_json.is_file() {
         inspect_analyze_json(
@@ -76,6 +91,7 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
         analyze_md: manifest_path(&analyze_md, &cwd),
         analyze_json: manifest_path(&analyze_json, &cwd),
         context_md: manifest_path(&context_md, &cwd),
+        syntax_json: syntax_json.as_ref().map(|path| manifest_path(path, &cwd)),
     };
     let paths = normalize_paths(&args.paths);
 
@@ -95,9 +111,12 @@ fn build_manifest(args: &cli::EvidencePacketArgs) -> Result<EvidencePacketManife
             args,
             preset,
             &paths,
-            &analyze_md,
-            &analyze_json,
-            &context_md,
+            PacketArtifactPaths {
+                analyze_md: &analyze_md,
+                analyze_json: &analyze_json,
+                context_md: &context_md,
+                syntax_json: syntax_json.as_deref(),
+            },
             &cwd,
         ),
     })
@@ -136,6 +155,15 @@ fn require_artifact(label: &str, path: &Path, errors: &mut Vec<String>) {
         push_unique(
             errors,
             &format!("required artifact {label} missing: {}", display_path(path)),
+        );
+    }
+}
+
+fn optional_artifact(label: &str, path: &Path, warnings: &mut Vec<String>) {
+    if !path.is_file() {
+        push_unique(
+            warnings,
+            &format!("optional artifact {label} missing: {}", display_path(path)),
         );
     }
 }
@@ -280,9 +308,7 @@ fn reproduce_commands(
     args: &cli::EvidencePacketArgs,
     preset: &str,
     paths: &[String],
-    analyze_md: &Path,
-    analyze_json: &Path,
-    context_md: &Path,
+    artifact_paths: PacketArtifactPaths<'_>,
     cwd: &Path,
 ) -> Vec<String> {
     let joined_paths = paths
@@ -301,44 +327,59 @@ fn reproduce_commands(
     if args.analyze_md.is_some() {
         packet_command.push_str(&format!(
             " --analyze-md {}",
-            quote_arg(&manifest_path(analyze_md, cwd))
+            quote_arg(&manifest_path(artifact_paths.analyze_md, cwd))
         ));
     }
     if args.analyze_json.is_some() {
         packet_command.push_str(&format!(
             " --analyze-json {}",
-            quote_arg(&manifest_path(analyze_json, cwd))
+            quote_arg(&manifest_path(artifact_paths.analyze_json, cwd))
         ));
     }
     if args.context_md.is_some() {
         packet_command.push_str(&format!(
             " --context-md {}",
-            quote_arg(&manifest_path(context_md, cwd))
+            quote_arg(&manifest_path(artifact_paths.context_md, cwd))
+        ));
+    }
+    if let Some(path) = artifact_paths.syntax_json
+        && args.syntax_json.is_some()
+    {
+        packet_command.push_str(&format!(
+            " --syntax-json {}",
+            quote_arg(&manifest_path(path, cwd))
         ));
     }
     packet_command.push(' ');
     packet_command.push_str(&joined_paths);
 
-    vec![
+    let mut commands = vec![
         format!(
             "tokmd analyze --preset {preset} --format md --effort-base-ref {} --effort-head-ref {} --no-progress {joined_paths} > {}",
             quote_arg(&args.base),
             quote_arg(&args.head),
-            quote_arg(&manifest_path(analyze_md, cwd)),
+            quote_arg(&manifest_path(artifact_paths.analyze_md, cwd)),
         ),
         format!(
             "tokmd analyze --preset {preset} --format json --effort-base-ref {} --effort-head-ref {} --no-progress {joined_paths} > {}",
             quote_arg(&args.base),
             quote_arg(&args.head),
-            quote_arg(&manifest_path(analyze_json, cwd)),
+            quote_arg(&manifest_path(artifact_paths.analyze_json, cwd)),
         ),
         format!(
             "tokmd context --budget {} {joined_paths} > {}",
             quote_arg(&args.context_budget),
-            quote_arg(&manifest_path(context_md, cwd)),
+            quote_arg(&manifest_path(artifact_paths.context_md, cwd)),
         ),
-        packet_command,
-    ]
+    ];
+    if let Some(path) = artifact_paths.syntax_json {
+        commands.push(format!(
+            "tokmd syntax --no-progress {joined_paths} > {}",
+            quote_arg(&manifest_path(path, cwd)),
+        ));
+    }
+    commands.push(packet_command);
+    commands
 }
 
 fn normalize_paths(paths: &[PathBuf]) -> Vec<String> {

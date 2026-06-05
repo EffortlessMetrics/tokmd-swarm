@@ -1634,6 +1634,9 @@ Options:
       --context-md <PATH>
           Path to the context Markdown artifact
 
+      --syntax-json <PATH>
+          Path to the optional syntax JSON artifact
+
       --context-budget <CONTEXT_BUDGET>
           Context budget used for the context artifact reproduction command
 
@@ -1662,8 +1665,9 @@ Run this after producing `sensors/tokmd/analyze.md`,
 `sensors/tokmd/analyze.json`, and `sensors/tokmd/context.md`. The command
 writes `sensors/tokmd/manifest.json` by default, validates the artifact paths,
 checks `analyze.json` preset/path/status coherence, preserves analysis
-warnings, and exits nonzero for failed packets while leaving the manifest on
-disk for inspection.
+warnings, records optional `syntax_json` when `sensors/tokmd/syntax.json`
+exists or `--syntax-json` is supplied, and exits nonzero for failed packets
+while leaving the manifest on disk for inspection.
 
 **Examples**:
 ```bash

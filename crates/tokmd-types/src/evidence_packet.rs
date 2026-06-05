@@ -32,6 +32,8 @@ pub struct EvidencePacketArtifacts {
     pub analyze_md: String,
     pub analyze_json: String,
     pub context_md: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_json: Option<String>,
 }
 
 /// Evidence packet status.
@@ -77,6 +79,7 @@ mod tests {
                 analyze_md: "sensors/tokmd/analyze.md".to_string(),
                 analyze_json: "sensors/tokmd/analyze.json".to_string(),
                 context_md: "sensors/tokmd/context.md".to_string(),
+                syntax_json: Some("sensors/tokmd/syntax.json".to_string()),
             },
             warnings: vec![],
             errors: vec![],
