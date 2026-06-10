@@ -45,7 +45,7 @@ const ENTRIES: &[Entry] = &[
     Entry {
         canonical: "avg_cyclomatic",
         aliases: &["cyclomatic"],
-        summary: "Average branching complexity across analyzed files.",
+        summary: "Average branching complexity across detected functions.",
     },
     Entry {
         canonical: "max_cyclomatic",

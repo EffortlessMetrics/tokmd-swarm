@@ -37,8 +37,16 @@ pub(super) fn summarize_file_complexities(files: &[FileComplexity]) -> Complexit
     let avg_cyclomatic = if file_count == 0 {
         0.0
     } else {
-        let total_cyclo: usize = files.iter().map(|f| f.cyclomatic_complexity).sum();
-        round_f64(total_cyclo as f64 / file_count as f64, 2)
+        let total_cyclo: usize = files
+            .iter()
+            .filter(|f| f.function_count > 0)
+            .map(|f| f.cyclomatic_complexity)
+            .sum();
+        if total_functions == 0 {
+            0.0
+        } else {
+            round_f64(total_cyclo as f64 / total_functions as f64, 2)
+        }
     };
 
     let max_cyclomatic = files
@@ -147,12 +155,26 @@ mod tests {
         assert_eq!(summary.total_functions, 6);
         assert_eq!(summary.avg_function_length, 10.33);
         assert_eq!(summary.max_function_length, 21);
-        assert_eq!(summary.avg_cyclomatic, 4.0);
+        assert_eq!(summary.avg_cyclomatic, 1.83);
         assert_eq!(summary.max_cyclomatic, 8);
         assert_eq!(summary.avg_cognitive, Some(6.5));
         assert_eq!(summary.max_cognitive, Some(9));
         assert_eq!(summary.avg_nesting_depth, Some(3.5));
         assert_eq!(summary.max_nesting_depth, Some(5));
         assert_eq!(summary.high_risk_files, 2);
+    }
+
+    #[test]
+    fn avg_cyclomatic_uses_function_count_not_file_count() {
+        let files = vec![
+            file(2, 10, 10, None, None, ComplexityRisk::Low),
+            file(3, 12, 15, None, None, ComplexityRisk::Low),
+        ];
+
+        let summary = summarize_file_complexities(&files);
+
+        assert_eq!(summary.avg_cyclomatic, 5.0);
+        assert_eq!(summary.max_cyclomatic, 15);
+        assert!(summary.avg_cyclomatic <= summary.max_cyclomatic as f64);
     }
 }

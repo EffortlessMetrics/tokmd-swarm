@@ -979,6 +979,7 @@ name = "tokmd_cli"
 kind = "rust"
 paths = [
   "crates/tokmd/src/bin/**",
+  "crates/tokmd/src/analysis_explain/**",
   "crates/tokmd/src/analysis_utils.rs",
   "crates/tokmd/src/cli/**",
   "crates/tokmd/src/commands/**",
@@ -995,6 +996,7 @@ paths = [
 ]
 packages = ["tokmd"]
 proof = [
+  "cargo test -p tokmd analysis_explain --verbose",
   "cargo test -p tokmd --test cli_snapshot_golden --verbose",
   "cargo test -p tokmd --test cli_e2e --verbose",
   "cargo test -p tokmd --test cli_parser_properties --verbose",
