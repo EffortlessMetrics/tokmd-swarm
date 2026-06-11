@@ -1607,7 +1607,7 @@
         "evidence_generated_at_ms": { "type": "integer", "description": "Timestamp when evidence was generated (ms since epoch)." },
         "files_analyzed": { "type": "integer", "description": "Number of files analyzed for complexity." },
         "high_complexity_files": { "type": "array", "items": { "$ref": "#/definitions/HighComplexityFile" }, "description": "Files with high cyclomatic complexity." },
-        "avg_cyclomatic": { "type": "number", "description": "Average cyclomatic complexity across analyzed files." },
+        "avg_cyclomatic": { "type": "number", "description": "Average cyclomatic complexity across detected functions." },
         "max_cyclomatic": { "type": "integer", "description": "Maximum cyclomatic complexity found." },
         "threshold_exceeded": { "type": "boolean", "description": "Whether the complexity threshold was exceeded." }
       }
