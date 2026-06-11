@@ -328,6 +328,113 @@ fn evidence_packet_manifest_preserves_syntax_warnings_as_partial() {
 }
 
 #[test]
+fn evidence_packet_manifest_preserves_failed_syntax_artifact_as_partial() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+    write_syntax_artifact_with(
+        dir.path(),
+        "failed",
+        &[],
+        &["parser unavailable for language"],
+        &["src/runtime/api/MarkdownObject.rs"],
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"partial\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(manifest["status"], "partial");
+    assert_eq!(
+        manifest["artifacts"]["syntax_json"],
+        "sensors/tokmd/syntax.json"
+    );
+    let warnings = manifest["warnings"].as_array().unwrap();
+    assert!(
+        warnings.iter().any(|w| w == "syntax_json status is failed"),
+        "failed syntax status should be explicit: {warnings:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w == "syntax_json error: parser unavailable for language"),
+        "syntax errors should be preserved in packet warnings: {warnings:?}"
+    );
+    assert!(
+        manifest["errors"].as_array().unwrap().is_empty(),
+        "advisory syntax failure should not make required analyze/context evidence invalid"
+    );
+}
+
+#[test]
+fn evidence_packet_manifest_preserves_malformed_syntax_artifact_as_partial() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    write_sensor_artifacts(dir.path(), &valid_analyze_json("complete", &[], "bun-ub"));
+    std::fs::write(
+        dir.path().join("sensors").join("tokmd").join("syntax.json"),
+        "{not json",
+    )
+    .unwrap();
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "evidence-packet",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "src/runtime/api/MarkdownObject.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"status\": \"partial\""));
+
+    let manifest = read_manifest(dir.path());
+    assert_validates_against_schema(&manifest);
+    assert_eq!(manifest["status"], "partial");
+    assert_eq!(
+        manifest["artifacts"]["syntax_json"],
+        "sensors/tokmd/syntax.json"
+    );
+    assert!(
+        manifest["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                warning
+                    .as_str()
+                    .unwrap()
+                    .contains("failed to parse syntax_json")
+            })
+    );
+    assert!(
+        manifest["errors"].as_array().unwrap().is_empty(),
+        "malformed optional syntax evidence should degrade the packet without hiding required artifact validity"
+    );
+}
+
+#[test]
 fn evidence_packet_manifest_warns_for_explicit_missing_syntax_artifact() {
     if !common::git_available() {
         return;
