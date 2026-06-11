@@ -25,6 +25,7 @@ mod commands;
 mod completions;
 mod context;
 mod diff;
+mod evidence_packet;
 mod export;
 mod gate;
 mod global;
@@ -33,6 +34,8 @@ mod lang;
 mod module;
 mod run;
 mod sensor;
+#[cfg(feature = "ast")]
+mod syntax;
 mod tools;
 mod value_enums;
 
@@ -48,6 +51,7 @@ pub use context::{
     CliContextArgs, ContextOutput, ContextStrategy, HandoffArgs, HandoffPreset, ValueMetric,
 };
 pub use diff::{ColorMode, DiffArgs, DiffFormat};
+pub use evidence_packet::EvidencePacketArgs;
 pub use export::CliExportArgs;
 pub use gate::{CliGateArgs, GateFormat};
 pub use global::GlobalArgs;
@@ -56,6 +60,8 @@ pub use lang::CliLangArgs;
 pub use module::CliModuleArgs;
 pub use run::RunArgs;
 pub use sensor::{SensorArgs, SensorFormat};
+#[cfg(feature = "ast")]
+pub use syntax::SyntaxArgs;
 pub use tools::ToolsArgs;
 pub use value_enums::{
     AnalysisFormat, ChildIncludeMode, ChildrenMode, ConfigMode, ExportFormat, RedactMode,

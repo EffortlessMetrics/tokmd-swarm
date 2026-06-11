@@ -82,6 +82,12 @@ path = "docs/specs/ast-shadow.md"
 status = "draft"
 
 [[artifact]]
+id = "syntax-receipts-spec"
+kind = "spec"
+path = "docs/specs/syntax-receipts.md"
+status = "draft"
+
+[[artifact]]
 id = "spec-contract-gap-audit"
 kind = "spec-audit"
 path = "docs/specs/SPEC_GAPS.md"

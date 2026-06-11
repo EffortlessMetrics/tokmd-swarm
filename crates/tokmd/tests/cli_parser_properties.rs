@@ -27,6 +27,9 @@ const PARSER_SUBCOMMANDS: &[&str] = &[
     "baseline",
     "handoff",
     "sensor",
+    #[cfg(feature = "ast")]
+    "syntax",
+    "evidence-packet",
 ];
 
 fn parser_subcommands() -> impl Strategy<Value = &'static str> {

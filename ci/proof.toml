@@ -604,11 +604,13 @@ paths = [
   "crates/tokmd-analysis/examples/ast_shadow_perf.rs",
   "crates/tokmd-analysis/src/ast/**",
   "fixtures/ast-shadow/**",
+  "fixtures/syntax/**",
   "policy/ast-shadow-corpus.toml",
   "docs/adr/0008-ast-foundation.md",
   "docs/plans/ast-function-boundary-candidate.md",
   "docs/plans/ast-shadow-comparison-runner.md",
   "docs/specs/ast-shadow.md",
+  "docs/specs/syntax-receipts.md",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -977,6 +979,7 @@ name = "tokmd_cli"
 kind = "rust"
 paths = [
   "crates/tokmd/src/bin/**",
+  "crates/tokmd/src/analysis_explain/**",
   "crates/tokmd/src/analysis_utils.rs",
   "crates/tokmd/src/cli/**",
   "crates/tokmd/src/commands/**",
@@ -984,6 +987,7 @@ paths = [
   "crates/tokmd/src/config/**",
   "crates/tokmd/src/error_hints.rs",
   "crates/tokmd/tests/cli_*.rs",
+  "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/snapshots/cli_*.snap",
   "crates/tokmd/tests/config_resolution.rs",
   "crates/tokmd/tests/error_handling.rs",
@@ -992,6 +996,7 @@ paths = [
 ]
 packages = ["tokmd"]
 proof = [
+  "cargo test -p tokmd analysis_explain --verbose",
   "cargo test -p tokmd --test cli_snapshot_golden --verbose",
   "cargo test -p tokmd --test cli_e2e --verbose",
   "cargo test -p tokmd --test cli_parser_properties --verbose",
@@ -1445,12 +1450,14 @@ paths = [
   "crates/tokmd/tests/schema*.rs",
   "crates/tokmd-types/src/context.rs",
   "crates/tokmd-types/src/diff.rs",
+  "crates/tokmd-types/src/evidence_packet.rs",
   "crates/tokmd-types/src/inventory.rs",
   "crates/tokmd-types/src/lib.rs",
   "crates/tokmd-types/tests/schema*.rs",
   "docs/SCHEMA.md",
   "docs/adr/0007-schema-family-versioning.md",
   "docs/baseline.schema.json",
+  "docs/evidence-packet.schema.json",
   "docs/handoff.schema.json",
   "docs/handoff-schema.md",
   "docs/review-map.schema.json",

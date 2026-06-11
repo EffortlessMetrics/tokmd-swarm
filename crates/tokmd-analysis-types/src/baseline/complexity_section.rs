@@ -18,9 +18,9 @@ pub struct BaselineComplexitySection {
     pub avg_function_length: f64,
     /// Maximum function length found.
     pub max_function_length: usize,
-    /// Average cyclomatic complexity across all files.
+    /// Average cyclomatic complexity across detected functions.
     pub avg_cyclomatic: f64,
-    /// Maximum cyclomatic complexity found in any file.
+    /// Maximum cyclomatic complexity found.
     pub max_cyclomatic: usize,
     /// Average cognitive complexity across all files.
     #[serde(skip_serializing_if = "Option::is_none")]

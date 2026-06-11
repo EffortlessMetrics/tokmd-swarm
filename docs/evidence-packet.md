@@ -1,9 +1,9 @@
 # tokmd Evidence Packet Contract
 
-Status: specified. The first packet shape is intended for review bots,
-high-risk local review, and coding-agent handoff. Current `tokmd` commands emit
-the underlying receipts; a producer can assemble this manifest beside them until
-`tokmd` grows a first-class manifest emitter.
+Status: implemented. The first packet shape is intended for review bots,
+high-risk local review, and coding-agent handoff. `tokmd analyze` and
+`tokmd context` emit the underlying receipts; `tokmd evidence-packet` writes
+the manifest beside them.
 
 ## Purpose
 
@@ -33,6 +33,7 @@ sensors/tokmd/
   analyze.md
   analyze.json
   context.md
+  syntax.json        # optional when syntax receipts are produced
 ```
 
 The manifest is the packet index. The receipts remain the source evidence.
@@ -57,6 +58,7 @@ Required fields:
 | `paths` | array of strings | Requested changed paths or review scope. |
 | `status` | string | Packet status: `complete`, `partial`, or `failed`. |
 | `artifacts` | object | Relative packet artifact paths. |
+| `review_priority` | array | Optional first-read items derived from packet artifacts. |
 | `warnings` | array | Non-fatal packet warnings. |
 | `errors` | array | Fatal packet or artifact errors. |
 | `non_claims` | array of strings | Claims this packet explicitly does not make. |
@@ -69,17 +71,24 @@ Recommended artifact keys:
 | `analyze_md` | `sensors/tokmd/analyze.md` | Human-first scoped analysis summary. |
 | `analyze_json` | `sensors/tokmd/analyze.json` | Machine-readable analysis receipt. |
 | `context_md` | `sensors/tokmd/context.md` | Context budget audit for reviewer or agent handoff. |
+| `syntax_json` | `sensors/tokmd/syntax.json` | Optional syntax receipt packet for parser-backed review signals. |
 
 Producers may add fields when they do not change the meaning of required
 fields. Consumers should ignore unknown fields and fail closed when required
 fields are missing.
+
+When `syntax_json` includes `review_signals`, `tokmd evidence-packet` may add a
+`review_priority` array. These items are sorted first by syntax signal score,
+then severity and path. They are advisory first-read hints for reviewers and
+agents. They do not prove reachability, bug presence, safety, or merge
+readiness.
 
 ## Example
 
 ```json
 {
   "schema": "tokmd.evidence-packet/v1",
-  "tokmd_version": "1.12.0",
+  "tokmd_version": "1.13.0",
   "preset": "bun-ub",
   "base": "origin/main",
   "head": "HEAD",
@@ -88,8 +97,22 @@ fields are missing.
   "artifacts": {
     "analyze_md": "sensors/tokmd/analyze.md",
     "analyze_json": "sensors/tokmd/analyze.json",
-    "context_md": "sensors/tokmd/context.md"
+    "context_md": "sensors/tokmd/context.md",
+    "syntax_json": "sensors/tokmd/syntax.json"
   },
+  "review_priority": [
+    {
+      "rank": 1,
+      "path": "src/runtime/api/MarkdownObject.rs",
+      "category": "panic_seam",
+      "severity": "high",
+      "score": 95,
+      "kind": "expect_call",
+      "reason": "panic-like seam near review scope",
+      "evidence": "expect",
+      "refs": ["sensors/tokmd/syntax.json#/receipts/0/review_signals/1"]
+    }
+  ],
   "warnings": [],
   "errors": [],
   "non_claims": [
@@ -98,10 +121,25 @@ fields are missing.
   "reproduce": [
     "tokmd analyze --preset bun-ub --format md --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.md",
     "tokmd analyze --preset bun-ub --format json --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.json",
-    "tokmd context --budget 64000 src/runtime/api > sensors/tokmd/context.md"
+    "tokmd context --budget 64000 src/runtime/api > sensors/tokmd/context.md",
+    "tokmd syntax --no-progress src/runtime/api > sensors/tokmd/syntax.json",
+    "tokmd evidence-packet --base origin/main --head HEAD src/runtime/api"
   ]
 }
 ```
+
+Generate the manifest after the analysis and context artifacts exist:
+
+```bash
+tokmd evidence-packet \
+  --base origin/main \
+  --head HEAD \
+  src/runtime/api
+```
+
+The default output is `sensors/tokmd/manifest.json`. The command exits
+nonzero for `failed` packets while still writing the manifest so a bot or human
+can inspect the named errors.
 
 ## Status Rules
 
@@ -144,6 +182,13 @@ Do not attach a packet marked `complete` when the real state is `partial` or
    that the packet packages review evidence and does not prove UB exists or is
    absent.
 6. Keep reproduction commands copy-ready and scoped to the same paths.
+7. When `sensors/tokmd/syntax.json` exists, include it as `syntax_json`; when
+   syntax evidence is explicitly requested but missing, keep the packet
+   `partial` and name the missing optional artifact.
+8. When syntax `review_signals` exist, surface them in `review_priority` with
+   refs back to `syntax_json`.
+9. Prefer `tokmd evidence-packet` over hand-written manifest glue so preset,
+   path, artifact, warning, and status checks stay consistent.
 
 ## Consumer Rules
 
@@ -154,7 +199,11 @@ Do not attach a packet marked `complete` when the real state is `partial` or
 5. Use `analyze.json` for bot, ledger, and agent ingestion.
 6. Use `context.md` to check which source files were included, truncated, or
    skipped before handing the packet to an agent.
-7. Do not infer CI proof, safety, or whole-repo coverage from this packet.
+7. Use `syntax_json` only as advisory parser evidence; missing or degraded
+   syntax evidence is not a proof failure unless your workflow requires it.
+8. Use `review_priority` as a reading order, not as a verdict. Open the
+   referenced receipt entries before making a review claim.
+9. Do not infer CI proof, safety, or whole-repo coverage from this packet.
 
 ## Bun UB Non-Claims
 

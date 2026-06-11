@@ -103,6 +103,7 @@ sequences, use [Copy-Ready Workflows](docs/workflows.md).
 | summarize a repo | `tokmd`, `module`, `export` | Markdown summary, file receipt |
 | compare states | `diff`, `run` | deterministic diff and receipts |
 | analyze code health | `analyze` | risk, effort, complexity reports |
+| inspect syntax receipts | `tokmd syntax` (requires `ast` feature) | advisory Tree-sitter syntax packet |
 | review a PR | `cockpit --review-packet-dir`, GitHub Action `review-packet` | review map, evidence, comment, packet manifest |
 | gate policy in CI | `gate`, `baseline`, `sensor` | verdicts, ratchets, sensor envelope |
 | pack LLM context | `context`, `handoff` | bounded bundle, handoff directory |
@@ -212,6 +213,7 @@ Representative summary output:
 | `tokmd gate` | Evaluate TOML policy rules and ratchets |
 | `tokmd baseline` | Capture a baseline for later ratchet comparisons |
 | `tokmd sensor` | Emit a `sensor.report.v1` envelope |
+| `tokmd evidence-packet` | Emit a manifest for sensor artifacts such as analyze and context output |
 | `tokmd tools` | Generate tool definitions for OpenAI, Anthropic, and JSON Schema consumers |
 | `tokmd init` | Generate a `.tokeignore` template |
 | `tokmd check-ignore` | Explain why a path is being ignored |
@@ -226,7 +228,7 @@ Representative summary output:
 - `export`
 - browser-safe `analyze` presets on ordered in-memory inputs
 
-Native filesystem flows, Git-history enrichers, `gate`, `cockpit`, `sensor`, `baseline`, `context`, and `handoff` remain native-first.
+Native filesystem flows, Git-history enrichers, `gate`, `cockpit`, `sensor`, `evidence-packet`, `baseline`, `context`, and `handoff` remain native-first.
 
 The browser runner documents its in-memory GitHub ingest cache, supports local
 file/directory inputs, shows repo-load and worker-run progress, surfaces

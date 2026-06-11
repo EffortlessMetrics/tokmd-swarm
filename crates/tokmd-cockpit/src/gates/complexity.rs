@@ -28,6 +28,7 @@ pub(super) fn compute_complexity_gate(
 
     let mut high_complexity_files = Vec::new();
     let mut total_complexity: u64 = 0;
+    let mut total_functions: usize = 0;
     let mut max_cyclomatic: u32 = 0;
     let mut files_analyzed: usize = 0;
 
@@ -41,6 +42,7 @@ pub(super) fn compute_complexity_gate(
             let analysis = analyze_rust_function_complexity(&content);
             files_analyzed += 1;
             total_complexity += analysis.total_complexity as u64;
+            total_functions += analysis.function_count;
             max_cyclomatic = max_cyclomatic.max(analysis.max_complexity);
 
             if analysis.max_complexity > COMPLEXITY_THRESHOLD {
@@ -61,8 +63,8 @@ pub(super) fn compute_complexity_gate(
             .then_with(|| a.path.cmp(&b.path))
     });
 
-    let avg_cyclomatic = if files_analyzed > 0 {
-        round_pct(total_complexity as f64 / files_analyzed as f64)
+    let avg_cyclomatic = if total_functions > 0 {
+        round_pct(total_complexity as f64 / total_functions as f64)
     } else {
         0.0
     };
@@ -154,5 +156,44 @@ fn maybe(flag: bool) {
         assert_eq!(gate.meta.scope.relevant, vec!["src/lib.rs"]);
         assert_eq!(gate.meta.scope.tested, vec!["src/lib.rs"]);
         assert!(!gate.threshold_exceeded);
+    }
+
+    #[test]
+    fn avg_cyclomatic_uses_function_count_not_file_count() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        let code = r#"
+fn small() {
+    println!("small");
+}
+
+fn branchy(a: bool, b: bool, n: i32) {
+    if a {
+        println!("a");
+    }
+    if b {
+        println!("b");
+    }
+    match n {
+        0 => println!("zero"),
+        _ => println!("other"),
+    }
+}
+"#;
+        std::fs::write(dir.path().join("src/lib.rs"), code).unwrap();
+
+        let analysis = analyze_rust_function_complexity(code);
+        assert!(analysis.function_count > 1);
+        assert!(analysis.total_complexity > analysis.max_complexity);
+
+        let changed_files = vec![stat("src/lib.rs")];
+        let gate = compute_complexity_gate(dir.path(), &changed_files)
+            .unwrap()
+            .expect("changed Rust source should produce complexity gate");
+
+        let expected_avg =
+            round_pct(analysis.total_complexity as f64 / analysis.function_count as f64);
+        assert_eq!(gate.avg_cyclomatic, expected_avg);
+        assert!(gate.avg_cyclomatic <= f64::from(gate.max_cyclomatic));
     }
 }

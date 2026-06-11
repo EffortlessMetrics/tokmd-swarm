@@ -1095,6 +1095,9 @@ Options:
       --proof-route <PROOF_ROUTE>
           Link an existing proof-pack route receipt from the handoff bundle
 
+      --evidence-packet <PATH>
+          Link an existing tokmd evidence packet manifest from the handoff bundle
+
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
@@ -1516,6 +1519,169 @@ tokmd sensor --base origin/main --head feature-branch --output ci/report.json
 
 # Markdown summary to stdout, JSON to file
 tokmd sensor --format md
+```
+
+### `tokmd syntax`
+
+Emits advisory Tree-sitter syntax receipts for explicitly scoped files or
+directories. This command is available only when the `tokmd` binary is built
+with the `ast` feature. It does not change default `analyze`, `cockpit`,
+`context`, or `handoff` behavior.
+
+<!-- HELP: syntax -->
+```text
+Emit feature-gated Tree-sitter syntax receipts
+
+Usage: tokmd syntax [OPTIONS] <PATH>...
+
+Arguments:
+  <PATH>...
+          Paths to parse into advisory syntax receipts
+
+Options:
+      --exclude <PATTERN>
+          Exclude pattern(s) using gitignore syntax. Repeatable.
+          
+          Examples: --exclude target --exclude "**/*.min.js"
+          
+          [aliases: --ignore]
+
+      --max-bytes <MAX_BYTES>
+          Maximum bytes per file before syntax parsing is skipped
+          
+          [default: 1048576]
+
+      --include-generated-vendor
+          Include generated and vendor paths instead of recording policy skips
+
+      --no-progress
+          Disable progress spinners
+
+      --profile <PROFILE>
+          Configuration profile to use (e.g., "llm_safe", "ci")
+          
+          [aliases: --view]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  tokmd syntax src/runtime/api
+  tokmd syntax --max-bytes 262144 src/runtime/api src/bun.js/bindings
+```
+<!-- /HELP: syntax -->
+
+**Usage**: `tokmd syntax [OPTIONS] <PATH>...`
+
+Use `tokmd syntax` when a review workflow needs syntax-backed receipt evidence
+over a named path scope. The packet schema is `tokmd.syntax_receipts.v1`; each
+file receipt uses `tokmd.syntax_receipt.v1` and records parse status,
+degradation, advisory review signals, and non-claims.
+
+**Examples**:
+```bash
+tokmd syntax src/runtime/api
+
+tokmd syntax --max-bytes 262144 src/runtime/api src/bun.js/bindings
+```
+
+### `tokmd evidence-packet`
+
+Writes a scoped evidence packet manifest over existing sensor artifacts.
+
+<!-- HELP: evidence-packet -->
+```text
+Write a scoped evidence packet manifest
+
+Usage: tokmd evidence-packet [OPTIONS] <PATH>...
+
+Arguments:
+  <PATH>...
+          Changed paths or scoped review inputs used to generate the packet
+
+Options:
+      --exclude <PATTERN>
+          Exclude pattern(s) using gitignore syntax. Repeatable.
+
+          Examples: --exclude target --exclude "**/*.min.js"
+
+          [aliases: --ignore]
+
+      --preset <PRESET>
+          Analysis preset used to generate analyze.md and analyze.json
+
+          [default: bun-ub]
+          [possible values: receipt, estimate, bun-ub, health, risk, supply, architecture, topics, security, identity, git, deep, fun]
+
+      --base <BASE>
+          Base reference used by analyze artifacts
+
+          [default: origin/main]
+
+      --head <HEAD>
+          Head reference used by analyze artifacts
+
+          [default: HEAD]
+
+      --output <PATH>
+          Output path for the evidence packet manifest
+
+          [default: sensors/tokmd/manifest.json]
+
+      --analyze-md <PATH>
+          Path to the Markdown analysis artifact
+
+      --analyze-json <PATH>
+          Path to the JSON analysis artifact
+
+      --context-md <PATH>
+          Path to the context Markdown artifact
+
+      --syntax-json <PATH>
+          Path to the optional syntax JSON artifact
+
+      --context-budget <CONTEXT_BUDGET>
+          Context budget used for the context artifact reproduction command
+
+          [default: 64000]
+
+      --no-progress
+          Disable progress spinners
+
+      --profile <PROFILE>
+          Configuration profile to use (e.g., "llm_safe", "ci")
+
+          [aliases: --view]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  tokmd evidence-packet --base origin/main --head HEAD src/runtime/api
+  tokmd evidence-packet --output sensors/tokmd/manifest.json --preset bun-ub src/runtime/api/MarkdownObject.rs
+```
+<!-- /HELP: evidence-packet -->
+
+**Usage**: `tokmd evidence-packet [OPTIONS] <PATH>...`
+
+Run this after producing `sensors/tokmd/analyze.md`,
+`sensors/tokmd/analyze.json`, and `sensors/tokmd/context.md`. The command
+writes `sensors/tokmd/manifest.json` by default, validates the artifact paths,
+checks `analyze.json` preset/path/status coherence, preserves analysis
+warnings, records optional `syntax_json` when `sensors/tokmd/syntax.json`
+exists or `--syntax-json` is supplied, surfaces syntax `review_signals` as
+optional advisory `review_priority` items, and exits nonzero for failed
+packets while leaving the manifest on disk for inspection.
+
+**Examples**:
+```bash
+tokmd evidence-packet --base origin/main --head HEAD src/runtime/api
+
+tokmd evidence-packet \
+  --preset bun-ub \
+  --base "$BASE" \
+  --head "$HEAD" \
+  "$@"
 ```
 
 ### `tokmd gate`

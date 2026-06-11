@@ -38,6 +38,7 @@ BASE="${BASE:-origin/main}"
 HEAD="${HEAD:-HEAD}"
 
 mkdir -p sensors/tokmd
+rm -f sensors/tokmd/syntax.json
 
 tokmd analyze \
   --preset bun-ub \
@@ -61,6 +62,19 @@ tokmd context \
   --budget 64000 \
   "$@" \
   > sensors/tokmd/context.md
+
+if tokmd syntax --help >/dev/null 2>&1; then
+  tokmd syntax \
+    --no-progress \
+    "$@" \
+    > sensors/tokmd/syntax.json
+fi
+
+tokmd evidence-packet \
+  --preset bun-ub \
+  --base "$BASE" \
+  --head "$HEAD" \
+  "$@"
 ```
 
 Attach these artifacts:
@@ -71,11 +85,21 @@ Attach these artifacts:
 | `sensors/tokmd/analyze.md` | reviewer | First-read human summary of scoped risk evidence. |
 | `sensors/tokmd/analyze.json` | bot, ledger, agent | Machine-readable receipt with preset, refs, warnings, and signals. |
 | `sensors/tokmd/context.md` | reviewer, agent | Context budget audit showing included, truncated, and skipped files. |
+| `sensors/tokmd/syntax.json` | reviewer, bot, agent | Optional advisory parser evidence and review signals for syntax-backed priority. |
 
 Use the [evidence packet contract](../evidence-packet.md) for
-`sensors/tokmd/manifest.json`. Until `tokmd` has a first-class manifest
-emitter, review-bot glue can write the manifest from the same `BASE`, `HEAD`,
-and changed paths used to generate the three receipts.
+`sensors/tokmd/manifest.json`. `tokmd evidence-packet` writes that manifest
+from the same `BASE`, `HEAD`, and changed paths used to generate the receipts.
+It exits nonzero for failed packets while leaving the manifest on disk for
+inspection.
+
+On Windows PowerShell, prefer tokmd output flags where available or explicit
+UTF-8 file writes for redirected JSON. `tokmd evidence-packet` rejects
+non-UTF-8 JSON artifacts instead of silently indexing them.
+
+`tokmd syntax` is optional and requires a binary built with the `ast` feature.
+When syntax is unavailable, omit `sensors/tokmd/syntax.json`; the manifest still
+indexes the required `analyze` and `context` artifacts.
 
 ## Local Reviewer Recipe
 
@@ -114,6 +138,8 @@ is narrower.
   whole-repo deep scans.
 - Context output shows charged tokens, full-file tokens, policy, and code lines
   so the budget can be reconciled from the rows.
+- Optional syntax output can add parser-backed review signals and
+  `review_priority` entries to the packet manifest.
 
 ## Fallback
 
@@ -142,3 +168,4 @@ This recipe does not:
 - run CI proof;
 - promote coverage, mutation, fuzz, release, signing, or publish lanes;
 - require whole-repo analysis unless `.` is passed as the changed scope.
+- prove public reachability or guard adequacy from syntax signals.
