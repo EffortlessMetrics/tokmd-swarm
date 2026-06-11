@@ -46,7 +46,8 @@ There is no active implementation lane until one is deliberately selected.
 artifacts are visible, installable, and mapped to the expected version.
 
 **Why now:** Recent release evidence is strong, but GHCR visibility for
-`v1.11.1` still needs maintainer-access verification. This is a concrete
+`v1.13.1` still needs maintainer-access verification. The crates.io and GitHub
+release install paths are verified; GHCR public visibility remains a concrete
 consumer-facing release gap, not speculative release automation.
 
 **Candidate work packets:**

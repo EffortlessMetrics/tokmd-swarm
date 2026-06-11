@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Recorded the `v1.13.1` GHCR public visibility caveat while preserving the
+  verified crates.io and GitHub release install paths.
+
 ## [1.13.1] - 2026-06-11
 
 1.13.1 is a correction release for the syntax-aware evidence packet surface
