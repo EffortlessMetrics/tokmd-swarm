@@ -398,6 +398,7 @@ document, as long as the jobs that must not run in one repository are guarded by
 - PR merge method: squash.
 - Auto-merge: enabled when checks are green and the PR is aligned.
 - Required check: `Tokmd Rust Small Result`.
+- Routed CI policy: `docs/ci/routed-ci-policy.md`.
 - Do not require conditional route or implementation jobs such as:
   - `Route Tokmd Rust Small`;
   - `Tokmd Rust Small on CPX42`;

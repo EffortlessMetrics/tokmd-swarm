@@ -44,6 +44,8 @@ schemas, and verification policy for `tokmd`.
 - [agent-workflows/source-of-truth.md](agent-workflows/source-of-truth.md) — maintainer and agent workflow for following source-of-truth artifacts.
 - [ci/swarm-routing.md](ci/swarm-routing.md) — dual-repo topology for
   `tokmd` publication imports and `tokmd-swarm` active development.
+- [ci/routed-ci-policy.md](ci/routed-ci-policy.md) - Rust Small routed CI
+  trust, fallback, concurrency, route receipt, and required-check policy.
 - [handoff.md](handoff.md) — coding-agent handoff bundle workflow and guardrails.
 - [publishing-evidence.md](publishing-evidence.md) — release-facing package
   surface, metadata, and CI ownership evidence before release mutation.

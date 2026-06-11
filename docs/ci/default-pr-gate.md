@@ -83,6 +83,9 @@ counted as ordinary default PR lanes. The aggregate result carries a
 conservative one-route estimate, so a small swarm PR budgets the selected
 route without counting every skipped implementation target.
 
+The routed Rust Small trust, fallback, concurrency, route receipt, and
+required-check contract is defined in `docs/ci/routed-ci-policy.md`.
+
 ## Anti-patterns
 
 - Don't use `full-ci` to dodge a real failure; the deep lanes catch
