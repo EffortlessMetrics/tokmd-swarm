@@ -51,6 +51,8 @@ schemas, and verification policy for `tokmd`.
   Bun UB evidence-readiness release.
 - [releases/1.12-ledger.md](releases/1.12-ledger.md) — maintainer release
   record for the 1.12 Bun UB evidence-readiness release.
+- [releases/1.13-dogfood.md](releases/1.13-dogfood.md) - maintainer dogfood
+  note for syntax-aware evidence packet release readiness.
 - [releases/1.11.md](releases/1.11.md) — user-facing release notes for the 1.11
   evidence-consumption release.
 - [releases/1.11-ledger.md](releases/1.11-ledger.md) — lane-by-lane maintainer
