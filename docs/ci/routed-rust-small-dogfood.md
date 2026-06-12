@@ -144,7 +144,7 @@ https://github.com/EffortlessMetrics/tokmd-swarm/pull/254
 Routed Rust Small workflow:
 
 ```text
-https://github.com/EffortlessMetrics/tokmd-swarm/actions/runs/27432612954
+https://github.com/EffortlessMetrics/tokmd-swarm/actions/runs/27433317634
 ```
 
 The live PR route selected self-hosted execution before dispatching an
@@ -160,13 +160,13 @@ implementation job:
 | Healthy runners | `7` |
 | Selected runner label | `em-ci-small` |
 | Route-selected runner candidate | `em-ci-hel2-cpx42-rust-01` |
-| Actual execution runner | `em-ci-hel2-cx53-rust-01` |
+| Actual execution runner | `em-ci-hel2-cpx42-rust-01` |
 | Router job | passed |
 | Self-hosted implementation | passed |
 | GitHub-hosted implementation | skipped |
 | Normalized result | passed |
 
-Downloaded `target/ci/route-rust-small.json` from run `27432612954` showed:
+Downloaded `target/ci/route-rust-small.json` from run `27433317634` showed:
 
 ```json
 {
@@ -199,10 +199,10 @@ Downloaded `target/ci/routed-rust-small-result.json` from the same run showed:
     "github": "skipped"
   },
   "telemetry": {
-    "runner_name": "em-ci-hel2-cx53-rust-01",
+    "runner_name": "em-ci-hel2-cpx42-rust-01",
     "runner_group": "em-ci-small",
     "runner_labels": ["self-hosted", "linux", "x64", "em-ci", "trusted-pr", "rust-small"],
-    "duration_seconds": 497.0,
+    "duration_seconds": 717.0,
     "queue_seconds": 2.0,
     "cache_note": "self-hosted run-scoped Cargo home with scratch target cleanup"
   }
@@ -211,7 +211,8 @@ Downloaded `target/ci/routed-rust-small-result.json` from the same run showed:
 
 The route receipt's `selected_runner` is a pre-dispatch idle-runner candidate
 from the runner API. GitHub still owns final self-hosted assignment for the
-label/group match. The actual execution runner is recorded in
+label/group match. In this run, the selected candidate and actual execution
+runner matched. The actual execution runner is recorded in
 `routed-rust-small-result.json` telemetry for the selected implementation job.
 
 This proves the healthy-capacity invariant for the observed case:
@@ -226,7 +227,7 @@ trusted same-repo PR + healthy idle Rust Small runner
 ## Confusing points
 
 - The route helper compiles `xtask` inside the GitHub-hosted router job. In the
-  observed run, the router job took 1 minute 22 seconds. That is acceptable for
+  observed run, the router job took about 1 minute 18 seconds. That is acceptable for
   the first routed lane but worth watching if route latency grows.
 - The external `droid-review` workflow took 16 minutes 28 seconds. It did not
   block the routed result check, but it can keep PR rollup state `UNSTABLE`
