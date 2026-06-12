@@ -415,10 +415,11 @@ The aggregate result job writes and uploads
 `target/ci/routed-rust-small-result.json`. Use that receipt to inspect the
 router target, router reason, selected runner label, selected implementation
 job, selected result, and sibling job results for the same workflow run.
-It also records the GitHub run attempt
-and a derived rerun count for rerun-storm accounting. The receipt is run
-evidence for the normalized routed check; it does not replace the selected
-implementation job log.
+It also records best-effort selected-job duration/queue telemetry, the cache
+policy note for the selected target, the GitHub run attempt, and a derived
+rerun count for rerun-storm accounting. The receipt is run evidence for the
+normalized routed check; it does not replace the selected implementation job
+log.
 
 Open the receipt before reading runner logs:
 
@@ -429,6 +430,9 @@ router.reason        why the router selected that target
 router.receipt_path  route receipt path from the router job
 selected.job/result  implementation job chosen by the router and its result
 jobs.*               sibling implementation results, usually skipped
+telemetry.duration_seconds  selected implementation duration, if Actions reported it
+telemetry.queue_seconds     selected implementation queue time, if Actions reported it
+telemetry.cache_note        selected target cache policy note
 run.run_attempt      GitHub Actions attempt for this run
 run.rerun_count      derived rerun count for rerun-storm accounting
 ```

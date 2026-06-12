@@ -600,6 +600,18 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
             .expect("routed Rust Small workflow should be readable");
 
     assert!(
+        workflow.contains("actions: read"),
+        "routed result telemetry should have read access to the run-jobs API"
+    );
+    assert!(
+        workflow.contains("Collect routed Rust Small telemetry"),
+        "routed result job should collect selected-job telemetry before writing the result receipt"
+    );
+    assert!(
+        workflow.contains("actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100"),
+        "routed result telemetry should query current run jobs instead of guessing timing"
+    );
+    assert!(
         workflow.contains("target/ci/routed-rust-small-result.json"),
         "routed result job should write a stable JSON receipt"
     );
@@ -628,8 +640,31 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
         "routed result receipt should expose derived rerun accounting"
     );
     assert!(
+        workflow.contains("\"telemetry\": {"),
+        "routed result receipt should expose selected-job telemetry"
+    );
+    assert!(
+        workflow
+            .contains("\"duration_seconds\": optional_float(env(\"SELECTED_DURATION_SECONDS\"))"),
+        "routed result telemetry should preserve selected-job duration when available"
+    );
+    assert!(
+        workflow.contains("\"queue_seconds\": optional_float(env(\"SELECTED_QUEUE_SECONDS\"))"),
+        "routed result telemetry should preserve selected-job queue time when available"
+    );
+    assert!(
+        workflow.contains("\"cache_note\": env(\"CACHE_NOTE\")"),
+        "routed result telemetry should summarize cache policy"
+    );
+    assert!(
         workflow.contains("| rerun count |"),
         "routed result summary should expose derived rerun accounting"
+    );
+    assert!(
+        workflow.contains("| selected duration seconds |")
+            && workflow.contains("| selected queue seconds |")
+            && workflow.contains("| cache note |"),
+        "routed result summary should expose timing and cache telemetry"
     );
     assert!(
         workflow.contains("python -m json.tool target/ci/routed-rust-small-result.json"),
@@ -748,6 +783,9 @@ fn routed_rust_small_docs_explain_result_receipt_fields() {
         "router.reason",
         "router.receipt_path",
         "selected.job/result",
+        "telemetry.duration_seconds",
+        "telemetry.queue_seconds",
+        "telemetry.cache_note",
         "run.run_attempt",
         "run.rerun_count",
     ] {

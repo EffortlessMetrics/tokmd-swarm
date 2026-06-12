@@ -223,8 +223,8 @@ fleet as actually full, unhealthy, API-unavailable, or untrusted.
 
 ## Route receipt
 
-Every routed run should write a small JSON receipt and include the same summary
-in the workflow summary.
+Every routed run should write a small JSON receipt and include the same
+pre-dispatch decision summary in the workflow summary.
 
 Example:
 
@@ -243,10 +243,17 @@ Example:
 }
 ```
 
-The receipt must not contain secrets. It should explain the target, reason,
-trust decision, runner counts, health state, fallback allowance, selected job,
-selected result, and sibling job results. The receipt is diagnostic evidence;
-the branch-protection contract is still the normalized result check.
+The route receipt must not contain secrets. It explains the target, reason,
+trust decision, runner counts, health state, fallback allowance, and selected
+runner label/name when a self-hosted runner is chosen. It is diagnostic routing
+evidence; the branch-protection contract is still the normalized result check.
+
+The normalized `Tokmd Rust Small Result` job writes
+`target/ci/routed-rust-small-result.json`. That result receipt owns post-run
+fields: selected implementation job, selected result, sibling job results,
+run attempt, rerun count, and best-effort selected-job telemetry such as
+duration, queue time, runner name, and cache policy note. Missing telemetry is
+reported as unavailable, not converted into zero duration.
 
 ## Concurrency and anti-thrash
 

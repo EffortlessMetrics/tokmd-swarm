@@ -28,6 +28,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -395,6 +396,88 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Collect routed Rust Small telemetry
+        id: telemetry
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ needs.route-rust-small.outputs.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci
+
+          selected_name=""
+          cache_note="unavailable"
+          case "${TARGET}" in
+            self-hosted)
+              selected_name="Tokmd Rust Small on Self Hosted"
+              cache_note="self-hosted cargo cache with scratch target cleanup"
+              ;;
+            github-hosted)
+              selected_name="Tokmd Rust Small on GitHub Hosted"
+              cache_note="GitHub-hosted rust-cache restore only; PR runs do not save cache"
+              ;;
+            *)
+              selected_name=""
+              cache_note="no implementation job selected"
+              ;;
+          esac
+
+          jobs_json="target/ci/routed-rust-small-jobs.json"
+          if [ -n "${selected_name}" ] && gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" > "${jobs_json}"; then
+            SELECTED_JOB_NAME="${selected_name}" JOBS_JSON="${jobs_json}" CACHE_NOTE="${cache_note}" python - <<'PY' >> "$GITHUB_OUTPUT"
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+
+          def parse_time(value):
+              if not value:
+                  return None
+              return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+          def seconds_between(start, end):
+              if not start or not end:
+                  return ""
+              return f"{max((end - start).total_seconds(), 0):.3f}"
+
+          selected_name = os.environ["SELECTED_JOB_NAME"]
+          data = json.loads(Path(os.environ["JOBS_JSON"]).read_text())
+          selected = next((job for job in data.get("jobs", []) if job.get("name") == selected_name), None)
+          if selected:
+              created = parse_time(selected.get("created_at"))
+              started = parse_time(selected.get("started_at"))
+              completed = parse_time(selected.get("completed_at"))
+              duration_seconds = seconds_between(started, completed)
+              queue_seconds = seconds_between(created, started)
+              runner_labels = ",".join(selected.get("labels") or [])
+              runner_name = selected.get("runner_name") or ""
+              runner_group = selected.get("runner_group_name") or ""
+          else:
+              duration_seconds = ""
+              queue_seconds = ""
+              runner_labels = ""
+              runner_name = ""
+              runner_group = ""
+
+          print(f"selected_duration_seconds={duration_seconds}")
+          print(f"selected_queue_seconds={queue_seconds}")
+          print(f"selected_runner_name={runner_name}")
+          print(f"selected_runner_group={runner_group}")
+          print(f"selected_runner_labels={runner_labels}")
+          print(f"cache_note={os.environ['CACHE_NOTE']}")
+          PY
+          else
+            {
+              echo "selected_duration_seconds="
+              echo "selected_queue_seconds="
+              echo "selected_runner_name="
+              echo "selected_runner_group="
+              echo "selected_runner_labels="
+              echo "cache_note=${cache_note}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Evaluate router and selected target
         shell: bash
         env:
@@ -405,6 +488,12 @@ jobs:
           ROUTER_RESULT: ${{ needs.route-rust-small.result }}
           SELF_HOSTED_RESULT: ${{ needs.rust-small-self-hosted.result }}
           GITHUB_RESULT: ${{ needs.rust-small-github.result }}
+          SELECTED_DURATION_SECONDS: ${{ steps.telemetry.outputs.selected_duration_seconds }}
+          SELECTED_QUEUE_SECONDS: ${{ steps.telemetry.outputs.selected_queue_seconds }}
+          SELECTED_RUNNER_NAME: ${{ steps.telemetry.outputs.selected_runner_name }}
+          SELECTED_RUNNER_GROUP: ${{ steps.telemetry.outputs.selected_runner_group }}
+          SELECTED_RUNNER_LABELS: ${{ steps.telemetry.outputs.selected_runner_labels }}
+          CACHE_NOTE: ${{ steps.telemetry.outputs.cache_note }}
         run: |
           set -eu
           mkdir -p target/ci
@@ -416,6 +505,11 @@ jobs:
           echo "router_result=${ROUTER_RESULT:-<empty>}"
           echo "self_hosted_result=${SELF_HOSTED_RESULT:-<empty>}"
           echo "github_result=${GITHUB_RESULT:-<empty>}"
+          echo "selected_duration_seconds=${SELECTED_DURATION_SECONDS:-<empty>}"
+          echo "selected_queue_seconds=${SELECTED_QUEUE_SECONDS:-<empty>}"
+          echo "selected_runner_name=${SELECTED_RUNNER_NAME:-<empty>}"
+          echo "selected_runner_group=${SELECTED_RUNNER_GROUP:-<empty>}"
+          echo "cache_note=${CACHE_NOTE:-<empty>}"
 
           run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
           case "${run_attempt}" in
@@ -485,6 +579,12 @@ jobs:
           export SELF_HOSTED_RESULT="${SELF_HOSTED_RESULT:-}"
           export GITHUB_RESULT="${GITHUB_RESULT:-}"
           export RERUN_COUNT="${rerun_count}"
+          export SELECTED_DURATION_SECONDS="${SELECTED_DURATION_SECONDS:-}"
+          export SELECTED_QUEUE_SECONDS="${SELECTED_QUEUE_SECONDS:-}"
+          export SELECTED_RUNNER_NAME="${SELECTED_RUNNER_NAME:-}"
+          export SELECTED_RUNNER_GROUP="${SELECTED_RUNNER_GROUP:-}"
+          export SELECTED_RUNNER_LABELS="${SELECTED_RUNNER_LABELS:-}"
+          export CACHE_NOTE="${CACHE_NOTE:-}"
 
           python - <<'PY'
           import json
@@ -493,6 +593,14 @@ jobs:
 
           def env(name, default=""):
               return os.environ.get(name, default)
+
+          def optional_float(value):
+              if not value:
+                  return None
+              try:
+                  return float(value)
+              except ValueError:
+                  return None
 
           receipt = {
               "schema": "tokmd.routed_rust_small_result.v1",
@@ -514,6 +622,16 @@ jobs:
               "jobs": {
                   "self_hosted": env("SELF_HOSTED_RESULT"),
                   "github": env("GITHUB_RESULT"),
+              },
+              "telemetry": {
+                  "duration_seconds": optional_float(env("SELECTED_DURATION_SECONDS")),
+                  "queue_seconds": optional_float(env("SELECTED_QUEUE_SECONDS")),
+                  "runner_name": env("SELECTED_RUNNER_NAME"),
+                  "runner_group": env("SELECTED_RUNNER_GROUP"),
+                  "runner_labels": [
+                      label for label in env("SELECTED_RUNNER_LABELS").split(",") if label
+                  ],
+                  "cache_note": env("CACHE_NOTE"),
               },
               "run": {
                   "event": env("GITHUB_EVENT_NAME"),
@@ -541,6 +659,10 @@ jobs:
               echo "| selected runner label | \`${SELECTED_RUNNER_LABEL:-<empty>}\` |"
               echo "| selected job | \`${selected_job:-<empty>}\` |"
               echo "| selected result | \`${selected_result:-<empty>}\` |"
+              echo "| selected duration seconds | \`${SELECTED_DURATION_SECONDS:-unavailable}\` |"
+              echo "| selected queue seconds | \`${SELECTED_QUEUE_SECONDS:-unavailable}\` |"
+              echo "| selected runner name | \`${SELECTED_RUNNER_NAME:-unavailable}\` |"
+              echo "| cache note | \`${CACHE_NOTE:-unavailable}\` |"
               echo "| run attempt | \`${run_attempt:-<empty>}\` |"
               echo "| rerun count | \`${rerun_count}\` |"
               echo
