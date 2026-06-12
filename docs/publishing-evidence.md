@@ -133,19 +133,50 @@ configured build and push. It does not, by itself, prove that unauthenticated or
 intended downstream consumers can pull the published GHCR tags.
 
 After an intentional stable release that should publish Docker images, verify
-the expected semver tags separately:
+the expected semver tags separately from an unauthenticated Docker client. Use a
+temporary Docker config so the check does not accidentally reuse a local GHCR
+login:
 
 ```bash
-VERSION=1.11.1
+VERSION=1.13.1
+IMAGE=ghcr.io/effortlessmetrics/tokmd
+DOCKER_CONFIG="$(mktemp -d)"
 
-docker manifest inspect ghcr.io/effortlessmetrics/tokmd:${VERSION}
-docker manifest inspect ghcr.io/effortlessmetrics/tokmd:${VERSION%.*}
-docker manifest inspect ghcr.io/effortlessmetrics/tokmd:1
+docker --config "${DOCKER_CONFIG}" manifest inspect "${IMAGE}:${VERSION}"
+docker --config "${DOCKER_CONFIG}" manifest inspect "${IMAGE}:${VERSION%.*}"
+docker --config "${DOCKER_CONFIG}" manifest inspect "${IMAGE}:1"
+docker --config "${DOCKER_CONFIG}" pull "${IMAGE}:${VERSION}"
+docker --config "${DOCKER_CONFIG}" run --rm "${IMAGE}:${VERSION}" --version
+```
+
+Keep the temporary `DOCKER_CONFIG` for the packet smoke below if you are
+verifying container runtime support; otherwise remove it after the visibility
+checks.
+
+For releases where GHCR is advertised as a supported secondary runtime, also run
+a mounted-repository packet smoke before calling the container path verified:
+
+```bash
+mkdir -p sensors/tokmd
+
+docker --config "${DOCKER_CONFIG}" run --rm \
+  -v "$PWD:/repo:ro" \
+  -w /repo \
+  "${IMAGE}:${VERSION}" \
+  evidence-packet \
+  --preset bun-ub \
+  --base HEAD \
+  --head HEAD \
+  src \
+  > sensors/tokmd/manifest.json
+
+rm -rf "${DOCKER_CONFIG}"
 ```
 
 If direct registry inspection returns `denied`, do not rewrite the release tag
-or rerun release mutation by default. First check package visibility with a
-maintainer token that has GHCR package access:
+or rerun release mutation by default, and do not advertise GHCR as a supported
+runtime for that tag. First check package visibility with a maintainer token
+that has GHCR package access:
 
 ```bash
 gh api /orgs/EffortlessMetrics/packages/container/tokmd/versions

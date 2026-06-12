@@ -197,7 +197,16 @@ required in a later contract.
 
 ## GHCR Runtime
 
-Container runtime should be optional:
+GHCR is the intended secondary Linux/container runtime, not the primary user
+experience. The primary PR path should be a GitHub Action that downloads a
+prebuilt binary. Cargo install remains the local/dev fallback.
+
+Current support status: GHCR is pending public visibility verification. Do not
+document it as a supported install path or default runtime until anonymous
+manifest inspection, pull, `--version`, and mounted-repository packet smokes all
+pass for the published tag.
+
+Target Action shape after verification:
 
 ```yaml
 with:
@@ -223,6 +232,11 @@ consumer visibility. A release gate should verify:
 - anonymous pull works;
 - the container reports the expected `tokmd --version`;
 - the container can generate a packet against a mounted repository.
+
+If any public-pull check returns `denied`, keep GHCR marked pending and do not
+rewrite tags, rerun release mutation, or advertise container runtime support as
+available. Fix package visibility or linkage first, then rerun the verification
+checklist.
 
 ## Non-Claims
 
