@@ -239,6 +239,11 @@ Example:
   "eligible_runners": 2,
   "busy_runners": 2,
   "healthy_runners": 2,
+  "health": "healthy",
+  "health_age_seconds": 12,
+  "disk_free_bytes": 17179869184,
+  "scratch_free_bytes": 17179869184,
+  "min_free_bytes": 8589934592,
   "fallback_allowed": true,
   "selected_runner_label": "ubuntu-24.04"
 }
@@ -246,8 +251,10 @@ Example:
 
 The route receipt must not contain secrets. It explains the target, reason,
 trust decision, runner counts, health state, fallback allowance, and selected
-runner label/name when a self-hosted runner is chosen. It is diagnostic routing
-evidence; the branch-protection contract is still the normalized result check.
+runner label/name when a self-hosted runner is chosen. When a runner health
+receipt is available, it also records health age plus disk and scratch guard
+inputs. It is diagnostic routing evidence; the branch-protection contract is
+still the normalized result check.
 
 The normalized `Tokmd Rust Small Result` job writes
 `target/ci/routed-rust-small-result.json`. That result receipt owns post-run

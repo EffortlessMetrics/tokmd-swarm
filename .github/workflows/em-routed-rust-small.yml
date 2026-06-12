@@ -269,10 +269,17 @@ jobs:
           for key in [
               "target",
               "reason",
+              "event_name",
               "trusted_event",
               "eligible_runners",
               "busy_runners",
               "healthy_runners",
+              "health",
+              "health_age_seconds",
+              "disk_free_bytes",
+              "scratch_free_bytes",
+              "min_free_bytes",
+              "fallback_allowed",
               "selected_runner_label",
               "selected_runner",
           ]:

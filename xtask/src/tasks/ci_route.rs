@@ -30,6 +30,16 @@ pub struct CiRouteReceipt {
     pub eligible_runners: u32,
     pub busy_runners: u32,
     pub healthy_runners: u32,
+    #[serde(default)]
+    pub health: Option<String>,
+    #[serde(default)]
+    pub health_age_seconds: Option<u64>,
+    #[serde(default)]
+    pub disk_free_bytes: Option<u64>,
+    #[serde(default)]
+    pub scratch_free_bytes: Option<u64>,
+    #[serde(default)]
+    pub min_free_bytes: Option<u64>,
     pub fallback_allowed: bool,
     pub selected_runner_label: String,
     pub selected_runner: Option<String>,
@@ -103,6 +113,11 @@ impl CiRouteReceipt {
             eligible_runners: 0,
             busy_runners: 0,
             healthy_runners: 0,
+            health: Some(CiRouteHealth::Unknown.as_str().to_string()),
+            health_age_seconds: None,
+            disk_free_bytes: None,
+            scratch_free_bytes: None,
+            min_free_bytes: None,
             fallback_allowed: true,
             selected_runner_label: DEFAULT_GITHUB_HOSTED_LABEL.to_string(),
             selected_runner: None,
@@ -131,6 +146,11 @@ impl CiRouteReceipt {
             eligible_runners,
             busy_runners,
             healthy_runners,
+            health: Some(CiRouteHealth::Healthy.as_str().to_string()),
+            health_age_seconds: None,
+            disk_free_bytes: None,
+            scratch_free_bytes: None,
+            min_free_bytes: None,
             fallback_allowed: true,
             selected_runner_label: selected_runner_label.into(),
             selected_runner: Some(selected_runner.into()),
@@ -235,6 +255,11 @@ pub fn decide_route(args: &CiRouteArgs) -> Result<CiRouteReceipt> {
         receipt.busy_runners = inputs.busy_runners;
         receipt.healthy_runners = inputs.healthy_runners;
     }
+    receipt.health = Some(inputs.health.as_str().to_string());
+    receipt.health_age_seconds = inputs.health_age_seconds;
+    receipt.disk_free_bytes = inputs.disk_free_bytes;
+    receipt.scratch_free_bytes = inputs.scratch_free_bytes;
+    receipt.min_free_bytes = inputs.min_free_bytes;
     receipt.warnings.extend(inputs.warnings);
     receipt.errors.extend(inputs.errors);
     validate_route_receipt(&receipt)?;
@@ -319,6 +344,18 @@ impl CiRouteReason {
     }
 }
 
+impl CiRouteHealth {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Healthy => "healthy",
+            Self::Stale => "stale",
+            Self::Degraded => "degraded",
+            Self::Quarantined => "quarantined",
+        }
+    }
+}
+
 fn route_context(args: &CiRouteArgs) -> CiRouteContext {
     let event_name = args
         .event_name
@@ -364,6 +401,10 @@ struct RouteInputs {
     busy_runners: u32,
     healthy_runners: u32,
     health: CiRouteHealth,
+    health_age_seconds: Option<u64>,
+    disk_free_bytes: Option<u64>,
+    scratch_free_bytes: Option<u64>,
+    min_free_bytes: Option<u64>,
     low_disk: bool,
     low_scratch: bool,
     selected_runner_label: String,
@@ -378,6 +419,10 @@ fn resolve_route_inputs(args: &CiRouteArgs) -> RouteInputs {
         busy_runners: args.busy_runners,
         healthy_runners: args.healthy_runners,
         health: args.health,
+        health_age_seconds: None,
+        disk_free_bytes: None,
+        scratch_free_bytes: None,
+        min_free_bytes: None,
         low_disk: args.low_disk,
         low_scratch: args.low_scratch,
         selected_runner_label: args.selected_runner_label.clone(),
@@ -410,11 +455,13 @@ fn apply_health_receipt(
     inputs: &mut RouteInputs,
     receipt: &CiRunnerHealthReceipt,
 ) {
-    if is_health_stale(
-        receipt.generated_at_ms,
-        args.now_ms.unwrap_or_else(now_ms),
-        args.health_max_age_seconds,
-    ) {
+    let now_ms = args.now_ms.unwrap_or_else(now_ms);
+    inputs.health_age_seconds = Some(age_seconds(receipt.generated_at_ms, now_ms));
+    inputs.disk_free_bytes = receipt.disk_free_bytes;
+    inputs.scratch_free_bytes = receipt.scratch_free_bytes;
+    inputs.min_free_bytes = Some(receipt.min_free_bytes);
+
+    if is_health_stale(receipt.generated_at_ms, now_ms, args.health_max_age_seconds) {
         inputs.health = CiRouteHealth::Stale;
         inputs
             .warnings
@@ -447,6 +494,11 @@ fn apply_health_receipt(
 fn is_health_stale(generated_at_ms: u128, now_ms: u128, max_age_seconds: u64) -> bool {
     let max_age_ms = u128::from(max_age_seconds) * 1_000;
     now_ms.saturating_sub(generated_at_ms) > max_age_ms
+}
+
+fn age_seconds(generated_at_ms: u128, now_ms: u128) -> u64 {
+    let seconds = now_ms.saturating_sub(generated_at_ms) / 1_000;
+    u64::try_from(seconds).unwrap_or(u64::MAX)
 }
 
 fn env_non_empty(name: &str) -> Option<String> {
@@ -569,8 +621,23 @@ mod tests {
 
         assert_eq!(
             json,
-            "{\n  \"schema\": \"tokmd.ci_route.v1\",\n  \"lane\": \"rust-small\",\n  \"target\": \"github-hosted\",\n  \"reason\": \"self_hosted_capacity_full\",\n  \"trusted_event\": true,\n  \"event_name\": \"pull_request\",\n  \"repo\": \"EffortlessMetrics/tokmd-swarm\",\n  \"head_sha\": \"abc123\",\n  \"eligible_runners\": 0,\n  \"busy_runners\": 0,\n  \"healthy_runners\": 0,\n  \"fallback_allowed\": true,\n  \"selected_runner_label\": \"ubuntu-24.04\",\n  \"selected_runner\": null,\n  \"warnings\": [],\n  \"errors\": []\n}\n"
+            "{\n  \"schema\": \"tokmd.ci_route.v1\",\n  \"lane\": \"rust-small\",\n  \"target\": \"github-hosted\",\n  \"reason\": \"self_hosted_capacity_full\",\n  \"trusted_event\": true,\n  \"event_name\": \"pull_request\",\n  \"repo\": \"EffortlessMetrics/tokmd-swarm\",\n  \"head_sha\": \"abc123\",\n  \"eligible_runners\": 0,\n  \"busy_runners\": 0,\n  \"healthy_runners\": 0,\n  \"health\": \"unknown\",\n  \"health_age_seconds\": null,\n  \"disk_free_bytes\": null,\n  \"scratch_free_bytes\": null,\n  \"min_free_bytes\": null,\n  \"fallback_allowed\": true,\n  \"selected_runner_label\": \"ubuntu-24.04\",\n  \"selected_runner\": null,\n  \"warnings\": [],\n  \"errors\": []\n}\n"
         );
+    }
+
+    #[test]
+    fn older_route_receipts_without_health_fields_still_deserialize() {
+        let receipt: CiRouteReceipt = serde_json::from_str(
+            "{\n  \"schema\": \"tokmd.ci_route.v1\",\n  \"lane\": \"rust-small\",\n  \"target\": \"github-hosted\",\n  \"reason\": \"self_hosted_capacity_full\",\n  \"trusted_event\": true,\n  \"event_name\": \"pull_request\",\n  \"repo\": \"EffortlessMetrics/tokmd-swarm\",\n  \"head_sha\": \"abc123\",\n  \"eligible_runners\": 0,\n  \"busy_runners\": 0,\n  \"healthy_runners\": 0,\n  \"fallback_allowed\": true,\n  \"selected_runner_label\": \"ubuntu-24.04\",\n  \"selected_runner\": null,\n  \"warnings\": [],\n  \"errors\": []\n}\n",
+        )
+        .expect("old receipt should deserialize");
+
+        assert_eq!(receipt.health, None);
+        assert_eq!(receipt.health_age_seconds, None);
+        assert_eq!(receipt.disk_free_bytes, None);
+        assert_eq!(receipt.scratch_free_bytes, None);
+        assert_eq!(receipt.min_free_bytes, None);
+        assert!(validate_route_receipt(&receipt).is_ok());
     }
 
     #[test]
@@ -743,6 +810,11 @@ mod tests {
         assert_eq!(receipt.eligible_runners, 1);
         assert_eq!(receipt.healthy_runners, 1);
         assert_eq!(receipt.selected_runner.as_deref(), Some("CPX42"));
+        assert_eq!(receipt.health.as_deref(), Some("healthy"));
+        assert_eq!(receipt.health_age_seconds, Some(0));
+        assert_eq!(receipt.disk_free_bytes, Some(16 * 1024 * 1024 * 1024));
+        assert_eq!(receipt.scratch_free_bytes, Some(16 * 1024 * 1024 * 1024));
+        assert_eq!(receipt.min_free_bytes, Some(8 * 1024 * 1024 * 1024));
     }
 
     #[test]
@@ -763,6 +835,8 @@ mod tests {
 
         assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
         assert_eq!(receipt.reason, CiRouteReason::RunnerHealthStale);
+        assert_eq!(receipt.health.as_deref(), Some("stale"));
+        assert_eq!(receipt.health_age_seconds, Some(901));
         assert!(
             receipt
                 .warnings
@@ -790,6 +864,7 @@ mod tests {
         assert_eq!(receipt.reason, CiRouteReason::RunnerHealthDegraded);
         assert_eq!(receipt.eligible_runners, 1);
         assert_eq!(receipt.healthy_runners, 0);
+        assert_eq!(receipt.health.as_deref(), Some("degraded"));
     }
 
     #[test]
@@ -812,6 +887,9 @@ mod tests {
         assert_eq!(receipt.reason, CiRouteReason::LowScratch);
         assert_eq!(receipt.eligible_runners, 1);
         assert_eq!(receipt.healthy_runners, 0);
+        assert_eq!(receipt.health.as_deref(), Some("degraded"));
+        assert_eq!(receipt.scratch_free_bytes, Some(1024));
+        assert_eq!(receipt.min_free_bytes, Some(8 * 1024 * 1024 * 1024));
     }
 
     #[test]
@@ -832,6 +910,7 @@ mod tests {
 
         assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
         assert_eq!(receipt.reason, CiRouteReason::RunnerQuarantined);
+        assert_eq!(receipt.health.as_deref(), Some("quarantined"));
     }
 
     #[test]

@@ -23,7 +23,9 @@ Open `routed-rust-small-result.json` first. It records the selected
 implementation job, the sibling job results, selected-job timing when GitHub
 reported it, cache policy notes, and the router fields that drove the run. Open
 `route-rust-small.json` next when the route reason or runner counts need more
-detail.
+detail. When the route consumed a runner health receipt, `route-rust-small.json`
+also records the resolved `health`, `health_age_seconds`, `disk_free_bytes`,
+`scratch_free_bytes`, and `min_free_bytes` fields that bounded the decision.
 
 ## Health receipt helper
 
