@@ -444,6 +444,11 @@ while the normalized result still fails when the unselected implementation job
 also ran or did not report `skipped`; routed Rust Small expects exactly one
 implementation path per run.
 
+Runner health and quarantine operations are documented in
+`docs/ci/runner-health-runbook.md`. Use that runbook for stale health, low
+scratch, low cache, manual quarantine, and hosted diagnostic fallback before
+changing workflow routing logic.
+
 CPX42 uses the pinned Rust 1.95 toolchain directly on the host, with
 `/mnt/ci-scratch` `TMPDIR` prepared before the toolchain action runs. CX43 and
 CX53 keep their existing local `em-ci-rust:1.95` Docker execution path. CX43
