@@ -134,6 +134,7 @@ paths = [
   "docs/agent-context/review-invariants.md",
   "docs/agent-context/droid-smoke-tests.md",
   "agents/shared/**",
+  "_typos.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
   "xtask/src/proof/**",

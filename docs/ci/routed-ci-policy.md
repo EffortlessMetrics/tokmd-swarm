@@ -117,7 +117,7 @@ for Rust Small rather than occupying a self-hosted queue blindly.
 Target-state runner labels should describe a pool, for example:
 
 ```text
-self-hosted, linux, x64, em-ci-small
+self-hosted, linux, x64, em-ci, trusted-pr, rust-small
 ```
 
 Machine-specific labels can remain implementation details while the fleet is
@@ -251,7 +251,10 @@ Example:
 
 The route receipt must not contain secrets. It explains the target, reason,
 trust decision, runner counts, health state, fallback allowance, and selected
-runner label/name when a self-hosted runner is chosen. When a runner health
+runner label/name when a self-hosted runner is chosen. For label/group based
+self-hosted dispatch, the route receipt's selected runner name is a
+pre-dispatch idle-runner candidate, not a pin. The normalized result receipt
+owns the actual runner name reported by GitHub Actions after dispatch. When a runner health
 receipt is available, it also records health age plus disk and scratch guard
 inputs. It is diagnostic routing evidence; the branch-protection contract is
 still the normalized result check.

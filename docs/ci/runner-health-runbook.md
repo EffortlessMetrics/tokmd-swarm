@@ -43,7 +43,9 @@ cargo +1.95.0 xtask ci-runner-health \
   --label self-hosted \
   --label linux \
   --label x64 \
-  --label em-ci-small \
+  --label em-ci \
+  --label trusted-pr \
+  --label rust-small \
   --disk-free-bytes "$DISK_FREE_BYTES" \
   --scratch-free-bytes "$SCRATCH_FREE_BYTES" \
   --min-free-bytes 8589934592
@@ -77,7 +79,9 @@ cargo +1.95.0 xtask ci-runner-health \
   --label self-hosted \
   --label linux \
   --label x64 \
-  --label em-ci-small \
+  --label em-ci \
+  --label trusted-pr \
+  --label rust-small \
   --status quarantined \
   --reason manual_quarantine
 ```
@@ -98,25 +102,24 @@ The self-hosted implementation uses run-scoped scratch paths:
 ```text
 /mnt/ci-scratch/tmp/<run-id>-<attempt>
 /mnt/ci-scratch/target/<run-id>-<attempt>
+/mnt/ci-scratch/cargo-home/<run-id>-<attempt>
 ```
 
-The shared Cargo home is under:
+Clean run-scoped `tmp`, `target`, and `cargo-home` directories first. The
+routed Rust Small workflow does not depend on a shared Cargo home; a previous
+shared-cache attempt made selected self-hosted jobs vulnerable to cross-run
+cache ownership drift. If a future lane reintroduces a shared Cargo cache,
+preserve that cache unless the runner is already degraded for cache pressure or
+a maintainer explicitly assigns cache cleanup.
 
-```text
-/mnt/ci-cache/cargo-home
-```
-
-Clean run-scoped `tmp` and `target` directories first. Preserve shared Cargo
-cache unless the runner is already degraded for cache pressure or a maintainer
-explicitly assigns cache cleanup. If scratch or cache cleanup is needed to make
-the runner usable, mark the runner degraded or quarantined before cleanup work
-starts so new PR runs fall back to GitHub-hosted.
+If scratch cleanup is needed to make the runner usable, mark the runner
+degraded or quarantined before cleanup work starts so new PR runs fall back to
+GitHub-hosted.
 
 The workflow preflight guards currently check:
 
 ```text
 ci-disk-guard /mnt/ci-scratch 45
-ci-disk-guard /mnt/ci-cache 10
 ```
 
 Treat those failures as runner health failures, not code failures.

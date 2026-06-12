@@ -759,6 +759,28 @@ fn routed_rust_small_workflow_exposes_fallback_proof_modes() {
 }
 
 #[test]
+fn routed_rust_small_runner_api_labels_are_case_normalized() {
+    let workflow =
+        fs::read_to_string(workspace_root().join(".github/workflows/em-routed-rust-small.yml"))
+            .expect("routed Rust Small workflow should be readable");
+
+    assert!(
+        workflow.contains("str(label.get(\"name\", \"\")).lower()"),
+        "GitHub runner API labels should be normalized before matching linux/x64 requirements"
+    );
+    assert!(
+        workflow.contains(
+            "required = {\"self-hosted\", \"linux\", \"x64\", \"em-ci\", \"trusted-pr\", \"rust-small\"}"
+        ),
+        "runner requirements should stay lowercase and match the Rust Small pool"
+    );
+    assert!(
+        workflow.contains("labels: [self-hosted, linux, x64, em-ci, trusted-pr, rust-small]"),
+        "self-hosted dispatch labels should match the Rust Small route predicate"
+    );
+}
+
+#[test]
 fn routed_rust_small_concurrency_is_pr_scoped() {
     let workflow =
         fs::read_to_string(workspace_root().join(".github/workflows/em-routed-rust-small.yml"))

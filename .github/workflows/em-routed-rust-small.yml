@@ -97,13 +97,16 @@ jobs:
           import os
 
           data = json.loads(os.environ["RUNNERS_JSON"])
-          required = {"self-hosted", "linux", "x64", "em-ci", "trusted-pr"}
+          required = {"self-hosted", "linux", "x64", "em-ci", "trusted-pr", "rust-small"}
           eligible = []
           idle = []
           busy = 0
 
           for runner in data.get("runners", []):
-              labels = {label.get("name") for label in runner.get("labels", [])}
+              labels = {
+                  str(label.get("name", "")).lower()
+                  for label in runner.get("labels", [])
+              }
               if runner.get("status") != "online" or not required.issubset(labels):
                   continue
               eligible.append(runner)
@@ -302,10 +305,10 @@ jobs:
       needs.route-rust-small.outputs.target == 'self-hosted'
     runs-on:
       group: em-ci-small
-      labels: [self-hosted, linux, x64, em-ci, trusted-pr]
+      labels: [self-hosted, linux, x64, em-ci, trusted-pr, rust-small]
     timeout-minutes: 120
     env:
-      CARGO_HOME: /mnt/ci-cache/cargo-home
+      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
       CARGO_INCREMENTAL: "0"
       CARGO_BUILD_JOBS: "6"
       TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
@@ -316,7 +319,6 @@ jobs:
         run: |
           set -euo pipefail
           ci-disk-guard /mnt/ci-scratch 45
-          ci-disk-guard /mnt/ci-cache 10
           mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR" "$CARGO_HOME"
 
       - name: Checkout
@@ -335,7 +337,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          df -h /mnt/ci-scratch || true
           rustc --version
           cargo --version
           if command -v python3 >/dev/null 2>&1; then python3 --version; elif command -v python >/dev/null 2>&1; then python --version; fi
@@ -353,7 +355,8 @@ jobs:
           set +e
           rm -rf "$TMPDIR"
           rm -rf "$CARGO_TARGET_DIR"
-          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          rm -rf "$CARGO_HOME"
+          df -h /mnt/ci-scratch || true
 
   rust-small-github:
     name: Tokmd Rust Small on GitHub Hosted
@@ -418,7 +421,7 @@ jobs:
           case "${TARGET}" in
             self-hosted)
               selected_name="Tokmd Rust Small on Self Hosted"
-              cache_note="self-hosted cargo cache with scratch target cleanup"
+              cache_note="self-hosted run-scoped Cargo home with scratch target cleanup"
               ;;
             github-hosted)
               selected_name="Tokmd Rust Small on GitHub Hosted"

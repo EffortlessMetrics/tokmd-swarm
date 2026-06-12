@@ -421,6 +421,11 @@ rerun count for rerun-storm accounting. The receipt is run evidence for the
 normalized routed check; it does not replace the selected implementation job
 log.
 
+For self-hosted routes, the route receipt may name an idle-runner candidate
+from the pre-dispatch runner API. GitHub owns the final label/group assignment;
+use `telemetry.runner_name` in `routed-rust-small-result.json` for the actual
+runner that executed the selected implementation job.
+
 Open the receipt before reading runner logs:
 
 ```text
