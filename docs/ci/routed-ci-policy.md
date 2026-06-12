@@ -182,20 +182,19 @@ route-rust-small
 
 rust-small-self-hosted
   if: route target == self-hosted
-  runs-on: [self-hosted, linux, x64, em-ci-small]
+  runs-on: self-hosted pool label set
 
 rust-small-github-hosted
   if: route target == github-hosted
-  runs-on: ubuntu-24.04
+  runs-on: ubuntu-latest
 
 tokmd-rust-small-result
   if: always()
   checks the selected implementation job
 ```
 
-The current workflow may split self-hosted implementation jobs by machine while
-the runner pool is being normalized. That is an implementation detail. The
-required public contract remains the aggregate result check.
+The required public contract remains the aggregate result check, not either
+conditional implementation job.
 
 Result semantics:
 
@@ -221,7 +220,6 @@ Example:
   "eligible_runners": 2,
   "busy_runners": 2,
   "healthy_runners": 2,
-  "quarantined_runners": [],
   "fallback_allowed": true,
   "selected_runner_label": "ubuntu-24.04"
 }
@@ -263,9 +261,7 @@ Do not require:
 
 ```text
 Route Tokmd Rust Small
-Tokmd Rust Small on CPX42
-Tokmd Rust Small on CX43
-Tokmd Rust Small on CX53
+Tokmd Rust Small on Self Hosted
 Tokmd Rust Small on GitHub Hosted
 ```
 

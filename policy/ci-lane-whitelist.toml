@@ -431,9 +431,9 @@ review_after     = "2026-06-21"
 expires          = "2026-11-21"
 
 [[lane]]
-id               = "tokmd_rust_small_cpx42"
+id               = "tokmd_rust_small_self_hosted"
 workflow         = ".github/workflows/em-routed-rust-small.yml"
-job              = "Tokmd Rust Small on CPX42"
+job              = "Tokmd Rust Small on Self Hosted"
 kind             = "rust"
 tier             = "frontdoor"
 default_pr       = false
@@ -441,50 +441,10 @@ blocking         = false
 runner           = "em_ci_small"
 base_lem         = 12
 owner            = "release/ci"
-intent           = "Run the tokmd Rust Small check/test lane on the CPX42 trusted runner when selected."
-failure_mode     = "CPX42-specific routed CI regressions are not caught before swarm merge."
+intent           = "Run the tokmd Rust Small check/test lane on the trusted self-hosted pool when selected."
+failure_mode     = "Self-hosted routed CI regressions are not caught before swarm merge."
 proof_obligation = "Run cargo check and cargo test for the workspace with all features."
 evidence         = ["job logs", "toolchain preflight"]
-allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
-duplicate_of     = ["build_test_linux"]
-review_after     = "2026-06-21"
-expires          = "2026-11-21"
-
-[[lane]]
-id               = "tokmd_rust_small_cx43"
-workflow         = ".github/workflows/em-routed-rust-small.yml"
-job              = "Tokmd Rust Small on CX43"
-kind             = "rust"
-tier             = "frontdoor"
-default_pr       = false
-blocking         = false
-runner           = "em_ci_small"
-base_lem         = 12
-owner            = "release/ci"
-intent           = "Run the tokmd Rust Small check/test lane on the CX43 trusted runner when selected."
-failure_mode     = "CX43-specific routed CI regressions are not caught before swarm merge."
-proof_obligation = "Run cargo check and cargo test for the workspace with all features."
-evidence         = ["job logs", "sccache stats"]
-allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
-duplicate_of     = ["build_test_linux"]
-review_after     = "2026-06-21"
-expires          = "2026-11-21"
-
-[[lane]]
-id               = "tokmd_rust_small_cx53"
-workflow         = ".github/workflows/em-routed-rust-small.yml"
-job              = "Tokmd Rust Small on CX53"
-kind             = "rust"
-tier             = "frontdoor"
-default_pr       = false
-blocking         = false
-runner           = "em_ci_small"
-base_lem         = 12
-owner            = "release/ci"
-intent           = "Run the tokmd Rust Small check/test lane on the CX53 trusted runner when selected."
-failure_mode     = "CX53-specific routed CI regressions are not caught before swarm merge."
-proof_obligation = "Run cargo check and cargo test for the workspace with all features."
-evidence         = ["job logs", "sccache stats"]
 allowed_triggers = ["pull_request", "merge_group", "workflow_dispatch"]
 duplicate_of     = ["build_test_linux"]
 review_after     = "2026-06-21"

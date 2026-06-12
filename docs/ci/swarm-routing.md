@@ -401,42 +401,32 @@ document, as long as the jobs that must not run in one repository are guarded by
 - Routed CI policy: `docs/ci/routed-ci-policy.md`.
 - Do not require conditional route or implementation jobs such as:
   - `Route Tokmd Rust Small`;
-  - `Tokmd Rust Small on CPX42`;
-  - `Tokmd Rust Small on CX43`;
-  - `Tokmd Rust Small on CX53`;
+  - `Tokmd Rust Small on Self Hosted`;
   - `Tokmd Rust Small on GitHub Hosted`.
 
-The routed Rust Small implementation order is:
+The routed Rust Small target model is:
 
 ```text
-CPX42 -> CX43 -> CX53 -> GitHub-hosted
+self-hosted when trusted healthy capacity exists
+GitHub-hosted when runners are full, stale, unhealthy, unknown, or untrusted
 ```
-
-Fallback labels such as `ci-budget-ack` are read by the routed workflow run.
-The routed workflow does not run on label-only PR events, so adding the label
-after a `no_idle_runner` result only authorizes fallback for the next route.
-Trigger a new route with a branch update or `workflow_dispatch` after applying
-the label. Do not treat the older failed aggregate as superseded until a newer
-`Tokmd Rust Small Result` succeeds for the same head.
 
 The aggregate result job writes and uploads
 `target/ci/routed-rust-small-result.json`. Use that receipt to inspect the
-router target, router reason, router error flag, trusted-self-hosted decision,
-fallback allowance, selected implementation job, selected result, and sibling
-job results for the same workflow run. It also records the GitHub run attempt
+router target, router reason, selected runner label, selected implementation
+job, selected result, and sibling job results for the same workflow run.
+It also records the GitHub run attempt
 and a derived rerun count for rerun-storm accounting. The receipt is run
 evidence for the normalized routed check; it does not replace the selected
-implementation job log or authorize a fallback label for an older failed route.
+implementation job log.
 
 Open the receipt before reading runner logs:
 
 ```text
 ok/status            normalized result job verdict
-router.target        selected target: cpx42, cx43, cx53, github, or none
+router.target        selected target: self-hosted, github-hosted, or none
 router.reason        why the router selected that target
-router.error         router-side error classification, if any
-trusted_self_hosted  whether the selected self-hosted path was trusted
-fallback_allowed     whether GitHub-hosted fallback was authorized
+router.receipt_path  route receipt path from the router job
 selected.job/result  implementation job chosen by the router and its result
 jobs.*               sibling implementation results, usually skipped
 run.run_attempt      GitHub Actions attempt for this run
