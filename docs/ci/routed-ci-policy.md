@@ -300,3 +300,4 @@ reason and hides the aggregate contract.
 - [Swarm publication model](swarm-routing.md)
 - [CI cache and cancellation policy](cache-and-cancellation.md)
 - [CI actuals](ci-actuals.md)
+- [Routed Rust Small dogfood](routed-rust-small-dogfood.md)

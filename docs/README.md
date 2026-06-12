@@ -46,6 +46,8 @@ schemas, and verification policy for `tokmd`.
   `tokmd` publication imports and `tokmd-swarm` active development.
 - [ci/routed-ci-policy.md](ci/routed-ci-policy.md) - Rust Small routed CI
   trust, fallback, concurrency, route receipt, and required-check policy.
+- [ci/routed-rust-small-dogfood.md](ci/routed-rust-small-dogfood.md) - live
+  dogfood observations and gaps for the routed Rust Small front door.
 - [handoff.md](handoff.md) — coding-agent handoff bundle workflow and guardrails.
 - [publishing-evidence.md](publishing-evidence.md) — release-facing package
   surface, metadata, and CI ownership evidence before release mutation.
