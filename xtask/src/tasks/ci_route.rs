@@ -1,7 +1,7 @@
-#![allow(dead_code)]
-
-use anyhow::{Result, bail};
+use crate::cli::{CiRouteArgs, CiRouteHealth, CiRouteMode};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::{env, fs, io::Write, path::Path};
 
 pub const ROUTE_RECEIPT_SCHEMA: &str = "tokmd.ci_route.v1";
 pub const RUST_SMALL_LANE: &str = "rust-small";
@@ -136,6 +136,98 @@ impl CiRouteReceipt {
     }
 }
 
+pub fn run(args: CiRouteArgs) -> Result<()> {
+    let receipt = decide_route(&args)?;
+    let body = receipt.to_pretty_json()?;
+
+    if let Some(parent) = args.json.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create route receipt dir {}", parent.display()))?;
+    }
+    fs::write(&args.json, body)
+        .with_context(|| format!("write route receipt {}", args.json.display()))?;
+
+    if let Some(github_output) = &args.github_output {
+        append_github_output(github_output, &receipt, &args.json)?;
+    }
+
+    println!(
+        "ci-route {}: target={} reason={} receipt={}",
+        receipt.lane,
+        receipt.target.as_str(),
+        receipt.reason.as_str(),
+        args.json.display()
+    );
+
+    Ok(())
+}
+
+pub fn decide_route(args: &CiRouteArgs) -> Result<CiRouteReceipt> {
+    if args.lane != RUST_SMALL_LANE {
+        bail!(
+            "unsupported CI route lane `{}`; only `{}` is supported",
+            args.lane,
+            RUST_SMALL_LANE
+        );
+    }
+
+    let context = route_context(args);
+    let mut receipt = if args.mode == CiRouteMode::ForceSelfHosted && !context.trusted_event {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::ManualForceSelfHostedDenied)
+    } else if !context.trusted_event {
+        let reason = if args.fork_pr {
+            CiRouteReason::ForkPullRequest
+        } else {
+            CiRouteReason::UntrustedEvent
+        };
+        CiRouteReceipt::github_hosted_fallback(context, reason)
+    } else if args.mode == CiRouteMode::ForceGithubHosted {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::ManualForceGithubHosted)
+    } else if !runner_token_available(args) {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerTokenUnavailable)
+    } else if !runner_api_available(args) {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerApiUnavailable)
+    } else if args.health == CiRouteHealth::Stale {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerHealthStale)
+    } else if args.health == CiRouteHealth::Degraded {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerHealthDegraded)
+    } else if args.health == CiRouteHealth::Quarantined {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerQuarantined)
+    } else if args.low_disk {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::LowDisk)
+    } else if args.low_scratch {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::LowScratch)
+    } else if args.health != CiRouteHealth::Healthy {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::UnknownState)
+    } else if args.eligible_runners == 0
+        || args.healthy_runners == 0
+        || args.busy_runners >= args.healthy_runners
+    {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::SelfHostedCapacityFull)
+    } else if let Some(selected_runner) = &args.selected_runner {
+        CiRouteReceipt::self_hosted(
+            context,
+            args.selected_runner_label.clone(),
+            selected_runner.clone(),
+            args.eligible_runners,
+            args.busy_runners,
+            args.healthy_runners,
+        )
+    } else {
+        CiRouteReceipt::github_hosted_fallback(context, CiRouteReason::RunnerApiUnavailable)
+    };
+
+    if receipt.target == CiRouteTarget::GithubHosted {
+        receipt.eligible_runners = args.eligible_runners;
+        receipt.busy_runners = args.busy_runners;
+        receipt.healthy_runners = args.healthy_runners;
+    }
+    validate_route_receipt(&receipt)?;
+    Ok(receipt)
+}
+
 pub fn validate_route_receipt(receipt: &CiRouteReceipt) -> Result<()> {
     if receipt.schema != ROUTE_RECEIPT_SCHEMA {
         bail!(
@@ -179,6 +271,107 @@ pub fn validate_route_receipt(receipt: &CiRouteReceipt) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+impl CiRouteTarget {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SelfHosted => "self-hosted",
+            Self::GithubHosted => "github-hosted",
+            Self::None => "none",
+        }
+    }
+}
+
+impl CiRouteReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TrustedCapacityAvailable => "trusted_capacity_available",
+            Self::ForkPullRequest => "fork_pull_request",
+            Self::UntrustedEvent => "untrusted_event",
+            Self::RunnerApiUnavailable => "runner_api_unavailable",
+            Self::RunnerTokenUnavailable => "runner_token_unavailable",
+            Self::RunnerHealthStale => "runner_health_stale",
+            Self::RunnerHealthDegraded => "runner_health_degraded",
+            Self::SelfHostedCapacityFull => "self_hosted_capacity_full",
+            Self::LowDisk => "low_disk",
+            Self::LowScratch => "low_scratch",
+            Self::RunnerQuarantined => "runner_quarantined",
+            Self::RouteBudgetExhausted => "route_budget_exhausted",
+            Self::ManualForceGithubHosted => "manual_force_github_hosted",
+            Self::ManualForceSelfHostedDenied => "manual_force_self_hosted_denied",
+            Self::UnknownState => "unknown_state",
+        }
+    }
+}
+
+fn route_context(args: &CiRouteArgs) -> CiRouteContext {
+    let event_name = args
+        .event_name
+        .clone()
+        .or_else(|| env_non_empty("GITHUB_EVENT_NAME"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let trusted_event = args
+        .trusted_event
+        .unwrap_or_else(|| infer_trusted_event(&event_name));
+    CiRouteContext::new(
+        event_name,
+        args.repo
+            .clone()
+            .or_else(|| env_non_empty("GITHUB_REPOSITORY"))
+            .unwrap_or_else(|| "unknown".to_string()),
+        args.head_sha
+            .clone()
+            .or_else(|| env_non_empty("GITHUB_SHA"))
+            .unwrap_or_else(|| "unknown".to_string()),
+        trusted_event,
+    )
+}
+
+fn infer_trusted_event(event_name: &str) -> bool {
+    matches!(event_name, "workflow_dispatch" | "merge_group" | "push")
+}
+
+fn runner_token_available(args: &CiRouteArgs) -> bool {
+    args.runner_token_available.unwrap_or_else(|| {
+        env_non_empty("GITHUB_TOKEN").is_some()
+            || env_non_empty("GH_TOKEN").is_some()
+            || env_non_empty("GH_PAT").is_some()
+    })
+}
+
+fn runner_api_available(args: &CiRouteArgs) -> bool {
+    args.runner_api_available.unwrap_or(false)
+}
+
+fn env_non_empty(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|value| !value.trim().is_empty())
+}
+
+fn append_github_output(path: &Path, receipt: &CiRouteReceipt, json_path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create GitHub output dir {}", parent.display()))?;
+    }
+
+    let mut body = String::new();
+    body.push_str(&format!("target={}\n", receipt.target.as_str()));
+    body.push_str(&format!("reason={}\n", receipt.reason.as_str()));
+    body.push_str(&format!(
+        "selected_runner_label={}\n",
+        receipt.selected_runner_label
+    ));
+    body.push_str(&format!("receipt_path={}\n", json_path.display()));
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("open GitHub output {}", path.display()))?
+        .write_all(body.as_bytes())
+        .with_context(|| format!("append GitHub output {}", path.display()))?;
     Ok(())
 }
 
@@ -242,6 +435,7 @@ fn looks_like_secret(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn trusted_context() -> CiRouteContext {
         CiRouteContext::new(
@@ -335,6 +529,160 @@ mod tests {
 
         assert!(
             err.to_string().contains("absolute path"),
+            "unexpected error: {err}"
+        );
+    }
+
+    fn route_args() -> CiRouteArgs {
+        CiRouteArgs {
+            event_name: Some("pull_request".to_string()),
+            repo: Some("EffortlessMetrics/tokmd-swarm".to_string()),
+            head_sha: Some("abc123".to_string()),
+            runner_api_available: Some(true),
+            runner_token_available: Some(true),
+            ..CiRouteArgs::default()
+        }
+    }
+
+    #[test]
+    fn same_repo_pr_can_select_self_hosted_when_capacity_is_healthy() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(true),
+            eligible_runners: 2,
+            busy_runners: 1,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::SelfHosted);
+        assert_eq!(receipt.reason, CiRouteReason::TrustedCapacityAvailable);
+        assert_eq!(receipt.selected_runner.as_deref(), Some("CPX42"));
+    }
+
+    #[test]
+    fn fork_pr_routes_to_github_hosted() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(false),
+            fork_pr: true,
+            eligible_runners: 2,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
+        assert_eq!(receipt.reason, CiRouteReason::ForkPullRequest);
+    }
+
+    #[test]
+    fn missing_token_routes_to_github_hosted() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(true),
+            runner_token_available: Some(false),
+            eligible_runners: 2,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
+        assert_eq!(receipt.reason, CiRouteReason::RunnerTokenUnavailable);
+    }
+
+    #[test]
+    fn api_unavailable_routes_to_github_hosted() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(true),
+            runner_api_available: Some(false),
+            eligible_runners: 2,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
+        assert_eq!(receipt.reason, CiRouteReason::RunnerApiUnavailable);
+    }
+
+    #[test]
+    fn force_github_hosted_routes_to_github_hosted() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(true),
+            mode: CiRouteMode::ForceGithubHosted,
+            eligible_runners: 2,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
+        assert_eq!(receipt.reason, CiRouteReason::ManualForceGithubHosted);
+    }
+
+    #[test]
+    fn force_self_hosted_is_denied_for_untrusted_events() {
+        let receipt = decide_route(&CiRouteArgs {
+            trusted_event: Some(false),
+            mode: CiRouteMode::ForceSelfHosted,
+            eligible_runners: 2,
+            healthy_runners: 2,
+            health: CiRouteHealth::Healthy,
+            selected_runner: Some("CPX42".to_string()),
+            ..route_args()
+        })
+        .expect("route");
+
+        assert_eq!(receipt.target, CiRouteTarget::GithubHosted);
+        assert_eq!(receipt.reason, CiRouteReason::ManualForceSelfHostedDenied);
+    }
+
+    #[test]
+    fn run_writes_receipt_and_github_outputs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let json = dir.path().join("route.json");
+        let github_output = dir.path().join("github-output.txt");
+
+        run(CiRouteArgs {
+            json: json.clone(),
+            github_output: Some(github_output.clone()),
+            trusted_event: Some(false),
+            fork_pr: true,
+            ..route_args()
+        })
+        .expect("run route helper");
+
+        let receipt: CiRouteReceipt =
+            serde_json::from_str(&fs::read_to_string(json).expect("read receipt"))
+                .expect("parse receipt");
+        assert_eq!(receipt.reason, CiRouteReason::ForkPullRequest);
+        assert!(
+            fs::read_to_string(github_output)
+                .expect("read outputs")
+                .contains("target=github-hosted")
+        );
+    }
+
+    #[test]
+    fn unsupported_lane_fails() {
+        let err = decide_route(&CiRouteArgs {
+            lane: "release".to_string(),
+            ..route_args()
+        })
+        .expect_err("unsupported lane");
+
+        assert!(
+            err.to_string().contains("unsupported CI route lane"),
             "unexpected error: {err}"
         );
     }
