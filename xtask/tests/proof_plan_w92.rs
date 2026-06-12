@@ -650,6 +650,58 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
 }
 
 #[test]
+fn routed_rust_small_workflow_exposes_fallback_proof_modes() {
+    let workflow =
+        fs::read_to_string(workspace_root().join(".github/workflows/em-routed-rust-small.yml"))
+            .expect("routed Rust Small workflow should be readable");
+    let policy = fs::read_to_string(workspace_root().join("docs/ci/routed-ci-policy.md"))
+        .expect("routed CI policy should be readable");
+
+    for mode in [
+        "auto",
+        "force-github-hosted",
+        "force-self-hosted",
+        "simulate-full",
+        "simulate-unhealthy",
+        "simulate-api-unavailable",
+        "simulate-untrusted",
+    ] {
+        assert!(
+            workflow.contains(&format!("- {mode}")),
+            "workflow_dispatch should expose proof mode `{mode}`"
+        );
+        assert!(
+            policy.contains(&format!("`{mode}`")),
+            "routed CI policy should document proof mode `{mode}`"
+        );
+    }
+
+    for case_label in [
+        "simulate-full)",
+        "simulate-unhealthy)",
+        "simulate-api-unavailable)",
+        "simulate-untrusted)",
+    ] {
+        assert!(
+            workflow.contains(case_label),
+            "router script should handle `{case_label}`"
+        );
+    }
+
+    for expected_override in [
+        "busy_runners=\"2\"",
+        "route_health=\"degraded\"",
+        "runner_api_available=\"false\"",
+        "trusted_event=\"false\"",
+    ] {
+        assert!(
+            workflow.contains(expected_override),
+            "proof modes should set explicit route input `{expected_override}`"
+        );
+    }
+}
+
+#[test]
 fn routed_rust_small_docs_explain_result_receipt_fields() {
     let artifacts = fs::read_to_string(workspace_root().join("docs/artifacts.md"))
         .expect("artifact glossary should be readable");

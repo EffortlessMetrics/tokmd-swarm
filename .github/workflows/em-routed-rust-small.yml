@@ -10,8 +10,14 @@ on:
         type: choice
         options:
           - auto
+          - force-github-hosted
+          - force-self-hosted
           - self-hosted
           - github-hosted
+          - simulate-full
+          - simulate-unhealthy
+          - simulate-api-unavailable
+          - simulate-untrusted
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -146,14 +152,59 @@ jobs:
           mkdir -p target/ci
 
           mode="auto"
+          trusted_event="${TRUSTED_SELF_HOSTED}"
+          runner_token_available="${RUNNER_TOKEN_AVAILABLE}"
+          runner_api_available="${RUNNER_API_AVAILABLE}"
+          eligible_runners="${ELIGIBLE_RUNNERS}"
+          busy_runners="${BUSY_RUNNERS}"
+          healthy_runners="${HEALTHY_RUNNERS}"
+          route_health="${ROUTE_HEALTH}"
+          selected_runner="${SELECTED_RUNNER:-}"
           case "${FORCE_TARGET:-auto}" in
             auto|"")
               ;;
-            github-hosted)
+            github-hosted|force-github-hosted)
               mode="force-github-hosted"
               ;;
-            self-hosted)
+            self-hosted|force-self-hosted)
               mode="force-self-hosted"
+              ;;
+            simulate-full)
+              runner_token_available="true"
+              runner_api_available="true"
+              eligible_runners="2"
+              busy_runners="2"
+              healthy_runners="2"
+              route_health="healthy"
+              selected_runner=""
+              ;;
+            simulate-unhealthy)
+              runner_token_available="true"
+              runner_api_available="true"
+              eligible_runners="1"
+              busy_runners="0"
+              healthy_runners="0"
+              route_health="degraded"
+              selected_runner=""
+              ;;
+            simulate-api-unavailable)
+              runner_token_available="true"
+              runner_api_available="false"
+              eligible_runners="0"
+              busy_runners="0"
+              healthy_runners="0"
+              route_health="unknown"
+              selected_runner=""
+              ;;
+            simulate-untrusted)
+              trusted_event="false"
+              runner_token_available="true"
+              runner_api_available="true"
+              eligible_runners="1"
+              busy_runners="0"
+              healthy_runners="1"
+              route_health="healthy"
+              selected_runner="simulated-runner"
               ;;
             *)
               echo "unsupported force_target=${FORCE_TARGET}" >&2
@@ -167,8 +218,8 @@ jobs:
           fi
 
           selected_runner_args=()
-          if [ -n "${SELECTED_RUNNER:-}" ]; then
-            selected_runner_args+=(--selected-runner "${SELECTED_RUNNER}")
+          if [ -n "${selected_runner:-}" ]; then
+            selected_runner_args+=(--selected-runner "${selected_runner}")
           fi
 
           cargo +1.95.0 xtask ci-route \
@@ -178,14 +229,14 @@ jobs:
             --event-name "${GITHUB_EVENT_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --head-sha "${GITHUB_SHA}" \
-            --trusted-event "${TRUSTED_SELF_HOSTED}" \
+            --trusted-event "${trusted_event}" \
             "${fork_args[@]}" \
-            --runner-token-available "${RUNNER_TOKEN_AVAILABLE}" \
-            --runner-api-available "${RUNNER_API_AVAILABLE}" \
-            --eligible-runners "${ELIGIBLE_RUNNERS}" \
-            --busy-runners "${BUSY_RUNNERS}" \
-            --healthy-runners "${HEALTHY_RUNNERS}" \
-            --health "${ROUTE_HEALTH}" \
+            --runner-token-available "${runner_token_available}" \
+            --runner-api-available "${runner_api_available}" \
+            --eligible-runners "${eligible_runners}" \
+            --busy-runners "${busy_runners}" \
+            --healthy-runners "${healthy_runners}" \
+            --health "${route_health}" \
             --selected-runner-label em-ci-small \
             "${selected_runner_args[@]}" \
             --github-output "${GITHUB_OUTPUT}"

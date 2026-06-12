@@ -203,6 +203,24 @@ Result semantics:
 - non-selected implementation jobs are ignored when skipped;
 - router failure without a safe fallback -> result fails.
 
+## Manual proof modes
+
+`workflow_dispatch` exposes routed Rust Small proof modes so maintainers can
+exercise fallback behavior without waiting for real fleet pressure:
+
+| Mode | Expected route | Purpose |
+| --- | --- | --- |
+| `auto` | policy decision | Normal trust/capacity/health routing. |
+| `force-github-hosted` | GitHub-hosted | Hosted diagnostic run without touching self-hosted capacity. |
+| `force-self-hosted` | self-hosted if trusted | Self-hosted diagnostic run; still denied for unsafe events. |
+| `simulate-full` | GitHub-hosted | Proves full self-hosted capacity falls back before dispatch. |
+| `simulate-unhealthy` | GitHub-hosted | Proves degraded health falls back before dispatch. |
+| `simulate-api-unavailable` | GitHub-hosted | Proves missing runner API state falls back safely. |
+| `simulate-untrusted` | GitHub-hosted | Proves untrusted event state cannot select self-hosted. |
+
+Simulation modes are proof inputs for the router. They do not mark the runner
+fleet as actually full, unhealthy, API-unavailable, or untrusted.
+
 ## Route receipt
 
 Every routed run should write a small JSON receipt and include the same summary
