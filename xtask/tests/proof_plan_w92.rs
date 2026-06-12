@@ -669,6 +669,15 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
         "routed result telemetry should summarize cache policy"
     );
     assert!(
+        workflow.contains("\"health\",")
+            && workflow.contains("\"health_age_seconds\",")
+            && workflow.contains("\"disk_free_bytes\",")
+            && workflow.contains("\"scratch_free_bytes\",")
+            && workflow.contains("\"min_free_bytes\",")
+            && workflow.contains("\"fallback_allowed\","),
+        "route summary should expose health, disk/scratch, and fallback fields"
+    );
+    assert!(
         workflow.contains("| rerun count |"),
         "routed result summary should expose derived rerun accounting"
     );
