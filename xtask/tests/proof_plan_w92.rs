@@ -702,6 +702,35 @@ fn routed_rust_small_workflow_exposes_fallback_proof_modes() {
 }
 
 #[test]
+fn routed_rust_small_concurrency_is_pr_scoped() {
+    let workflow =
+        fs::read_to_string(workspace_root().join(".github/workflows/em-routed-rust-small.yml"))
+            .expect("routed Rust Small workflow should be readable");
+    let policy = fs::read_to_string(workspace_root().join("docs/ci/routed-ci-policy.md"))
+        .expect("routed CI policy should be readable");
+
+    let group = "${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}";
+    let cancel = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}";
+
+    assert!(
+        workflow.contains(group),
+        "routed workflow should use a workflow-specific PR/ref concurrency group"
+    );
+    assert!(
+        workflow.contains(cancel),
+        "routed workflow should cancel in-progress work only for pull_request events"
+    );
+    assert!(
+        policy.contains(group) && policy.contains(cancel),
+        "routed CI policy should document the implemented concurrency contract"
+    );
+    assert!(
+        !workflow.contains("cancel-in-progress: true"),
+        "routed workflow must not cancel merge_group or workflow_dispatch runs unconditionally"
+    );
+}
+
+#[test]
 fn routed_rust_small_docs_explain_result_receipt_fields() {
     let artifacts = fs::read_to_string(workspace_root().join("docs/artifacts.md"))
         .expect("artifact glossary should be readable");
