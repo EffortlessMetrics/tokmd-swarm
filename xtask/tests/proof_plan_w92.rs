@@ -612,12 +612,16 @@ fn routed_rust_small_result_uploads_normalized_receipt() {
         "routed result receipt should record the selected implementation"
     );
     assert!(
-        workflow.contains("\"error\": env(\"ROUTER_ERROR\")"),
-        "routed result receipt should preserve the router error flag"
+        workflow.contains("\"selected_runner_label\": env(\"ROUTER_SELECTED_RUNNER_LABEL\")"),
+        "routed result receipt should preserve the selected runner label"
     );
     assert!(
-        workflow.contains("\"trusted_self_hosted\": env(\"ROUTER_TRUSTED_SELF_HOSTED\")"),
-        "routed result receipt should preserve the router trust decision"
+        workflow.contains("\"receipt_path\": env(\"ROUTER_RECEIPT_PATH\")"),
+        "routed result receipt should preserve the route receipt path"
+    );
+    assert!(
+        workflow.contains("\"self_hosted\": env(\"SELF_HOSTED_RESULT\")"),
+        "routed result receipt should preserve the self-hosted implementation result"
     );
     assert!(
         workflow.contains("\"rerun_count\": int(env(\"RERUN_COUNT\", \"0\"))"),
@@ -661,9 +665,7 @@ fn routed_rust_small_docs_explain_result_receipt_fields() {
     for field in [
         "router.target",
         "router.reason",
-        "router.error",
-        "trusted_self_hosted",
-        "fallback_allowed",
+        "router.receipt_path",
         "selected.job/result",
         "run.run_attempt",
         "run.rerun_count",
