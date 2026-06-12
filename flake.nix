@@ -82,6 +82,8 @@
           || (baseName == "README.md" && pkgs.lib.hasInfix "/crates/" p)
           # Keep test directories and their contents
           || (pkgs.lib.hasInfix "/tests/" p)
+          # Keep top-level integration fixtures used by compile-time include_str! tests
+          || (pkgs.lib.hasInfix "/fixtures/" p)
           # Keep contract fixtures validated by schema tests
           || (pkgs.lib.hasInfix "/contracts/" p)
           # Keep snapshot files
