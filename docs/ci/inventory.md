@@ -50,9 +50,7 @@ and aggregate result lane by default instead of summing every skipped target.
 
 | Lane ID | Job | Runner | Base LEM | Trigger |
 |---------|-----|--------|----------|---------|
-| `tokmd_rust_small_cpx42` | Tokmd Rust Small on CPX42 | em-ci-small | 12 | selected by routed Rust Small. |
-| `tokmd_rust_small_cx43` | Tokmd Rust Small on CX43 | em-ci-small | 12 | selected by routed Rust Small. |
-| `tokmd_rust_small_cx53` | Tokmd Rust Small on CX53 | em-ci-small | 12 | selected by routed Rust Small. |
+| `tokmd_rust_small_self_hosted` | Tokmd Rust Small on Self Hosted | em-ci-small | 12 | selected by routed Rust Small when trusted healthy capacity exists. |
 | `tokmd_rust_small_github` | Tokmd Rust Small on GitHub Hosted | ubuntu | 20 | selected by routed Rust Small fallback. |
 
 ## Push / main-only
