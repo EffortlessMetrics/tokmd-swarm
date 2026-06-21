@@ -418,7 +418,11 @@ fn help_module_mentions_practical_examples() {
         .assert()
         .success()
         .stdout(
-            predicate::str::contains("Examples:").and(predicate::str::contains("tokmd module")),
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd module --depth 3 --top 10"))
+                .and(predicate::str::contains(
+                    "tokmd module crates --format json",
+                )),
         );
 }
 
@@ -428,7 +432,13 @@ fn help_run_mentions_practical_examples() {
         .args(["run", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Examples:").and(predicate::str::contains("tokmd run")));
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd run --name baseline"))
+                .and(predicate::str::contains(
+                    "tokmd run crates --analysis health --output-dir .runs/tokmd",
+                )),
+        );
 }
 
 #[test]
@@ -437,5 +447,11 @@ fn help_init_mentions_practical_examples() {
         .args(["init", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Examples:").and(predicate::str::contains("tokmd init")));
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd init --template rust"))
+                .and(predicate::str::contains(
+                    "tokmd init --non-interactive --template node --force",
+                )),
+        );
 }
