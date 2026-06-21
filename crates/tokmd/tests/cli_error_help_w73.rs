@@ -410,3 +410,32 @@ fn error_completions_invalid_shell() {
         .failure()
         .stderr(predicate::str::contains("invalid value"));
 }
+
+#[test]
+fn help_module_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["module", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:").and(predicate::str::contains("tokmd module")),
+        );
+}
+
+#[test]
+fn help_run_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["run", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Examples:").and(predicate::str::contains("tokmd run")));
+}
+
+#[test]
+fn help_init_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["init", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Examples:").and(predicate::str::contains("tokmd init")));
+}
