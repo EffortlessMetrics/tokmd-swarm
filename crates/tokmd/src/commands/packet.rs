@@ -96,6 +96,15 @@ fn generate_packet(args: cli::PacketGenerateArgs, global: &cli::GlobalArgs) -> R
 /// The non-`Option` fields mirror the `tokmd analyze` clap defaults so the
 /// generated receipts match a direct `analyze` invocation.
 fn analyze_args(args: &cli::PacketGenerateArgs) -> cli::CliAnalyzeArgs {
+    // Effort refs are only meaningful for effort-aware presets (Estimate /
+    // BunUb). Setting them for every preset forces an effort request, which then
+    // trips validate_effort_refs in non-git builds even when the preset has no
+    // notion of effort (e.g. topics, receipt). This mirrors the estimate-preset
+    // gating in analyze::parse_effort_request.
+    let wants_effort = matches!(
+        args.preset,
+        cli::AnalysisPreset::Estimate | cli::AnalysisPreset::BunUb
+    );
     cli::CliAnalyzeArgs {
         inputs: args.paths.clone(),
         preset: Some(args.preset),
@@ -114,8 +123,8 @@ fn analyze_args(args: &cli::PacketGenerateArgs) -> cli::CliAnalyzeArgs {
         granularity: None,
         effort_model: None,
         effort_layer: None,
-        effort_base_ref: Some(args.base.clone()),
-        effort_head_ref: Some(args.head.clone()),
+        effort_base_ref: wants_effort.then(|| args.base.clone()),
+        effort_head_ref: wants_effort.then(|| args.head.clone()),
         monte_carlo: false,
         mc_iterations: None,
         mc_seed: None,

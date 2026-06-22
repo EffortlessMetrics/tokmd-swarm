@@ -217,6 +217,43 @@ fn packet_generate_honors_custom_output_dir() {
 }
 
 #[test]
+fn packet_generate_non_effort_preset_does_not_force_effort() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+
+    // A non-effort preset (e.g. receipt) must not force an effort request, which
+    // would otherwise trip ref validation (and break non-git builds).
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "packet",
+            "generate",
+            "--preset",
+            "receipt",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--no-syntax",
+            "--no-progress",
+            SCOPE_FILE,
+        ])
+        .assert()
+        .success();
+
+    let manifest = read_manifest_at(
+        &dir.path()
+            .join("sensors")
+            .join("tokmd")
+            .join("manifest.json"),
+    );
+    assert_eq!(manifest["preset"], "receipt");
+}
+
+#[test]
 fn packet_generate_fails_on_unresolved_ref() {
     if !common::git_available() {
         return;
