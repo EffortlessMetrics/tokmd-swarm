@@ -163,7 +163,6 @@ pub fn build_delta(
     }
 }
 
-#[allow(dead_code)]
 fn classify_blast(blast_radius: f64) -> EffortDeltaClassification {
     if blast_radius < 10.0 {
         EffortDeltaClassification::Low
