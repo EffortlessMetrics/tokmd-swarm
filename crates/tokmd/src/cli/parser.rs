@@ -38,6 +38,7 @@ mod sensor;
 #[cfg(feature = "ast")]
 mod syntax;
 mod tools;
+mod validate;
 mod value_enums;
 
 pub use analysis::{
