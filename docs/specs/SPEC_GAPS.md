@@ -60,6 +60,7 @@ require deleting or rewriting user-facing docs in the same change.
 | Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
 | Dual-repo publication/workbench topology | `docs/specs/repo-topology.md`, `docs/ci/swarm-routing.md`, `cargo xtask repo-graph` | specified | keep graph verifier semantics, workflow guards, merge policy, and import/fast-forward runbook aligned |
 | Swarm workbench GHCR image name, tags, and claim boundary vs publication `tokmd` | `docs/specs/swarm-ghcr-image.md`, `docs/specs/repo-topology.md`, issue #264 | specified (draft contract; visibility undecided) | decide public vs private visibility in #264 before adding publish workflow |
+| Machine-readable CLI progress events (`TOKMD_PROGRESS_EVENTS`) | `docs/specs/progress-events.md`, `crates/tokmd/src/progress.rs`, `fixtures/progress-events/`, `docs/progress-events.md` | specified | keep env activation rules, stderr boundary, fixtures, and tests aligned with the spec |
 
 ## Classification Vocabulary
 

@@ -317,4 +317,31 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(parsed["message"], "line one\nline two");
     }
+
+    #[test]
+    fn progress_event_fixtures_match_emitted_json() {
+        let cases = [
+            (
+                include_str!("../../../fixtures/progress-events/update.json"),
+                "update",
+                "Scanning codebase...",
+            ),
+            (
+                include_str!("../../../fixtures/progress-events/finish.json"),
+                "finish",
+                "done",
+            ),
+        ];
+
+        for (fixture, kind, message) in cases {
+            let fixture = fixture.trim();
+            let emitted = progress_event_json(kind, message);
+            assert_eq!(fixture, emitted);
+            let parsed: serde_json::Value = serde_json::from_str(fixture).unwrap();
+            assert_eq!(parsed["event"], "tokmd.progress");
+            assert_eq!(parsed["schema_version"], 1);
+            assert_eq!(parsed["kind"], kind);
+            assert_eq!(parsed["message"], message);
+        }
+    }
 }
