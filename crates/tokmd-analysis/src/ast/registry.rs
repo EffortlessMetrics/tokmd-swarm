@@ -726,15 +726,15 @@ mod tests {
 
         let test_assert_index = mixed_signals
             .iter()
-            .position(|signal| {
-                signal["kind"] == "assert_macro" && signal["test_context"] == true
-            })
+            .position(|signal| signal["kind"] == "assert_macro" && signal["test_context"] == true)
             .expect("test assertion signal");
         let production_expect_index = mixed_signals
             .iter()
             .position(|signal| {
                 signal["kind"] == "expect"
-                    && signal.get("test_context").is_none_or(|value| value != &json!(true))
+                    && signal
+                        .get("test_context")
+                        .is_none_or(|value| value != &json!(true))
             })
             .expect("production expect signal");
         assert!(
@@ -751,7 +751,11 @@ mod tests {
         let signals = panic_value["review_signals"].as_array().unwrap();
         assert_eq!(signals[0]["severity"], "high");
         assert_eq!(signals[0]["score"], 90);
-        assert!(signals.iter().all(|signal| signal.get("test_context") != Some(&json!(true))));
+        assert!(
+            signals
+                .iter()
+                .all(|signal| signal.get("test_context") != Some(&json!(true)))
+        );
 
         let parser = parse_syntax_receipt(
             "crates/tokmd-analysis/src/ast/rust.rs",

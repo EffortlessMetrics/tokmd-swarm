@@ -190,7 +190,13 @@ fn push_rust_call(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
             }
             "expect" => {
                 if callee.contains("try_from") || callee.contains("try_into") {
-                    push_rust_risk("fallible_conversion_expect", callee.as_str(), node, source, facts);
+                    push_rust_risk(
+                        "fallible_conversion_expect",
+                        callee.as_str(),
+                        node,
+                        source,
+                        facts,
+                    );
                 } else {
                     push_rust_risk("expect", callee.as_str(), node, source, facts);
                 }
@@ -224,7 +230,13 @@ fn push_rust_macro(node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
     }
 }
 
-fn push_rust_risk(kind: &str, evidence: &str, node: Node<'_>, source: &str, facts: &mut SyntaxFacts) {
+fn push_rust_risk(
+    kind: &str,
+    evidence: &str,
+    node: Node<'_>,
+    source: &str,
+    facts: &mut SyntaxFacts,
+) {
     facts.risk_seams.push(SyntaxRiskSeam {
         kind: kind.to_owned(),
         evidence: compact_text(evidence),
