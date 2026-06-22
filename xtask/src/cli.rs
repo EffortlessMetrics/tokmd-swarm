@@ -97,6 +97,8 @@ pub enum Commands {
     CheckNoPanicFamily(NoPanicArgs),
     /// Propose new no-panic allowlist entries from current findings
     NoPanicPropose(NoPanicProposeArgs),
+    /// Materialize a receipted no-panic allowlist baseline from current findings
+    NoPanicBaseline(NoPanicBaselineArgs),
     /// Verify CI lane whitelist coverage and exception receipts
     CiLaneWhitelist(CiLaneWhitelistArgs),
     /// Auto-fix lint issues (fmt + clippy --fix) then verify
@@ -1008,6 +1010,31 @@ impl Default for NoPanicProposeArgs {
     fn default() -> Self {
         Self {
             output: std::path::PathBuf::from("target/no-panic-proposed-allowlist.toml"),
+        }
+    }
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct NoPanicBaselineArgs {
+    /// Output path for the receipted allowlist baseline
+    #[arg(long, default_value = "policy/no-panic-allowlist.toml")]
+    pub write: std::path::PathBuf,
+
+    /// Write a machine-readable baseline receipt JSON artifact
+    #[arg(long, value_name = "PATH")]
+    pub receipt_output: Option<std::path::PathBuf>,
+
+    /// ISO-8601 expiry date applied to every generated baseline entry
+    #[arg(long, default_value = "2026-12-31")]
+    pub expires: String,
+}
+
+impl Default for NoPanicBaselineArgs {
+    fn default() -> Self {
+        Self {
+            write: std::path::PathBuf::from("policy/no-panic-allowlist.toml"),
+            receipt_output: None,
+            expires: "2026-12-31".to_string(),
         }
     }
 }
