@@ -79,6 +79,7 @@ fn main() -> Result<()> {
         Some(cli::Commands::CiLaneWhitelist(args)) => tasks::ci_lane_whitelist::run(args),
         Some(cli::Commands::CheckNoPanicFamily(args)) => tasks::no_panic::run_check(args),
         Some(cli::Commands::NoPanicPropose(args)) => tasks::no_panic::run_propose(args),
+        Some(cli::Commands::NoPanicBaseline(args)) => tasks::no_panic::run_baseline(args),
         Some(cli::Commands::LintFix(args)) => tasks::lint_fix::run(args),
         Some(cli::Commands::Sccache(args)) => tasks::sccache::run(args),
         Some(cli::Commands::TrimTarget(args)) => tasks::trim_target::run(args),
