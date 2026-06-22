@@ -110,6 +110,7 @@ paths = [
   ".github/workflows/mutants.yml",
   ".github/workflows/nix-full.yml",
   ".github/workflows/nix-macos.yml",
+  ".github/workflows/clippy-exceptions-policy.yml",
   ".github/workflows/no-panic-policy.yml",
   ".github/workflows/pr-plan.yml",
   ".github/workflows/proof-observation-collection.yml",
@@ -317,6 +318,7 @@ paths = [
   "docs/CLIPPY_POLICY.md",
   "policy/clippy-debt.toml",
   "policy/clippy-exceptions.toml",
+  "policy/clippy-exceptions-baseline-receipt.json",
   "policy/clippy-lints.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -328,7 +330,7 @@ paths = [
 packages = ["xtask"]
 proof = [
   "cargo xtask check-lint-policy",
-  "cargo xtask check-clippy-exceptions",
+  "cargo xtask check-clippy-exceptions --strict",
   "cargo test -p xtask lint_policy --verbose",
   "cargo test -p xtask clippy_exceptions --verbose",
   "cargo clippy -p xtask --all-targets -- -D warnings",
@@ -993,6 +995,7 @@ paths = [
   "crates/tokmd/src/config.rs",
   "crates/tokmd/src/config/**",
   "crates/tokmd/src/error_hints.rs",
+  "crates/tokmd/src/progress.rs",
   "crates/tokmd/tests/cli_*.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
