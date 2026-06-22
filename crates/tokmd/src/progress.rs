@@ -328,17 +328,7 @@ mod tests {
         ];
 
         for (fixture, kind, message) in cases {
-            let fixture = fixture.trim();
-            let emitted = progress_event_json(kind, message);
-            let fixture_value: serde_json::Value =
-                serde_json::from_str(fixture).expect("fixture must be valid JSON");
-            let emitted_value: serde_json::Value =
-                serde_json::from_str(&emitted).expect("emitted event must be valid JSON");
-            assert_eq!(fixture_value, emitted_value);
-            assert_eq!(fixture_value["event"], "tokmd.progress");
-            assert_eq!(fixture_value["schema_version"], 1);
-            assert_eq!(fixture_value["kind"], kind);
-            assert_eq!(fixture_value["message"], message);
+            assert_eq!(fixture.trim(), progress_event_json(kind, message));
         }
     }
 }
