@@ -94,9 +94,9 @@ fn resolve_targets(args: &cli::DiffArgs) -> Result<(String, String)> {
                 "Use either two positional refs/paths or --from/--to, not both. {DIFF_USAGE_HINT}"
             );
         }
-        if args.refs.len() != 2 {
-            bail!("Diff expects exactly two refs/paths. {DIFF_USAGE_HINT}");
-        }
+        // `refs` is constrained to exactly 2 by clap's `num_args = 2`, so any
+        // other count is rejected before `handle` runs; the mutually-exclusive
+        // arm above and the no-args arm below cover the real misuse paths.
         return Ok((args.refs[0].clone(), args.refs[1].clone()));
     }
 
