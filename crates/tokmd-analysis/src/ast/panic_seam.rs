@@ -212,10 +212,7 @@ pub fn derive_panic_seam_summary(
     Some(PanicSeamSummary { entries, counts })
 }
 
-fn containing_symbol<'a>(
-    symbols: &'a [SyntaxSymbol],
-    seam_span: SyntaxSpan,
-) -> Option<&'a SyntaxSymbol> {
+fn containing_symbol(symbols: &[SyntaxSymbol], seam_span: SyntaxSpan) -> Option<&SyntaxSymbol> {
     symbols
         .iter()
         .filter(|symbol| {
