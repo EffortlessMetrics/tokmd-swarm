@@ -119,9 +119,9 @@ readiness.
     "bun-ub packages review evidence; it does not prove UB exists or is absent"
   ],
   "reproduce": [
-    "tokmd analyze --preset bun-ub --format md --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.md",
-    "tokmd analyze --preset bun-ub --format json --effort-base-ref origin/main --effort-head-ref HEAD --no-progress src/runtime/api > sensors/tokmd/analyze.json",
-    "tokmd context --budget 64000 src/runtime/api > sensors/tokmd/context.md",
+    "tokmd analyze --preset bun-ub --format md --effort-base-ref origin/main --effort-head-ref HEAD --no-progress --output-dir sensors/tokmd src/runtime/api",
+    "tokmd analyze --preset bun-ub --format json --effort-base-ref origin/main --effort-head-ref HEAD --no-progress --output-dir sensors/tokmd src/runtime/api",
+    "tokmd context --budget 64000 --output sensors/tokmd/context.md src/runtime/api",
     "tokmd syntax --no-progress src/runtime/api > sensors/tokmd/syntax.json",
     "tokmd evidence-packet --base origin/main --head HEAD src/runtime/api"
   ]
@@ -140,6 +140,60 @@ tokmd evidence-packet \
 The default output is `sensors/tokmd/manifest.json`. The command exits
 nonzero for `failed` packets while still writing the manifest so a bot or human
 can inspect the named errors.
+
+## Windows (PowerShell)
+
+On Windows PowerShell, bare `>` redirection writes **UTF-16LE**, not UTF-8.
+`tokmd evidence-packet` requires UTF-8 JSON inputs and rejects UTF-16 artifacts.
+
+Do not use bare `>` for packet JSON or Markdown artifacts. Prefer:
+
+| Artifact | Preferred write path |
+| --- | --- |
+| `analyze.json` / `analyze.md` | `tokmd analyze --output-dir sensors/tokmd` (writes `analysis.json` / `analysis.md`; pass `--analyze-json` / `--analyze-md` to `evidence-packet` when names differ) |
+| `context.md` | `tokmd context --output sensors/tokmd/context.md` |
+| `syntax.json` | `tokmd syntax ... \| Out-File -Encoding utf8 sensors/tokmd/syntax.json` (syntax has no `--output` flag yet) |
+| `manifest.json` | `tokmd evidence-packet --output sensors/tokmd/manifest.json` |
+
+PowerShell example (scoped paths and refs as needed):
+
+```powershell
+$Sensor = "sensors/tokmd"
+New-Item -ItemType Directory -Force -Path $Sensor | Out-Null
+
+tokmd analyze --preset bun-ub --format md `
+  --effort-base-ref origin/main --effort-head-ref HEAD `
+  --no-progress --output-dir $Sensor `
+  src/runtime/api
+
+tokmd analyze --preset bun-ub --format json `
+  --effort-base-ref origin/main --effort-head-ref HEAD `
+  --no-progress --output-dir $Sensor `
+  src/runtime/api
+
+tokmd context --budget 64000 --output "$Sensor/context.md" src/runtime/api
+
+tokmd syntax --no-progress src/runtime/api |
+  Out-File -Encoding utf8 "$Sensor/syntax.json"
+
+tokmd evidence-packet --preset bun-ub --base origin/main --head HEAD `
+  --output "$Sensor/manifest.json" `
+  --analyze-md "$Sensor/analysis.md" `
+  --analyze-json "$Sensor/analysis.json" `
+  --context-md "$Sensor/context.md" `
+  --syntax-json "$Sensor/syntax.json" `
+  src/runtime/api
+```
+
+When `--output-dir` is used, `tokmd analyze` writes `analysis.json` and
+`analysis.md`. Either pass those paths to `evidence-packet`, or copy/rename to
+the default `analyze.json` / `analyze.md` layout under `sensors/tokmd/`.
+
+If a JSON input fails with a UTF-16 or invalid UTF-8 message, regenerate the
+artifact with one of the write paths above instead of shell redirect.
+
+See also the maintainer dogfood note:
+[1.13 syntax evidence dogfood](releases/1.13-dogfood.md).
 
 ## Status Rules
 
