@@ -65,6 +65,8 @@ Serialization rules:
 - Embedded control characters in `message` must be JSON-escaped; emitted lines
   must not contain raw newline characters.
 - No trailing comma, prefix, suffix, or wrapper envelope.
+- Object key order is not part of the contract; consumers must compare parsed
+  JSON semantically.
 
 Golden fixtures live under `fixtures/progress-events/` and are validated by
 `cargo test -p tokmd progress_event_fixtures_match_emitted_json`.
@@ -108,7 +110,7 @@ TOKMD_PROGRESS_EVENTS=1 tokmd run --no-progress --output-dir target/tokmd-progre
 
 ## Open Questions
 
-- Whether a formal JSON Schema file should be added under `docs/schema/` for
-  third-party validators.
+- Whether a formal JSON Schema document should be published for third-party
+  validators.
 - Whether additional `kind` values (for example `start`) should be added in
   `schema_version` 2.
