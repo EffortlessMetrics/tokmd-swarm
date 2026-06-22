@@ -59,6 +59,7 @@ require deleting or rewriting user-facing docs in the same change.
 | PR disposition lifecycle rules near release | `docs/adr/0011-pr-disposition-lifecycle.md`, `docs/specs/pr-disposition.md`, `AGENTS.md`, `docs/source-of-truth.md` | specified | keep agent guidance, PR bodies, release ledgers, and disposition rationale aligned |
 | Dependency maintenance classification and validation | `docs/specs/dependency-maintenance.md`, `deny.toml`, CI/proof scopes | specified | keep advisory exceptions and dependency proof aligned with the spec |
 | Dual-repo publication/workbench topology | `docs/specs/repo-topology.md`, `docs/ci/swarm-routing.md`, `cargo xtask repo-graph` | specified | keep graph verifier semantics, workflow guards, merge policy, and import/fast-forward runbook aligned |
+| Swarm workbench GHCR image name, tags, and claim boundary vs publication `tokmd` | `docs/specs/swarm-ghcr-image.md`, `docs/specs/repo-topology.md`, issue #264 | specified (draft contract; visibility undecided) | decide public vs private visibility in #264 before adding publish workflow |
 
 ## Classification Vocabulary
 

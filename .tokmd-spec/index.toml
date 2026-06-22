@@ -112,6 +112,12 @@ path = "docs/specs/repo-topology.md"
 status = "active"
 
 [[artifact]]
+id = "swarm-ghcr-image-spec"
+kind = "spec"
+path = "docs/specs/swarm-ghcr-image.md"
+status = "draft"
+
+[[artifact]]
 id = "spec-rails-contributor-guide"
 kind = "contributor-guide"
 path = "docs/contributing/spec-rails.md"
