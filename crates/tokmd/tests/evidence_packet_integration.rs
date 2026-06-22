@@ -592,11 +592,7 @@ fn evidence_packet_manifest_failed_when_analyze_json_is_utf16le() {
     std::fs::create_dir_all(&sensor_dir).unwrap();
     std::fs::write(sensor_dir.join("analyze.md"), "# Bun UB analyze\n").unwrap();
     std::fs::write(sensor_dir.join("context.md"), "# Context\n").unwrap();
-    std::fs::write(
-        sensor_dir.join("analyze.json"),
-        [0xFF_u8, 0xFE, b'{', b'}'],
-    )
-    .unwrap();
+    std::fs::write(sensor_dir.join("analyze.json"), [0xFF_u8, 0xFE, b'{', b'}']).unwrap();
 
     Command::new(env!("CARGO_BIN_EXE_tokmd"))
         .current_dir(dir.path())
@@ -615,9 +611,6 @@ fn evidence_packet_manifest_failed_when_analyze_json_is_utf16le() {
     let manifest = read_manifest(dir.path());
     assert_eq!(manifest["status"], "failed");
     assert!(manifest["errors"].as_array().unwrap().iter().any(|err| {
-        err.as_str()
-            .unwrap()
-            .contains("UTF-16LE")
-            && err.as_str().unwrap().contains("PowerShell")
+        err.as_str().unwrap().contains("UTF-16LE") && err.as_str().unwrap().contains("PowerShell")
     }));
 }
