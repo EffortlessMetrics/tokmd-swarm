@@ -48,16 +48,18 @@ What not to infer:
 - A clean publish-surface check is not approval to mutate release state.
 - Release workflow artifacts exist only after an explicit release run.
 
-Post-release layout when GHCR visibility is verified or recorded as pending:
+Post-release layout when GHCR visibility is verified or recorded:
 
 ```text
 target/publishing/
   ghcr-visibility-1.13.1.md
 ```
 
-The GHCR receipt is maintainer-written after an intentional stable release. It
-records `verified-public`, `pending`, or `private-only` and belongs in the
-release ledger. It does not change package visibility by itself.
+The GHCR receipt is maintainer-written after an intentional stable release from
+the publication repo. It records `verified-public`, `pending`, or `private-only`
+for `ghcr.io/effortlessmetrics/tokmd` and belongs in the release ledger. For
+`v1.13.1`, the ledger records **verified-public** as of 2026-06-21. Swarm
+workbench GHCR visibility remains undecided (issue #264).
 
 Next action:
 

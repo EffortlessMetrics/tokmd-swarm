@@ -128,6 +128,26 @@ requires an explicit release decision.
 
 ## Post-Release GHCR Visibility Checks
 
+### GHCR Registry Scope
+
+tokmd publishes one consumer-facing GHCR image from the **publication repository**
+(`EffortlessMetrics/tokmd`):
+
+- `ghcr.io/effortlessmetrics/tokmd` — supported public secondary runtime for
+  stable releases from the publication repo.
+
+The **swarm workbench** (`EffortlessMetrics/tokmd-swarm`) does not currently
+publish a supported public GHCR consumer path. Under the dual-repo topology
+(`docs/specs/repo-topology.md`), release and Docker publication are owned by
+`tokmd`. Swarm-associated GHCR package visibility is **undecided** and tracked
+in issue #264. Do not document swarm GHCR as permanently private, as a
+non-goal, or as a supported install or workflow runtime without an accepted
+spec.
+
+As of **2026-06-21**, maintainer verification records
+`ghcr.io/effortlessmetrics/tokmd` as **verified-public** for `v1.13.1`. New
+stable releases still require the post-release checklist and ledger update below.
+
 The release workflow's Docker job proves that the release run attempted the
 configured build and push. It does not, by itself, prove that unauthenticated or
 intended downstream consumers can pull the published GHCR tags.
@@ -148,9 +168,12 @@ replace maintainer verification.
 | Record verification receipt in release ledger | Maintainer | Save the template below under `target/publishing/` and copy the outcome into the release ledger. |
 | Rewrite tags or rerun release mutation | Maintainer only, explicit decision | Do not do this as the first response to `denied`. |
 
-GHCR public visibility remains **pending** until a maintainer records a pass
-receipt or an explicit private-only exception. Do not claim GHCR is a supported
-public runtime in README, install, or workflow docs until that receipt exists.
+For each new stable tag, record `verified-public`, `pending`, or `private-only`
+in the release ledger. Do not claim GHCR is a supported public runtime for that
+tag in README, install, or workflow docs until the receipt exists. Historical
+`v1.13.1` caveat: unauthenticated manifest inspect returned `denied` immediately
+after release; maintainer verification on 2026-06-21 resolved publication GHCR
+to `verified-public`.
 
 ### Verification Checklist
 

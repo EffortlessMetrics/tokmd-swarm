@@ -83,6 +83,12 @@ behavior in `tokmd-swarm`. This includes CI package gates such as
 Swarm-routed workbench workflows must not become required publication release
 gates unless a future ADR and policy update explicitly move that boundary.
 
+GHCR publication is owned by `tokmd`, not `tokmd-swarm`. The publication image
+`ghcr.io/effortlessmetrics/tokmd` is a supported public secondary runtime for
+stable releases (`verified-public` for `v1.13.1` as of 2026-06-21). Swarm
+workbench GHCR is not a supported consumer path today; whether it should also
+be public remains an open decision (issue #264).
+
 This spec does not change product receipts, public CLI behavior, release
 workflow behavior, proof promotion, Codecov defaults, AST behavior, or
 evidencebus runtime behavior.
@@ -133,6 +139,9 @@ cargo xtask proof-policy --check
 
 ## Open Questions
 
+- Whether `tokmd-swarm` should publish a public GHCR image (separate image
+  name, release workflow boundary, and claim boundary vs the publication
+  `ghcr.io/effortlessmetrics/tokmd` image). Tracked in issue #264.
 - Whether future publication-import automation should write a dedicated
   closeout receipt that bundles the pre-publication, merge-commit, and
   post-fast-forward `repo-graph` receipts.
