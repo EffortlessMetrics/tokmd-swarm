@@ -916,6 +916,26 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
+id               = "test_action_packet"
+workflow         = ".github/workflows/test-action.yml"
+job              = "Test packet mode"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 6
+owner            = "release/action"
+intent           = "Verify the action's packet mode generates a sensors/tokmd packet."
+failure_mode     = "The packet mode silently regresses for downstream consumers."
+proof_obligation = "Drive the action with mode=packet, fail-on, output-dir, and runtime permutations."
+evidence         = ["action job logs"]
+allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-06-07"
+expires          = "2026-11-07"
+
+[[lane]]
 id               = "ci_required"
 workflow         = ".github/workflows/ci.yml"
 job              = "CI (Required)"

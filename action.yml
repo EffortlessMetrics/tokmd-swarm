@@ -476,10 +476,19 @@ runs:
               exit "${packet_cmd_status:-1}"
             fi
 
-            packet_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$packet_manifest_file")"
-            review_priority_count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("review_priority", [])))' "$packet_manifest_file")"
-            warnings_count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("warnings", [])))' "$packet_manifest_file")"
-            errors_count="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("errors", [])))' "$packet_manifest_file")"
+            # Parse the manifest once and emit the fields the Action reports,
+            # using .get fallbacks so a missing optional key never raises.
+            mapfile -t packet_fields < <(python3 -c 'import json, sys; d = json.load(open(sys.argv[1], encoding="utf-8")); print(d.get("status") or "unknown"); print(len(d.get("review_priority") or [])); print(len(d.get("warnings") or [])); print(len(d.get("errors") or []))' "$packet_manifest_file")
+
+            if [ "${#packet_fields[@]}" -lt 4 ]; then
+              echo "::error::failed to parse packet manifest $packet_manifest_file"
+              exit 1
+            fi
+
+            packet_status="${packet_fields[0]}"
+            review_priority_count="${packet_fields[1]}"
+            warnings_count="${packet_fields[2]}"
+            errors_count="${packet_fields[3]}"
             ;;
           *)
             echo "::error::Unsupported tokmd action mode '$mode'. Supported values: module, export, gate, cockpit, sensor, baseline. Omit mode for the default module + export flow."
