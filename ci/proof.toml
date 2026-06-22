@@ -1528,6 +1528,9 @@ allow = [
   ".claude/**",
   ".jules/**",
   "ci/proof.toml",
+  # Receipted panic-family baseline embeds source snippets that mention crypto
+  # markers in test/fixture code paths; not committed key material.
+  "policy/no-panic-allowlist.toml",
   "vendor/**",
   "xtask/src/tasks/fixture_blobs_check.rs",
 ]

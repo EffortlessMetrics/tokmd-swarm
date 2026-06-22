@@ -209,7 +209,7 @@ pub fn run_baseline(args: NoPanicBaselineArgs) -> Result<()> {
     let receipt = BaselineReceipt {
         schema: "tokmd.no_panic_baseline.v1",
         generated_at: Utc::now().to_rfc3339(),
-        allowlist_path: normalize_path(&output.strip_prefix(&root).unwrap_or(&output)),
+        allowlist_path: normalize_path(output.strip_prefix(&root).unwrap_or(&output)),
         finding_count: unique_findings.len(),
         entry_count: unique_findings.len(),
         expires: args.expires.clone(),
