@@ -509,7 +509,12 @@ fn branchy(x: i32, y: bool) -> i32 {
     }
 
     let (dir, paths) = write_temp_files(&[("src/main.rs", &code)]);
-    let export = make_export(vec![make_row("src/main.rs", "src", "Rust", code.lines().count())]);
+    let export = make_export(vec![make_row(
+        "src/main.rs",
+        "src",
+        "Rust",
+        code.lines().count(),
+    )]);
     let report =
         build_complexity_report(dir.path(), &paths, &export, &default_limits(), false).unwrap();
 

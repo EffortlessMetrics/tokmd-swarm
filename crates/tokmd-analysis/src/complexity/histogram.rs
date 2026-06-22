@@ -15,6 +15,7 @@ use tokmd_analysis_types::{ComplexityHistogram, FileComplexity};
 ///
 /// # Note
 /// This function is planned for integration in v1.6.0.
+#[cfg(test)]
 pub(crate) fn generate_complexity_histogram(
     files: &[FileComplexity],
     bucket_size: u32,
