@@ -106,6 +106,22 @@ For release preparation:
 4. Treat publish, tag, GitHub release creation, alias movement, and image
    publication as separate explicit maintainer decisions.
 
+## Post-Release GHCR Visibility
+
+Pre-release checks above do not prove GHCR public manifest visibility. After an
+intentional stable release with Docker publication:
+
+1. Read the hosted release workflow's advisory unauthenticated manifest step.
+2. Follow the maintainer checklist and receipt template in
+   [Publishing evidence — Post-Release GHCR Visibility Checks](publishing-evidence.md#post-release-ghcr-visibility-checks).
+3. Update the release ledger with `verified-public`, `pending`, or
+   `private-only`. Do not claim GHCR is publicly pullable without a pass
+   receipt.
+
+Setting GHCR package visibility and recording the maintainer receipt are
+maintainer-only actions. The repository documents the checklist, receipt
+template, and advisory workflow signal only.
+
 Related:
 
 - [1.13 release notes](releases/1.13.md)
