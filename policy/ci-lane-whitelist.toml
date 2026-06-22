@@ -607,6 +607,26 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
+id               = "clippy_exceptions"
+workflow         = ".github/workflows/clippy-exceptions-policy.yml"
+job              = "Clippy Exceptions"
+kind             = "policy"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 3
+owner            = "core/policy"
+intent           = "Verify the clippy exception ledger and ledger-linked expect attributes."
+failure_mode     = "Schema, stale-entry, or expired clippy-exception policy drift reaches main."
+proof_obligation = "Run cargo xtask check-clippy-exceptions --strict."
+evidence         = ["target/tokmd/reports/clippy-exceptions-stderr.txt"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of     = ["quality_gate"]
+review_after     = "2026-06-07"
+expires          = "2026-11-07"
+
+[[lane]]
 id               = "pr_plan_advisory"
 workflow         = ".github/workflows/pr-plan.yml"
 job              = "PR Plan (advisory)"

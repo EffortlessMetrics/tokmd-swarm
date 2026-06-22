@@ -5,6 +5,8 @@
 
 use serde_json::Value;
 
+#[cfg(feature = "cockpit")]
+use super::parse::parse_string;
 use super::parse::{
     parse_analyze_preset, parse_bool, parse_child_include_mode, parse_children_mode,
     parse_config_mode, parse_effort_layer, parse_effort_model, parse_export_format,
@@ -12,8 +14,6 @@ use super::parse::{
     parse_optional_string, parse_optional_u64, parse_optional_usize, parse_redact_mode,
     parse_required_string, parse_string_array, parse_usize, scan_arg_object,
 };
-#[cfg(feature = "cockpit")]
-use super::parse::parse_string;
 use crate::error::TokmdError;
 use crate::settings::{
     AnalyzeSettings, ChildIncludeMode, ChildrenMode, ConfigMode, DiffSettings, ExportFormat,
