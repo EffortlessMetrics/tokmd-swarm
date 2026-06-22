@@ -341,7 +341,10 @@ name = "no_panic_policy"
 kind = "rust"
 paths = [
   "docs/NO_PANIC_POLICY.md",
+  "docs/specs/no-panic-policy.md",
   "policy/no-panic-allowlist.toml",
+  "policy/no-panic-baseline-receipt.json",
+  ".github/workflows/no-panic-policy.yml",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -351,11 +354,10 @@ paths = [
 ]
 packages = ["xtask"]
 proof = [
-  # Advisory mode: blocks on schema/shape, expired, and stale entries; reports
-  # unallowlisted findings without failing while panic-family debt is burned
-  # down. Flip to `--strict` after `[lints] workspace = true` is enabled and
-  # the receipt ledger covers all remaining findings.
-  "cargo xtask check-no-panic-family",
+  # Strict mode: every panic-family finding must be receipted in
+  # policy/no-panic-allowlist.toml. Regenerate the baseline with
+  # `cargo xtask no-panic-baseline` when debt changes.
+  "cargo xtask check-no-panic-family --strict",
   "cargo test -p xtask no_panic --verbose",
   "cargo clippy -p xtask --all-targets -- -D warnings",
 ]
