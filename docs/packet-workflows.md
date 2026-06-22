@@ -1,11 +1,13 @@
 # PR Evidence Packet Workflows
 
-Status: CLI orchestration implemented; Action path planned. `tokmd` has the
-underlying `analyze`, `context`, `syntax`, and `evidence-packet` surfaces, and
-`tokmd packet generate` now coordinates them into one `sensors/tokmd/` packet
-from a single command. This page defines that one-command CLI path and the
-still-planned GitHub Action user path; it does not claim the dedicated Action
-already exists.
+Status: CLI orchestration implemented; Action path implemented with the binary
+runtime. `tokmd` has the underlying `analyze`, `context`, `syntax`, and
+`evidence-packet` surfaces, and `tokmd packet generate` now coordinates them
+into one `sensors/tokmd/` packet from a single command. The root
+`EffortlessMetrics/tokmd` Action exposes that orchestration through
+`mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
+defines the one-command CLI path and the `mode: packet` Action path. The GHCR
+container runtime and downstream `ub-review` consumption remain planned.
 
 ## Purpose
 
@@ -137,18 +139,20 @@ tokmd evidence-packet \
   src/runtime/api src/bun.js/bindings
 ```
 
-## Target GitHub Action
+## GitHub Action
 
-The planned Action path should look like this:
+The packet path is implemented as `mode: packet` on the root
+`EffortlessMetrics/tokmd` Action:
 
 ```yaml
 - uses: actions/checkout@v6
   with:
     fetch-depth: 0
 
-- uses: EffortlessMetrics/tokmd-action@v1
+- uses: EffortlessMetrics/tokmd@v1
   with:
     version: "1.13.1"
+    mode: packet
     preset: bun-ub
     base: origin/main
     head: HEAD
@@ -157,38 +161,48 @@ The planned Action path should look like this:
       src/bun.js/bindings
 ```
 
-The Action should:
+The Action:
 
-- download and cache the requested prebuilt `tokmd` binary by version, OS, and
-  architecture;
-- run the packet generation command from the checkout root;
-- upload `sensors/tokmd/` as a workflow artifact when requested;
-- write a job summary with packet status, top review priority, warnings,
+- downloads the requested prebuilt `tokmd` binary by version, OS, and
+  architecture, verifying release checksums when available;
+- runs `tokmd packet generate` from the checkout root with the shared
+  base/head refs and path scope;
+- uploads the packet directory as a workflow artifact when requested;
+- writes a job summary with packet status, top review priority, warnings,
   errors, artifact paths, reproduction command, and non-claims;
-- expose stable outputs for downstream jobs.
+- exposes stable outputs for downstream jobs.
+
+When `base` is omitted, the Action infers a repository-aware base ref the same
+way `mode: cockpit` and `mode: sensor` do: pull request runs use
+`origin/$GITHUB_BASE_REF`, other runs use `origin/HEAD` when available. Use
+`fetch-depth: 0` so the base and head commits are present.
 
 ### Inputs
 
+These are the `mode: packet` inputs. See the
+[GitHub Action reference](github-action.md) for every shared input.
+
 | Input | Default | Meaning |
 | --- | --- | --- |
-| `version` | required for stable workflows | `tokmd` version to download or run. |
-| `preset` | `bun-ub` | Packet preset. |
-| `base` | workflow-defined | Base ref for effort delta and packet metadata. |
+| `version` | `latest` | `tokmd` release to download. Pin it for stable workflows. |
+| `preset` | `bun-ub` | Packet preset for `analyze.md` / `analyze.json`. |
+| `base` | inferred | Base ref for effort delta and packet metadata. |
 | `head` | `HEAD` | Head ref for effort delta and packet metadata. |
-| `paths` | required | Newline or whitespace separated packet scope. |
+| `paths` | `.` | Newline or whitespace separated packet scope. |
 | `output-dir` | `sensors/tokmd` | Packet directory. |
 | `syntax` | `true` | Whether to request optional syntax evidence. |
 | `context-budget` | `64000` | Token budget for `context.md`. |
-| `upload-artifact` | `true` | Upload the packet directory. |
+| `artifact` | `true` | Upload the packet directory as a workflow artifact. |
 | `fail-on` | `failed` | Failure policy: `failed`, `partial`, or `never`. |
-| `runtime` | `binary` | Runtime mode: `binary` or `container`. |
+| `runtime` | `binary` | Runtime mode: `binary`, or `container` (pending GHCR verification). |
 
 ### Outputs
 
 | Output | Meaning |
 | --- | --- |
-| `status` | Packet status from `manifest.json`. |
-| `manifest-path` | Path to `sensors/tokmd/manifest.json`. |
+| `packet-status` | Packet status from `manifest.json`. |
+| `packet-manifest` | Path to the packet `manifest.json`. |
+| `packet-dir` | Packet output directory. |
 | `artifact-name` | Uploaded artifact name when artifact upload is enabled. |
 | `review-priority-count` | Count of manifest `review_priority` entries. |
 | `warnings-count` | Count of manifest warnings. |
@@ -272,8 +286,10 @@ A packet workflow does not:
 2. ~~Add the thin CLI orchestration command over existing receipts.~~ (done:
    `tokmd packet generate`)
 3. ~~Lock packet generation status behavior with integration tests.~~ (done)
-4. Build the Action with binary runtime as the default.
-5. Add Action examples and job-summary behavior.
+4. ~~Build the Action with binary runtime as the default.~~ (done:
+   `mode: packet` on `EffortlessMetrics/tokmd`)
+5. ~~Add Action examples and job-summary behavior.~~ (done: see
+   [GitHub Action reference](github-action.md) and the packet job summary)
 6. Harden GHCR as a secondary runtime with public-pull verification.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
 
