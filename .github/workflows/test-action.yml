@@ -703,6 +703,18 @@ jobs:
             echo "::error::warnings-count output should be set"
             exit 1
           fi
+          if [ -z "${{ steps.packet.outputs['review-priority-count'] }}" ]; then
+            echo "::error::review-priority-count output should be set"
+            exit 1
+          fi
+          if [ -z "${{ steps.packet.outputs['errors-count'] }}" ]; then
+            echo "::error::errors-count output should be set"
+            exit 1
+          fi
+          if [ -n "${{ steps.packet.outputs['artifact-name'] }}" ]; then
+            echo "::error::artifact-name output should be empty when artifact upload is disabled"
+            exit 1
+          fi
           if [ -n "${{ steps.packet.outputs.summary }}" ]; then
             echo "::error::summary output should be empty in packet mode"
             exit 1

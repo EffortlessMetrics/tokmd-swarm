@@ -7,7 +7,7 @@ branding:
 
 inputs:
   mode:
-    description: 'tokmd mode to run. Omit for the existing module + export flow. Supported values: module, export, gate, cockpit, sensor, baseline.'
+    description: 'tokmd mode to run. Omit for the existing module + export flow. Supported values: module, export, gate, cockpit, sensor, baseline, packet.'
     default: ''
   version:
     description: 'Version of tokmd to install. Defaults to the latest release.'
@@ -491,7 +491,7 @@ runs:
             errors_count="${packet_fields[3]}"
             ;;
           *)
-            echo "::error::Unsupported tokmd action mode '$mode'. Supported values: module, export, gate, cockpit, sensor, baseline. Omit mode for the default module + export flow."
+            echo "::error::Unsupported tokmd action mode '$mode'. Supported values: module, export, gate, cockpit, sensor, baseline, packet. Omit mode for the default module + export flow."
             exit 1
             ;;
         esac
