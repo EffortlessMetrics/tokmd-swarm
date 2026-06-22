@@ -115,10 +115,7 @@ fn verify_manifest(repo_root: &Path, manifest_path: &Path) -> Result<ParityRepor
             )
         })?;
 
-        let actual_ok = actual
-            .get("ok")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let actual_ok = actual.get("ok").and_then(Value::as_bool).unwrap_or(false);
 
         if actual_ok != case.expect_ok {
             failures.push(format!(
@@ -178,7 +175,9 @@ fn check_success_data(case_id: &str, actual: &Value, case: &Case) -> Result<(), 
 
     for key in &case.data_has_keys {
         if !data.contains_key(key) {
-            return Err(format!("case `{case_id}`: data missing required key `{key}`"));
+            return Err(format!(
+                "case `{case_id}`: data missing required key `{key}`"
+            ));
         }
     }
 
@@ -329,10 +328,7 @@ fn print_fixture_report(report: &ParityReport) {
         schema_version()
     );
     for case in &report.cases {
-        println!(
-            "  ✓ {} mode={} ok={}",
-            case.id, case.mode, case.actual_ok
-        );
+        println!("  ✓ {} mode={} ok={}", case.id, case.mode, case.actual_ok);
     }
 }
 
