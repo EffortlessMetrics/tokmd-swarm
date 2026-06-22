@@ -32,10 +32,10 @@ use details::{
 use functions::count_functions;
 #[cfg(test)]
 use functions::{count_python_functions, count_rust_functions, is_rust_fn_start};
-pub(crate) use histogram::generate_complexity_histogram;
+pub(crate) use histogram::{generate_complexity_histogram, generate_complexity_histogram_for_files};
+use summary::summarize_file_complexities;
 use language::{is_complexity_lang, map_language_for_complexity};
 use risk::{classify_risk_extended, estimate_cyclomatic};
-use summary::summarize_file_complexities;
 
 const DEFAULT_MAX_FILE_BYTES: u64 = 128 * 1024;
 const MAX_COMPLEXITY_FILES: usize = 100;
@@ -61,6 +61,7 @@ pub(crate) fn build_complexity_report(
     }
 
     let mut file_complexities: Vec<FileComplexity> = Vec::new();
+    let mut per_file_max_cyclomatic: Vec<usize> = Vec::new();
     let mut total_bytes = 0u64;
     let max_total = limits.max_bytes;
     let per_file_limit = limits.max_file_bytes.unwrap_or(DEFAULT_MAX_FILE_BYTES) as usize;
@@ -92,7 +93,20 @@ pub(crate) fn build_complexity_report(
         let text = String::from_utf8_lossy(&bytes);
         let lang_mapped = map_language_for_complexity(&row.lang);
         let (function_count, max_function_length) = count_functions(&row.lang, &text);
-        let cyclomatic = estimate_cyclomatic(&row.lang, &text);
+        let cyclomatic_analysis =
+            crate::content::complexity::estimate_cyclomatic_complexity(&text, lang_mapped);
+        let (cyclomatic, max_function_cyclomatic) =
+            if cyclomatic_analysis.function_count > 0 {
+                (
+                    cyclomatic_analysis.total_cc,
+                    cyclomatic_analysis.max_cc,
+                )
+            } else if function_count > 0 {
+                let file_level = estimate_cyclomatic(&row.lang, &text);
+                (file_level, file_level)
+            } else {
+                (0, 0)
+            };
 
         // Compute cognitive complexity and nesting depth
         let cognitive_result =
@@ -113,7 +127,7 @@ pub(crate) fn build_complexity_report(
         let risk_level = classify_risk_extended(
             function_count,
             max_function_length,
-            cyclomatic,
+            max_function_cyclomatic,
             cognitive_complexity,
             max_nesting,
         );
@@ -124,6 +138,7 @@ pub(crate) fn build_complexity_report(
             None
         };
 
+        per_file_max_cyclomatic.push(max_function_cyclomatic);
         file_complexities.push(FileComplexity {
             path: rel_str,
             module: row.module.clone(),
@@ -145,10 +160,14 @@ pub(crate) fn build_complexity_report(
     });
 
     // Compute aggregates before truncating
-    let summary = summarize_file_complexities(&file_complexities);
+    let summary = summarize_file_complexities(&file_complexities, &per_file_max_cyclomatic);
 
     // Generate histogram from all files before truncating
-    let histogram = generate_complexity_histogram(&file_complexities, 5);
+    let histogram = generate_complexity_histogram_for_files(
+        &file_complexities,
+        &per_file_max_cyclomatic,
+        5,
+    );
 
     // Compute maintainability index
     let maintainability_index = if file_complexities.is_empty() {
