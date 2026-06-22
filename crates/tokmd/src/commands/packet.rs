@@ -30,8 +30,12 @@ fn generate_packet(args: cli::PacketGenerateArgs, global: &cli::GlobalArgs) -> R
     let syntax_json = out_dir.join("syntax.json");
     let manifest = out_dir.join("manifest.json");
 
-    // Regenerating into an existing packet directory should not blend stale
-    // optional evidence with a fresh run.
+    // Regenerating into an existing packet directory must not blend stale
+    // optional evidence with a fresh run. `evidence-packet` auto-detects
+    // `syntax.json` in the packet directory, so a prior run's file would
+    // otherwise be silently included as if it belonged to this invocation
+    // (under `--no-syntax`, or under `--syntax` when this run fails to write a
+    // fresh one). Only ever removes prior-run output, never current evidence.
     if syntax_json.exists() {
         std::fs::remove_file(&syntax_json)
             .with_context(|| format!("failed to clear stale {}", syntax_json.display()))?;
@@ -55,15 +59,17 @@ fn generate_packet(args: cli::PacketGenerateArgs, global: &cli::GlobalArgs) -> R
     context::handle(context_args(&args, &context_md), global)
         .context("failed to generate packet context artifact")?;
 
-    // 3. syntax: optional advisory evidence. Failures degrade the packet to
-    //    `partial` (a missing optional artifact) rather than failing the run.
-    //    Only reference the artifact when it was actually written, so the
-    //    manifest never points at a file that does not exist.
+    // 3. syntax: optional advisory evidence. When requested, always reference
+    //    the artifact so that a failed or unavailable syntax step degrades the
+    //    packet to `partial` with a named missing-artifact warning (the
+    //    evidence-packet producer contract), rather than silently reporting
+    //    `complete`. The stale-clear above guarantees the referenced file
+    //    reflects only this run.
     let syntax_arg = if args.want_syntax() {
         if let Err(err) = write_syntax(&args, &syntax_json) {
             eprintln!("warning: syntax evidence unavailable: {err}");
         }
-        syntax_json.is_file().then(|| syntax_json.clone())
+        Some(syntax_json.clone())
     } else {
         None
     };

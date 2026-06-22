@@ -148,6 +148,44 @@ fn packet_generate_no_syntax_omits_optional_artifact() {
 }
 
 #[test]
+fn packet_generate_no_syntax_clears_stale_syntax_artifact() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_scope();
+    let sensor_dir = dir.path().join("sensors").join("tokmd");
+    std::fs::create_dir_all(&sensor_dir).unwrap();
+    // A stale syntax.json from a prior run must not leak into a --no-syntax
+    // packet via evidence-packet's directory auto-detection.
+    std::fs::write(
+        sensor_dir.join("syntax.json"),
+        "{\"schema\":\"tokmd.syntax_receipts.v1\",\"status\":\"complete\",\"receipts\":[]}",
+    )
+    .unwrap();
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "packet",
+            "generate",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--no-syntax",
+            "--no-progress",
+            SCOPE_FILE,
+        ])
+        .assert()
+        .success();
+
+    assert!(!sensor_dir.join("syntax.json").exists());
+    let manifest = read_manifest_at(&sensor_dir.join("manifest.json"));
+    assert!(manifest["artifacts"].get("syntax_json").is_none());
+}
+
+#[test]
 fn packet_generate_honors_custom_output_dir() {
     if !common::git_available() {
         return;
