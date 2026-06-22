@@ -515,27 +515,35 @@ fn branchy(x: i32, y: bool) -> i32 {
         "Rust",
         code.lines().count(),
     )]);
-    let report =
-        build_complexity_report(dir.path(), &paths, &export, &default_limits(), false).unwrap();
+    if let Ok(report) =
+        build_complexity_report(dir.path(), &paths, &export, &default_limits(), false)
+    {
+        assert!(
+            report.total_functions > 10,
+            "fixture should detect many functions"
+        );
+        if let Some(file) = report
+            .files
+            .iter()
+            .max_by_key(|entry| entry.cyclomatic_complexity)
+        {
+            assert!(
+                file.cyclomatic_complexity > file.function_count,
+                "file total cyclomatic should exceed per-function max for this fixture"
+            );
+        }
 
-    let file = &report.files[0];
-    assert!(
-        file.function_count > 10,
-        "fixture should detect many functions"
-    );
-    assert!(
-        file.cyclomatic_complexity > file.function_count,
-        "file total cyclomatic should exceed per-function max for this fixture"
-    );
-
-    assert!(
-        report.avg_cyclomatic <= report.max_cyclomatic as f64,
-        "avg ({}) must be <= max ({}) in shared per-function units",
-        report.avg_cyclomatic,
-        report.max_cyclomatic
-    );
-    assert!(
-        report.avg_cyclomatic < report.max_cyclomatic as f64 * 2.0,
-        "avg should stay near per-function scale, not file-total scale"
-    );
+        assert!(
+            report.avg_cyclomatic <= report.max_cyclomatic as f64,
+            "avg ({}) must be <= max ({}) in shared per-function units",
+            report.avg_cyclomatic,
+            report.max_cyclomatic
+        );
+        assert!(
+            report.avg_cyclomatic < report.max_cyclomatic as f64 * 2.0,
+            "avg should stay near per-function scale, not file-total scale"
+        );
+    } else {
+        assert!(false, "build_complexity_report failed");
+    }
 }

@@ -51,7 +51,9 @@ fn generate_complexity_histogram_with_max(
             .and_then(|maxes| maxes.get(idx).copied())
             .unwrap_or(file.cyclomatic_complexity) as u32;
         let bucket = (complexity / bucket_size).min((num_buckets - 1) as u32) as usize;
-        counts[bucket] += 1;
+        if let Some(count) = counts.get_mut(bucket) {
+            *count += 1;
+        }
     }
 
     ComplexityHistogram {
