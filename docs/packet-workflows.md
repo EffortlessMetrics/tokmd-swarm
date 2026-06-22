@@ -48,8 +48,7 @@ build `tokmd` in every repository.
 
 GHCR is useful when a workflow needs a pinned Linux container runtime from the
 publication image, but the normal user-facing entrypoint should be an Action
-step, not `docker run`. Do not use swarm workbench GHCR packages; they are
-private and not a supported consumer path.
+step, not `docker run`. Swarm workbench GHCR is not a supported consumer path today; package visibility remains **undecided** (issue #264).
 
 ## Target Local CLI
 
