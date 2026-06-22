@@ -483,6 +483,10 @@ function add(a, b) {
 // ===========================================================================
 
 #[test]
+#[expect(
+    clippy::assertions_on_constants,
+    reason = "test failure path when build_complexity_report returns Err"
+)]
 fn given_many_functions_and_one_branchy_fn_avg_le_max_cyclomatic() {
     let mut code = String::from(
         r#"
