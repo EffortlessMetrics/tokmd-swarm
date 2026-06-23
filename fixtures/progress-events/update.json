@@ -1,1 +1,1 @@
-{"event":"tokmd.progress","schema_version":1,"kind":"update","message":"Scanning codebase..."}
+{"event":"tokmd.progress","kind":"update","message":"Scanning codebase...","schema_version":1}

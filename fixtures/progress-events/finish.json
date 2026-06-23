@@ -1,1 +1,1 @@
-{"event":"tokmd.progress","schema_version":1,"kind":"finish","message":"done"}
+{"event":"tokmd.progress","kind":"finish","message":"done","schema_version":1}
