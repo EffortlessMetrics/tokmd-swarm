@@ -46,3 +46,5 @@ Use the root composite Action when you want CI receipts, PR summaries, artifacts
 ```
 
 See [GitHub Action reference](github-action.md) for modes, inputs, outputs, checkout guidance, release assets, comments, and failure behavior.
+
+For machine-readable progress telemetry in custom Actions, set `TOKMD_PROGRESS_EVENTS=1` and use `--no-progress`. See [Progress events spec](specs/progress-events.md).

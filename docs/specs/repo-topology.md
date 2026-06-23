@@ -3,6 +3,8 @@
 - Status: active
 - Schema family, if any: `tokmd.repo_graph.v1`
 - Related ADRs: n/a
+- Related specs: `docs/specs/swarm-ghcr-image.md`,
+  `docs/specs/publishing-evidence.md`
 - Related proof scopes: `project_truth_docs`, `proof_control_plane`
 
 ## Contract
@@ -83,11 +85,16 @@ behavior in `tokmd-swarm`. This includes CI package gates such as
 Swarm-routed workbench workflows must not become required publication release
 gates unless a future ADR and policy update explicitly move that boundary.
 
-GHCR publication is owned by `tokmd`, not `tokmd-swarm`. The publication image
-`ghcr.io/effortlessmetrics/tokmd` is a supported public secondary runtime for
-stable releases (`verified-public` for `v1.13.1` as of 2026-06-21). Swarm
-workbench GHCR is not a supported consumer path today; whether it should also
-be public remains an open decision (issue #264).
+GHCR registry ownership is split by repository role:
+
+| Image | Repository | Status |
+| --- | --- | --- |
+| `ghcr.io/effortlessmetrics/tokmd` | publication `tokmd` | Supported public secondary runtime when release ledgers record `verified-public` (see `docs/specs/publishing-evidence.md`). |
+| `ghcr.io/effortlessmetrics/tokmd-swarm` | workbench `tokmd-swarm` | Reserved name; **not published**; visibility **undecided** (issue #264). See `docs/specs/swarm-ghcr-image.md`. |
+
+Publication release workflows must not push the swarm image name. Swarm publish
+workflows must not push publication semver tags or mutate publication release
+records.
 
 This spec does not change product receipts, public CLI behavior, release
 workflow behavior, proof promotion, Codecov defaults, AST behavior, or
@@ -139,9 +146,10 @@ cargo xtask proof-policy --check
 
 ## Open Questions
 
-- Whether `tokmd-swarm` should publish a public GHCR image (separate image
-  name, release workflow boundary, and claim boundary vs the publication
-  `ghcr.io/effortlessmetrics/tokmd` image). Tracked in issue #264.
+- Whether `tokmd-swarm` should publish a public GHCR image at
+  `ghcr.io/effortlessmetrics/tokmd-swarm` with workbench-only tags (`main`,
+  `sha-*`) and a separate claim boundary from publication semver tags. Tracked
+  in issue #264 and `docs/specs/swarm-ghcr-image.md`.
 - Whether future publication-import automation should write a dedicated
   closeout receipt that bundles the pre-publication, merge-commit, and
   post-fast-forward `repo-graph` receipts.
