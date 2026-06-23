@@ -111,6 +111,7 @@ paths = [
   ".github/workflows/mutants.yml",
   ".github/workflows/nix-full.yml",
   ".github/workflows/nix-macos.yml",
+  ".github/workflows/clippy-exceptions-policy.yml",
   ".github/workflows/no-panic-policy.yml",
   ".github/workflows/pr-plan.yml",
   ".github/workflows/proof-observation-collection.yml",
@@ -338,6 +339,7 @@ paths = [
   "docs/CLIPPY_POLICY.md",
   "policy/clippy-debt.toml",
   "policy/clippy-exceptions.toml",
+  "policy/clippy-exceptions-baseline-receipt.json",
   "policy/clippy-lints.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -349,7 +351,7 @@ paths = [
 packages = ["xtask"]
 proof = [
   "cargo xtask check-lint-policy",
-  "cargo xtask check-clippy-exceptions",
+  "cargo xtask check-clippy-exceptions --strict",
   "cargo test -p xtask lint_policy --verbose",
   "cargo test -p xtask clippy_exceptions --verbose",
   "cargo clippy -p xtask --all-targets -- -D warnings",
@@ -362,7 +364,10 @@ name = "no_panic_policy"
 kind = "rust"
 paths = [
   "docs/NO_PANIC_POLICY.md",
+  "docs/specs/no-panic-policy.md",
   "policy/no-panic-allowlist.toml",
+  "policy/no-panic-baseline-receipt.json",
+  ".github/workflows/no-panic-policy.yml",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -372,11 +377,10 @@ paths = [
 ]
 packages = ["xtask"]
 proof = [
-  # Advisory mode: blocks on schema/shape, expired, and stale entries; reports
-  # unallowlisted findings without failing while panic-family debt is burned
-  # down. Flip to `--strict` after `[lints] workspace = true` is enabled and
-  # the receipt ledger covers all remaining findings.
-  "cargo xtask check-no-panic-family",
+  # Strict mode: every panic-family finding must be receipted in
+  # policy/no-panic-allowlist.toml. Regenerate the baseline with
+  # `cargo xtask no-panic-baseline` when debt changes.
+  "cargo xtask check-no-panic-family --strict",
   "cargo test -p xtask no_panic --verbose",
   "cargo clippy -p xtask --all-targets -- -D warnings",
 ]
@@ -1012,6 +1016,7 @@ paths = [
   "crates/tokmd/src/config.rs",
   "crates/tokmd/src/config/**",
   "crates/tokmd/src/error_hints.rs",
+  "crates/tokmd/src/progress.rs",
   "crates/tokmd/tests/cli_*.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
@@ -1547,6 +1552,9 @@ allow = [
   ".claude/**",
   ".jules/**",
   "ci/proof.toml",
+  # Receipted panic-family baseline embeds source snippets that mention crypto
+  # markers in test/fixture code paths; not committed key material.
+  "policy/no-panic-allowlist.toml",
   "vendor/**",
   "xtask/src/tasks/fixture_blobs_check.rs",
 ]

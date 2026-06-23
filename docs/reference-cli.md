@@ -17,7 +17,7 @@ These arguments apply when you invoke `tokmd` directly without an explicit subco
 | `--no-ignore-vcs` | Do not read `.gitignore` files. |
 | `--treat-doc-strings-as-comments` | Treat doc strings (e.g., `///`) as comments instead of code. |
 | `-v, --verbose` | Enable verbose logging. |
-| `--no-progress` | Disable progress spinners (useful for CI/non-TTY). |
+| `--no-progress` | Disable progress spinners (useful for CI/non-TTY). Does not disable machine-readable progress events; see [`docs/specs/progress-events.md`](specs/progress-events.md). |
 | `--format <FORMAT>` | Output format (`md`, `tsv`, `json`). Default is `md`. |
 | `--top <TOP>` | Show only the top N rows (by code lines), plus an "Other" row if needed. Use 0 to show all rows. |
 | `--files` | Include file counts and average lines per file. |
