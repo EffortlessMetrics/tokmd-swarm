@@ -47,20 +47,40 @@ pub struct SyntaxSymbol {
 impl SyntaxSymbol {
     #[must_use]
     pub fn to_value(&self) -> Value {
-        let mut value = json!({
-            "kind": self.kind,
-            "name": self.name,
-            "span": self.span.to_value(),
-            "exported": self.exported,
-            "public_surface": self.public_surface,
-        });
-        if !self.parameters.is_empty() {
-            value["parameters"] = json!(self.parameters);
+        match (!self.parameters.is_empty(), self.ffi_entry) {
+            (true, true) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "parameters": self.parameters,
+                "ffi_entry": true,
+            }),
+            (true, false) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "parameters": self.parameters,
+            }),
+            (false, true) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "ffi_entry": true,
+            }),
+            (false, false) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+            }),
         }
-        if self.ffi_entry {
-            value["ffi_entry"] = json!(true);
-        }
-        value
     }
 }
 
