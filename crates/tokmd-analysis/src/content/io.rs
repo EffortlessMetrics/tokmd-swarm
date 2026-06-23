@@ -14,6 +14,14 @@
 //! * File listing (use tokmd-scan::walk)
 //! * File modification
 
+#![cfg_attr(
+    fuzzing,
+    expect(
+        dead_code,
+        reason = "fuzz_entropy includes only hash/tag/entropy facade entry points"
+    )
+)]
+
 use std::path::Path;
 
 use anyhow::Result;
