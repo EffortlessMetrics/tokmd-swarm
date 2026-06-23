@@ -422,8 +422,7 @@ proptest! {
     ) {
         let path = format!("{}\\{}", parts.join("\\"), filename);
         let paths = vec![PathBuf::from(&path)];
-        #[allow(unused_variables)]
-        let result = license_candidates(&paths);
+        let _result = license_candidates(&paths);
 
         // On Windows, backslash is the separator, so file_name() works correctly
         // On Unix, backslash is part of the filename, so this may or may not match
