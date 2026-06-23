@@ -149,16 +149,26 @@ pub struct SyntaxRiskSeam {
     pub kind: String,
     pub evidence: String,
     pub span: SyntaxSpan,
+    pub test_context: bool,
 }
 
 impl SyntaxRiskSeam {
     #[must_use]
     pub fn to_value(&self) -> Value {
-        json!({
-            "kind": self.kind,
-            "evidence": self.evidence,
-            "span": self.span.to_value(),
-        })
+        if self.test_context {
+            json!({
+                "kind": self.kind,
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+                "test_context": true,
+            })
+        } else {
+            json!({
+                "kind": self.kind,
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+            })
+        }
     }
 }
 
@@ -197,20 +207,56 @@ pub struct SyntaxReviewSignal {
     pub reason: String,
     pub evidence: String,
     pub span: SyntaxSpan,
+    pub test_context: bool,
 }
 
 impl SyntaxReviewSignal {
     #[must_use]
+    pub fn effective_severity(&self) -> SyntaxReviewSeverity {
+        if self.test_context && self.category == "panic_seam" {
+            SyntaxReviewSeverity::Low
+        } else {
+            self.severity
+        }
+    }
+
+    #[must_use]
+    pub fn effective_reason(&self) -> String {
+        if self.test_context && self.category == "panic_seam" {
+            format!(
+                "{} (test-only context; deprioritized for panic/native review ranking)",
+                self.reason
+            )
+        } else {
+            self.reason.clone()
+        }
+    }
+
+    #[must_use]
     pub fn to_value(&self) -> Value {
-        json!({
-            "category": self.category,
-            "severity": self.severity.as_str(),
-            "score": self.severity.score(),
-            "kind": self.kind,
-            "reason": self.reason,
-            "evidence": self.evidence,
-            "span": self.span.to_value(),
-        })
+        let severity = self.effective_severity();
+        if self.test_context {
+            json!({
+                "category": self.category,
+                "severity": severity.as_str(),
+                "score": severity.score(),
+                "kind": self.kind,
+                "reason": self.effective_reason(),
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+                "test_context": true,
+            })
+        } else {
+            json!({
+                "category": self.category,
+                "severity": severity.as_str(),
+                "score": severity.score(),
+                "kind": self.kind,
+                "reason": self.effective_reason(),
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+            })
+        }
     }
 }
 
@@ -282,6 +328,7 @@ impl SyntaxFacts {
                         .to_owned(),
                     evidence: symbol.name.clone(),
                     span: symbol.span,
+                    test_context: false,
                 });
             } else if symbol.exported {
                 signals.push(SyntaxReviewSignal {
@@ -291,6 +338,7 @@ impl SyntaxFacts {
                     reason: "exported symbol contributes to review surface".to_owned(),
                     evidence: symbol.name.clone(),
                     span: symbol.span,
+                    test_context: false,
                 });
             }
         }
@@ -307,6 +355,7 @@ impl SyntaxFacts {
                         .clone()
                         .unwrap_or_else(|| "dynamic import".to_owned()),
                     span: import.span,
+                    test_context: false,
                 });
             }
 
@@ -329,6 +378,7 @@ impl SyntaxFacts {
                         .clone()
                         .unwrap_or_else(|| import.imported.join(", ")),
                     span: import.span,
+                    test_context: false,
                 });
             }
         }
@@ -342,6 +392,7 @@ impl SyntaxFacts {
                     reason: "dynamic call site may obscure runtime target".to_owned(),
                     evidence: call_site.callee.clone(),
                     span: call_site.span,
+                    test_context: false,
                 });
             }
             if looks_native_boundary_evidence(&call_site.callee) {
@@ -352,6 +403,7 @@ impl SyntaxFacts {
                     reason: "call site names a native, FFI, or binding-ish boundary".to_owned(),
                     evidence: call_site.callee.clone(),
                     span: call_site.span,
+                    test_context: false,
                 });
             }
         }
@@ -365,10 +417,20 @@ impl SyntaxFacts {
                 reason: reason.to_owned(),
                 evidence: seam.evidence.clone(),
                 span: seam.span,
+                test_context: seam.test_context,
             });
         }
 
-        signals.sort();
+        signals.sort_by(|left, right| {
+            right
+                .effective_severity()
+                .score()
+                .cmp(&left.effective_severity().score())
+                .then_with(|| left.category.cmp(&right.category))
+                .then_with(|| left.kind.cmp(&right.kind))
+                .then_with(|| left.evidence.cmp(&right.evidence))
+                .then_with(|| left.span.cmp(&right.span))
+        });
         signals.dedup();
         signals
     }
