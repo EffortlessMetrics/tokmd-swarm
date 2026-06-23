@@ -130,6 +130,8 @@ fn push_rust_symbol(node: Node<'_>, source: &str, kind: &str, facts: &mut Syntax
         span,
         exported,
         public_surface: exported,
+        parameters: function_parameters(node, source),
+        ffi_entry: is_ffi_entry(node, source),
     });
 
     if exported {
@@ -460,6 +462,57 @@ fn is_public_surface(node: Node<'_>, source: &str) -> bool {
         || text.contains("extern \"")
         || text.contains("#[no_mangle]")
         || text.contains("#[export_name")
+}
+
+fn is_ffi_entry(node: Node<'_>, source: &str) -> bool {
+    let text = node_text(source, node);
+    text.contains("extern \"C\"")
+        || text.contains("extern \"system\"")
+        || text.contains("#[no_mangle]")
+        || text.contains("#[export_name")
+}
+
+fn function_parameters(node: Node<'_>, source: &str) -> Vec<String> {
+    let Some(parameters) = node.child_by_field_name("parameters") else {
+        return Vec::new();
+    };
+
+    let mut names = Vec::new();
+    let mut cursor = parameters.walk();
+    for child in parameters.named_children(&mut cursor) {
+        if let Some(name) = parameter_name(child, source) {
+            names.push(name);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn parameter_name(node: Node<'_>, source: &str) -> Option<String> {
+    match node.kind() {
+        "parameter" => {
+            if let Some(pattern) = node.child_by_field_name("pattern") {
+                return parameter_pattern_name(pattern, source);
+            }
+            first_identifier_text(node, source)
+        }
+        "self_parameter" => Some("self".to_owned()),
+        _ => None,
+    }
+}
+
+fn parameter_pattern_name(node: Node<'_>, source: &str) -> Option<String> {
+    match node.kind() {
+        "identifier" | "field_identifier" | "type_identifier" => {
+            Some(compact_text(node_text(source, node)))
+        }
+        "ref_pattern" | "mut_pattern" => node
+            .named_child(0)
+            .and_then(|child| parameter_pattern_name(child, source)),
+        "tuple_pattern" | "tuple_struct_pattern" => None,
+        _ => first_identifier_text(node, source),
+    }
 }
 
 fn is_capacity_callee(callee: &str) -> bool {
