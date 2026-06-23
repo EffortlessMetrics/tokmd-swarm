@@ -126,15 +126,20 @@ pub struct SyntaxRiskSeam {
 impl SyntaxRiskSeam {
     #[must_use]
     pub fn to_value(&self) -> Value {
-        let mut value = json!({
-            "kind": self.kind,
-            "evidence": self.evidence,
-            "span": self.span.to_value(),
-        });
         if self.test_context {
-            value["test_context"] = json!(true);
+            json!({
+                "kind": self.kind,
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+                "test_context": true,
+            })
+        } else {
+            json!({
+                "kind": self.kind,
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+            })
         }
-        value
     }
 }
 
@@ -201,19 +206,28 @@ impl SyntaxReviewSignal {
     #[must_use]
     pub fn to_value(&self) -> Value {
         let severity = self.effective_severity();
-        let mut value = json!({
-            "category": self.category,
-            "severity": severity.as_str(),
-            "score": severity.score(),
-            "kind": self.kind,
-            "reason": self.effective_reason(),
-            "evidence": self.evidence,
-            "span": self.span.to_value(),
-        });
         if self.test_context {
-            value["test_context"] = json!(true);
+            json!({
+                "category": self.category,
+                "severity": severity.as_str(),
+                "score": severity.score(),
+                "kind": self.kind,
+                "reason": self.effective_reason(),
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+                "test_context": true,
+            })
+        } else {
+            json!({
+                "category": self.category,
+                "severity": severity.as_str(),
+                "score": severity.score(),
+                "kind": self.kind,
+                "reason": self.effective_reason(),
+                "evidence": self.evidence,
+                "span": self.span.to_value(),
+            })
         }
-        value
     }
 }
 
