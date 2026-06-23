@@ -56,7 +56,7 @@ authors = ["Steven Zimmerman, CPA <git@effortlesssteven.com>"]
 unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
-unexpected_cfgs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
 const_item_interior_mutations = "deny"
 function_casts_as_integer = "deny"
 

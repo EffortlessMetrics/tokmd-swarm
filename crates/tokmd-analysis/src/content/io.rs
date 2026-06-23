@@ -45,25 +45,34 @@ pub fn is_text_like(bytes: &[u8]) -> bool {
     bytes::is_text_like(bytes)
 }
 
-#[expect(
-    dead_code,
-    reason = "content::io facade API exercised by tests and fuzz_entropy"
+#[cfg_attr(
+    not(any(test, fuzzing)),
+    expect(
+        dead_code,
+        reason = "content::io facade API exercised by tests and fuzz_entropy"
+    )
 )]
 pub fn hash_bytes(bytes: &[u8]) -> String {
     bytes::hash_bytes(bytes)
 }
 
-#[expect(
-    dead_code,
-    reason = "content::io facade API exercised by tests and fuzz_entropy"
+#[cfg_attr(
+    not(any(test, fuzzing)),
+    expect(
+        dead_code,
+        reason = "content::io facade API exercised by tests and fuzz_entropy"
+    )
 )]
 pub fn hash_file(path: &Path, max_bytes: usize) -> Result<String> {
     bytes::hash_file(path, max_bytes)
 }
 
-#[expect(
-    dead_code,
-    reason = "content::io facade API exercised by tests and fuzz_entropy"
+#[cfg_attr(
+    not(any(test, fuzzing)),
+    expect(
+        dead_code,
+        reason = "content::io facade API exercised by tests and fuzz_entropy"
+    )
 )]
 pub fn count_tags(text: &str, tag_names: &[&str]) -> Vec<(String, usize)> {
     tags::count_tags(text, tag_names)

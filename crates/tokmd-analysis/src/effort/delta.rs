@@ -2,7 +2,10 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use tokmd_analysis_types::{EffortDeltaClassification, EffortDeltaReport, GitReport};
+use tokmd_analysis_types::{EffortDeltaReport, GitReport};
+
+#[cfg(feature = "git")]
+use tokmd_analysis_types::EffortDeltaClassification;
 use tokmd_types::ExportData;
 
 #[cfg(feature = "git")]
