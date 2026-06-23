@@ -14,8 +14,6 @@
 //! * File listing (use tokmd-scan::walk)
 //! * File modification
 
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use anyhow::Result;
@@ -47,14 +45,17 @@ pub fn is_text_like(bytes: &[u8]) -> bool {
     bytes::is_text_like(bytes)
 }
 
+#[cfg(test)]
 pub fn hash_bytes(bytes: &[u8]) -> String {
     bytes::hash_bytes(bytes)
 }
 
+#[cfg(test)]
 pub fn hash_file(path: &Path, max_bytes: usize) -> Result<String> {
     bytes::hash_file(path, max_bytes)
 }
 
+#[cfg(test)]
 pub fn count_tags(text: &str, tag_names: &[&str]) -> Vec<(String, usize)> {
     tags::count_tags(text, tag_names)
 }

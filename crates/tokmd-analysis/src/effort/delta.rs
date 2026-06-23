@@ -163,6 +163,7 @@ pub fn build_delta(
     }
 }
 
+#[cfg(feature = "git")]
 fn classify_blast(blast_radius: f64) -> EffortDeltaClassification {
     if blast_radius < 10.0 {
         EffortDeltaClassification::Low
@@ -179,6 +180,7 @@ fn classify_blast(blast_radius: f64) -> EffortDeltaClassification {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "git")]
     #[test]
     fn classify_blast_boundaries() {
         // Each bucket boundary is exclusive on the high end of the lower band.
