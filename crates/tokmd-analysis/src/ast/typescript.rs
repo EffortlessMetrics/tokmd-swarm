@@ -76,6 +76,8 @@ fn push_named_symbol(
         span,
         exported,
         public_surface,
+        parameters: Vec::new(),
+        ffi_entry: false,
     });
 
     if exported {

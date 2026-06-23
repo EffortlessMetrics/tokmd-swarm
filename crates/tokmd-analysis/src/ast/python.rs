@@ -38,6 +38,8 @@ fn push_module_symbol(root: Node<'_>, facts: &mut SyntaxFacts) {
         span: SyntaxSpan::from_node(root),
         exported: true,
         public_surface: true,
+        parameters: Vec::new(),
+        ffi_entry: false,
     });
 }
 
@@ -57,6 +59,8 @@ fn push_named_symbol(node: Node<'_>, source: &str, kind: &str, facts: &mut Synta
         span,
         exported: public_surface,
         public_surface,
+        parameters: Vec::new(),
+        ffi_entry: false,
     });
 
     if public_surface {

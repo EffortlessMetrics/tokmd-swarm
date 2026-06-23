@@ -95,6 +95,9 @@ impl SyntaxParseReceipt {
             "call_sites": self.facts.call_sites_value(),
             "risk_seams": self.facts.risk_seams_value(),
             "review_signals": self.facts.review_signals_value(),
+            "panic_seam_summary": self
+                .facts
+                .panic_seam_summary_value(self.language),
         })
     }
 }
@@ -586,6 +589,36 @@ mod tests {
                 "{kind}"
             );
         }
+
+        let summary = value["panic_seam_summary"].as_object().expect("summary");
+        assert!(
+            summary["entries"]
+                .as_array()
+                .is_some_and(|entries| !entries.is_empty())
+        );
+        assert!(
+            summary["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["guard_status"] == "guarded" && entry["kind"] == "indexing")
+        );
+        assert!(summary["entries"].as_array().unwrap().iter().any(|entry| {
+            entry["kind"] == "assert_macro"
+                && entry["entry_symbol"] == "ffi_entry"
+                && entry["input_source"] == "js_arg_suspect"
+        }));
+        assert_eq!(
+            summary["counts"]["unguarded"].as_u64(),
+            Some(
+                summary["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|entry| entry["guard_status"] == "unguarded")
+                    .count() as u64
+            )
+        );
     }
 
     #[test]

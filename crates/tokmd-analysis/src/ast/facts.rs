@@ -40,18 +40,47 @@ pub struct SyntaxSymbol {
     pub span: SyntaxSpan,
     pub exported: bool,
     pub public_surface: bool,
+    pub parameters: Vec<String>,
+    pub ffi_entry: bool,
 }
 
 impl SyntaxSymbol {
     #[must_use]
     pub fn to_value(&self) -> Value {
-        json!({
-            "kind": self.kind,
-            "name": self.name,
-            "span": self.span.to_value(),
-            "exported": self.exported,
-            "public_surface": self.public_surface,
-        })
+        match (!self.parameters.is_empty(), self.ffi_entry) {
+            (true, true) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "parameters": self.parameters,
+                "ffi_entry": true,
+            }),
+            (true, false) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "parameters": self.parameters,
+            }),
+            (false, true) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+                "ffi_entry": true,
+            }),
+            (false, false) => json!({
+                "kind": self.kind,
+                "name": self.name,
+                "span": self.span.to_value(),
+                "exported": self.exported,
+                "public_surface": self.public_surface,
+            }),
+        }
     }
 }
 
@@ -412,6 +441,16 @@ impl SyntaxFacts {
             .iter()
             .map(SyntaxReviewSignal::to_value)
             .collect()
+    }
+
+    #[must_use]
+    pub fn panic_seam_summary_value(
+        &self,
+        language: Option<super::capability::AstLanguage>,
+    ) -> Value {
+        super::panic_seam::derive_panic_seam_summary(self, language)
+            .map(|summary| summary.to_value())
+            .unwrap_or(Value::Null)
     }
 }
 

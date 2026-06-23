@@ -1,15 +1,15 @@
 {
   "schema": "tokmd.no_panic_baseline.v1",
-  "generated_at": "2026-06-23T01:51:56.406932700+00:00",
+  "generated_at": "2026-06-23T01:53:42.670983200+00:00",
   "allowlist_path": "policy/no-panic-allowlist.toml",
-  "finding_count": 21807,
-  "entry_count": 21807,
+  "finding_count": 21823,
+  "entry_count": 21823,
   "expires": "2026-12-31",
   "by_classification": {
     "ffi": 87,
     "fixture": 4,
     "production": 303,
-    "test_helper": 20250,
+    "test_helper": 20266,
     "tooling": 1163
   },
   "command": "cargo xtask no-panic-baseline"
