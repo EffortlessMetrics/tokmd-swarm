@@ -1,6 +1,5 @@
 //! Tag counting helpers for content analysis.
 
-#[cfg(test)]
 pub(super) fn count_tags(text: &str, tags: &[&str]) -> Vec<(String, usize)> {
     let upper = text.to_uppercase();
     tags.iter()
@@ -23,7 +22,6 @@ pub(super) fn count_delimited_tags(text: &str, tags: &[&str]) -> Vec<(String, us
         .collect()
 }
 
-#[cfg(test)]
 fn count_non_overlapping_matches(haystack: &str, needle: &str) -> usize {
     if needle.is_empty() {
         return 0;

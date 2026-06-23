@@ -1,9 +1,7 @@
 //! Byte-level content helpers for text detection, hashing, and entropy.
 
-#[cfg(test)]
 use std::path::Path;
 
-#[cfg(test)]
 use anyhow::Result;
 
 pub fn is_text_like(bytes: &[u8]) -> bool {
@@ -13,12 +11,10 @@ pub fn is_text_like(bytes: &[u8]) -> bool {
     std::str::from_utf8(bytes).is_ok()
 }
 
-#[cfg(test)]
 pub fn hash_bytes(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
 }
 
-#[cfg(test)]
 pub fn hash_file(path: &Path, max_bytes: usize) -> Result<String> {
     let bytes = super::read_head(path, max_bytes)?;
     Ok(hash_bytes(&bytes))
