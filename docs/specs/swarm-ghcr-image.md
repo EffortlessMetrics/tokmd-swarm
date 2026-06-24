@@ -78,6 +78,24 @@ multiarch and shorter job ceilings are proven:
 Multiarch (`linux/arm64`) may follow after cache warm-up and a follow-on
 maintainer receipt.
 
+### Bootstrap publish phase (issue #264)
+
+The first successful swarm GHCR push uses a **bootstrap** configuration in
+`.github/workflows/swarm-ghcr.yml` until maintainers record `verified-public`
+or `private-only` in issue #264:
+
+| Bootstrap constraint | Rationale |
+| --- | --- |
+| `linux/amd64` only | Cold dual-platform (amd64 + arm64 via QEMU) Rust release builds exceeded the prior 45m job ceiling; spec requires a pinned Linux workbench, not multiarch yet. |
+| Job timeout 120m | Headroom for cold builds without QEMU; warm GHA Docker cache runs complete in minutes. |
+| GHA Docker layer cache (`cache-from` / `cache-to`) | Reuse BuildKit layers across workflow runs. |
+| Advisory manifest visibility step | Warns when unauthenticated `docker manifest inspect` fails; does not set GHCR package visibility (org package admin). |
+
+Multiarch (`linux/arm64`) and shorter timeouts may follow after cache warm-up
+and a maintainer receipt under `target/publishing/swarm-ghcr-visibility-<date>.md`.
+This spec stays **draft** until that receipt records `verified-public` or
+`private-only`.
+
 ### Tag contract
 
 The swarm publish workflow enforces tags distinct from publication semver aliases:
