@@ -31,6 +31,7 @@ const PARSER_SUBCOMMANDS: &[&str] = &[
     "syntax",
     "evidence-packet",
     "packet",
+    "render",
 ];
 
 fn parser_subcommands() -> impl Strategy<Value = &'static str> {

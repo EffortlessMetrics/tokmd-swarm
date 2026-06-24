@@ -131,6 +131,7 @@ paths = [
   "ci/proof.toml",
   "codecov.yml",
   "fixtures/ci-gate-contract/**",
+  "fixtures/tokmd-packets/**",
   "docs/external-services.md",
   "docs/NEXT.md",
   "docs/ci/ci-actuals.md",
@@ -943,12 +944,14 @@ paths = [
   "crates/tokmd-format/src/lib.rs",
   "crates/tokmd-format/src/summary/**",
   "crates/tokmd-format/src/summary.rs",
+  "crates/tokmd-format/src/tokmd_packets.rs",
   "crates/tokmd-format/tests/format_*.rs",
   "crates/tokmd-format/tests/snapshot*.rs",
   "crates/tokmd-format/tests/snapshots/**",
 ]
 packages = ["tokmd-format"]
 proof = [
+  "cargo test -p tokmd-format tokmd_packets --verbose",
   "cargo test -p tokmd-format --test snapshots --verbose",
   "cargo test -p tokmd-format --test snapshot_golden_w54 --verbose",
 ]
@@ -1026,6 +1029,7 @@ paths = [
   "crates/tokmd/tests/cli_*.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
+  "crates/tokmd/tests/render_*.rs",
   "crates/tokmd/tests/snapshots/cli_*.snap",
   "crates/tokmd/tests/config_resolution.rs",
   "crates/tokmd/tests/error_handling.rs",
@@ -1040,6 +1044,7 @@ proof = [
   "cargo test -p tokmd --test cli_parser_properties --verbose",
   "cargo test -p tokmd --test config_resolution --verbose",
   "cargo test -p tokmd --test packet_generate_integration --verbose",
+  "cargo test -p tokmd --test render_packets_integration --verbose",
 ]
 mutation = true
 coverage = true
@@ -1507,6 +1512,7 @@ paths = [
   "crates/tokmd-types/src/context.rs",
   "crates/tokmd-types/src/diff.rs",
   "crates/tokmd-types/src/evidence_packet.rs",
+  "crates/tokmd-types/src/tokmd_packets.rs",
   "crates/tokmd-types/src/inventory.rs",
   "crates/tokmd-types/src/lib.rs",
   "crates/tokmd-types/tests/schema*.rs",
@@ -1524,6 +1530,7 @@ paths = [
 ]
 packages = ["tokmd-types", "tokmd"]
 proof = [
+  "cargo test -p tokmd-types tokmd_packets --verbose",
   "cargo test -p tokmd-types schema --verbose",
   "cargo test -p tokmd --test schema_sync --verbose",
   "cargo test -p tokmd --test schema_doc_sync --verbose",

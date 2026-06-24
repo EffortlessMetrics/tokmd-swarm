@@ -168,6 +168,8 @@ jobs:
 
       - name: Assert core gate verdict
         if: ${{ always() }}
+        env:
+          RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
         run: |
           set -uo pipefail
           deadline=$((SECONDS + 3000))
@@ -183,6 +185,27 @@ jobs:
           core_exit="$(cat target/ci-core/core_exit)"
           test_exit="$(cat target/ci-core/test_exit)"
           proof_policy_exit="$(cat target/ci-core/proof_policy_exit)"
+
+          # Self-hosted runners can exhaust CPU/RAM under concurrent cargo; retry
+          # any failed lane serially once before reporting failure.
+          if [ "${RUNNER_KIND}" = "self-hosted" ]; then
+            if [ "${core_exit}" != "0" ] && [ "${core_exit}" != "124" ]; then
+              echo "Concurrent core gate failed (exit ${core_exit}); retrying serially"
+              cargo xtask gate --check
+              core_exit=$?
+            fi
+            if [ "${test_exit}" != "0" ] && [ "${test_exit}" != "124" ]; then
+              echo "Concurrent tests failed (exit ${test_exit}); retrying serially"
+              cargo test --all-features
+              test_exit=$?
+            fi
+            if [ "${proof_policy_exit}" != "0" ] && [ "${proof_policy_exit}" != "124" ]; then
+              echo "Concurrent proof-policy failed (exit ${proof_policy_exit}); retrying serially"
+              cargo xtask proof-policy --check
+              proof_policy_exit=$?
+            fi
+          fi
+
           {
             echo "## Deterministic core gate"
             if [ "${core_exit}" = "0" ]; then

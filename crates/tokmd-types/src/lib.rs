@@ -34,6 +34,7 @@ mod context;
 mod diff;
 mod evidence_packet;
 mod inventory;
+mod tokmd_packets;
 
 pub use context::{
     ArtifactEntry, ArtifactHash, CONTEXT_BUNDLE_SCHEMA_VERSION, CONTEXT_SCHEMA_VERSION,
@@ -54,6 +55,10 @@ pub use inventory::{
     LangArgsMeta, LangReceipt, LangReport, LangRow, ModuleArgs, ModuleArgsMeta, ModuleReceipt,
     ModuleReport, ModuleRow, RedactMode, RunReceipt, ScanArgs, ScanStatus, TableFormat, ToolInfo,
     Totals,
+};
+pub use tokmd_packets::{
+    BUN_UB_PACKET_PRESETS, PacketPresetInput, TOKMD_PACKETS_SCHEMA, TokmdPacketsManifest,
+    TokmdPacketsProducer,
 };
 
 #[cfg(test)]

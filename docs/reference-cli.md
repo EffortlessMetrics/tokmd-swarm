@@ -1760,6 +1760,54 @@ tokmd packet generate \
 See [PR evidence packet workflows](packet-workflows.md) for the full workflow
 support model.
 
+### `tokmd render`
+
+Render audience-specific Markdown from cross-tool packet bundles (for example
+unsafe-review `tokmd-packets.json` exports). Formatting only: preserves producer
+`non_claims` and emits explicit limitations for absent inputs.
+
+<!-- HELP: render -->
+```text
+Render audience-specific Markdown from cross-tool packet bundles
+
+Usage: tokmd render [OPTIONS] --from-packets <DIR> --preset <PRESET>
+
+Options:
+      --from-packets <DIR>
+          Packet bundle directory containing `tokmd-packets.json`
+
+      --preset <PRESET>
+          Audience-specific packet preset to render
+          
+          [possible values: bun-ub-handoff, bun-ub-pr-body, bun-ub-ledger-note, bun-ub-review-map, bun-ub-next-pick]
+
+  -o, --output <PATH>
+          Optional output file. Prints to stdout when omitted
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+<!-- /HELP: render -->
+
+**Usage**: `tokmd render --from-packets <DIR> --preset <PRESET>`
+
+Reads `tokmd-packets.json` from the bundle directory, validates
+`tokmd.packets/v1`, and renders Markdown for one Bun UB audience preset.
+Missing `preset_inputs` or sections produce explicit `## Limitations` notes;
+`non_claims` are reproduced verbatim.
+
+**Examples**:
+```bash
+tokmd render --from-packets ./bundle --preset bun-ub-handoff
+
+tokmd render \
+  --from-packets ./bundle \
+  --preset bun-ub-pr-body \
+  --output pr-body.md
+```
+
+See [packet preset renderer spec](specs/tokmd-packets-render.md).
+
 ### `tokmd gate`
 
 Evaluates policy rules against analysis receipts for CI gating. Use this to enforce code quality standards in your pipeline.

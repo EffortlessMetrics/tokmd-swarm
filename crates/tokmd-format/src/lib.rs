@@ -32,6 +32,7 @@ pub mod fun;
 pub mod redact;
 pub mod scan_args;
 mod summary;
+pub mod tokmd_packets;
 
 pub use badge::badge_svg;
 pub use diff::{
@@ -50,6 +51,7 @@ pub use summary::{
     print_lang_report, print_module_report, write_lang_json_to_file, write_lang_report_to,
     write_module_json_to_file, write_module_report_to,
 };
+pub use tokmd_packets::{preset_title, render_packet_preset_markdown, validate_manifest};
 
 fn redact_module_roots(roots: &[String], redact: RedactMode) -> Vec<String> {
     if redact == RedactMode::All {

@@ -8,7 +8,8 @@ use clap::Subcommand;
 use super::{
     BadgeArgs, BaselineArgs, CliAnalyzeArgs, CliCheckIgnoreArgs, CliContextArgs, CliExportArgs,
     CliGateArgs, CliLangArgs, CliModuleArgs, CockpitArgs, CompletionsArgs, DiffArgs,
-    EvidencePacketArgs, HandoffArgs, InitArgs, PacketArgs, RunArgs, SensorArgs, ToolsArgs,
+    EvidencePacketArgs, HandoffArgs, InitArgs, PacketArgs, RenderArgs, RunArgs, SensorArgs,
+    ToolsArgs,
 };
 
 #[cfg(feature = "ast")]
@@ -78,6 +79,9 @@ pub enum Commands {
 
     /// Generate evidence packets over the existing receipt commands.
     Packet(PacketArgs),
+
+    /// Render audience-specific Markdown from cross-tool packet bundles.
+    Render(RenderArgs),
 }
 
 #[cfg(test)]
