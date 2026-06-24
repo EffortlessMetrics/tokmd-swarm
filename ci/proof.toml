@@ -106,6 +106,9 @@ paths = [
   ".github/workflows/ci-policy.yml",
   ".github/workflows/ci.yml",
   ".github/workflows/cockpit.yml",
+  # Retired in phase 3 (#299); kept so the affected/proof planner attributes the
+  # workflow deletion to the control-plane scope. Prune in a later sweep.
+  ".github/workflows/em-routed-rust-small.yml",
   ".github/workflows/fuzz.yml",
   ".github/workflows/mutants.yml",
   ".github/workflows/nix-full.yml",
