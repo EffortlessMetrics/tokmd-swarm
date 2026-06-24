@@ -76,8 +76,9 @@ It does **not** prove:
 
 ## Compatibility
 
-Schema id follows the namespaced string convention established by
-`tokmd.evidence-packet/v1` (#224 tracks org-wide idiom alignment).
+Schema id follows the namespaced string convention in
+`docs/adr/0014-schema-identity-idioms.md` (for example
+`tokmd.evidence-packet/v1`, `tokmd.packets/v1`).
 
 Phase 1 intentionally does not consume raw `manual-candidates.json` or
 `cards.json` directly; producers must populate `preset_inputs`.

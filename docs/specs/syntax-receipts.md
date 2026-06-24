@@ -2,7 +2,8 @@
 
 - Status: draft
 - Schema family, if any: `tokmd.syntax_receipt.v1`
-- Related ADRs: `docs/adr/0008-ast-foundation.md`
+- Related ADRs: `docs/adr/0008-ast-foundation.md`,
+  `docs/adr/0014-schema-identity-idioms.md`
 - Related proof scopes: `analysis_ast_shadow`
 
 ## Contract
