@@ -34,6 +34,10 @@ Result` after the admin step in issue #226.
 - `Build & Test (Linux)` → `cargo test --all-features` in the gate job background
 - `Proof Policy` → `cargo xtask proof-policy --check` in the gate job background
 - `CI (Required)` → replaced by single required check + `CI Actuals (Advisory)`
+- `Tokmd Rust Small Result` + routed `em-routed-rust-small.yml` frontdoor
+  (`Route Tokmd Rust Small`, `Tokmd Rust Small on Self Hosted`, `Tokmd Rust
+  Small on GitHub Hosted`) → retired in phase 3 (#299); routing folded into the
+  `Route CI runner` lane of `ci.yml` and the required `Tokmd Rust Result` gate
 
 ## Advisory lane summary
 
@@ -73,26 +77,19 @@ ripr_advisory                2
 scoped_coverage_executor_non_required 12
 ci_required                  1
 no_bare_self_hosted          1
-tokmd_rust_small_route       1
-tokmd_rust_small_result     20
                           ----
-                           114   tokmd-swarm default PR (was ~203)
+                            93   tokmd-swarm default PR (was ~203)
 ```
 
 That remains below the hard override ceiling, but it is intentionally reported
-as high-cost while the advisory proof executor, proof-run observation lanes,
-and routed Rust Small frontdoor collect real timing evidence.
+as high-cost while the advisory proof executor and proof-run observation lanes
+collect real timing evidence.
 
-`tokmd-swarm` workbench PRs also run the routed Rust Small frontdoor. The
-router and aggregate result are default PR lanes. The lane catalogue also
-includes the conditional implementation jobs for CPX42, CX43, CX53, and
-GitHub-hosted fallback, but those jobs are mutually exclusive and are not
-counted as ordinary default PR lanes. The aggregate result carries a
-conservative one-route estimate, so a small swarm PR budgets the selected
-route without counting every skipped implementation target.
-
-The routed Rust Small trust, fallback, concurrency, route receipt, and
-required-check contract is defined in `docs/ci/routed-ci-policy.md`.
+The duplicate routed Rust Small frontdoor (`em-routed-rust-small.yml`) was
+retired in phase 3 (#299). Runner routing for `tokmd-swarm` workbench PRs now
+lives in the `Route CI runner` lane of `ci.yml`, and its check/test work is the
+single required `Tokmd Rust Result` gate. The historical routing contract is
+preserved in `docs/ci/routed-ci-policy.md`.
 
 Phase-2 target for issue #226 is a single tight gate documented in
 `docs/specs/ub-review-ci-gate.md`, with `cargo xtask ci-gate-contract`
