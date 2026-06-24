@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow failure (`failed`, `partial`, `never`); `runtime: container` is
   reserved for the pending GHCR runtime and fails fast for now.
 
+### Changed
+
+- CI phase 3 (#226, #299): retired the duplicate routed Rust Small frontdoor
+  workflow (`em-routed-rust-small.yml`) and its `tokmd_rust_small_*` lane
+  catalogue entries. Runner routing is now the advisory `Route CI runner` job of
+  `ci.yml` (self-hosted primary, GitHub-hosted overflow) feeding the single
+  required `Tokmd Rust Result` gate. Branch protection already required only
+  `Tokmd Rust Result`, so no required check changed.
+
 ### Documentation
 
 - Resolved the `v1.13.1` publication GHCR visibility caveat: maintainer

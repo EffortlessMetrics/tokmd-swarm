@@ -122,11 +122,13 @@ advisory review.
 
 ## Compatibility
 
-Current state (pre-migration):
+Pre-migration baseline (phases 1–2):
 
-- `.github/workflows/ci.yml` runs many parallel jobs with a `CI (Required)`
+- `.github/workflows/ci.yml` ran many parallel jobs with a `CI (Required)`
   aggregator.
-- `.github/workflows/em-routed-rust-small.yml` owns `Tokmd Rust Small Result`.
+- A separate routed Rust Small frontdoor workflow owned `Tokmd Rust Small
+  Result`. It was retired in phase 3 (#299); its routing folded into the
+  `ci.yml` `route` job and the required `Tokmd Rust Result` gate.
 
 Phased migration:
 
@@ -134,7 +136,7 @@ Phased migration:
 | --- | --- | --- |
 | 1 (this spec) | Normative contract, `cargo xtask ci-gate-contract`, reference fixture, advisory live gap report | none |
 | 2 | Collapse `ci.yml` frontdoor into single gate + route; retire `CI (Required)` aggregator | replace with `Tokmd Rust Result` |
-| 3 | Fold `em-routed-rust-small.yml` routing into `ci.yml` `route` job; retire duplicate Rust Small workflow | keep one `Tokmd Rust Result` name |
+| 3 (done, #299) | Folded `em-routed-rust-small.yml` routing into `ci.yml` `route` job; retired the duplicate Rust Small workflow and its lane catalogue entries | kept one `Tokmd Rust Result` name |
 | 4 | Move remaining advisory workflows (cockpit, ripr, coverage upload) to explicit non-required lanes | unchanged advisory posture |
 
 Until phase 2 lands, satellite workflows (`cockpit.yml`, `droid-review.yml`,
