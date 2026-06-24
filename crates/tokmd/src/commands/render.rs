@@ -19,11 +19,11 @@ pub(crate) fn handle(args: cli::RenderArgs) -> Result<()> {
         .with_context(|| format!("failed to render preset {preset}"))?;
 
     if let Some(output) = args.output {
-        if let Some(parent) = output.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create {}", parent.display()))?;
-            }
+        if let Some(parent) = output.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
         }
         fs::write(&output, &markdown)
             .with_context(|| format!("failed to write {}", output.display()))?;
