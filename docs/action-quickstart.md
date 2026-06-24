@@ -182,5 +182,7 @@ It does not prove:
 
 - For local first-run usage, use [Install and try tokmd](install-and-try.md).
 - For every Action input and output, use [GitHub Action reference](github-action.md).
+- For machine-readable CLI progress on stderr, set `TOKMD_PROGRESS_EVENTS` and
+  see [Progress events spec](specs/progress-events.md).
 - For review-packet artifact meanings, use [Review packet contract](review-packet.md).
 - For proof planning and evidence reading order, use [Copy-Ready Workflows](workflows.md).
