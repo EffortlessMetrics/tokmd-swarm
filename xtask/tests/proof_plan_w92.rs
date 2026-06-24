@@ -1136,10 +1136,10 @@ fn proof_plan_json_writes_plan_report_artifact() {
 fn fast_proof_run_ci_job_is_advisory_and_verified() {
     let ci = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
         .expect("ci workflow should be readable");
-    let required_section = ci
-        .split("  ci-required:")
+    let actuals_section = ci
+        .split("  ci-actuals:")
         .nth(1)
-        .expect("CI workflow should define required aggregate");
+        .expect("CI workflow should define advisory ci-actuals job");
 
     assert!(ci.contains("fast-proof-run:"), "fast proof job missing");
     assert!(
@@ -1287,8 +1287,8 @@ fn fast_proof_run_ci_job_is_advisory_and_verified() {
         "fast proof job should upload the policy-named artifact with a stable fallback"
     );
     assert!(
-        !required_section.contains("- fast-proof-run"),
-        "required CI aggregate must not depend on the advisory fast proof runner"
+        !actuals_section.contains("- fast-proof-run"),
+        "ci-actuals advisory job must not depend on the advisory fast proof runner"
     );
 }
 
@@ -1299,8 +1299,8 @@ fn ci_mutation_job_uses_rust_owned_mutation_scope_selector() {
     let mutation_section = ci
         .split("  mutation:")
         .nth(1)
-        .and_then(|section| section.split("  ci-required:").next())
-        .expect("CI workflow should define mutation and required aggregate jobs");
+        .and_then(|section| section.split("  ci-actuals:").next())
+        .expect("CI workflow should define mutation and ci-actuals jobs");
 
     assert!(
         mutation_section.contains("cargo xtask mutation-scope"),
