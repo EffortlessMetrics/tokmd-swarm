@@ -49,17 +49,16 @@ fn reference_fixture_satisfies_ub_review_gate_contract() {
 }
 
 #[test]
-fn live_ci_yml_fails_contract_until_phase_two_migration() {
-    let path = workspace_root().join(".github/workflows/ci.yml");
-    let text = fs::read_to_string(&path).expect("read ci.yml");
+fn live_ci_yml_satisfies_ub_review_gate_contract() {
+    let (_, stderr, success) = run_xtask(&[
+        "ci-gate-contract",
+        "--check",
+        "--workflow",
+        ".github/workflows/ci.yml",
+    ]);
     assert!(
-        text.contains("name: CI (Required)"),
-        "test assumes live ci.yml is still pre-migration"
-    );
-    let (_, stderr, success) = run_xtask(&["ci-gate-contract", "--check"]);
-    assert!(
-        !success,
-        "live ci.yml should fail contract until phase 2. stderr: {stderr}"
+        success,
+        "live ci.yml must satisfy contract after phase 2. stderr: {stderr}"
     );
 }
 
