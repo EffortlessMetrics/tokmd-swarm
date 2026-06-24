@@ -261,8 +261,8 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
     }
 
     #[test]
-    fn cleanup_removes_only_old_matching_dirs() {
-        let base = tempfile::tempdir().expect("create base temp dir");
+    fn cleanup_removes_only_old_matching_dirs() -> anyhow::Result<()> {
+        let base = tempfile::tempdir()?;
         let base_path = base.path();
 
         let stale_one = base_path.join("tokmd-gate-target-111-222");
@@ -270,7 +270,7 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
         let other_label = base_path.join("tokmd-other-label-1-2");
         let unrelated = base_path.join("some-other-dir");
         for dir in [&stale_one, &stale_two, &other_label, &unrelated] {
-            std::fs::create_dir(dir).expect("create fixture dir");
+            std::fs::create_dir(dir)?;
         }
 
         // Treat "now" as far in the future so the just-created dirs read as old.
@@ -285,15 +285,16 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
         assert!(!stale_two.exists());
         assert!(other_label.exists(), "non-matching label must be preserved");
         assert!(unrelated.exists(), "unrelated dir must be preserved");
+        Ok(())
     }
 
     #[test]
-    fn cleanup_keeps_recent_dirs() {
-        let base = tempfile::tempdir().expect("create base temp dir");
+    fn cleanup_keeps_recent_dirs() -> anyhow::Result<()> {
+        let base = tempfile::tempdir()?;
         let base_path = base.path();
 
         let recent = base_path.join("tokmd-gate-target-555-666");
-        std::fs::create_dir(&recent).expect("create fixture dir");
+        std::fs::create_dir(&recent)?;
 
         let max_age = Duration::from_secs(DEFAULT_STALE_TARGET_AGE_HOURS * SECONDS_PER_HOUR);
         let removed =
@@ -301,11 +302,12 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
 
         assert!(removed.is_empty(), "freshly created dir must be kept");
         assert!(recent.exists());
+        Ok(())
     }
 
     #[test]
-    fn cleanup_returns_empty_for_missing_base() {
-        let base = tempfile::tempdir().expect("create base temp dir");
+    fn cleanup_returns_empty_for_missing_base() -> anyhow::Result<()> {
+        let base = tempfile::tempdir()?;
         let missing = base.path().join("does-not-exist");
         let removed = cleanup_stale_scoped_dirs_in(
             &missing,
@@ -314,5 +316,6 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
             SystemTime::now(),
         );
         assert!(removed.is_empty());
+        Ok(())
     }
 }
