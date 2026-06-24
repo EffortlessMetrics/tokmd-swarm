@@ -33,6 +33,7 @@ mod init;
 mod lang;
 mod module;
 mod packet;
+mod render;
 mod run;
 mod sensor;
 #[cfg(feature = "ast")]
@@ -64,6 +65,7 @@ pub use packet::{
     DEFAULT_PACKET_CONTEXT_BUDGET, DEFAULT_PACKET_DIR, PacketArgs, PacketCommand,
     PacketGenerateArgs,
 };
+pub use render::{PacketRenderPreset, RenderArgs};
 pub use run::RunArgs;
 pub use sensor::{SensorArgs, SensorFormat};
 #[cfg(feature = "ast")]
