@@ -27,8 +27,8 @@ behavior presence or absence, or merge readiness.
 directory. It indexes existing receipts; it does not replace `tokmd analyze`,
 `tokmd context`, or `tokmd syntax`.
 
-The planned thin orchestration command (`tokmd packet generate`) and dedicated
-GitHub Action step are workflow conveniences described in
+The thin orchestration command (`tokmd packet generate`) and dedicated
+GitHub Action step (`mode: packet`) are workflow conveniences described in
 `docs/packet-workflows.md`. This spec owns the packet shape, producer rules,
 consumer rules, support model, and verifier semantics regardless of whether
 generation is manual, orchestrated locally, or run from CI.
@@ -203,8 +203,8 @@ Rules:
 | Path | Role | Current status |
 | --- | --- | --- |
 | Local CLI manual sequence | Developer and maintainer fallback; canonical proof path. | implemented |
-| Local CLI orchestration (`tokmd packet generate`) | Thin wrapper over the manual sequence. | planned |
-| GitHub Action (`EffortlessMetrics/tokmd-action`) | Default PR workflow UX with prebuilt binary runtime. | planned |
+| Local CLI orchestration (`tokmd packet generate`) | Thin wrapper over the manual sequence. | implemented |
+| GitHub Action (`EffortlessMetrics/tokmd`, `mode: packet`) | Default PR workflow UX with prebuilt binary runtime. | implemented |
 | GHCR container runtime | Optional pinned Linux/container runtime for workflows. | pending public visibility verification |
 | Cargo install / release binary | Local development and manual fallback, not default CI path. | implemented |
 | `nix run` | Optional local install path. | implemented |
