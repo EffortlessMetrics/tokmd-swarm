@@ -1,6 +1,6 @@
 # Spec: Packet Preset Renderer (`tokmd render`)
 
-- Status: active (phase 1 — schema + minimal renderer)
+- Status: active
 - Schema family: `tokmd.packets/v1` (`crates/tokmd/schemas/tokmd-packets.schema.json`)
 - Related ADRs: n/a
 - Related proof scopes: `tokmd_cli`, `project_truth_docs`
@@ -82,7 +82,7 @@ Schema id follows the namespaced string convention established by
 Phase 1 intentionally does not consume raw `manual-candidates.json` or
 `cards.json` directly; producers must populate `preset_inputs`.
 
-## Proof requirements
+## Proof Requirements
 
 ```bash
 cargo test -p tokmd-types tokmd_packets
