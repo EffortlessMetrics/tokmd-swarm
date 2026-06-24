@@ -3,7 +3,7 @@
 - Status: active
 - Schema family, if any: `tokmd.evidence-packet/v1` (`docs/evidence-packet.schema.json`);
   optional syntax receipts use `tokmd.syntax_receipts.v1`
-- Related ADRs:
+- Related ADRs: `docs/adr/0014-schema-identity-idioms.md`
 - Related proof scopes: `tokmd_cli`, `tokmd_context_handoff`, `project_truth_docs`,
   `doc_artifacts_policy`
 
