@@ -120,7 +120,7 @@ permissions:
 The gate job adds `pull-requests: write` only so ub-review can post its grouped
 advisory review.
 
-## Compatibility and migration
+## Compatibility
 
 Current state (pre-migration):
 

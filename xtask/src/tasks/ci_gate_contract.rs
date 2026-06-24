@@ -5,7 +5,6 @@
 //! deterministic core floor, and non-blocking ub-review in the same gate job.
 
 use std::fs;
-use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
