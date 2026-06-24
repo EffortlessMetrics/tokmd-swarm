@@ -527,7 +527,7 @@ fn blocking_default_pr_static_lanes_stay_fork_safe_on_hosted_runners() {
     );
 
     assert!(
-        default_pr_gate.contains("| `Typos` | always |"),
+        default_pr_gate.contains("| `Typos` | always (satellite) |"),
         "default PR gate docs should keep Typos as an always-on lane"
     );
     assert!(
