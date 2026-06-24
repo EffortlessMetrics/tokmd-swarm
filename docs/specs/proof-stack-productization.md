@@ -1,6 +1,6 @@
 # Spec: Proof-stack productization (deferred)
 
-- Status: deferred
+- Status: draft
 - Schema family: none (no tokmd proof-stack profile schema yet)
 - Related ADRs: `docs/adr/0013-proof-stack-productization-boundary.md`
 - Related proof scopes: n/a until a profile is proposed
@@ -73,7 +73,7 @@ Reopen productization only when **all** of the following are true:
 Until then, status stays **deferred**. File a new issue when the gate is met;
 do not silently add CLI stubs.
 
-## Proof requirements
+## Proof Requirements
 
 None for the deferred state. When a profile is proposed, proof must include:
 
