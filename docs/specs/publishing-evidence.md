@@ -32,9 +32,10 @@ create GitHub releases, push Docker images, change release workflow behavior,
 change public receipt schemas, or authorize a release by itself.
 
 GHCR consumer visibility evidence applies to the publication image
-`ghcr.io/effortlessmetrics/tokmd` from `EffortlessMetrics/tokmd`. Swarm
-workbench GHCR is not a supported consumer path today; public visibility remains
-an open decision tracked in issue #264.
+`ghcr.io/effortlessmetrics/tokmd` from `EffortlessMetrics/tokmd`. Swarm workbench GHCR (`ghcr.io/effortlessmetrics/tokmd-swarm`) is tracked in
+`docs/specs/swarm-ghcr-image.md`. Maintainer verification on **2026-06-24**
+records `:main` as **verified-public** (workbench/experimental tier; bootstrap
+amd64-only). It is not a publication release artifact.
 
 The first publishing evidence artifact is the existing
 `cargo xtask publish-surface --json --verify-publish` output. A separate

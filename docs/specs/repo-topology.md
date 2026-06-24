@@ -90,7 +90,7 @@ GHCR registry ownership is split by repository role:
 | Image | Repository | Status |
 | --- | --- | --- |
 | `ghcr.io/effortlessmetrics/tokmd` | publication `tokmd` | Supported public secondary runtime when release ledgers record `verified-public` (see `docs/specs/publishing-evidence.md`). |
-| `ghcr.io/effortlessmetrics/tokmd-swarm` | workbench `tokmd-swarm` | Publish workflow on swarm `main`; visibility **undecided** (issue #264). See `docs/specs/swarm-ghcr-image.md`. |
+| `ghcr.io/effortlessmetrics/tokmd-swarm` | workbench `tokmd-swarm` | Publish workflow on swarm `main`; **verified-public** for `:main` (2026-06-24, bootstrap amd64-only). Workbench/experimental tier. See `docs/specs/swarm-ghcr-image.md`. |
 
 Publication release workflows must not push the swarm image name. Swarm publish
 workflows must not push publication semver tags or mutate publication release
@@ -146,10 +146,8 @@ cargo xtask proof-policy --check
 
 ## Open Questions
 
-- Whether `tokmd-swarm` should publish a public GHCR image at
-  `ghcr.io/effortlessmetrics/tokmd-swarm` with workbench-only tags (`main`,
-  `sha-*`) and a separate claim boundary from publication semver tags. Tracked
-  in issue #264 and `docs/specs/swarm-ghcr-image.md`.
+- When to add `linux/arm64` for swarm GHCR after bootstrap amd64-only publish
+  (see `docs/specs/swarm-ghcr-image.md`).
 - Whether future publication-import automation should write a dedicated
   closeout receipt that bundles the pre-publication, merge-commit, and
   post-fast-forward `repo-graph` receipts.
