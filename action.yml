@@ -224,6 +224,7 @@ runs:
       id: generate
       shell: bash
       env:
+        TOKMD_ACTION_ARTIFACT: ${{ inputs.artifact }}
         TOKMD_ACTION_BASE: ${{ inputs.base }}
         TOKMD_ACTION_CONTEXT_BUDGET: ${{ inputs.context-budget }}
         TOKMD_ACTION_FAIL_ON: ${{ inputs.fail-on }}
@@ -439,6 +440,21 @@ runs:
             esac
 
             packet_dir="${TOKMD_ACTION_OUTPUT_DIR:-sensors/tokmd}"
+            # Keep the packet directory inside the workspace: reject absolute
+            # paths and any `..` segment so output-dir cannot write or upload
+            # files from outside the checkout.
+            case "$packet_dir" in
+              /* | "")
+                echo "::error::output-dir must be a relative path inside the workspace; received '$packet_dir'"
+                exit 1
+                ;;
+            esac
+            case "/$packet_dir/" in
+              */../*)
+                echo "::error::output-dir must not contain '..' segments; received '$packet_dir'"
+                exit 1
+                ;;
+            esac
             packet_manifest_file="$packet_dir/manifest.json"
             compare_base="$(resolve_base_ref packet)"
 
@@ -498,7 +514,7 @@ runs:
 
         tokmd_version="$(tokmd --version 2>/dev/null | awk 'NR==1{print $NF}')"
         artifact_name=""
-        if [ "${{ inputs.artifact }}" = "true" ]; then
+        if [ "${TOKMD_ACTION_ARTIFACT:-false}" = "true" ]; then
           artifact_name="tokmd-receipts"
         fi
 

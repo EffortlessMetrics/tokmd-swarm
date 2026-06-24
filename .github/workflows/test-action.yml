@@ -771,6 +771,27 @@ jobs:
             exit 1
           fi
 
+      - name: Run packet mode with traversal output-dir
+        id: packet_bad_output_dir
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: packet
+          base: HEAD
+          head: HEAD
+          paths: crates/tokmd-types/src
+          output-dir: ../escape
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Verify traversal output-dir rejects
+        shell: bash
+        run: |
+          if [ "${{ steps.packet_bad_output_dir.outcome }}" != "failure" ]; then
+            echo "::error::packet mode should reject an output-dir with '..' segments"
+            exit 1
+          fi
+
       - name: Run packet mode with unresolved base
         id: packet_unresolved_base
         continue-on-error: true
