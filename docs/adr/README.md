@@ -25,6 +25,7 @@ For the broader documentation routing model, see
 | [0010](0010-diff-input-classification.md) | accepted | Diff input classification before git resolution |
 | [0011](0011-pr-disposition-lifecycle.md) | accepted | PR disposition lifecycle during release prep |
 | [0012](0012-repo-control-plane-tool-substrate.md) | accepted | Repo control-plane tool substrate |
+| [0013](0013-proof-stack-productization-boundary.md) | accepted | Proof-stack productization boundary (ripr deferred contract) |
 
 ## House Style
 
