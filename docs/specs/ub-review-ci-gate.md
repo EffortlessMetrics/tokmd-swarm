@@ -14,8 +14,8 @@
    deterministic core floor.
 2. **One gate job** on a runner chosen by a minimal **advisory** `route` job
    (self-hosted primary, GitHub-hosted overflow).
-3. **Advisory `ub-review`** in the **same** gate job (`intelligent-ci`,
-   `posting: review`, `fail-on-gate: false`, `continue-on-error: true`).
+3. **Advisory `ub-review`** in the **same** gate job (`review-direct`,
+   `posting: review`, `continue-on-error: true`).
 4. **Fork PRs** skip only the advisory step; the core gate still runs on
    GitHub-hosted overflow.
 5. **Advisory failures** emit concise what/why/fix notes in the job summary;
@@ -103,9 +103,9 @@ jobs:
 ### Advisory ub-review pins
 
 - Action: `EffortlessMetrics/ub-review@<immutable-sha>` (bump deliberately).
-- `mode: intelligent-ci`, `posting: review`, `fail-on-gate: false`,
-  `setup-rust: false`, `tool-bundle: core`.
-- `provider-policy: primary-with-fallback`, `minimax-model: MiniMax-M3`,
+- `mode: review-direct`, `posting: review`, `setup-rust: false`,
+  `tool-bundle: core`.
+- `provider-policy: minimax-primary`, `minimax-model: MiniMax-M3`,
   `opencode-model: deepseek-v4-flash`.
 - Repo-local `ub-review` config TOML is preferred once available; until then
   document the preset/config choice in the workflow comment block.

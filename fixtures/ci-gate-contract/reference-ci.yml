@@ -109,12 +109,11 @@ jobs:
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
         with:
           preset: bun-ub
-          mode: intelligent-ci
+          mode: review-direct
           posting: review
-          fail-on-gate: false
           setup-rust: false
           tool-bundle: core
-          provider-policy: primary-with-fallback
+          provider-policy: minimax-primary
           minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
           minimax-model: MiniMax-M3
           opencode-api-key: ${{ secrets.OPENCODE }}
