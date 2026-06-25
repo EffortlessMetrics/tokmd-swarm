@@ -24,7 +24,8 @@
   support-model work. Publication GHCR (`ghcr.io/effortlessmetrics/tokmd`)
   published `v1.14.0` (advisory unauthenticated manifest pass; formal
   `verified-public` maintainer receipt recorded for `v1.13.1`). Swarm GHCR
-  visibility remains undecided (issue #264).
+  is verified-public for `:main` (workbench/experimental tier; issue #264
+  closed 2026-06-24, see `docs/specs/swarm-ghcr-image.md`).
 - **CLI friction**: continue practical help examples, actionable errors, progress, and config explainability where current command use shows a real user gap.
 - **Review evidence consumption**: improve cockpit/review packet reading, hosted-comment, or missing-evidence behavior only when current evidence shows a concrete product or verifier gap.
 - **Measured CI feedback**: improve CI/proof routing and telemetry from receipts; do not weaken proof to make CI look faster.
