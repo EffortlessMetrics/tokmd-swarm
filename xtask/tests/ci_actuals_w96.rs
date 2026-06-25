@@ -154,7 +154,7 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
     let ci_actuals = &workflow[ci_actuals_idx..];
 
     let checkout_idx = ci_actuals
-        .find("actions/checkout@v6.0.2")
+        .find("actions/checkout@v7.0.0")
         .expect("CI actuals checkout step");
     let toolchain_idx = ci_actuals
         .find("dtolnay/rust-toolchain@stable")

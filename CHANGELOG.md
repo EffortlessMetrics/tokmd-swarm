@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.14.0] - 2026-06-24
+## [1.14.0] - 2026-06-25
 
 1.14 expands the PR evidence surface into a first-class local and CI workflow.
 It adds the `tokmd render` and `tokmd packet generate` CLIs, ships the
@@ -57,8 +57,23 @@ schema versions changed in this release.
   examples that show how to specify valid comparison targets.
 - `tokmd context` and `tokmd handoff` now validate numeric flags and reject
   invalid values with clear errors instead of silently mishandling them.
+- `tokmd packet generate` / `tokmd evidence-packet` now detect UTF-16 encoded
+  JSON inputs (commonly produced by a bare PowerShell `>` redirect on Windows)
+  and return an actionable error pointing at `--output-dir` / `--output` or
+  `Out-File -Encoding utf8` instead of failing with an opaque parse error.
+
+### Security
+
+- Upgraded `pyo3` (and its transitive PyO3 crate family) from 0.28.3 to 0.29.0
+  in `tokmd-python`, resolving the `RUSTSEC-2026-0176` advisory flagged by
+  `cargo deny`.
 
 ### Documentation
+
+- Added usage example blocks to the `tokmd module`, `tokmd run`, and
+  `tokmd init` command help so `--help` shows common invocations, matching the
+  existing `context` / `handoff` / `analyze` / `cockpit` convention
+  (regenerated `docs/reference-cli.md`).
 
 - Resolved the `v1.13.1` publication GHCR visibility caveat: maintainer
   verification on 2026-06-21 records `ghcr.io/effortlessmetrics/tokmd` as
