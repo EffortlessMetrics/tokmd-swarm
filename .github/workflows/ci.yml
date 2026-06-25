@@ -102,6 +102,9 @@ jobs:
           mkdir -p target/ci-core
           if [ "${RUNNER_KIND}" = "self-hosted" ]; then
             df -h . || true
+            # Reclaim same-day orphan gate targets sooner than the 3h xtask default;
+            # active concurrent gates keep their dir mtime fresh (#309).
+            export TOKMD_GATE_STALE_HOURS=1
           else
             df -h /
           fi
@@ -188,6 +191,7 @@ jobs:
           # Self-hosted runners can exhaust CPU/RAM under concurrent cargo; retry
           # any failed lane serially once before reporting failure.
           if [ "${RUNNER_KIND}" = "self-hosted" ]; then
+            export TOKMD_GATE_STALE_HOURS=1
             if [ "${core_exit}" != "0" ] && [ "${core_exit}" != "124" ]; then
               echo "Concurrent core gate failed (exit ${core_exit}); retrying serially"
               cargo xtask gate --check
