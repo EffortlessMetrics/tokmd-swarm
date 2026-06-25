@@ -7,8 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-06-25
+
+1.14 expands the PR evidence surface into a first-class local and CI workflow.
+It adds the `tokmd render` and `tokmd packet generate` CLIs, ships the
+`mode: packet` GitHub Action, sharpens syntax-receipt and complexity evidence,
+and makes several CLI error and validation paths more actionable. No receipt
+schema versions changed in this release.
+
 ### Added
 
+- Added `tokmd render`, which renders packet presets (including unsafe-review
+  bundles) from analysis/context/syntax inputs, ingests sibling tool bundles,
+  and validates against the `tokmd-packets` JSON Schema at the CLI boundary.
+- Added `tokmd packet generate`, an evidence-packet orchestrator that produces
+  the `sensors/tokmd/` packet (analysis, context, optional syntax, manifest)
+  from a single command.
 - Added `mode: packet` to the `EffortlessMetrics/tokmd` GitHub Action. It runs
   `tokmd packet generate` with the prebuilt-binary runtime as the default,
   shares the cockpit/sensor base-ref inference, uploads the `sensors/tokmd/`
@@ -21,9 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `runtime` Action inputs for `mode: packet`. `fail-on` maps packet status to
   workflow failure (`failed`, `partial`, `never`); `runtime: container` is
   reserved for the pending GHCR runtime and fails fast for now.
+- Added `panic_seam_summary` to syntax receipts, summarizing panic-like seams
+  detected during syntax extraction for packet consumers.
 
 ### Changed
 
+- Syntax evidence ranking now deprioritizes test assertion noise so advisory
+  review signals surface higher-value seams instead of test-only assertions.
 - CI phase 3 (#226, #299): retired the duplicate routed Rust Small frontdoor
   workflow (`em-routed-rust-small.yml`) and its `tokmd_rust_small_*` lane
   catalogue entries. Runner routing is now the advisory `Route CI runner` job of
@@ -31,7 +49,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   required `Tokmd Rust Result` gate. Branch protection already required only
   `Tokmd Rust Result`, so no required check changed.
 
+### Fixed
+
+- Aligned `max_cyclomatic` with per-function complexity units so the reported
+  maximum reflects a single function rather than an aggregate.
+- `tokmd diff` `resolve_targets` errors are now actionable, including usage
+  examples that show how to specify valid comparison targets.
+- `tokmd context` and `tokmd handoff` now validate numeric flags and reject
+  invalid values with clear errors instead of silently mishandling them.
+- `tokmd packet generate` / `tokmd evidence-packet` now detect UTF-16 encoded
+  JSON inputs (commonly produced by a bare PowerShell `>` redirect on Windows)
+  and return an actionable error pointing at `--output-dir` / `--output` or
+  `Out-File -Encoding utf8` instead of failing with an opaque parse error.
+
+### Security
+
+- Upgraded `pyo3` (and its transitive PyO3 crate family) from 0.28.3 to 0.29.0
+  in `tokmd-python`, resolving the `RUSTSEC-2026-0176` advisory flagged by
+  `cargo deny`.
+
 ### Documentation
+
+- Added usage example blocks to the `tokmd module`, `tokmd run`, and
+  `tokmd init` command help so `--help` shows common invocations, matching the
+  existing `context` / `handoff` / `analyze` / `cockpit` convention
+  (regenerated `docs/reference-cli.md`).
 
 - Resolved the `v1.13.1` publication GHCR visibility caveat: maintainer
   verification on 2026-06-21 records `ghcr.io/effortlessmetrics/tokmd` as
