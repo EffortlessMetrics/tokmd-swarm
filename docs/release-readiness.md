@@ -119,8 +119,9 @@ intentional stable release with Docker publication from `EffortlessMetrics/tokmd
    publicly pullable without a pass receipt.
 
 Publication GHCR is **verified-public** for `v1.13.1` as of 2026-06-21. Swarm
-workbench GHCR is not a supported consumer path today; public visibility
-remains an open decision (issue #264).
+workbench GHCR is **verified-public** for `:main` as of 2026-06-24 (issue #264
+closed) but remains a workbench/experimental runtime, not a supported end-user
+install path.
 
 Setting GHCR package visibility and recording the maintainer receipt are
 maintainer-only actions. The repository documents the checklist, receipt
