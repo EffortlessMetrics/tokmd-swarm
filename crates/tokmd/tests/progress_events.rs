@@ -145,7 +145,14 @@ fn cockpit_emits_progress_events_on_stderr() -> TestResult {
     };
     Command::new(env!("CARGO_BIN_EXE_tokmd"))
         .current_dir(dir.path())
-        .args(["cockpit", "--base", "main", "--head", "HEAD", "--no-progress"])
+        .args([
+            "cockpit",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--no-progress",
+        ])
         .env("TOKMD_PROGRESS_EVENTS", "1")
         .env_remove("TOKMD_NO_PROGRESS")
         .assert()
