@@ -260,6 +260,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd export --format csv --output inventory.csv
+  tokmd export crates --min-code 10 --redact paths
 ```
 <!-- /HELP: export -->
 
@@ -727,6 +731,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd diff --from main --to HEAD
+  tokmd diff base.json current.json --format json
 ```
 <!-- /HELP: diff -->
 
@@ -1870,6 +1878,10 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd gate analysis.json --policy tokmd-gate.toml
+  tokmd gate . --preset health --format json
 ```
 <!-- /HELP: gate -->
 
