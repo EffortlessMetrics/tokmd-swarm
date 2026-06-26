@@ -149,6 +149,7 @@ pub fn print_config_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
     use tokmd_settings::Profile;
 
     fn render(
@@ -156,36 +157,38 @@ mod tests {
         name: Option<&str>,
         source: ProfileSource,
         resolved: &ResolvedConfig,
-    ) -> String {
+    ) -> Result<String> {
         let mut buf = Vec::new();
-        write_config_report(&mut buf, ctx, name, source, resolved).expect("render config report");
-        String::from_utf8(buf).expect("config report is valid UTF-8")
+        write_config_report(&mut buf, ctx, name, source, resolved)?;
+        Ok(String::from_utf8(buf)?)
     }
 
     #[test]
-    fn config_explain_reports_no_sources() {
+    fn config_explain_reports_no_sources() -> Result<()> {
         let ctx = ConfigContext::default();
         let resolved = ResolvedConfig::default();
-        let out = render(&ctx, None, ProfileSource::None, &resolved);
+        let out = render(&ctx, None, ProfileSource::None, &resolved)?;
         assert!(out.contains("TOML config:    (none found)"), "{out}");
         assert!(out.contains("Legacy JSON:    (none)"), "{out}");
         assert!(out.contains("name:           (none)"), "{out}");
         assert!(out.contains("format:         (default)"), "{out}");
         assert!(out.contains("module_roots:   (default)"), "{out}");
+        Ok(())
     }
 
     #[test]
-    fn config_explain_flags_unmatched_profile() {
+    fn config_explain_flags_unmatched_profile() -> Result<()> {
         let ctx = ConfigContext::default();
         let resolved = ResolvedConfig::default();
-        let out = render(&ctx, Some("ci"), ProfileSource::Cli, &resolved);
+        let out = render(&ctx, Some("ci"), ProfileSource::Cli, &resolved)?;
         assert!(out.contains("name:           ci (from --profile)"), "{out}");
         assert!(out.contains("matched TOML view:     no"), "{out}");
         assert!(out.contains("did not match"), "{out}");
+        Ok(())
     }
 
     #[test]
-    fn config_explain_shows_resolved_profile_values() {
+    fn config_explain_shows_resolved_profile_values() -> Result<()> {
         let profile = Profile {
             format: Some("json".to_string()),
             top: Some(5),
@@ -197,7 +200,7 @@ mod tests {
             toml: None,
         };
         let ctx = ConfigContext::default();
-        let out = render(&ctx, Some("default"), ProfileSource::Env, &resolved);
+        let out = render(&ctx, Some("default"), ProfileSource::Env, &resolved)?;
         assert!(
             out.contains("name:           default (from TOKMD_PROFILE)"),
             "{out}"
@@ -206,5 +209,6 @@ mod tests {
         assert!(out.contains("format:         json"), "{out}");
         assert!(out.contains("top:            5"), "{out}");
         assert!(!out.contains("did not match"), "{out}");
+        Ok(())
     }
 }
