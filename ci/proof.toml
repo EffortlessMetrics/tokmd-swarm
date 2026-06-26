@@ -111,6 +111,7 @@ paths = [
   # workflow deletion to the control-plane scope. Prune in a later sweep.
   ".github/workflows/em-routed-rust-small.yml",
   ".github/workflows/fuzz.yml",
+  ".github/workflows/ghcr-container-smoke.yml",
   ".github/workflows/mutants.yml",
   ".github/workflows/nix-full.yml",
   ".github/workflows/nix-macos.yml",

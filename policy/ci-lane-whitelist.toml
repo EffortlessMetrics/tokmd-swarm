@@ -951,6 +951,26 @@ review_after     = "2026-07-22"
 expires          = "2026-12-22"
 
 [[lane]]
+id               = "ghcr_container_smoke"
+workflow         = ".github/workflows/ghcr-container-smoke.yml"
+job              = "GHCR Container Smoke"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 4
+owner            = "release/publish"
+intent           = "Anonymous publication GHCR container-runtime smoke (gate steps 6-7) for a stable tag."
+failure_mode     = "A stable tag is advertised as a supported container runtime without an anonymous run/version/packet exec receipt."
+proof_obligation = "Anonymous docker pull of ghcr.io/effortlessmetrics/tokmd:<tag>, run tokmd --version, and mounted-repository tokmd packet generate; assert a complete packet."
+evidence         = ["ghcr-container-smoke workflow logs", "target/publishing/ghcr-visibility-<version>-runtime-exec.md", "GITHUB_STEP_SUMMARY"]
+allowed_triggers = ["workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-07-26"
+expires          = "2026-12-26"
+
+[[lane]]
 id               = "ci_actuals_advisory"
 workflow         = ".github/workflows/ci.yml"
 job              = "CI Actuals (Advisory)"
