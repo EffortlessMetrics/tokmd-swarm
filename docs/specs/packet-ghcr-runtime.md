@@ -167,6 +167,15 @@ not a runtime exec, so it does not discharge step 6. The container runtime for
 for the tag. Public visibility being verified does not by itself make the
 container runtime supported.
 
+Steps 6-7 are run by the `GHCR Container Smoke` lane
+(`.github/workflows/ghcr-container-smoke.yml`), a `workflow_dispatch`-only smoke
+that anonymously pulls the published image, runs `tokmd --version`, and
+generates a `complete` packet against a mounted git fixture. See
+[GHCR container smoke runbook](../ci/ghcr-container-smoke.md). The lane only
+pulls and runs the already-published image; it does not enable
+`runtime: container` in `action.yml`. Update this table and the release ledger
+with the runtime-exec receipt only after a green run is captured.
+
 ## Claim Boundary
 
 When implemented and verified for a tag, the container runtime proves only that:
