@@ -264,6 +264,21 @@ fn help_diff_mentions_from_and_to() {
 }
 
 #[test]
+fn help_diff_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["diff", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains("tokmd diff --from main --to HEAD"))
+                .and(predicate::str::contains(
+                    "tokmd diff base.json current.json --format json",
+                )),
+        );
+}
+
+#[test]
 fn help_gate_mentions_policy() {
     let assert = tokmd_cmd().args(["gate", "--help"]).assert().success();
 
@@ -284,6 +299,23 @@ fn help_gate_mentions_policy() {
         !stdout.contains("--validate"),
         "gate help should not advertise nonexistent --validate flag"
     );
+}
+
+#[test]
+fn help_gate_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["gate", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains(
+                    "tokmd gate analysis.json --policy tokmd-gate.toml",
+                ))
+                .and(predicate::str::contains(
+                    "tokmd gate . --preset health --format json",
+                )),
+        );
 }
 
 #[test]
@@ -452,6 +484,23 @@ fn help_init_mentions_practical_examples() {
                 .and(predicate::str::contains("tokmd init --template rust"))
                 .and(predicate::str::contains(
                     "tokmd init --non-interactive --template node --force",
+                )),
+        );
+}
+
+#[test]
+fn help_export_mentions_practical_examples() {
+    tokmd_cmd()
+        .args(["export", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Examples:")
+                .and(predicate::str::contains(
+                    "tokmd export --format csv --output inventory.csv",
+                ))
+                .and(predicate::str::contains(
+                    "tokmd export crates --min-code 10 --redact paths",
                 )),
         );
 }
