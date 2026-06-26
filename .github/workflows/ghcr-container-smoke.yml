@@ -1,0 +1,190 @@
+name: GHCR Container Smoke
+
+# Manual publication GHCR container-runtime verification smoke.
+#
+# Discharges gate steps 6-7 of docs/specs/packet-ghcr-runtime.md for a given
+# stable tag from an anonymous (logged-out) context:
+#   6. the container reports the expected `tokmd --version`;
+#   7. the container generates a `complete` evidence packet against a mounted
+#      sample repository.
+#
+# This workflow only PULLS and RUNS the already-published publication image
+# (ghcr.io/effortlessmetrics/tokmd). It performs no release mutation, no push,
+# no tag/alias change, and does not enable `runtime: container` in action.yml.
+# Public visibility (gate steps 1-5) is verified separately; see
+# docs/releases/1.14-ledger.md and docs/publishing-evidence.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stable tag to verify (publication GHCR image tag)."
+        required: true
+        default: "1.14.0"
+      image:
+        description: "Publication image reference without tag."
+        required: true
+        default: "ghcr.io/effortlessmetrics/tokmd"
+      preset:
+        description: "Analysis preset for the mounted packet smoke."
+        required: true
+        default: "bun-ub"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghcr-container-smoke-${{ github.workflow }}-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: GHCR Container Smoke
+    if: github.repository == 'EffortlessMetrics/tokmd-swarm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE: ${{ github.event.inputs.image }}
+      VERSION: ${{ github.event.inputs.version }}
+      PRESET: ${{ github.event.inputs.preset }}
+    steps:
+      - name: Anonymous docker pull
+        id: pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${IMAGE}:${VERSION}"
+          # Isolated docker config so the pull is genuinely anonymous and does
+          # not reuse any ambient ghcr.io credentials on the runner.
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          echo "DOCKER_CONFIG=${DOCKER_CONFIG}" >> "$GITHUB_ENV"
+          echo "Pulling ${REF} from an anonymous (logged-out) context"
+          docker --config "${DOCKER_CONFIG}" pull "${REF}"
+          DIGEST="$(docker image inspect "${REF}" --format '{{ index .RepoDigests 0 }}' 2>/dev/null || echo 'unknown')"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Anonymous pull succeeded for ${REF} (${DIGEST})"
+
+      - name: Container tokmd --version (gate step 6)
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${IMAGE}:${VERSION}"
+          OUT="$(docker --config "${DOCKER_CONFIG}" run --rm "${REF}" --version)"
+          echo "container reported: ${OUT}"
+          if ! grep -qF "${VERSION}" <<<"${OUT}"; then
+            echo "::error title=GHCR container version mismatch::expected '${VERSION}' in '${OUT}'"
+            exit 1
+          fi
+          echo "reported=${OUT}" >> "$GITHUB_OUTPUT"
+
+      - name: Mounted-workspace packet smoke (gate step 7)
+        id: packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${IMAGE}:${VERSION}"
+
+          # Minimal repository fixture as a real git repo so packet generate can
+          # resolve base/head refs the same way the binary runtime does.
+          FIXTURE="$(mktemp -d)"
+          mkdir -p "${FIXTURE}/src"
+          cat > "${FIXTURE}/src/lib.rs" <<'RS'
+          /// Minimal fixture exercised by the GHCR container packet smoke.
+          pub fn add(a: i32, b: i32) -> i32 {
+              a + b
+          }
+          RS
+          git -C "${FIXTURE}" init -q
+          git -C "${FIXTURE}" -c user.email=ci@tokmd.dev -c user.name=tokmd-ci add .
+          git -C "${FIXTURE}" -c user.email=ci@tokmd.dev -c user.name=tokmd-ci commit -q -m "fixture"
+
+          # Run as the host user so the bind-mounted repo is not flagged for
+          # dubious git ownership and the written packet is readable afterward.
+          docker --config "${DOCKER_CONFIG}" run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/repo \
+            -v "${FIXTURE}:/repo" \
+            -w /repo \
+            "${REF}" \
+            packet generate \
+            --preset "${PRESET}" \
+            --base HEAD \
+            --head HEAD \
+            --no-syntax \
+            src
+
+          MANIFEST="${FIXTURE}/sensors/tokmd/manifest.json"
+          if [ ! -f "${MANIFEST}" ]; then
+            echo "::error title=Packet manifest missing::${MANIFEST} not generated"
+            exit 1
+          fi
+
+          SCHEMA="$(jq -r '.schema' "${MANIFEST}")"
+          STATUS="$(jq -r '.status' "${MANIFEST}")"
+          MANIFEST_VERSION="$(jq -r '.tokmd_version' "${MANIFEST}")"
+          echo "manifest schema=${SCHEMA} status=${STATUS} tokmd_version=${MANIFEST_VERSION}"
+
+          if [ "${SCHEMA}" != "tokmd.evidence-packet/v1" ]; then
+            echo "::error title=Packet schema mismatch::expected tokmd.evidence-packet/v1, got ${SCHEMA}"
+            exit 1
+          fi
+          if [ "${STATUS}" != "complete" ]; then
+            echo "::error title=Packet not complete::expected status=complete, got ${STATUS}"
+            jq '.warnings, .errors' "${MANIFEST}" || true
+            exit 1
+          fi
+          for art in analyze.md analyze.json context.md; do
+            if [ ! -f "${FIXTURE}/sensors/tokmd/${art}" ]; then
+              echo "::error title=Packet artifact missing::sensors/tokmd/${art} not generated"
+              exit 1
+            fi
+          done
+
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          echo "manifest_version=${MANIFEST_VERSION}" >> "$GITHUB_OUTPUT"
+          rm -rf "${FIXTURE}"
+
+      - name: Write runtime-exec verification receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/publishing
+          RECEIPT="target/publishing/ghcr-visibility-${VERSION}-runtime-exec.md"
+          NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          cat > "${RECEIPT}" <<EOF
+          # GHCR Container Runtime-Exec Verification Receipt
+
+          - release_tag: v${VERSION}
+          - verified_at: ${NOW}
+          - verifier: ${GITHUB_ACTOR} (workflow: ${GITHUB_WORKFLOW})
+          - image: ${IMAGE}
+          - image_digest: ${{ steps.pull.outputs.digest }}
+          - workflow_run_url: ${RUN_URL}
+          - anonymous_pull: pass
+          - container_version: pass (${{ steps.version.outputs.reported }})
+          - packet_smoke: pass (status=${{ steps.packet.outputs.status }}, tokmd_version=${{ steps.packet.outputs.manifest_version }})
+          - gate_steps_6_7: pass
+          - outcome: runtime-exec-verified
+          - notes: |
+              Anonymous (logged-out) docker pull + run of ${IMAGE}:${VERSION}.
+              Discharges docs/specs/packet-ghcr-runtime.md gate steps 6-7.
+              Does NOT enable runtime: container in action.yml (PR B).
+          EOF
+          echo "Receipt written to ${RECEIPT}"
+          {
+            echo "## GHCR Container Smoke — ${IMAGE}:${VERSION}"
+            echo
+            cat "${RECEIPT}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload runtime-exec receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghcr-container-smoke-receipt-${{ github.event.inputs.version }}
+          path: target/publishing/ghcr-visibility-${{ github.event.inputs.version }}-runtime-exec.md
+          if-no-files-found: error
