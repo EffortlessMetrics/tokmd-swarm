@@ -1231,6 +1231,7 @@ paths = [
   "docs/examples/**",
   "docs/install-and-try.md",
   "docs/integrations/**",
+  "docs/packet-consumption.md",
   "docs/packet-workflows.md",
   "docs/publishing-evidence.md",
   "docs/release-readiness.md",
