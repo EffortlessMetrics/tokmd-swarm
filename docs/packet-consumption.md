@@ -221,3 +221,5 @@ See [Review packet contract](review-packet.md#github-action-behavior) and
   producer/verifier contract
 - [Cockpit proof evidence](cockpit-proof-evidence.md) — importing and reading proof
 - [Packet workflows](packet-workflows.md) — Action and CI adoption paths
+- [ub-review ↔ tokmd packet integration](ub-review-integration.md) — consumer-side
+  status taxonomy, cache/receipt, and manifest trust order for the ub-review lane
