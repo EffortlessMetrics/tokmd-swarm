@@ -1240,6 +1240,7 @@ paths = [
   "docs/recipes.md",
   "docs/tutorial.md",
   "docs/troubleshooting.md",
+  "docs/ub-review-integration.md",
   "docs/user-paths.md",
   "docs/workflows.md",
 ]
