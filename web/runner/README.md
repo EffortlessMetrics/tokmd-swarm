@@ -21,6 +21,9 @@ Use this project when you want `tokmd` inside a browser worker, backed by
   default analyze preset from the loaded bundle
 - local file or directory selection that fills the existing ordered in-memory
   `inputs` payload without requiring GitHub or network access
+- ZIP archive upload that forwards raw bytes to `tokmd-wasm` `runJsonBytes` when
+  the loaded bundle was built with `archive-zip` (`lang`, `module`, `export`, or
+  rootless `analyze` presets)
 - worker run progress events for `start`, `fetch`, optional `analyze`, `done`,
   and `error`
 - visible run-progress and repo-load-progress panels in the browser shell

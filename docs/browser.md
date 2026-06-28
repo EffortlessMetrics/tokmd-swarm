@@ -45,6 +45,13 @@ The browser runner works from ordered in-memory inputs:
 It does not use native filesystem paths as trust roots. Local selections are
 converted to normalized `{ path, text }` rows in memory.
 
+When the loaded `tokmd-wasm` bundle exposes `runJsonBytes` (built with
+`archive-zip`), the runner also accepts a user-selected ZIP archive. The main
+thread reads the file into a `Uint8Array`, stores byte-mode options JSON (no
+`inputs` or `paths`), and forwards the archive to the worker. Manual browser
+smoke against a real archive is still required before claiming full ZIP parity
+with native `archive-zip` workflows.
+
 ## Artifacts
 
 Use browser output as a downloadable receipt, then carry it to the next system

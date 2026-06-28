@@ -85,6 +85,13 @@ function createStubRunner() {
                 },
             };
         },
+        runJsonBytes(mode, args, archiveBytes) {
+            return {
+                mode,
+                archiveBytes: archiveBytes.length,
+                options: args,
+            };
+        },
         engine: {
             version: "stub",
             schemaVersion: 0,
@@ -94,6 +101,7 @@ function createStubRunner() {
             modes: supportedModes,
             analyzePresets: [...SUPPORTED_ANALYZE_PRESETS],
             missingExports: [],
+            zipball: true,
         },
     };
 }
@@ -206,6 +214,50 @@ function createMissingExportsError(missingExports) {
     return new Error(`tokmd-wasm bundle is missing required exports: ${missing}`);
 }
 
+function parseTokmdEnvelope(envelopeJson) {
+    let envelope;
+
+    try {
+        envelope = JSON.parse(envelopeJson);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`tokmd-wasm returned invalid JSON envelope: ${message}`);
+    }
+
+    if (!envelope || typeof envelope !== "object") {
+        throw new Error("tokmd-wasm returned an invalid envelope payload");
+    }
+
+    if (envelope.ok !== true) {
+        const code =
+            typeof envelope.error?.code === "string" ? envelope.error.code : "run_failed";
+        const message =
+            typeof envelope.error?.message === "string"
+                ? envelope.error.message
+                : "tokmd archive byte run failed";
+        const error = new Error(message);
+        error.code = code;
+        throw error;
+    }
+
+    return envelope.data;
+}
+
+function createJsonBytesHandler(wasmModule) {
+    if (typeof wasmModule.runJsonBytes !== "function") {
+        return null;
+    }
+
+    return (mode, args, archiveBytes) => {
+        const envelopeJson = wasmModule.runJsonBytes(
+            mode,
+            JSON.stringify(args),
+            archiveBytes
+        );
+        return parseTokmdEnvelope(envelopeJson);
+    };
+}
+
 function createRunnerFromWasmModule(wasmModule) {
     const missingExports = describeMissingExports(wasmModule);
     if (missingExports.length > 0) {
@@ -215,13 +267,17 @@ function createRunnerFromWasmModule(wasmModule) {
     const capabilities = {
         ...buildModeCapabilities(wasmModule),
         missingExports,
+        zipball: typeof wasmModule.runJsonBytes === "function",
     };
+
+    const runJsonBytes = createJsonBytesHandler(wasmModule);
 
     return {
         runLang: createModeHandler(wasmModule, "runLang", "lang mode"),
         runModule: createModeHandler(wasmModule, "runModule", "module mode"),
         runExport: createModeHandler(wasmModule, "runExport", "export mode"),
         runAnalyze: createModeHandler(wasmModule, "runAnalyze", "analyze mode"),
+        ...(runJsonBytes ? { runJsonBytes } : {}),
         capabilities,
         engine: {
             version: wasmModule.version(),
@@ -292,6 +348,7 @@ const runnerReady = loadTokmdRunner()
                     wasm: true,
                     downloads: true,
                     progress: true,
+                    zipball: Boolean(loadedRunner.runJsonBytes),
                     modes: loadedRunner.capabilities.modes,
                     analyzePresets: loadedRunner.capabilities.analyzePresets,
                 },

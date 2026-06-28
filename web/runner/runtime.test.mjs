@@ -526,3 +526,51 @@ test("runtime emits analyze progress before analyze runner failures", async () =
     );
     assert.match(progress.at(-1).message, /analysis exploded/);
 });
+
+test("runtime routes archive byte runs through runJsonBytes", async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const progress = [];
+    const runner = {
+        runJsonBytes(mode, args, bytes) {
+            return {
+                mode,
+                total: { files: 1 },
+                archiveBytes: bytes.length,
+                options: args,
+            };
+        },
+    };
+
+    const message = await handleRunnerMessage(
+        createRunMessage({
+            requestId: "run-zip-lang",
+            mode: "lang",
+            args: { lang: { files: true } },
+            archiveBytes,
+        }),
+        {
+            runner,
+            onProgress: (update) => progress.push(update),
+        }
+    );
+
+    assert.equal(message.type, MESSAGE_TYPES.RESULT);
+    assert.equal(message.data.mode, "lang");
+    assert.equal(message.data.archiveBytes, archiveBytes.length);
+    assert.deepEqual(progress.map((update) => update.phase), ["start", "decode", "done"]);
+});
+
+test("runtime rejects archive byte runs when wasm bundle lacks runJsonBytes", async () => {
+    const message = await handleRunnerMessage(
+        createRunMessage({
+            requestId: "run-zip-missing",
+            mode: "export",
+            args: {},
+            archiveBytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+        }),
+        { runner: createStubRunner() }
+    );
+
+    assert.equal(message.type, MESSAGE_TYPES.ERROR);
+    assert.equal(message.error.code, "zipball_unavailable");
+});
