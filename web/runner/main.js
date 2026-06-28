@@ -1,7 +1,10 @@
 import {
     createCancelMessage,
     createRunMessage,
+    isArchiveRunArgsForMode,
+    isRunMessage,
     MESSAGE_TYPES,
+    sampleArchiveArgsForMode,
 } from "./messages.js";
 import {
     authModeForToken,
@@ -22,6 +25,8 @@ const modeInput = document.querySelector("[data-mode]");
 const argsInput = document.querySelector("[data-args]");
 const localFilesInput = document.querySelector("[data-local-files]");
 const localDirectoryInput = document.querySelector("[data-local-directory]");
+const zipArchiveInput = document.querySelector("[data-zip-archive]");
+const loadZipButton = document.querySelector("[data-load-zip]");
 const loadLocalButton = document.querySelector("[data-load-local]");
 const loadRepoButton = document.querySelector("[data-load-repo]");
 const retryLoadButton = document.querySelector("[data-retry-load]");
@@ -54,6 +59,7 @@ const state = {
     latestResult: null,
     latestSource: null,
     latestIngest: null,
+    latestArchiveBytes: null,
     latestLoadError: null,
     latestAuthIssue: null,
     capabilities: {
@@ -108,6 +114,17 @@ function sampleArgsForMode(mode) {
     }
 }
 
+function archiveArgsForMode(mode) {
+    return sampleArchiveArgsForMode(mode, defaultAnalyzePreset());
+}
+
+function clearArchiveBytes() {
+    state.latestArchiveBytes = null;
+    if (zipArchiveInput) {
+        zipArchiveInput.value = "";
+    }
+}
+
 function defaultAnalyzePreset() {
     const presets = Array.isArray(state.capabilities.analyzePresets)
         ? state.capabilities.analyzePresets
@@ -145,6 +162,11 @@ function appendLog(label, payload) {
 }
 
 function setSampleArgs(mode) {
+    if (state.latestArchiveBytes) {
+        argsInput.value = JSON.stringify(archiveArgsForMode(mode), null, 2);
+        return;
+    }
+
     argsInput.value = JSON.stringify(sampleArgsForMode(mode), null, 2);
 }
 
@@ -311,6 +333,12 @@ function updateRepoLoadControls() {
     loadLocalButton.disabled = loading;
     localFilesInput.disabled = loading;
     localDirectoryInput.disabled = loading;
+    if (loadZipButton) {
+        loadZipButton.disabled = loading || !state.capabilities.zipball;
+    }
+    if (zipArchiveInput) {
+        zipArchiveInput.disabled = loading || !state.capabilities.zipball;
+    }
     loadRepoButton.disabled = loading;
     retryLoadButton.disabled = loading || !isRetryableLoadError(state.latestLoadError);
     cancelLoadButton.disabled = !repoLoading;
@@ -403,17 +431,23 @@ function renderRepoCapabilities() {
               : state.latestIngest
                 ? "memory miss"
                 : "not loaded yet";
+    const zipballCapability = state.capabilities.zipball ? "wasm runJsonBytes" : "no";
+    const zipballLoaded = state.latestArchiveBytes
+        ? `${state.latestArchiveBytes.byteLength} byte(s) ready`
+        : "not loaded yet";
     const lines = [
-        "strategy: GitHub tree + contents or local files",
+        "strategy: GitHub tree + contents, local files, or ZIP archive bytes",
         "tokenAuth: optional",
         "repoLoadProgress: yes",
         "repoLoadCancel: yes",
         "localFiles: yes",
+        "zipball: user ZIP upload via runJsonBytes when wasm bundle supports it",
         "runCancel: no (worker protocol reserved only)",
         "cache: in-memory",
         "partialWarnings: surfaced",
         "rateLimitErrors: explicit",
-        "zipball: no",
+        `zipballCapability: ${zipballCapability}`,
+        `zipballLoaded: ${zipballLoaded}`,
         `lastAuthMode: ${lastAuthMode}`,
         `lastCache: ${lastCache}`,
     ];
@@ -607,7 +641,7 @@ function renderIngestSummary() {
     if (!state.latestSource && !state.latestIngest && !state.latestLoadError) {
         const empty = document.createElement("p");
         empty.className = "summary-empty";
-        empty.textContent = "No GitHub repo has been loaded yet.";
+        empty.textContent = "No GitHub repo, local files, or ZIP archive loaded yet.";
         ingestSummaryOutput.append(empty);
         return;
     }
@@ -650,7 +684,10 @@ function renderIngestSummary() {
                 "Cache",
                 state.latestIngest.cache?.hit ? "memory hit" : "memory miss"
             ),
-            createSummaryItem("Loaded Files", String(state.latestIngest.loadedFiles ?? 0)),
+            createSummaryItem(
+                "Loaded Files",
+                String(state.latestIngest.loadedFiles ?? 0)
+            ),
             createSummaryItem("Bytes Read", formatBytes(state.latestIngest.bytesRead ?? 0)),
             createSummaryItem("Tree Entries", String(state.latestIngest.treeEntries ?? 0)),
             createSummaryItem("Binary Skips", String(state.latestIngest.skippedBinaryContent ?? 0)),
@@ -810,6 +847,7 @@ loadRepoButton.addEventListener("click", async () => {
         });
         const nextArgs = argsWithInputs(result.inputs);
 
+        clearArchiveBytes();
         state.latestSource = result.source;
         state.latestIngest = result.ingest;
         state.latestLoadError = null;
@@ -923,6 +961,7 @@ loadLocalButton.addEventListener("click", async () => {
         };
         const ingest = localIngestReceipt(fileEntries, inputs, bytesRead);
 
+        clearArchiveBytes();
         state.latestSource = source;
         state.latestIngest = ingest;
         state.latestLoadError = null;
@@ -960,6 +999,100 @@ loadLocalButton.addEventListener("click", async () => {
         updateRepoLoadControls();
     }
 });
+
+if (loadZipButton && zipArchiveInput) {
+    loadZipButton.addEventListener("click", async () => {
+        const file = zipArchiveInput.files?.[0];
+
+        if (!file) {
+            setStatus(loadStatusOutput, "choose a ZIP archive first", "warning");
+            return;
+        }
+
+        if (!state.capabilities.zipball) {
+            setStatus(
+                loadStatusOutput,
+                "loaded wasm bundle does not expose runJsonBytes",
+                "error"
+            );
+            return;
+        }
+
+        state.localLoadActive = true;
+        state.latestLoadError = null;
+        updateRepoLoadControls();
+        renderLoadProgress({
+            phase: "start",
+            current: 0,
+            total: 1,
+            message: `Reading ${file.name}`,
+        });
+        setStatus(loadStatusOutput, `reading ${file.name}...`, "working");
+
+        try {
+            const buffer = await file.arrayBuffer();
+            const archiveBytes = new Uint8Array(buffer);
+
+            if (archiveBytes.length === 0) {
+                throw new Error("ZIP archive is empty");
+            }
+
+            state.latestArchiveBytes = archiveBytes;
+            state.latestSource = {
+                repo: file.name,
+                ref: "browser",
+                strategy: "zip-archive-bytes",
+            };
+            state.latestIngest = {
+                bytesRead: archiveBytes.byteLength,
+                loadedFiles: 0,
+                authMode: "local",
+                cache: { scope: "none", hit: false },
+                partial: false,
+                partialReasons: [],
+            };
+            state.latestLoadError = null;
+            renderRepoCapabilities();
+            renderIngestSummary();
+            argsInput.value = JSON.stringify(
+                archiveArgsForMode(modeInput.value),
+                null,
+                2
+            );
+            appendLog("zip archive -> main", {
+                source: state.latestSource,
+                byteLength: archiveBytes.byteLength,
+            });
+            renderLoadProgress({
+                phase: "complete",
+                current: 1,
+                total: 1,
+                message: `Loaded ${formatBytes(archiveBytes.byteLength)} from ${file.name}`,
+            });
+            setStatus(
+                loadStatusOutput,
+                `loaded ZIP archive (${formatBytes(archiveBytes.byteLength)}); send run to decode in wasm`,
+                "success"
+            );
+        } catch (error) {
+            const zipError = error instanceof Error ? error : new Error(String(error));
+            state.latestLoadError = zipError;
+            renderRepoCapabilities();
+            renderIngestSummary();
+            appendLog("zip archive error -> main", sanitizeErrorForLog(zipError));
+            renderLoadProgress({
+                phase: "error",
+                current: 0,
+                total: 1,
+                message: zipError.message,
+            });
+            setStatus(loadStatusOutput, `ZIP load failed: ${zipError.message}`, "error");
+        } finally {
+            state.localLoadActive = false;
+            updateRepoLoadControls();
+        }
+    });
+}
 
 cancelLoadButton.addEventListener("click", () => {
     if (!state.repoLoadAbortController) {
@@ -1017,6 +1150,28 @@ runButton.addEventListener("click", () => {
     }
 
     const requestId = `run-${state.nextRequestId++}`;
+    const runPayload = {
+        type: MESSAGE_TYPES.RUN,
+        requestId,
+        mode: modeInput.value,
+        args,
+    };
+
+    if (state.latestArchiveBytes) {
+        runPayload.archiveBytes = state.latestArchiveBytes;
+    }
+
+    if (!isRunMessage(runPayload)) {
+        setStatus(
+            runStatusOutput,
+            state.latestArchiveBytes
+                ? "archive runs require byte-mode options without inputs or paths"
+                : "run args must include valid in-memory inputs",
+            "error"
+        );
+        return;
+    }
+
     state.activeRequestId = requestId;
     cancelButton.disabled = !state.capabilities.cancel;
     renderRunProgress({
@@ -1031,6 +1186,7 @@ runButton.addEventListener("click", () => {
         requestId,
         mode: modeInput.value,
         args,
+        archiveBytes: state.latestArchiveBytes ?? undefined,
     });
 
     appendLog("main -> worker", message);

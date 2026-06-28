@@ -326,3 +326,60 @@ test("analyze run messages allow only explicit preset options with inputs", () =
         false
     );
 });
+
+test("archive run messages require byte-mode options without inputs", () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+
+    assert.equal(
+        isRunMessage({
+            type: "run",
+            requestId: "zip-lang",
+            mode: "lang",
+            args: { lang: { files: true } },
+            archiveBytes,
+        }),
+        true
+    );
+    assert.equal(
+        isRunMessage({
+            type: "run",
+            requestId: "zip-export",
+            mode: "export",
+            args: {},
+            archiveBytes,
+        }),
+        true
+    );
+    assert.equal(
+        isRunMessage({
+            type: "run",
+            requestId: "zip-analyze",
+            mode: "analyze",
+            args: { preset: "estimate" },
+            archiveBytes,
+        }),
+        true
+    );
+    assert.equal(
+        isRunMessage({
+            type: "run",
+            requestId: "zip-bad",
+            mode: "lang",
+            args: {
+                inputs: [{ path: "src/lib.rs", text: "pub fn alpha() {}\n" }],
+            },
+            archiveBytes,
+        }),
+        false
+    );
+    assert.equal(
+        isRunMessage({
+            type: "run",
+            requestId: "zip-paths",
+            mode: "lang",
+            args: { paths: ["src"] },
+            archiveBytes,
+        }),
+        false
+    );
+});

@@ -71,8 +71,14 @@
               <input id="local-directory" data-local-directory type="file" multiple webkitdirectory>
             </div>
 
+            <div class="field">
+              <label for="zip-archive">ZIP Archive</label>
+              <input id="zip-archive" data-zip-archive type="file" accept=".zip,application/zip">
+            </div>
+
             <div class="actions">
               <button class="secondary" type="button" data-load-local>Load Local Files</button>
+              <button class="secondary" type="button" data-load-zip disabled>Load ZIP Archive</button>
               <button class="secondary" type="button" data-load-repo>Load GitHub Repo</button>
               <button class="secondary" type="button" data-retry-load disabled>Retry Repo Load</button>
               <button class="secondary" type="button" data-cancel-load disabled>Cancel Repo Load</button>
