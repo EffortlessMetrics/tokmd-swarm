@@ -418,19 +418,20 @@ mod tests {
     }
 
     #[test]
-    fn admits_benign_entries_deterministically() {
+    fn admits_benign_entries_deterministically() -> Result<(), ArchiveError> {
         let entries = vec![
             RawArchiveEntry::file("z/last.rs", 4, b"zzzz".to_vec()),
             RawArchiveEntry::file("a/first.rs", 4, b"aaaa".to_vec()),
             RawArchiveEntry::directory("a/"),
         ];
-        let snap = snapshot_from_entries("repo", entries, &limits()).unwrap();
+        let snap = snapshot_from_entries("repo", entries, &limits())?;
         let paths: Vec<&str> = snap.paths().collect();
         assert_eq!(paths, vec!["a/first.rs", "z/last.rs"]);
         assert_eq!(
             snap.get("a/first.rs").map(VirtualFile::bytes),
             Some(&b"aaaa"[..])
         );
+        Ok(())
     }
 
     #[test]
@@ -581,15 +582,16 @@ mod tests {
     }
 
     #[test]
-    fn empty_stored_file_is_admitted() {
+    fn empty_stored_file_is_admitted() -> Result<(), ArchiveError> {
         let entries = vec![RawArchiveEntry::file("empty.txt", 0, Vec::new())];
-        let snap = snapshot_from_entries("repo", entries, &limits()).unwrap();
+        let snap = snapshot_from_entries("repo", entries, &limits())?;
         assert_eq!(snap.len(), 1);
         assert!(
             snap.get("empty.txt")
                 .map(VirtualFile::is_empty)
                 .unwrap_or(false)
         );
+        Ok(())
     }
 
     #[test]
@@ -604,9 +606,10 @@ mod tests {
     }
 
     #[test]
-    fn root_is_normalized() {
+    fn root_is_normalized() -> Result<(), ArchiveError> {
         let entries = vec![RawArchiveEntry::file("a.rs", 1, b"a".to_vec())];
-        let snap = snapshot_from_entries(".\\nested\\root", entries, &limits()).unwrap();
+        let snap = snapshot_from_entries(".\\nested\\root", entries, &limits())?;
         assert_eq!(snap.root(), "nested/root");
+        Ok(())
     }
 }
