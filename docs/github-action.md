@@ -205,16 +205,56 @@ The Action reads `manifest.json` and exposes `packet-status`,
 job summary with the packet status, top review priority, warnings, errors,
 artifact paths, the reproduction command, and the packet non-claims.
 
-The `fail-on` input maps packet status to workflow failure:
+#### Packet status and `fail-on`
 
-| `fail-on` | Behavior |
-| :-------- | :------- |
-| `failed` | Fail only when packet status is `failed` (default). |
-| `partial` | Fail when packet status is `partial` or `failed`. |
-| `never` | Never fail only because of packet status; still fail on runtime errors such as unresolved refs. |
+`mode: packet` separates two failure sources: the **packet status** recorded in
+`manifest.json`, and **runtime errors** that prevent a manifest from being
+written. The `fail-on` input governs only the first; runtime errors always fail
+the job.
 
-A run that cannot resolve `base`/`head` or otherwise fails before writing a
-manifest is a runtime error and fails regardless of `fail-on`.
+`tokmd packet generate` assigns one of three statuses (see
+[Evidence packet workflow spec](specs/evidence-packet-workflow.md#status-semantics)
+for the authoritative rules):
+
+| Status | What it means |
+| :----- | :------------ |
+| `complete` | All required artifacts exist, base/head refs resolved, and no warnings or errors were recorded. |
+| `partial` | Required artifacts exist, but non-fatal warnings bound the evidence — for example optional `syntax.json` is missing, malformed, or degraded. The manifest still records named warnings. |
+| `failed` | A required artifact is missing, refs did not resolve, `analyze.json` could not be parsed, or the preset/paths did not match the requested scope. The manifest is still written with named errors. |
+
+The Action maps each status to a job outcome through `fail-on`. The table also
+shows the GitHub log annotation the Action emits so you can recognize each case
+in CI logs:
+
+| Packet status | `fail-on: failed` (default) | `fail-on: partial` | `fail-on: never` |
+| :------------ | :-------------------------- | :----------------- | :--------------- |
+| `complete` | Pass | Pass | Pass |
+| `partial` | Pass | **Fail** — `::error::...status is 'partial' and fail-on=partial` | Pass |
+| `failed` | **Fail** — `::error::...status is 'failed'` | **Fail** — `::error::...status is 'failed'` | Pass with `::warning::...fail-on=never; not failing the job` |
+| unexpected | Pass with `::warning::Unexpected evidence packet status` | Pass with `::warning::` | Pass with `::warning::` |
+
+Read the three consumer-facing situations this way:
+
+- **Advisory evidence missing (does not fail).** Optional syntax evidence is
+  best-effort. When `syntax.json` cannot be produced, the packet degrades to
+  `partial` with a named warning rather than failing. Under the default
+  `fail-on: failed`, a `partial` packet still passes; the warning is a signal,
+  not a gate. Set `fail-on: partial` only when your workflow treats degraded
+  evidence as blocking.
+- **Partial packet (passes by default).** Same as above for any non-fatal
+  warning that bounds the evidence. The manifest, `warnings-count`, and
+  `packet-status` outputs let downstream jobs decide whether to act on it.
+- **Action fails.** A `failed` status fails the job under the default and
+  `fail-on: partial`; only `fail-on: never` downgrades it to a warning. On top
+  of that, a **runtime error** — an invalid `fail-on`/`syntax` value, an
+  unresolved `base`/`head` ref, or `tokmd packet generate` exiting before it
+  writes `manifest.json` — fails the job regardless of `fail-on`, because there
+  is no trustworthy packet status to honor.
+
+`fail-on: never` is the most permissive setting: it never fails the job for a
+packet status, but it does not suppress runtime errors. Use it when you want the
+packet purely as advisory evidence and prefer to gate on the `packet-status`,
+`warnings-count`, or `errors-count` outputs in a later step.
 
 For the full packet workflow model, including the GHCR container runtime, see
 [PR evidence packet workflows](packet-workflows.md).
