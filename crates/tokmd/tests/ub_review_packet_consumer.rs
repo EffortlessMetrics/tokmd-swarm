@@ -54,15 +54,20 @@ fn is_attachable(manifest: &EvidencePacketManifest) -> bool {
 }
 
 fn base_artifacts(with_syntax: bool) -> Value {
-    let mut artifacts = json!({
-        "analyze_md": "sensors/tokmd/analyze.md",
-        "analyze_json": "sensors/tokmd/analyze.json",
-        "context_md": "sensors/tokmd/context.md",
-    });
+    let mut artifacts = serde_json::Map::new();
+    artifacts.insert("analyze_md".to_string(), json!("sensors/tokmd/analyze.md"));
+    artifacts.insert(
+        "analyze_json".to_string(),
+        json!("sensors/tokmd/analyze.json"),
+    );
+    artifacts.insert("context_md".to_string(), json!("sensors/tokmd/context.md"));
     if with_syntax {
-        artifacts["syntax_json"] = json!("sensors/tokmd/syntax.json");
+        artifacts.insert(
+            "syntax_json".to_string(),
+            json!("sensors/tokmd/syntax.json"),
+        );
     }
-    artifacts
+    Value::Object(artifacts)
 }
 
 fn manifest_skeleton(status: &str, artifacts: Value, warnings: Value, errors: Value) -> Value {
@@ -200,7 +205,10 @@ fn consumer_confirms_schema_identity_before_interpreting_fields() -> TestResult 
     );
 
     let mut foreign = valid;
-    foreign["schema"] = json!("tokmd.evidence-packet/v2");
+    let foreign_obj = foreign
+        .as_object_mut()
+        .ok_or("manifest skeleton must be a JSON object")?;
+    foreign_obj.insert("schema".to_string(), json!("tokmd.evidence-packet/v2"));
     assert!(
         validate_against_schema(&foreign).is_err(),
         "a non-v1 schema id must be rejected by the v1 schema gate"
