@@ -173,6 +173,231 @@ impl ReadFs for MemFs {
 }
 
 // ---------------------------------------------------------------------------
+// RepoSnapshot / VirtualFile (experimental portability seam)
+// ---------------------------------------------------------------------------
+//
+// These types implement the minimal slice of the repo-snapshot portability
+// seam described in `docs/specs/repo-snapshot.md`. They capture a
+// provider-agnostic, deterministic view of in-scope files read through any
+// [`ReadFs`] backend (`HostFs`, `MemFs`, or a future host-supplied provider),
+// so scan/aggregation logic can later operate on the snapshot instead of
+// touching `std::fs` directly.
+//
+// EXPERIMENTAL / UNSTABLE: this is the first landing of the seam. The spec
+// keeps it intentionally narrow (eager byte capture, no directory walking, no
+// archive ingestion, no serialized format). The surface may change until a
+// real consumer promotes it; do not treat it as a stable support promise.
+
+/// Normalize a path to the forward-slash rule shared with `tokmd-model`.
+///
+/// `tokmd-model::normalize_path` is the canonical rule, but it lives in a
+/// higher tier; this tier-0 crate mirrors the core of that rule (backslash to
+/// forward slash, strip a leading `./`, trim leading `/`) without taking a
+/// dependency on `tokmd-model`.
+fn normalize_snapshot_path(path: &Path) -> String {
+    let raw = path.to_string_lossy();
+    let owned;
+    let mut slice: &str = if raw.contains('\\') {
+        owned = raw.replace('\\', "/");
+        &owned
+    } else {
+        &raw
+    };
+
+    if let Some(stripped) = slice.strip_prefix("./") {
+        slice = stripped;
+    }
+    slice = slice.trim_start_matches('/');
+    if let Some(stripped) = slice.strip_prefix("./") {
+        slice = stripped;
+    }
+    slice.trim_start_matches('/').to_string()
+}
+
+/// A single provider-agnostic file entry: a normalized forward-slash path plus
+/// its eagerly captured bytes.
+///
+/// EXPERIMENTAL: part of the repo-snapshot seam (see module note).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualFile {
+    path: String,
+    bytes: Vec<u8>,
+}
+
+impl VirtualFile {
+    /// The normalized forward-slash path of this entry.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The captured file contents.
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    /// The byte length of the captured contents.
+    pub fn len(&self) -> u64 {
+        self.bytes.len() as u64
+    }
+
+    /// Whether the captured contents are empty.
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+}
+
+/// Error raised while building a [`RepoSnapshot`].
+///
+/// EXPERIMENTAL: part of the repo-snapshot seam (see module note).
+#[derive(Debug)]
+pub enum SnapshotError<E> {
+    /// Reading an in-scope path through the provider failed.
+    Read {
+        /// The normalized path that failed to read.
+        path: String,
+        /// The provider-specific read error.
+        source: E,
+    },
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for SnapshotError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SnapshotError::Read { path, source } => {
+                write!(f, "failed to read snapshot entry '{path}': {source}")
+            }
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for SnapshotError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SnapshotError::Read { source, .. } => Some(source),
+        }
+    }
+}
+
+/// A deterministic, captured set of [`VirtualFile`] entries rooted at a logical
+/// repository root, built from any [`ReadFs`] provider.
+///
+/// Entries are keyed by their normalized path in a sorted map, so enumeration
+/// order is stable and independent of insertion order.
+///
+/// EXPERIMENTAL: part of the repo-snapshot seam (see module note).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepoSnapshot {
+    root: String,
+    files: BTreeMap<String, VirtualFile>,
+}
+
+impl RepoSnapshot {
+    /// Start building a snapshot rooted at `root`, reading entries through `fs`.
+    pub fn builder<F: ReadFs>(fs: &F, root: impl AsRef<Path>) -> RepoSnapshotBuilder<'_, F> {
+        RepoSnapshotBuilder {
+            fs,
+            root: normalize_snapshot_path(root.as_ref()),
+            files: BTreeMap::new(),
+        }
+    }
+
+    /// The normalized logical repository root.
+    pub fn root(&self) -> &str {
+        &self.root
+    }
+
+    /// The number of captured entries.
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    /// Whether the snapshot captured no entries.
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    /// Whether a normalized path is present in the snapshot.
+    pub fn contains(&self, path: impl AsRef<Path>) -> bool {
+        self.files
+            .contains_key(&normalize_snapshot_path(path.as_ref()))
+    }
+
+    /// Look up a captured entry by path.
+    pub fn get(&self, path: impl AsRef<Path>) -> Option<&VirtualFile> {
+        self.files.get(&normalize_snapshot_path(path.as_ref()))
+    }
+
+    /// Iterate captured entries in deterministic (sorted-path) order.
+    pub fn files(&self) -> impl Iterator<Item = &VirtualFile> {
+        self.files.values()
+    }
+
+    /// Iterate captured paths in deterministic (sorted) order.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.files.keys().map(String::as_str)
+    }
+}
+
+/// Builder that reads in-scope paths through a [`ReadFs`] provider and captures
+/// them into a [`RepoSnapshot`].
+///
+/// EXPERIMENTAL: part of the repo-snapshot seam (see module note).
+pub struct RepoSnapshotBuilder<'fs, F: ReadFs> {
+    fs: &'fs F,
+    root: String,
+    files: BTreeMap<String, VirtualFile>,
+}
+
+impl<F: ReadFs> RepoSnapshotBuilder<'_, F> {
+    /// Read one in-scope path through the provider and capture it.
+    ///
+    /// The path is normalized to the forward-slash rule before capture, so the
+    /// same logical file produces the same key regardless of the host
+    /// separator. Re-adding an already-captured path overwrites it.
+    pub fn add_path(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<&mut Self, SnapshotError<F::Error>> {
+        let path = path.as_ref();
+        let normalized = normalize_snapshot_path(path);
+        let bytes = self
+            .fs
+            .read_bytes(path)
+            .map_err(|source| SnapshotError::Read {
+                path: normalized.clone(),
+                source,
+            })?;
+        self.files.insert(
+            normalized.clone(),
+            VirtualFile {
+                path: normalized,
+                bytes,
+            },
+        );
+        Ok(self)
+    }
+
+    /// Read every path in `paths`, failing closed on the first read error.
+    pub fn add_paths<P: AsRef<Path>>(
+        &mut self,
+        paths: impl IntoIterator<Item = P>,
+    ) -> Result<&mut Self, SnapshotError<F::Error>> {
+        for path in paths {
+            self.add_path(path)?;
+        }
+        Ok(self)
+    }
+
+    /// Finish building, yielding a deterministic snapshot.
+    pub fn build(self) -> RepoSnapshot {
+        RepoSnapshot {
+            root: self.root,
+            files: self.files,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
