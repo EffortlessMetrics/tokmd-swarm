@@ -54,7 +54,15 @@ function extractRunnerError(error) {
     return { code, message };
 }
 
-async function invokeRunner(runner, mode, args) {
+async function invokeRunner(runner, mode, args, archiveBytes = null) {
+    if (archiveBytes instanceof Uint8Array) {
+        if (typeof runner.runJsonBytes !== "function") {
+            throw new Error("tokmd-wasm bundle does not provide archive byte mode");
+        }
+
+        return runner.runJsonBytes(mode, args, archiveBytes);
+    }
+
     switch (mode) {
         case "lang":
             return runner.runLang(args);
@@ -69,8 +77,26 @@ async function invokeRunner(runner, mode, args) {
     }
 }
 
-function progressPhasesForMode(mode) {
+function progressPhasesForMode(mode, archiveBytes = null) {
+    if (archiveBytes instanceof Uint8Array) {
+        return mode === "analyze" ? ["decode", "analyze"] : ["decode"];
+    }
+
     return mode === "analyze" ? ["fetch", "analyze"] : ["fetch"];
+}
+
+function progressMessageForPhase(phase, mode, archiveBytes = null) {
+    if (phase === "decode") {
+        return "Decoding ZIP archive bytes";
+    }
+
+    if (phase === "fetch") {
+        return archiveBytes instanceof Uint8Array
+            ? "Decoding ZIP archive bytes"
+            : "Fetching in-memory inputs";
+    }
+
+    return `Running ${mode}`;
 }
 
 function emitProgress(onProgress, message) {
@@ -149,6 +175,14 @@ export async function handleRunnerMessage(message, options = {}) {
         );
     }
 
+    if (message.archiveBytes instanceof Uint8Array && typeof runner?.runJsonBytes !== "function") {
+        return createErrorMessage(
+            message.requestId,
+            "zipball_unavailable",
+            "browser runner loaded a wasm bundle without runJsonBytes archive support"
+        );
+    }
+
     try {
         emitProgress(
             onProgress,
@@ -157,19 +191,25 @@ export async function handleRunnerMessage(message, options = {}) {
                 message: `Starting ${message.mode} run`,
             })
         );
-        for (const phase of progressPhasesForMode(message.mode)) {
+        for (const phase of progressPhasesForMode(message.mode, message.archiveBytes)) {
             emitProgress(
                 onProgress,
                 createProgressMessage(message.requestId, phase, {
                     mode: message.mode,
-                    message:
-                        phase === "fetch"
-                            ? "Fetching in-memory inputs"
-                            : `Running ${message.mode}`,
+                    message: progressMessageForPhase(
+                        phase,
+                        message.mode,
+                        message.archiveBytes
+                    ),
                 })
             );
         }
-        const data = await invokeRunner(runner, message.mode, message.args);
+        const data = await invokeRunner(
+            runner,
+            message.mode,
+            message.args,
+            message.archiveBytes
+        );
         emitProgress(
             onProgress,
             createProgressMessage(message.requestId, "done", {

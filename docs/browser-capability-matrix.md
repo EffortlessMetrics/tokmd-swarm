@@ -67,8 +67,7 @@ closed:
 - `wasm-bindgen-test` coverage exercises the `Uint8Array` path end-to-end and
   asserts byte-mode parity with inline `{ path, text }` inputs.
 
-Remaining follow-on (out of scope for this slice): wire `runJsonBytes` into the
-browser runner UI (`web/runner`) so `zipball` upload is user-facing; streaming
+Remaining follow-on (out of scope for this slice): streaming
 upload; tar-family containers.
 
 ## Native-only
@@ -90,9 +89,8 @@ the boundaries in [browser.md](browser.md#native-only-boundaries) and the
   `tokmd-wasm`, including ZIP archive byte upload via `runJsonBytes` when built
   with `archive-zip`, and an honest experimental/native-only split for git and
   filesystem capabilities.
-- **Does not establish**: in-browser git history, browser-runner UI wiring for
-  ZIP upload (`web/runner` `zipball` remains false until a follow-on PR),
-  streaming upload, or tar-family containers.
+- **Does not establish**: in-browser git history, manual browser smoke of the
+  runner ZIP upload path, streaming upload, or tar-family containers.
 
 ## See also
 

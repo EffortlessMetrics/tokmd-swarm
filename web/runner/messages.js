@@ -49,13 +49,19 @@ export function createReadyMessage(options = {}) {
     };
 }
 
-export function createRunMessage({ requestId, mode, args = {} }) {
-    return {
+export function createRunMessage({ requestId, mode, args = {}, archiveBytes = null }) {
+    const message = {
         type: MESSAGE_TYPES.RUN,
         requestId,
         mode,
         args,
     };
+
+    if (archiveBytes instanceof Uint8Array) {
+        message.archiveBytes = archiveBytes;
+    }
+
+    return message;
 }
 
 export function createCancelMessage(requestId) {
@@ -177,6 +183,64 @@ function isScanOptions(value) {
     return value === undefined || (isPlainObject(value) && hasOnlyKeys(value, ["inputs"]));
 }
 
+function archiveArgsForbidInMemoryInputs(args) {
+    if (!isPlainObject(args)) {
+        return false;
+    }
+
+    if (args.inputs !== undefined || args.paths !== undefined) {
+        return false;
+    }
+
+    if (args.scan !== undefined) {
+        return false;
+    }
+
+    return true;
+}
+
+export function isArchiveRunArgsForMode(mode, args) {
+    if (!archiveArgsForbidInMemoryInputs(args)) {
+        return false;
+    }
+
+    if (mode === "analyze") {
+        return Boolean(
+            hasOnlyKeys(args, ["preset", "analyze"]) &&
+                (args.preset === undefined || typeof args.preset === "string") &&
+                (args.analyze === undefined || isAnalyzeOptions(args.analyze))
+        );
+    }
+
+    if (mode === "lang") {
+        return Boolean(
+            hasOnlyKeys(args, ["lang", "files"]) &&
+                (args.files === undefined || typeof args.files === "boolean") &&
+                (args.lang === undefined ||
+                    (isPlainObject(args.lang) &&
+                        hasOnlyKeys(args.lang, ["files"]) &&
+                        (args.lang.files === undefined || typeof args.lang.files === "boolean")))
+        );
+    }
+
+    if (mode === "module" || mode === "export") {
+        return Object.keys(args).length === 0;
+    }
+
+    return false;
+}
+
+export function sampleArchiveArgsForMode(mode, preset = "receipt") {
+    switch (mode) {
+        case "lang":
+            return { lang: { files: true } };
+        case "analyze":
+            return { preset };
+        default:
+            return {};
+    }
+}
+
 function isRunArgsForMode(mode, args) {
     if (!isPlainObject(args)) {
         return false;
@@ -207,13 +271,20 @@ function isRunArgsForMode(mode, args) {
 }
 
 export function isRunMessage(value) {
-    return Boolean(
-        value &&
-            value.type === MESSAGE_TYPES.RUN &&
-            typeof value.requestId === "string" &&
-            typeof value.mode === "string" &&
-            isRunArgsForMode(value.mode, value.args)
-    );
+    if (
+        !value ||
+        value.type !== MESSAGE_TYPES.RUN ||
+        typeof value.requestId !== "string" ||
+        typeof value.mode !== "string"
+    ) {
+        return false;
+    }
+
+    if (value.archiveBytes instanceof Uint8Array) {
+        return isArchiveRunArgsForMode(value.mode, value.args);
+    }
+
+    return isRunArgsForMode(value.mode, value.args);
 }
 
 export function isCancelMessage(value) {
