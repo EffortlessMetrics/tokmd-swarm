@@ -567,7 +567,8 @@ mod tests {
     }
 
     #[test]
-    fn compares_python_shadow_inputs_without_marking_unsupported() {
+    fn compares_python_shadow_inputs_without_marking_unsupported() -> Result<(), ShadowArtifactError>
+    {
         let heuristic = [ShadowLandmark::function("run", 1, 2)];
         let files = [ShadowFileInput {
             path: "tools/run.py",
@@ -576,8 +577,7 @@ mod tests {
             heuristic_landmarks: &heuristic,
         }];
 
-        let artifacts =
-            build_shadow_artifacts(&files).expect("Python shadow language should compare");
+        let artifacts = build_shadow_artifacts(&files)?;
 
         assert_eq!(
             artifacts.ast["files"][0]["parser_status"],
@@ -586,6 +586,7 @@ mod tests {
         assert_eq!(artifacts.diff["files"][0]["status"], "compared");
         assert_eq!(artifacts.diff["files"][0]["unsupported"], false);
         assert_eq!(artifacts.diff["summary"]["unsupported"], 0);
+        Ok(())
     }
 
     #[test]

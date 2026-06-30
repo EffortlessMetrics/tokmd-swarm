@@ -928,7 +928,12 @@ fn python_function_name_from_line(line: &str) -> Option<String> {
 }
 
 fn python_block_end_line(lines: &[&str], start: usize) -> usize {
-    let base_indent = lines[start].len() - lines[start].trim_start().len();
+    let Some(start_line) = lines.get(start) else {
+        return start.saturating_add(1);
+    };
+    let base_indent = start_line
+        .len()
+        .saturating_sub(start_line.trim_start().len());
     let mut last_content = start;
 
     for (index, line) in lines.iter().enumerate().skip(start + 1) {
@@ -936,7 +941,7 @@ fn python_block_end_line(lines: &[&str], start: usize) -> usize {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let indent = line.len() - line.trim_start().len();
+        let indent = line.len().saturating_sub(line.trim_start().len());
         if indent <= base_indent {
             return last_content + 1;
         }
