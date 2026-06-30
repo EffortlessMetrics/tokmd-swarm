@@ -660,6 +660,7 @@ paths = [
   "crates/tokmd-analysis/Cargo.toml",
   "crates/tokmd-analysis/examples/ast_shadow_perf.rs",
   "crates/tokmd-analysis/src/ast/**",
+  "crates/tokmd-analysis/tests/ast_shadow_backend_taxonomy.rs",
   "fixtures/ast-shadow/**",
   "fixtures/syntax/**",
   "policy/ast-shadow-corpus.toml",
