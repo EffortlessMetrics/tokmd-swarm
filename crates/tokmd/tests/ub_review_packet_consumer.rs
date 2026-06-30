@@ -251,39 +251,12 @@ mod real_producer_bridge {
     use super::{TestResult, consume, is_attachable};
     use crate::common;
 
+    type SetupResult<T> = Result<T, Box<dyn std::error::Error>>;
+
     const SCOPE_PATH: &str = "src/runtime/api/MarkdownObject.rs";
 
-    /// Initialise a git repo whose review scope changed between `main` and HEAD,
-    /// matching the diff window the producer resolves.
-    fn init_repo_with_scope() -> tempfile::TempDir {
-        let dir = tempdir().expect("create temp dir");
-        assert!(common::init_git_repo(dir.path()), "git init");
-        let scope_dir = dir.path().join("src").join("runtime").join("api");
-        std::fs::create_dir_all(&scope_dir).expect("create scope dir");
-        std::fs::write(scope_dir.join("MarkdownObject.rs"), "pub fn old() {}\n")
-            .expect("write initial scope file");
-        assert!(
-            common::git_add_commit(dir.path(), "initial"),
-            "initial commit"
-        );
-        std::fs::write(
-            scope_dir.join("MarkdownObject.rs"),
-            "pub fn old() {}\npub fn new_boundary() {}\n",
-        )
-        .expect("write changed scope file");
-        assert!(
-            common::git_add_commit(dir.path(), "change api"),
-            "change commit"
-        );
-        dir
-    }
-
-    /// Write the three required sensor artifacts the producer indexes.
-    fn write_required_artifacts(root: &Path) {
-        let sensor_dir = root.join("sensors").join("tokmd");
-        std::fs::create_dir_all(&sensor_dir).expect("create sensor dir");
-        std::fs::write(sensor_dir.join("analyze.md"), "# Bun UB analyze\n")
-            .expect("write analyze.md");
+    /// Write the canonical complete `analyze.json` the producer validates.
+    fn write_analyze_json(sensor_dir: &Path) -> SetupResult<()> {
         std::fs::write(
             sensor_dir.join("analyze.json"),
             json!({
@@ -293,13 +266,46 @@ mod real_producer_bridge {
                 "source": { "inputs": [SCOPE_PATH] }
             })
             .to_string(),
-        )
-        .expect("write analyze.json");
-        std::fs::write(sensor_dir.join("context.md"), "# Context\n").expect("write context.md");
+        )?;
+        Ok(())
+    }
+
+    /// Initialise a git repo whose review scope changed between `main` and HEAD,
+    /// matching the diff window the producer resolves. Fallible so the bridge
+    /// stays panic-free.
+    fn init_repo_with_scope() -> SetupResult<tempfile::TempDir> {
+        let dir = tempdir()?;
+        if !common::init_git_repo(dir.path()) {
+            return Err("git init failed".into());
+        }
+        let scope_dir = dir.path().join("src").join("runtime").join("api");
+        std::fs::create_dir_all(&scope_dir)?;
+        std::fs::write(scope_dir.join("MarkdownObject.rs"), "pub fn old() {}\n")?;
+        if !common::git_add_commit(dir.path(), "initial") {
+            return Err("initial commit failed".into());
+        }
+        std::fs::write(
+            scope_dir.join("MarkdownObject.rs"),
+            "pub fn old() {}\npub fn new_boundary() {}\n",
+        )?;
+        if !common::git_add_commit(dir.path(), "change api") {
+            return Err("change commit failed".into());
+        }
+        Ok(dir)
+    }
+
+    /// Write the three required sensor artifacts the producer indexes.
+    fn write_required_artifacts(root: &Path) -> SetupResult<()> {
+        let sensor_dir = root.join("sensors").join("tokmd");
+        std::fs::create_dir_all(&sensor_dir)?;
+        std::fs::write(sensor_dir.join("analyze.md"), "# Bun UB analyze\n")?;
+        write_analyze_json(&sensor_dir)?;
+        std::fs::write(sensor_dir.join("context.md"), "# Context\n")?;
+        Ok(())
     }
 
     /// Run the producer and return its emitted `manifest.json` value.
-    fn generate_manifest(root: &Path, extra_args: &[&str]) -> Value {
+    fn generate_manifest(root: &Path, extra_args: &[&str]) -> SetupResult<Value> {
         let mut args = vec!["evidence-packet", "--base", "main", "--head", "HEAD"];
         args.extend_from_slice(extra_args);
         args.push(SCOPE_PATH);
@@ -309,11 +315,10 @@ mod real_producer_bridge {
         let _ = Command::new(env!("CARGO_BIN_EXE_tokmd"))
             .current_dir(root)
             .args(&args)
-            .output()
-            .expect("run tokmd evidence-packet");
+            .output()?;
         let manifest_path = root.join("sensors").join("tokmd").join("manifest.json");
-        let raw = std::fs::read_to_string(manifest_path).expect("read manifest.json");
-        serde_json::from_str(&raw).expect("manifest.json is valid JSON")
+        let raw = std::fs::read_to_string(manifest_path)?;
+        Ok(serde_json::from_str(&raw)?)
     }
 
     #[test]
@@ -321,10 +326,10 @@ mod real_producer_bridge {
         if !common::git_available() {
             return Ok(());
         }
-        let dir = init_repo_with_scope();
-        write_required_artifacts(dir.path());
+        let dir = init_repo_with_scope()?;
+        write_required_artifacts(dir.path())?;
 
-        let manifest = generate_manifest(dir.path(), &[]);
+        let manifest = generate_manifest(dir.path(), &[])?;
         // Real producer output must round-trip through the published schema and
         // the public consumer type unchanged.
         let packet: EvidencePacketManifest = consume(&manifest)?;
@@ -346,14 +351,14 @@ mod real_producer_bridge {
         if !common::git_available() {
             return Ok(());
         }
-        let dir = init_repo_with_scope();
-        write_required_artifacts(dir.path());
+        let dir = init_repo_with_scope()?;
+        write_required_artifacts(dir.path())?;
 
         // Request an optional syntax artifact that was never written: the
         // documented "advisory-missing" state. Per ADR-0015 the packet degrades
         // to `partial` with a named warning and stays attachable.
         let manifest =
-            generate_manifest(dir.path(), &["--syntax-json", "sensors/tokmd/syntax.json"]);
+            generate_manifest(dir.path(), &["--syntax-json", "sensors/tokmd/syntax.json"])?;
         let packet: EvidencePacketManifest = consume(&manifest)?;
 
         assert_eq!(packet.status, EvidencePacketStatus::Partial);
@@ -381,24 +386,14 @@ mod real_producer_bridge {
         if !common::git_available() {
             return Ok(());
         }
-        let dir = init_repo_with_scope();
+        let dir = init_repo_with_scope()?;
         // Omit the required analyze.md / context.md so the producer marks the
         // packet `failed` and records errors, while still writing the manifest.
         let sensor_dir = dir.path().join("sensors").join("tokmd");
-        std::fs::create_dir_all(&sensor_dir).expect("create sensor dir");
-        std::fs::write(
-            sensor_dir.join("analyze.json"),
-            json!({
-                "status": "complete",
-                "warnings": [],
-                "args": { "preset": "bun-ub" },
-                "source": { "inputs": [SCOPE_PATH] }
-            })
-            .to_string(),
-        )
-        .expect("write analyze.json");
+        std::fs::create_dir_all(&sensor_dir)?;
+        write_analyze_json(&sensor_dir)?;
 
-        let manifest = generate_manifest(dir.path(), &[]);
+        let manifest = generate_manifest(dir.path(), &[])?;
         // A failed manifest is still schema-valid and typed for inspection.
         let packet: EvidencePacketManifest = consume(&manifest)?;
 
