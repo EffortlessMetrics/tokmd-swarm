@@ -25,6 +25,13 @@ use std::error::Error;
 use serde_json::{Value, json};
 use tokmd_types::{EVIDENCE_PACKET_SCHEMA, EvidencePacketManifest, EvidencePacketStatus};
 
+// Shared git/test helpers, declared at the crate root so the standard
+// `tests/common/mod.rs` resolution works on every platform (a nested-module
+// `#[path]` with `..` is not portable). Only the `analysis`-gated bridge below
+// uses it, so gate the declaration to avoid an unused module warning.
+#[cfg(feature = "analysis")]
+mod common;
+
 type TestResult = Result<(), Box<dyn Error>>;
 
 const SCHEMA_JSON: &str = include_str!("../schemas/evidence-packet.schema.json");
@@ -242,9 +249,7 @@ mod real_producer_bridge {
     use tokmd_types::{EvidencePacketManifest, EvidencePacketStatus};
 
     use super::{TestResult, consume, is_attachable};
-
-    #[path = "../common/mod.rs"]
-    mod common;
+    use crate::common;
 
     const SCOPE_PATH: &str = "src/runtime/api/MarkdownObject.rs";
 
