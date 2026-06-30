@@ -1,4 +1,6 @@
+use super::python;
 use super::rust;
+use super::typescript;
 
 pub const AST_SHADOW_SCHEMA_VERSION: &str = "tokmd.ast_shadow.v1";
 pub const SYNTAX_RECEIPT_SCHEMA_VERSION: &str = "tokmd.syntax_receipt.v1";
@@ -52,7 +54,13 @@ impl AstCapability {
 
 #[must_use]
 pub fn capabilities() -> &'static [AstCapability] {
-    rust::CAPABILITIES
+    static CAPABILITIES: &[AstCapability] = &[
+        rust::RUST_CAPABILITY,
+        typescript::TYPESCRIPT_CAPABILITY,
+        typescript::TSX_CAPABILITY,
+        python::PYTHON_CAPABILITY,
+    ];
+    CAPABILITIES
 }
 
 #[cfg(test)]

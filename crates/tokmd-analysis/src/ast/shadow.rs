@@ -1,6 +1,13 @@
 use super::capability::{AST_SHADOW_SCHEMA_VERSION, AstLanguage, AstParserStatus, capabilities};
+use super::python::{
+    PythonAstError, PythonAstShadow, PythonLandmark, PythonLandmarkKind, parse_python_landmarks,
+};
 use super::rust::{
     RustAstError, RustAstShadow, RustLandmark, RustLandmarkKind, parse_rust_landmarks,
+};
+use super::typescript::{
+    TypeScriptAstError, TypeScriptAstShadow, TypeScriptLandmark, TypeScriptLandmarkKind,
+    parse_typescript_landmarks,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -51,7 +58,9 @@ pub struct ShadowArtifactPaths {
 #[derive(Debug)]
 pub enum ShadowArtifactError {
     AbsolutePath(String),
+    PythonAst(PythonAstError),
     RustAst(RustAstError),
+    TypeScriptAst(TypeScriptAstError),
 }
 
 impl fmt::Display for ShadowArtifactError {
@@ -60,7 +69,9 @@ impl fmt::Display for ShadowArtifactError {
             Self::AbsolutePath(path) => {
                 write!(f, "AST shadow artifact paths must be relative: {path}")
             }
+            Self::PythonAst(error) => write!(f, "{error}"),
             Self::RustAst(error) => write!(f, "{error}"),
+            Self::TypeScriptAst(error) => write!(f, "{error}"),
         }
     }
 }
@@ -69,14 +80,28 @@ impl Error for ShadowArtifactError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::AbsolutePath(_) => None,
+            Self::PythonAst(error) => Some(error),
             Self::RustAst(error) => Some(error),
+            Self::TypeScriptAst(error) => Some(error),
         }
+    }
+}
+
+impl From<PythonAstError> for ShadowArtifactError {
+    fn from(error: PythonAstError) -> Self {
+        Self::PythonAst(error)
     }
 }
 
 impl From<RustAstError> for ShadowArtifactError {
     fn from(error: RustAstError) -> Self {
         Self::RustAst(error)
+    }
+}
+
+impl From<TypeScriptAstError> for ShadowArtifactError {
+    fn from(error: TypeScriptAstError) -> Self {
+        Self::TypeScriptAst(error)
     }
 }
 
@@ -148,8 +173,23 @@ pub fn build_shadow_artifacts(
                     AstParserStatus::ParserBackedShadow,
                 )
             }
-            AstLanguage::Python | AstLanguage::TypeScript | AstLanguage::Tsx => {
-                (Vec::new(), false, true, AstParserStatus::Unsupported)
+            AstLanguage::Python => {
+                let ast_shadow = parse_python_landmarks(input.source)?;
+                (
+                    shadow_landmarks_from_python(&ast_shadow),
+                    ast_shadow.has_error,
+                    false,
+                    AstParserStatus::ParserBackedShadow,
+                )
+            }
+            AstLanguage::TypeScript | AstLanguage::Tsx => {
+                let ast_shadow = parse_typescript_landmarks(input.source, input.language)?;
+                (
+                    shadow_landmarks_from_typescript(&ast_shadow),
+                    ast_shadow.has_error,
+                    false,
+                    AstParserStatus::ParserBackedShadow,
+                )
             }
         };
         ast_landmarks.sort();
@@ -271,6 +311,56 @@ fn parser_status_value(status: AstParserStatus) -> &'static str {
     match status {
         AstParserStatus::ParserBackedShadow => "parser_backed_shadow",
         AstParserStatus::Unsupported => "unsupported",
+    }
+}
+
+fn shadow_landmarks_from_python(shadow: &PythonAstShadow) -> Vec<ShadowLandmark> {
+    shadow
+        .landmarks
+        .iter()
+        .map(shadow_landmark_from_python)
+        .collect()
+}
+
+fn shadow_landmark_from_python(landmark: &PythonLandmark) -> ShadowLandmark {
+    ShadowLandmark {
+        kind: python_landmark_kind_value(landmark.kind).to_owned(),
+        name: landmark.name.clone(),
+        start_line: landmark.start_line,
+        end_line: landmark.end_line,
+    }
+}
+
+fn python_landmark_kind_value(kind: PythonLandmarkKind) -> &'static str {
+    match kind {
+        PythonLandmarkKind::ControlFlow => "control_flow",
+        PythonLandmarkKind::Function => "function",
+        PythonLandmarkKind::Import => "import",
+    }
+}
+
+fn shadow_landmarks_from_typescript(shadow: &TypeScriptAstShadow) -> Vec<ShadowLandmark> {
+    shadow
+        .landmarks
+        .iter()
+        .map(shadow_landmark_from_typescript)
+        .collect()
+}
+
+fn shadow_landmark_from_typescript(landmark: &TypeScriptLandmark) -> ShadowLandmark {
+    ShadowLandmark {
+        kind: typescript_landmark_kind_value(landmark.kind).to_owned(),
+        name: landmark.name.clone(),
+        start_line: landmark.start_line,
+        end_line: landmark.end_line,
+    }
+}
+
+fn typescript_landmark_kind_value(kind: TypeScriptLandmarkKind) -> &'static str {
+    match kind {
+        TypeScriptLandmarkKind::ControlFlow => "control_flow",
+        TypeScriptLandmarkKind::Function => "function",
+        TypeScriptLandmarkKind::Import => "import",
     }
 }
 
@@ -477,23 +567,25 @@ mod tests {
     }
 
     #[test]
-    fn marks_non_rust_shadow_inputs_as_unsupported_without_failing() {
-        let heuristic = [ShadowLandmark::function("run", 1, 1)];
+    fn compares_python_shadow_inputs_without_marking_unsupported() {
+        let heuristic = [ShadowLandmark::function("run", 1, 2)];
         let files = [ShadowFileInput {
             path: "tools/run.py",
             language: AstLanguage::Python,
-            source: "def run():\n    return 1\n",
+            source: "import os\n\ndef run():\n    if True:\n        return 1\n",
             heuristic_landmarks: &heuristic,
         }];
 
         let artifacts =
-            build_shadow_artifacts(&files).expect("unsupported shadow language should be advisory");
+            build_shadow_artifacts(&files).expect("Python shadow language should compare");
 
-        assert_eq!(artifacts.ast["files"][0]["parser_status"], "unsupported");
-        assert_eq!(artifacts.diff["files"][0]["status"], "unsupported");
-        assert_eq!(artifacts.diff["files"][0]["unsupported"], true);
-        assert_eq!(artifacts.diff["summary"]["unsupported"], 1);
-        assert_eq!(artifacts.diff["summary"]["heuristic_only"], 1);
+        assert_eq!(
+            artifacts.ast["files"][0]["parser_status"],
+            "parser_backed_shadow"
+        );
+        assert_eq!(artifacts.diff["files"][0]["status"], "compared");
+        assert_eq!(artifacts.diff["files"][0]["unsupported"], false);
+        assert_eq!(artifacts.diff["summary"]["unsupported"], 0);
     }
 
     #[test]

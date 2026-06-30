@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 use tokmd_analysis::ast::{
     AstLanguage, ShadowFileInput, ShadowLandmark, build_shadow_artifacts, normalize_shadow_path,
-    write_shadow_artifacts,
+    syntax_capability_for_path, write_shadow_artifacts,
 };
 
 const AST_SHADOW_CORPUS_SCHEMA: &str = "tokmd.ast_shadow_corpus.v1";
@@ -33,7 +33,7 @@ fn run_with_root(args: AstShadowCompareArgs, root: &Path) -> Result<()> {
         .iter()
         .map(|input| ShadowFileInput {
             path: input.path.as_str(),
-            language: AstLanguage::Rust,
+            language: input.language,
             source: input.source.as_str(),
             heuristic_landmarks: &input.heuristic_landmarks,
         })
@@ -219,7 +219,7 @@ fn write_timing_json(
         schema: AST_SHADOW_COMPARE_TIMING_SCHEMA,
         schema_version: 1,
         command: "cargo xtask ast-shadow-compare",
-        language: "rust",
+        language: corpus_language_label(&inputs),
         corpus: TimingCorpus {
             manifest: args
                 .manifest
@@ -510,6 +510,7 @@ fn summary_display_path(path: &Path, root: &Path) -> Result<String> {
 #[derive(Debug)]
 struct RunnerInput {
     path: String,
+    language: AstLanguage,
     source: String,
     heuristic_landmarks: Vec<ShadowLandmark>,
 }
@@ -571,18 +572,20 @@ fn read_manifest_paths(manifest_path: &Path, root: &Path) -> Result<Vec<PathBuf>
             manifest.schema
         );
     }
-    if manifest.language != "rust" {
+    if manifest.language != "rust" && manifest.language != "multi" {
         bail!(
-            "AST shadow corpus manifest currently supports only Rust, found `{}`",
+            "AST shadow corpus manifest language `{}` must be `rust` or `multi`",
             manifest.language
         );
     }
-    if let Some(extension) = &manifest.rules.supported_extension
-        && extension != ".rs"
-    {
-        bail!(
-            "AST shadow corpus manifest currently supports only `.rs` files, found `{extension}`"
-        );
+    if manifest.language == "rust" {
+        if let Some(extension) = &manifest.rules.supported_extension
+            && extension != ".rs"
+        {
+            bail!(
+                "Rust-only AST shadow corpus manifest supports only `.rs` files, found `{extension}`"
+            );
+        }
     }
     if manifest.file.is_empty() {
         bail!(
@@ -601,7 +604,7 @@ fn read_manifest_paths(manifest_path: &Path, root: &Path) -> Result<Vec<PathBuf>
                     entry.path
                 );
             }
-            validate_repo_relative_rust_path(Path::new(&entry.path), root)
+            validate_repo_relative_source_path(Path::new(&entry.path), root)
                 .with_context(|| format!("validate AST shadow corpus path {}", entry.path))
         })
         .collect()
@@ -617,18 +620,48 @@ fn collect_inputs(paths: &[PathBuf], root: &Path) -> Result<Vec<RunnerInput>> {
 }
 
 fn collect_input(path: &Path, root: &Path) -> Result<RunnerInput> {
-    let rel_path = validate_repo_relative_rust_path(path, root)?;
+    let rel_path = validate_repo_relative_source_path(path, root)?;
     let full_path = root.join(&rel_path);
     let source =
         fs::read_to_string(&full_path).with_context(|| format!("read {}", rel_path.display()))?;
     let normalized = normalize_shadow_path(&rel_path.to_string_lossy());
-    let heuristic_landmarks = heuristic_rust_landmarks(&source);
+    let language = language_for_shadow_path(&normalized)?;
+    let heuristic_landmarks = heuristic_landmarks_for_language(language, &source);
 
     Ok(RunnerInput {
         path: normalized,
+        language,
         source,
         heuristic_landmarks,
     })
+}
+
+fn language_for_shadow_path(path: &str) -> Result<AstLanguage> {
+    syntax_capability_for_path(path)
+        .map(|capability| capability.language)
+        .with_context(|| format!("AST shadow compare does not support file extension: {path}"))
+}
+
+fn heuristic_landmarks_for_language(language: AstLanguage, source: &str) -> Vec<ShadowLandmark> {
+    match language {
+        AstLanguage::Rust => heuristic_rust_landmarks(source),
+        AstLanguage::TypeScript | AstLanguage::Tsx => heuristic_typescript_landmarks(source),
+        AstLanguage::Python => heuristic_python_landmarks(source),
+    }
+}
+
+fn corpus_language_label(inputs: &[RunnerInput]) -> &'static str {
+    let mut languages = inputs
+        .iter()
+        .map(|input| input.language.as_str())
+        .collect::<Vec<_>>();
+    languages.sort_unstable();
+    languages.dedup();
+    if languages.len() <= 1 {
+        languages.first().copied().unwrap_or("rust")
+    } else {
+        "multi"
+    }
 }
 
 fn validate_repo_relative_toml_path(path: &Path, root: &Path) -> Result<PathBuf> {
@@ -675,7 +708,7 @@ fn validate_repo_relative_toml_path(path: &Path, root: &Path) -> Result<PathBuf>
     Ok(path.to_path_buf())
 }
 
-fn validate_repo_relative_rust_path(path: &Path, root: &Path) -> Result<PathBuf> {
+fn validate_repo_relative_source_path(path: &Path, root: &Path) -> Result<PathBuf> {
     if path.is_absolute() {
         bail!(
             "AST shadow input paths must be repo-relative: {}",
@@ -695,9 +728,9 @@ fn validate_repo_relative_rust_path(path: &Path, root: &Path) -> Result<PathBuf>
         );
     }
 
-    if path.extension() != Some(OsStr::new("rs")) {
+    if syntax_capability_for_path(&path.to_string_lossy()).is_none() {
         bail!(
-            "AST shadow compare currently accepts only Rust `.rs` files: {}",
+            "AST shadow compare accepts only parser-backed shadow extensions: {}",
             path.display()
         );
     }
@@ -768,6 +801,149 @@ fn heuristic_rust_landmarks(source: &str) -> Vec<ShadowLandmark> {
     landmarks.sort();
     landmarks.dedup();
     landmarks
+}
+
+fn heuristic_typescript_landmarks(source: &str) -> Vec<ShadowLandmark> {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut landmarks = Vec::new();
+
+    for (line_index, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        let line_number = line_index + 1;
+
+        if trimmed.starts_with("import ") {
+            landmarks.push(ShadowLandmark {
+                kind: "import".to_owned(),
+                name: trimmed.split_whitespace().collect::<Vec<_>>().join(" "),
+                start_line: line_number,
+                end_line: line_number,
+            });
+            continue;
+        }
+
+        if let Some(name) = typescript_function_name_from_line(trimmed) {
+            landmarks.push(ShadowLandmark {
+                kind: "function".to_owned(),
+                name,
+                start_line: line_number,
+                end_line: block_end_line(&lines, line_index),
+            });
+        }
+
+        for control_flow in ["if", "for", "while", "switch"] {
+            if contains_token(trimmed, control_flow) {
+                landmarks.push(ShadowLandmark {
+                    kind: "control_flow".to_owned(),
+                    name: control_flow.to_owned(),
+                    start_line: line_number,
+                    end_line: block_end_line(&lines, line_index),
+                });
+            }
+        }
+    }
+
+    landmarks.sort();
+    landmarks.dedup();
+    landmarks
+}
+
+fn typescript_function_name_from_line(line: &str) -> Option<String> {
+    if let Some(index) = find_token(line, "function") {
+        let after = line.get(index + "function".len()..)?.trim_start();
+        let name = after
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .collect::<String>();
+        return (!name.is_empty()).then_some(name);
+    }
+
+    if line.contains("=>") {
+        let before = line.split('=').next()?.trim();
+        let name = before
+            .split_whitespace()
+            .next_back()?
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .collect::<String>();
+        return (!name.is_empty()).then_some(name);
+    }
+
+    None
+}
+
+fn heuristic_python_landmarks(source: &str) -> Vec<ShadowLandmark> {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut landmarks = Vec::new();
+
+    for (line_index, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        let line_number = line_index + 1;
+
+        if trimmed.starts_with("import ") || trimmed.starts_with("from ") {
+            landmarks.push(ShadowLandmark {
+                kind: "import".to_owned(),
+                name: trimmed.split_whitespace().collect::<Vec<_>>().join(" "),
+                start_line: line_number,
+                end_line: line_number,
+            });
+            continue;
+        }
+
+        if let Some(name) = python_function_name_from_line(trimmed) {
+            landmarks.push(ShadowLandmark {
+                kind: "function".to_owned(),
+                name,
+                start_line: line_number,
+                end_line: python_block_end_line(&lines, line_index),
+            });
+        }
+
+        if trimmed.ends_with(':') {
+            for control_flow in ["if", "for", "while", "match"] {
+                if contains_token(trimmed, control_flow) {
+                    landmarks.push(ShadowLandmark {
+                        kind: "control_flow".to_owned(),
+                        name: control_flow.to_owned(),
+                        start_line: line_number,
+                        end_line: python_block_end_line(&lines, line_index),
+                    });
+                }
+            }
+        }
+    }
+
+    landmarks.sort();
+    landmarks.dedup();
+    landmarks
+}
+
+fn python_function_name_from_line(line: &str) -> Option<String> {
+    let def_start = find_token(line, "def")?;
+    let after_def = line.get(def_start + 3..)?.trim_start();
+    let name = after_def
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect::<String>();
+    (!name.is_empty()).then_some(name)
+}
+
+fn python_block_end_line(lines: &[&str], start: usize) -> usize {
+    let base_indent = lines[start].len() - lines[start].trim_start().len();
+    let mut last_content = start;
+
+    for (index, line) in lines.iter().enumerate().skip(start + 1) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        if indent <= base_indent {
+            return last_content + 1;
+        }
+        last_content = index;
+    }
+
+    last_content + 1
 }
 
 fn collect_use_end_line(lines: &[&str], start: usize) -> usize {
@@ -859,7 +1035,7 @@ mod tests {
     fn rejects_absolute_paths() {
         let root = tempfile::tempdir().expect("tempdir");
         let absolute = root.path().join("src/lib.rs");
-        let error = validate_repo_relative_rust_path(&absolute, root.path())
+        let error = validate_repo_relative_source_path(&absolute, root.path())
             .expect_err("absolute paths should be rejected");
 
         assert!(error.to_string().contains("repo-relative"));
@@ -868,21 +1044,25 @@ mod tests {
     #[test]
     fn rejects_parent_paths() {
         let root = tempfile::tempdir().expect("tempdir");
-        let error = validate_repo_relative_rust_path(Path::new("../lib.rs"), root.path())
+        let error = validate_repo_relative_source_path(Path::new("../lib.rs"), root.path())
             .expect_err("parent paths should be rejected");
 
         assert!(error.to_string().contains("inside the repo"));
     }
 
     #[test]
-    fn rejects_non_rust_paths() -> Result<()> {
+    fn rejects_unsupported_extensions() -> Result<()> {
         let root = tempfile::tempdir()?;
         fs::write(root.path().join("README.md"), "# docs\n")?;
 
-        let error = validate_repo_relative_rust_path(Path::new("README.md"), root.path())
-            .expect_err("non-Rust paths should be rejected");
+        let error = validate_repo_relative_source_path(Path::new("README.md"), root.path())
+            .expect_err("unsupported extensions should be rejected");
 
-        assert!(error.to_string().contains("`.rs` files"));
+        assert!(
+            error
+                .to_string()
+                .contains("parser-backed shadow extensions")
+        );
         Ok(())
     }
 
