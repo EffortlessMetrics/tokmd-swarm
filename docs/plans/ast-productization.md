@@ -1,6 +1,6 @@
 # Plan: AST / Syntax Productization
 
-- Status: active
+- Status: complete
 - Related proposal: `docs/proposals/ast-productization.md`
 - Related spec:
   `docs/specs/syntax-receipts.md`,
@@ -41,8 +41,13 @@ public receipts.
 4. **Optional: user-path syntax guide**
    - Add a recipes or workflows section for UB/crash review using
      `review_signals` (no new command).
-5. **Publication import checkpoint**
-   - True merge-commit import after packets 1–2 merge; FF swarm; repo-graph
+5. **Shadow corpus expansion for TS/Python**
+   - Extend `policy/ast-shadow-corpus.toml` with TypeScript and Python fixtures.
+   - Promote `cargo xtask ast-shadow-compare` to infer language, collect
+     heuristics, and emit parser-backed shadow artifacts for `.ts` and `.py`
+     files alongside Rust.
+6. **Publication import checkpoint**
+   - True merge-commit import after lane packets merge; FF swarm; repo-graph
      aligned.
 
 ## Validation
@@ -77,8 +82,9 @@ Required CI: `Tokmd Rust Result` (`cargo test --all-features`).
 | 1 | #368 syntax `--exclude` | merged |
 | 2 | #369 governance reconciliation | merged |
 | 3 | #370 packet exclude forwarding | merged |
-| 4 | user-path syntax guide | in progress |
-| 5 | publication import | after lane packets |
+| 4 | user-path syntax guide | merged |
+| 5 | shadow corpus TS/Python expansion | merged |
+| 6 | publication import | after lane packets |
 
 ## Intentionally deferred
 

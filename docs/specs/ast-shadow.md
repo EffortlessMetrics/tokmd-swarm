@@ -17,8 +17,9 @@ During shadow mode:
 - default `tokmd analyze`, `tokmd cockpit`, `tokmd context`, `tokmd handoff`,
   FFI, Python, Node, and WASM outputs must remain unchanged;
 - AST parsing must stay behind the explicit `ast` feature;
-- Rust is the only parser-backed language until comparison evidence justifies a
-  later language slice;
+- parser-backed shadow comparison covers Rust, TypeScript, TSX, and Python in
+  the repo-owned corpus; other languages remain heuristic-only until a later
+  slice adds parser evidence;
 - generated shadow artifacts are not merge verdicts, proof promotion receipts,
   or evidencebus packets;
 - any future public receipt field that changes meaning because of AST evidence
@@ -30,8 +31,8 @@ The first shadow slice may read:
 
 - normalized repository-relative source paths;
 - a repo-owned corpus manifest such as `policy/ast-shadow-corpus.toml` for
-  repeatable evidence collection;
-- Rust source text for files selected by a future shadow runner;
+  repeatable evidence collection across Rust, TypeScript, and Python files;
+- source text for files selected by the shadow runner;
 - heuristic facts already produced by existing analysis modules;
 - AST capability metadata from `tokmd-analysis` when built with
   `--features ast`.
@@ -65,7 +66,7 @@ comparison, including normalized paths and stable identifiers. The first
 library builder accepts caller-supplied heuristic landmarks; choosing the
 production heuristic source remains a later runner decision.
 
-`ast.json` should record parser-backed Rust facts selected for comparison,
+`ast.json` should record parser-backed facts selected for comparison,
 including parser capability metadata, normalized paths, function/import/simple
 control-flow landmarks, parser status, and recoverable parse-error state.
 

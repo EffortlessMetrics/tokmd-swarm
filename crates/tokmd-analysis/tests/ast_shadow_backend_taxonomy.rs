@@ -155,10 +155,10 @@ fn ast_syntax_receipt_parser_crate_maps_to_tree_sitter_identity() -> TestResult 
 fn ast_shadow_diff_wire_values_map_to_documented_mismatch_taxonomy() -> TestResult {
     // Exercise every diff-level outcome: agree + backend_only (parser finds an
     // extra function), heuristic_only, parse_degraded (recovered syntax error),
-    // and unsupported (no parser backend for the language).
+    // and a parser-backed Python comparison.
     let agree_landmark = [ShadowLandmark::function("top_level", 1, 1)];
     let heuristic_only_landmark = [ShadowLandmark::function("ghost", 1, 1)];
-    let unsupported_landmark = [ShadowLandmark::function("run", 1, 1)];
+    let python_landmark = [ShadowLandmark::function("run", 1, 2)];
     let files = [
         ShadowFileInput {
             path: "src/agree.rs",
@@ -181,8 +181,8 @@ fn ast_shadow_diff_wire_values_map_to_documented_mismatch_taxonomy() -> TestResu
         ShadowFileInput {
             path: "tools/run.py",
             language: AstLanguage::Python,
-            source: "def run():\n    return 1\n",
-            heuristic_landmarks: &unsupported_landmark,
+            source: "def run():\n    return 1\n\ndef helper():\n    return 2\n",
+            heuristic_landmarks: &python_landmark,
         },
     ];
 
@@ -212,11 +212,6 @@ fn ast_shadow_diff_wire_values_map_to_documented_mismatch_taxonomy() -> TestResu
         observed_statuses
             .iter()
             .any(|status| status == "parse_degraded")
-    );
-    assert!(
-        observed_statuses
-            .iter()
-            .any(|status| status == "unsupported")
     );
 
     assert!(observed_kinds.contains(&"agree"));
