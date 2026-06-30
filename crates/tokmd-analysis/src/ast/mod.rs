@@ -42,17 +42,19 @@ mod tests {
     };
 
     #[test]
-    fn rust_capability_is_shadow_only_and_not_default_receipts() {
+    fn shadow_capabilities_are_parser_backed_and_shadow_only() {
         let capabilities = capabilities();
 
-        assert_eq!(capabilities.len(), 1);
-        assert_eq!(capabilities[0].language, AstLanguage::Rust);
-        assert_eq!(
-            capabilities[0].parser_status,
-            AstParserStatus::ParserBackedShadow
-        );
-        assert!(capabilities[0].shadow_only);
-        assert!(!capabilities[0].changes_default_receipts);
+        assert_eq!(capabilities.len(), 4);
+        for capability in capabilities {
+            assert_eq!(
+                capability.parser_status,
+                AstParserStatus::ParserBackedShadow
+            );
+            assert!(capability.shadow_only);
+            assert!(!capability.changes_default_receipts);
+            assert!(capability.parser_crate.starts_with("tree-sitter-"));
+        }
     }
 
     #[test]
@@ -71,10 +73,24 @@ mod tests {
     }
 
     #[test]
-    fn syntax_registry_is_feature_gated_and_does_not_expand_shadow_capabilities() {
+    fn shadow_capabilities_track_parser_backed_languages() {
         assert_eq!(SYNTAX_RECEIPT_SCHEMA_VERSION, "tokmd.syntax_receipt.v1");
         assert_eq!(syntax_capabilities().len(), 4);
-        assert_eq!(capabilities().len(), 1);
-        assert_eq!(capabilities()[0].language, AstLanguage::Rust);
+        assert_eq!(capabilities().len(), 4);
+        assert!(
+            capabilities()
+                .iter()
+                .any(|capability| capability.language == AstLanguage::Rust)
+        );
+        assert!(
+            capabilities()
+                .iter()
+                .any(|capability| capability.language == AstLanguage::Python)
+        );
+        assert!(
+            capabilities()
+                .iter()
+                .any(|capability| capability.language == AstLanguage::TypeScript)
+        );
     }
 }

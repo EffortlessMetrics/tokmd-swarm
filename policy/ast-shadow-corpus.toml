@@ -1,12 +1,11 @@
 schema = "tokmd.ast_shadow_corpus.v1"
 status = "draft"
 fact_family = "function_boundary"
-language = "rust"
+language = "multi"
 owner = "analysis_ast_shadow"
 
 [rules]
 path_style = "repo_relative"
-supported_extension = ".rs"
 public_behavior = "none"
 proof_scope = "analysis_ast_shadow"
 
@@ -23,6 +22,30 @@ category = "fixture_parse_degraded"
 expected_signal = "parse_degraded"
 
 [[file]]
+path = "fixtures/ast-shadow/typescript/basic.ts"
+reason = "TypeScript baseline fixture with imports, one function, and simple control-flow landmarks"
+category = "fixture_baseline"
+expected_signal = "known_clean_parse"
+
+[[file]]
+path = "fixtures/ast-shadow/typescript/parse-degraded.ts"
+reason = "TypeScript fixture that keeps parse degradation explicit in the candidate corpus"
+category = "fixture_parse_degraded"
+expected_signal = "parse_degraded"
+
+[[file]]
+path = "fixtures/ast-shadow/python/basic.py"
+reason = "Python baseline fixture with imports, one function, and simple control-flow landmarks"
+category = "fixture_baseline"
+expected_signal = "known_clean_parse"
+
+[[file]]
+path = "fixtures/ast-shadow/python/parse-degraded.py"
+reason = "Python fixture that keeps parse degradation explicit in the candidate corpus"
+category = "fixture_parse_degraded"
+expected_signal = "parse_degraded"
+
+[[file]]
 path = "crates/tokmd-analysis/src/ast/rust.rs"
 reason = "Rust AST parser implementation with parser-facing function shapes"
 category = "shadow_implementation"
@@ -33,6 +56,18 @@ path = "crates/tokmd-analysis/src/ast/shadow.rs"
 reason = "AST shadow artifact builder and comparison logic"
 category = "shadow_implementation"
 expected_signal = "artifact_builder_corpus"
+
+[[file]]
+path = "crates/tokmd-analysis/src/ast/typescript.rs"
+reason = "TypeScript AST parser implementation with parser-facing function shapes"
+category = "shadow_implementation"
+expected_signal = "ast_parser_corpus"
+
+[[file]]
+path = "crates/tokmd-analysis/src/ast/python.rs"
+reason = "Python AST parser implementation with parser-facing function shapes"
+category = "shadow_implementation"
+expected_signal = "ast_parser_corpus"
 
 [[file]]
 path = "crates/tokmd-model/src/rows.rs"
