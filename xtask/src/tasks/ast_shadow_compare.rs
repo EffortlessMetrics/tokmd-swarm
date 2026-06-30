@@ -219,7 +219,7 @@ fn write_timing_json(
         schema: AST_SHADOW_COMPARE_TIMING_SCHEMA,
         schema_version: 1,
         command: "cargo xtask ast-shadow-compare",
-        language: corpus_language_label(&inputs),
+        language: corpus_language_label(inputs),
         corpus: TimingCorpus {
             manifest: args
                 .manifest
@@ -578,14 +578,13 @@ fn read_manifest_paths(manifest_path: &Path, root: &Path) -> Result<Vec<PathBuf>
             manifest.language
         );
     }
-    if manifest.language == "rust" {
-        if let Some(extension) = &manifest.rules.supported_extension
-            && extension != ".rs"
-        {
-            bail!(
-                "Rust-only AST shadow corpus manifest supports only `.rs` files, found `{extension}`"
-            );
-        }
+    if manifest.language == "rust"
+        && let Some(extension) = &manifest.rules.supported_extension
+        && extension != ".rs"
+    {
+        bail!(
+            "Rust-only AST shadow corpus manifest supports only `.rs` files, found `{extension}`"
+        );
     }
     if manifest.file.is_empty() {
         bail!(
