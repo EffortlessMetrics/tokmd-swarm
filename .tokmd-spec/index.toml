@@ -100,6 +100,12 @@ path = "docs/specs/ast-shadow-backend.md"
 status = "draft"
 
 [[artifact]]
+id = "ast-syntax-support-tier-spec"
+kind = "spec"
+path = "docs/specs/ast-syntax-support-tier.md"
+status = "active"
+
+[[artifact]]
 id = "spec-contract-gap-audit"
 kind = "spec-audit"
 path = "docs/specs/SPEC_GAPS.md"
