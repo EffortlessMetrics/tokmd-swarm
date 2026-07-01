@@ -6,6 +6,7 @@
 - Related specs:
   `docs/specs/ast-shadow.md`,
   `docs/specs/ast-shadow-backend.md`,
+  `docs/specs/ast-syntax-support-tier.md`,
   `docs/specs/syntax-receipts.md`
 - Related ADRs: `docs/adr/0008-ast-foundation.md`
 - Related plans: `docs/plans/ast-productization.md`
@@ -104,8 +105,9 @@ function-boundary candidate decision still `not yet`.
 
 ## Recommendation
 
-**Adopt Option A.** Declare the AST/syntax lane **active** with this support
-tier:
+**Adopt Option A.** Declare the AST/syntax lane **active** with the durable
+support-tier contract in `docs/specs/ast-syntax-support-tier.md` (capability map
+summarized below):
 
 | Capability | Support tier | User entry |
 | --- | --- | --- |
