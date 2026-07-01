@@ -175,7 +175,9 @@ capability promotion.
 - WASM boundary coverage (MET): a `wasm-bindgen-test` exercises the
   `Uint8Array` binding end to end and asserts the browser payload matches the
   core payload, in the same style as the existing boundary tests in
-  `crates/tokmd-wasm/src/lib.rs` (`run_json_bytes_lang_matches_inline_inputs_over_js_boundary`).
+  `crates/tokmd-wasm/src/lib.rs` (`run_json_bytes_lang_matches_inline_inputs_over_js_boundary`,
+  `run_json_bytes_analyze_receipt_matches_inline_inputs_over_js_boundary`, and
+  `run_json_bytes_analyze_estimate_matches_inline_inputs_over_js_boundary`).
 - Default-surface guard (MET, CI): the Wasm Compile & Test lane checks and tests
   the default (non-`archive-zip`) feature set separately from the
   `archive-zip`-gated binding, confirming decompression dependencies only enter
