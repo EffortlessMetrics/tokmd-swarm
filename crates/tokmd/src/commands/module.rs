@@ -8,6 +8,17 @@ use tokmd_settings::ScanOptions;
 use crate::config::{self, ResolvedConfig};
 use crate::progress::Progress;
 
+/// When exactly one scan root is provided, strip it from host file paths before
+/// module-key aggregation so single-root CLI scans match `module_workflow` and
+/// archive/virtual relative paths.
+fn single_scan_root_strip_prefix(paths: &[std::path::PathBuf]) -> Option<&std::path::Path> {
+    if paths.len() == 1 {
+        paths.first().map(|path| path.as_path())
+    } else {
+        None
+    }
+}
+
 pub(crate) fn handle(
     cli_args: cli::CliModuleArgs,
     global: &cli::GlobalArgs,
@@ -19,8 +30,16 @@ pub(crate) fn handle(
     let progress = Progress::new(!global.no_progress);
     progress.set_message("Scanning codebase...");
     let languages = scan::scan(&args.paths, &scan_opts)?;
-    let report = model::create_module_report(
+    let strip_prefix = single_scan_root_strip_prefix(&args.paths);
+    let file_rows = model::collect_file_rows(
         &languages,
+        &args.module_roots,
+        args.module_depth,
+        args.children,
+        strip_prefix,
+    );
+    let report = model::create_module_report_from_rows(
+        &file_rows,
         &args.module_roots,
         args.module_depth,
         args.children,
