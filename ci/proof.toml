@@ -671,6 +671,7 @@ paths = [
   "docs/proposals/ast-productization.md",
   "docs/specs/ast-shadow.md",
   "docs/specs/ast-shadow-backend.md",
+  "docs/specs/ast-syntax-support-tier.md",
   "docs/specs/syntax-receipts.md",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",

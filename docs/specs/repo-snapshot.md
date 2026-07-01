@@ -9,31 +9,33 @@
 ## Contract
 
 This spec names a portability seam that lets tokmd scan and aggregate a
-repository view that is **not bound to the host filesystem**. It is a
-forward-looking contract stub: it records the intended shape and boundaries so
-later implementation work has a stable target. It introduces no runtime
-behavior change on its own.
+repository view that is **not bound to the host filesystem**. The core types
+and archive ingestion sub-seam have landed incrementally in
+`crates/tokmd-io-port` and `crates/tokmd-scan`; this document remains the
+durable contract and records remaining promotion and consumer-widening work.
 
-Three roles make up the seam. Two already exist; one is proposed.
+Three roles make up the seam. All three are landed in `crates/tokmd-io-port` as
+experimental public types (see the module note in `src/lib.rs`).
 
-- **FileProvider (role, already present)** — the abstract read-only file access
-  port. Today this role is filled by the `ReadFs` trait in
+- **FileProvider (role, landed)** — the abstract read-only file access port.
+  Today this role is filled by the `ReadFs` trait in
   `crates/tokmd-io-port/src/lib.rs`, with two backends:
   - `HostFs` delegates to `std::fs` (the default, used by the CLI today).
   - `MemFs` is an in-memory store used by tests and WASM targets.
   This spec does **not** redefine `ReadFs`; it adopts it as the FileProvider
   contract and gives that role a durable name.
 
-- **VirtualFile (proposed type)** — a single provider-agnostic file entry: a
-  normalized forward-slash path plus its bytes (or a lazily readable handle)
-  and byte length. No `VirtualFile` type exists yet; this stub fixes the
-  intended fields and naming so the future type does not drift.
+- **VirtualFile (landed, experimental)** — a single provider-agnostic file
+  entry: a normalized forward-slash path plus eagerly captured bytes and byte
+  length. The type lives in `crates/tokmd-io-port/src/lib.rs` and is marked
+  experimental until a consumer promotes a stable support promise.
 
-- **RepoSnapshot (proposed type)** — a deterministic, captured set of
+- **RepoSnapshot (landed, experimental)** — a deterministic, captured set of
   `VirtualFile` entries rooted at a logical repository root, built from any
-  `FileProvider`. A snapshot is the unit that scanning and aggregation should be
-  able to consume without re-touching the host filesystem. No `RepoSnapshot`
-  type exists yet.
+  `FileProvider` via `RepoSnapshot::builder`. A snapshot is the unit that
+  scanning and aggregation consume without re-touching the host filesystem. The
+  type and builder live in `crates/tokmd-io-port/src/lib.rs` and are marked
+  experimental until a consumer promotes a stable support promise.
 
 The boundary this seam protects:
 

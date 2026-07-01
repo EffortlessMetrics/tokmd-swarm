@@ -3,6 +3,7 @@
 - Status: draft
 - Schema family, if any: `tokmd.ast_shadow.v1`
 - Related ADRs: `docs/adr/0008-ast-foundation.md`
+- Related specs: `docs/specs/ast-syntax-support-tier.md`
 - Related proof scopes: `analysis_ast_shadow`
 
 ## Contract
