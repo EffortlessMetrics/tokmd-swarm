@@ -341,6 +341,22 @@ mod archive_fixture {
             .collect();
         serde_json::json!({ "lang": { "files": true }, "inputs": inputs }).to_string()
     }
+
+    /// Equivalent inline `{ path, text }` analyze options for rootless presets.
+    #[cfg(feature = "analysis")]
+    pub(crate) fn inline_analyze_options_json(preset: &str) -> String {
+        let inputs: Vec<serde_json::Value> = ENTRIES
+            .iter()
+            .map(|(name, text)| serde_json::json!({ "path": name, "text": text }))
+            .collect();
+        serde_json::json!({ "preset": preset, "inputs": inputs }).to_string()
+    }
+
+    /// Byte-mode analyze options (archive bytes carry the file set).
+    #[cfg(feature = "analysis")]
+    pub(crate) fn byte_analyze_options_json(preset: &str) -> String {
+        serde_json::json!({ "preset": preset }).to_string()
+    }
 }
 
 #[cfg(test)]
@@ -705,6 +721,80 @@ mod tests {
 
         assert_eq!(envelope["ok"], json!(false));
         assert_eq!(envelope["error"]["code"], json!("invalid_settings"));
+    }
+
+    #[cfg(all(feature = "archive-zip", feature = "analysis"))]
+    #[test]
+    fn core_run_json_bytes_analyze_receipt_matches_inline_inputs() {
+        use crate::archive_fixture::{
+            byte_analyze_options_json, inline_analyze_options_json, tiny_zip,
+        };
+
+        let bytes = tiny_zip();
+        let from_zip_raw = tokmd_core::ffi::run_json_bytes(
+            "analyze",
+            &byte_analyze_options_json("receipt"),
+            &bytes,
+        );
+        let from_json_raw =
+            tokmd_core::ffi::run_json("analyze", &inline_analyze_options_json("receipt"));
+
+        let mut from_zip: Value = serde_json::from_str(&from_zip_raw).expect("byte-mode envelope");
+        let mut from_json: Value =
+            serde_json::from_str(&from_json_raw).expect("json-mode envelope");
+
+        assert_eq!(from_zip["ok"], json!(true), "byte-mode call should succeed");
+        assert_eq!(from_zip["data"]["mode"], json!("analysis"));
+        assert_eq!(from_zip["data"]["derived"]["totals"]["files"], json!(3));
+        assert_eq!(from_zip["data"]["effort"], Value::Null);
+
+        scrub_analyze_envelope_timestamps(&mut from_zip);
+        scrub_analyze_envelope_timestamps(&mut from_json);
+        assert_eq!(
+            from_zip, from_json,
+            "byte-mode analyze receipt envelope diverged from inline-inputs envelope"
+        );
+    }
+
+    #[cfg(all(feature = "archive-zip", feature = "analysis"))]
+    #[test]
+    fn core_run_json_bytes_analyze_estimate_matches_inline_inputs() {
+        use crate::archive_fixture::{
+            byte_analyze_options_json, inline_analyze_options_json, tiny_zip,
+        };
+
+        let bytes = tiny_zip();
+        let from_zip_raw = tokmd_core::ffi::run_json_bytes(
+            "analyze",
+            &byte_analyze_options_json("estimate"),
+            &bytes,
+        );
+        let from_json_raw =
+            tokmd_core::ffi::run_json("analyze", &inline_analyze_options_json("estimate"));
+
+        let mut from_zip: Value = serde_json::from_str(&from_zip_raw).expect("byte-mode envelope");
+        let mut from_json: Value =
+            serde_json::from_str(&from_json_raw).expect("json-mode envelope");
+
+        assert_eq!(from_zip["ok"], json!(true), "byte-mode call should succeed");
+        assert_eq!(from_zip["data"]["mode"], json!("analysis"));
+        assert_eq!(from_zip["data"]["effort"]["model"], json!("cocomo81-basic"));
+
+        scrub_analyze_envelope_timestamps(&mut from_zip);
+        scrub_analyze_envelope_timestamps(&mut from_json);
+        assert_eq!(
+            from_zip, from_json,
+            "byte-mode analyze estimate envelope diverged from inline-inputs envelope"
+        );
+    }
+
+    fn scrub_analyze_envelope_timestamps(envelope: &mut Value) {
+        if let Some(data) = envelope.get_mut("data").and_then(Value::as_object_mut) {
+            data.remove("generated_at_ms");
+            if let Some(source) = data.get_mut("source").and_then(Value::as_object_mut) {
+                source.remove("export_generated_at_ms");
+            }
+        }
     }
 
     #[cfg(feature = "analysis")]
@@ -1100,6 +1190,80 @@ mod wasm_tests {
 
         assert_eq!(envelope["ok"], Value::Bool(false));
         assert_eq!(envelope["error"]["code"], "invalid_settings");
+    }
+
+    #[cfg(all(feature = "archive-zip", feature = "analysis"))]
+    #[wasm_bindgen_test]
+    fn run_json_bytes_analyze_receipt_matches_inline_inputs_over_js_boundary() {
+        use crate::archive_fixture::{
+            byte_analyze_options_json, inline_analyze_options_json, tiny_zip,
+        };
+
+        let bytes = tiny_zip();
+        let view = Uint8Array::from(bytes.as_slice());
+        let from_zip_raw = run_json_bytes("analyze", &byte_analyze_options_json("receipt"), view);
+        let from_json_raw =
+            tokmd_core::ffi::run_json("analyze", &inline_analyze_options_json("receipt"));
+
+        let mut from_zip: Value =
+            serde_json::from_str(&from_zip_raw).expect("byte-mode envelope json");
+        let mut from_json: Value =
+            serde_json::from_str(&from_json_raw).expect("json-mode envelope json");
+
+        assert_eq!(
+            from_zip["ok"],
+            Value::Bool(true),
+            "byte-mode analyze receipt should succeed"
+        );
+        assert_eq!(from_zip["data"]["mode"], "analysis");
+        assert_eq!(from_zip["data"]["derived"]["totals"]["files"], 3);
+        assert_eq!(from_zip["data"]["effort"], Value::Null);
+        assert_generated_at_ms_nonzero("byte-mode analyze receipt wasm payload", &from_zip["data"]);
+
+        normalize_volatile_timestamps(&mut from_zip);
+        normalize_volatile_timestamps(&mut from_json);
+        assert!(
+            values_match_js_boundary(&from_zip, &from_json),
+            "byte-mode analyze receipt envelope diverged from inline-inputs envelope\nzip: {from_zip}\njson: {from_json}"
+        );
+    }
+
+    #[cfg(all(feature = "archive-zip", feature = "analysis"))]
+    #[wasm_bindgen_test]
+    fn run_json_bytes_analyze_estimate_matches_inline_inputs_over_js_boundary() {
+        use crate::archive_fixture::{
+            byte_analyze_options_json, inline_analyze_options_json, tiny_zip,
+        };
+
+        let bytes = tiny_zip();
+        let view = Uint8Array::from(bytes.as_slice());
+        let from_zip_raw = run_json_bytes("analyze", &byte_analyze_options_json("estimate"), view);
+        let from_json_raw =
+            tokmd_core::ffi::run_json("analyze", &inline_analyze_options_json("estimate"));
+
+        let mut from_zip: Value =
+            serde_json::from_str(&from_zip_raw).expect("byte-mode envelope json");
+        let mut from_json: Value =
+            serde_json::from_str(&from_json_raw).expect("json-mode envelope json");
+
+        assert_eq!(
+            from_zip["ok"],
+            Value::Bool(true),
+            "byte-mode analyze estimate should succeed"
+        );
+        assert_eq!(from_zip["data"]["mode"], "analysis");
+        assert_eq!(from_zip["data"]["effort"]["model"], "cocomo81-basic");
+        assert_generated_at_ms_nonzero(
+            "byte-mode analyze estimate wasm payload",
+            &from_zip["data"],
+        );
+
+        normalize_volatile_timestamps(&mut from_zip);
+        normalize_volatile_timestamps(&mut from_json);
+        assert!(
+            values_match_js_boundary(&from_zip, &from_json),
+            "byte-mode analyze estimate envelope diverged from inline-inputs envelope\nzip: {from_zip}\njson: {from_json}"
+        );
     }
 
     #[wasm_bindgen_test]
