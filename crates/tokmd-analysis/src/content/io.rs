@@ -34,18 +34,22 @@ mod read;
 mod tags;
 
 pub fn read_head(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
+    crate::io_trace::record(crate::io_trace::IoReadMode::Head, max_bytes, path);
     read::read_head(path, max_bytes)
 }
 
 pub fn read_head_tail(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
+    crate::io_trace::record(crate::io_trace::IoReadMode::HeadTail, max_bytes, path);
     read::read_head_tail(path, max_bytes)
 }
 
 pub fn read_lines(path: &Path, max_lines: usize, max_bytes: usize) -> Result<Vec<String>> {
+    crate::io_trace::record(crate::io_trace::IoReadMode::Lines, max_bytes, path);
     read::read_lines(path, max_lines, max_bytes)
 }
 
 pub fn read_text_capped(path: &Path, max_bytes: usize) -> Result<String> {
+    crate::io_trace::record(crate::io_trace::IoReadMode::TextCapped, max_bytes, path);
     read::read_text_capped(path, max_bytes)
 }
 
