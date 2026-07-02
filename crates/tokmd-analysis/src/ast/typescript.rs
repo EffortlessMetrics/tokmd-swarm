@@ -1,8 +1,169 @@
+use super::capability::{AstCapability, AstLanguage};
 use super::facts::{
     SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxRiskSeam, SyntaxSpan,
     SyntaxSymbol,
 };
-use tree_sitter::Node;
+use std::error::Error;
+use std::fmt;
+use tree_sitter::{Node, Parser};
+
+pub const TREE_SITTER_TYPESCRIPT_CRATE: &str = "tree-sitter-typescript";
+pub const TYPESCRIPT_CAPABILITY: AstCapability =
+    AstCapability::parser_backed_shadow(AstLanguage::TypeScript, TREE_SITTER_TYPESCRIPT_CRATE);
+pub const TSX_CAPABILITY: AstCapability =
+    AstCapability::parser_backed_shadow(AstLanguage::Tsx, TREE_SITTER_TYPESCRIPT_CRATE);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TypeScriptAstShadow {
+    pub has_error: bool,
+    pub landmarks: Vec<TypeScriptLandmark>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TypeScriptLandmark {
+    pub kind: TypeScriptLandmarkKind,
+    pub name: String,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum TypeScriptLandmarkKind {
+    ControlFlow,
+    Function,
+    Import,
+}
+
+#[derive(Debug)]
+pub enum TypeScriptAstError {
+    Language(tree_sitter::LanguageError),
+    ParseFailed,
+    UnsupportedLanguage,
+}
+
+impl fmt::Display for TypeScriptAstError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Language(error) => {
+                write!(f, "failed to load TypeScript Tree-sitter language: {error}")
+            }
+            Self::ParseFailed => f.write_str("failed to parse TypeScript source"),
+            Self::UnsupportedLanguage => f.write_str("unsupported TypeScript shadow language"),
+        }
+    }
+}
+
+impl Error for TypeScriptAstError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Language(error) => Some(error),
+            Self::ParseFailed | Self::UnsupportedLanguage => None,
+        }
+    }
+}
+
+pub fn parse_typescript_landmarks(
+    source: &str,
+    language: AstLanguage,
+) -> Result<TypeScriptAstShadow, TypeScriptAstError> {
+    let tree_sitter_language = match language {
+        AstLanguage::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
+        AstLanguage::Tsx => tree_sitter_typescript::LANGUAGE_TSX,
+        _ => return Err(TypeScriptAstError::UnsupportedLanguage),
+    };
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_language.into())
+        .map_err(TypeScriptAstError::Language)?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or(TypeScriptAstError::ParseFailed)?;
+
+    let mut landmarks = Vec::new();
+    collect_typescript_landmarks(tree.root_node(), source, &mut landmarks);
+    landmarks.sort_by(|left, right| {
+        left.start_line
+            .cmp(&right.start_line)
+            .then_with(|| left.kind.cmp(&right.kind))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+
+    Ok(TypeScriptAstShadow {
+        has_error: tree.root_node().has_error(),
+        landmarks,
+    })
+}
+
+fn collect_typescript_landmarks(
+    node: Node<'_>,
+    source: &str,
+    landmarks: &mut Vec<TypeScriptLandmark>,
+) {
+    match node.kind() {
+        "function_declaration" | "generator_function_declaration" | "method_definition" => {
+            if let Some(name) = typescript_function_name(node, source) {
+                push_typescript_landmark(node, TypeScriptLandmarkKind::Function, name, landmarks);
+            }
+        }
+        "import_statement" => {
+            if let Some(name) = import_statement_name(node, source) {
+                push_typescript_landmark(node, TypeScriptLandmarkKind::Import, name, landmarks);
+            }
+        }
+        kind => {
+            if let Some(name) = typescript_control_flow_name(kind) {
+                push_typescript_landmark(
+                    node,
+                    TypeScriptLandmarkKind::ControlFlow,
+                    name.to_owned(),
+                    landmarks,
+                );
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_typescript_landmarks(child, source, landmarks);
+    }
+}
+
+fn typescript_function_name(node: Node<'_>, source: &str) -> Option<String> {
+    node.child_by_field_name("name")
+        .and_then(|name| text_if_named(source, name))
+        .or_else(|| first_identifier_text(source, node))
+}
+
+fn import_statement_name(node: Node<'_>, source: &str) -> Option<String> {
+    Some(compact_text(node_text(source, node)))
+}
+
+fn typescript_control_flow_name(kind: &str) -> Option<&'static str> {
+    match kind {
+        "if_statement" => Some("if"),
+        "for_statement" | "for_in_statement" => Some("for"),
+        "while_statement" => Some("while"),
+        "switch_statement" => Some("switch"),
+        _ => None,
+    }
+}
+
+fn push_typescript_landmark(
+    node: Node<'_>,
+    kind: TypeScriptLandmarkKind,
+    name: String,
+    landmarks: &mut Vec<TypeScriptLandmark>,
+) {
+    let start = node.start_position();
+    let end = node.end_position();
+    landmarks.push(TypeScriptLandmark {
+        kind,
+        name,
+        start_line: start.row + 1,
+        end_line: end.row + 1,
+    });
+}
 
 #[must_use]
 pub fn extract_typescript_facts(root: Node<'_>, source: &str) -> SyntaxFacts {

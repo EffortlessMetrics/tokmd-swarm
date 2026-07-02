@@ -3,6 +3,7 @@
 - Status: draft
 - Schema family, if any: `tokmd.ast_shadow.v1`
 - Related ADRs: `docs/adr/0008-ast-foundation.md`
+- Related specs: `docs/specs/ast-syntax-support-tier.md`
 - Related proof scopes: `analysis_ast_shadow`
 
 ## Contract
@@ -17,8 +18,9 @@ During shadow mode:
 - default `tokmd analyze`, `tokmd cockpit`, `tokmd context`, `tokmd handoff`,
   FFI, Python, Node, and WASM outputs must remain unchanged;
 - AST parsing must stay behind the explicit `ast` feature;
-- Rust is the only parser-backed language until comparison evidence justifies a
-  later language slice;
+- parser-backed shadow comparison covers Rust, TypeScript, TSX, and Python in
+  the repo-owned corpus; other languages remain heuristic-only until a later
+  slice adds parser evidence;
 - generated shadow artifacts are not merge verdicts, proof promotion receipts,
   or evidencebus packets;
 - any future public receipt field that changes meaning because of AST evidence
@@ -30,8 +32,8 @@ The first shadow slice may read:
 
 - normalized repository-relative source paths;
 - a repo-owned corpus manifest such as `policy/ast-shadow-corpus.toml` for
-  repeatable evidence collection;
-- Rust source text for files selected by a future shadow runner;
+  repeatable evidence collection across Rust, TypeScript, and Python files;
+- source text for files selected by the shadow runner;
 - heuristic facts already produced by existing analysis modules;
 - AST capability metadata from `tokmd-analysis` when built with
   `--features ast`.
@@ -65,7 +67,7 @@ comparison, including normalized paths and stable identifiers. The first
 library builder accepts caller-supplied heuristic landmarks; choosing the
 production heuristic source remains a later runner decision.
 
-`ast.json` should record parser-backed Rust facts selected for comparison,
+`ast.json` should record parser-backed facts selected for comparison,
 including parser capability metadata, normalized paths, function/import/simple
 control-flow landmarks, parser status, and recoverable parse-error state.
 
@@ -159,14 +161,13 @@ plans, `docs/plans/ast-function-boundary-candidate.md` and
 closed with a `not yet` outcome for public function-boundary adoption, leaving
 AST evidence in shadow mode.
 
-The latest AST boundary is: there is no active AST productization lane. Future
-AST work should start from a fresh proposal that names the product surface,
-schema family, fallback behavior, proof ownership, browser/WASM reporting, and
-rollback story before implementation. The existing runner, verifier, Markdown
-summary, corpus manifest, mismatch classification, and timing receipts remain
-developer-facing shadow evidence only. They do not change default `tokmd` CLI
-behavior, public receipts, browser/WASM capability, cockpit output, handoff
-output, proof gates, Codecov defaults, or evidencebus runtime behavior.
+The latest AST boundary is: explicit syntax and shadow tooling are **productized
+for opt-in commands** (`tokmd syntax`, packet `--syntax`, xtask shadow
+compare/check). Governance and sequencing live in
+`docs/proposals/ast-productization.md` and `docs/plans/ast-productization.md`.
+Default `tokmd analyze`, cockpit, handoff, browser/WASM, and public receipt
+schemas remain unchanged. Function-boundary public promotion stays deferred
+(candidate outcome: `not yet`).
 
 `tokmd-analysis` also provides a developer-facing synthetic performance
 example:

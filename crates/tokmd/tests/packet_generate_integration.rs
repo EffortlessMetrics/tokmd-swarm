@@ -20,6 +20,17 @@ const EVIDENCE_PACKET_SCHEMA_JSON: &str = include_str!("../schemas/evidence-pack
 
 const SCOPE_FILE: &str = "src/runtime/api/MarkdownObject.rs";
 
+fn init_repo_with_keep_and_skip() -> tempfile::TempDir {
+    let dir = tempdir().unwrap();
+    assert!(common::init_git_repo(dir.path()));
+    let src = dir.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("keep.rs"), "pub fn keep() {}\n").unwrap();
+    std::fs::write(src.join("skip.rs"), "pub fn skip() {}\n").unwrap();
+    assert!(common::git_add_commit(dir.path(), "initial"));
+    dir
+}
+
 fn init_repo_with_scope() -> tempfile::TempDir {
     let dir = tempdir().unwrap();
     assert!(common::init_git_repo(dir.path()));
@@ -251,6 +262,50 @@ fn packet_generate_non_effort_preset_does_not_force_effort() {
             .join("manifest.json"),
     );
     assert_eq!(manifest["preset"], "receipt");
+}
+
+#[test]
+fn packet_generate_syntax_honors_global_exclude() {
+    if !common::git_available() {
+        return;
+    }
+
+    let dir = init_repo_with_keep_and_skip();
+
+    Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "--exclude",
+            "**/skip.rs",
+            "packet",
+            "generate",
+            "--base",
+            "main",
+            "--head",
+            "HEAD",
+            "--no-progress",
+            "src",
+        ])
+        .assert()
+        .success();
+
+    let syntax: Value =
+        read_manifest_at(&dir.path().join("sensors").join("tokmd").join("syntax.json"));
+    let paths: Vec<&str> = syntax
+        .get("receipts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|receipt| receipt.get("path").and_then(Value::as_str))
+        .collect();
+    assert!(
+        paths.contains(&"src/keep.rs"),
+        "kept file should appear in packet syntax evidence: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|path| path.ends_with("skip.rs")),
+        "excluded file must not appear in packet syntax evidence: {paths:?}"
+    );
 }
 
 #[test]

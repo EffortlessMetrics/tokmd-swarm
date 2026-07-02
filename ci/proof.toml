@@ -660,14 +660,18 @@ paths = [
   "crates/tokmd-analysis/Cargo.toml",
   "crates/tokmd-analysis/examples/ast_shadow_perf.rs",
   "crates/tokmd-analysis/src/ast/**",
+  "crates/tokmd-analysis/tests/ast_shadow_backend_taxonomy.rs",
   "fixtures/ast-shadow/**",
   "fixtures/syntax/**",
   "policy/ast-shadow-corpus.toml",
   "docs/adr/0008-ast-foundation.md",
   "docs/plans/ast-function-boundary-candidate.md",
+  "docs/plans/ast-productization.md",
   "docs/plans/ast-shadow-comparison-runner.md",
+  "docs/proposals/ast-productization.md",
   "docs/specs/ast-shadow.md",
   "docs/specs/ast-shadow-backend.md",
+  "docs/specs/ast-syntax-support-tier.md",
   "docs/specs/syntax-receipts.md",
   "xtask/Cargo.toml",
   "xtask/src/cli.rs",
@@ -1053,6 +1057,7 @@ paths = [
   "crates/tokmd/tests/cli_*.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
+  "crates/tokmd/tests/ub_review_packet_*.rs",
   "crates/tokmd/tests/render_*.rs",
   "crates/tokmd/tests/snapshots/cli_*.snap",
   "crates/tokmd/tests/config_resolution.rs",
@@ -1069,6 +1074,7 @@ proof = [
   "cargo test -p tokmd --test config_resolution --verbose",
   "cargo test -p tokmd --test packet_generate_integration --verbose",
   "cargo test -p tokmd --test render_packets_integration --verbose",
+  "cargo test -p tokmd --test ub_review_packet_consumer --verbose",
 ]
 mutation = true
 coverage = true
@@ -1243,6 +1249,7 @@ paths = [
   "docs/browser-to-native.md",
   "docs/evidence-packet.md",
   "docs/examples/**",
+  "docs/how-to-add-a-packet-field.md",
   "docs/install-and-try.md",
   "docs/integrations/**",
   "docs/packet-consumption.md",
@@ -1256,6 +1263,7 @@ paths = [
   "docs/troubleshooting.md",
   "docs/ub-review-integration.md",
   "docs/user-paths.md",
+  "docs/workflows/**",
   "docs/workflows.md",
 ]
 proof = ["cargo xtask docs --check"]

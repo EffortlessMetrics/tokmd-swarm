@@ -292,6 +292,8 @@ A `bun-ub` evidence packet does not:
   glossary, and worked examples for maintainers and agents
 - [Evidence packet workflow spec](specs/evidence-packet-workflow.md) — normative
   contract for `sensors/tokmd/` layout, support model, and verifier semantics
+- [How to add an evidence packet field](how-to-add-a-packet-field.md) — contributor
+  extender guide for adding manifest fields
 - [PR evidence packet workflows](packet-workflows.md)
 - [Bun UB analysis preset](analyze/bun-ub.md)
 - [ub-review tokmd sensor recipe](integrations/ub-review.md)

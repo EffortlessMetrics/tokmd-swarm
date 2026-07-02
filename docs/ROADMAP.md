@@ -9,9 +9,9 @@ evidence names a real consumer, missing artifact, workflow pain, or product gap.
 
 ## Current Status
 
-The generated PR drain is complete. Proof, AST, browser, release-readiness,
-publishing-evidence, user-path evidence, artifact glossary, and first-pass
-product-readiness lanes are closed.
+The generated PR drain is complete. Proof, AST productization, browser,
+release-readiness, publishing-evidence, user-path evidence, artifact glossary,
+and first-pass product-readiness lanes are closed.
 
 The Rust-native proof control plane is in routine-observation mode. Fast proof,
 scoped coverage, mutation, coverage telemetry, and Codecov upload remain
@@ -345,42 +345,48 @@ is still one of the clearest user-facing product surfaces.
 - the next rootless preset candidate has evidence,
 - browser examples match actual behavior.
 
-### Lane 6: AST Shadow Evidence
+### Lane 6: AST / Syntax Productization
 
-**Goal:** Continue AST work only as shadow evidence until it justifies public
-behavior.
+**Status:** closed (2026-07-01). All agent-executable packets shipped.
 
-**Why now:** AST foundation exists, but previous decisions concluded function
-boundary candidate status is "not yet." More AST work should be evidence-led.
+**Goal:** Keep the explicit opt-in syntax surface working end-to-end; continue
+shadow comparison evidence; defer default-receipt promotion until candidate
+criteria clear.
 
-**Candidate work packets:**
+**Why now:** User-directed lane opening (2026-06-30). Implementation already
+ships `tokmd syntax`, packet `--syntax`, and shadow tooling; governance was
+stale ("shadow only / no active lane"). See `docs/proposals/ast-productization.md`.
 
-1. Corpus selection proposal
-   - Identify a broader, representative corpus.
-   - Define mismatch categories before running comparisons.
-2. Shadow comparison expansion
-   - Add evidence for function boundaries, imports, and control-flow landmarks.
-   - Preserve developer-facing artifact status.
-3. Browser/WASM AST feasibility note
-   - Clarify parser size, feature flags, fallback behavior, and capability
-     reporting implications before any browser work.
-4. Candidate decision refresh
-   - Only after broader evidence exists.
-   - Decide: public candidate, continue shadow, or stop.
+**Shipped work packets:**
 
-**Do not:**
+1. CLI correctness on syntax surfaces (`--exclude` honoring — PR #368)
+2. Governance reconciliation (`NEXT.md`, specs, support-tier wording — PR #369)
+3. Packet exclude forwarding (PR #370)
+4. User-path syntax evidence guide (PR #371)
+5. Shadow corpus TS/Python expansion (PR #372)
+6. WASM analyze byte-mode parity (PR #380)
+7. Publication import aligned (import #2782 at `8340fbdb`)
 
-- change public receipts,
-- make AST default,
+**Still shadow-only / deferred:**
+
+- Default `analyze` / cockpit receipt fields from AST
+- Browser/WASM tree-sitter
+- Public function-boundary candidate (prior outcome: `not yet`)
+- Explicit `backend_id` wire field (derived labels suffice)
+
+**Do not (without fresh schema proposal):**
+
+- change default public receipts,
 - add public schema fields,
-- treat control-flow evidence as product behavior,
-- do AST architecture work without product-surface proposal.
+- treat syntax review signals as merge verdicts,
+- release/version bump solely because AST lane is "done."
 
-**Done when:**
+**Done when (met 2026-07-01):**
 
-- AST evidence is broader, repeatable, and classified,
-- maintainers can make a clear candidate decision,
-- fallback and rollback are documented.
+- Proposal + plan accepted; governance matches shipped behavior,
+- `tokmd syntax` and packet `--syntax` proven in CI,
+- shadow compare/check repeatable,
+- publication import aligned after merge batch.
 
 ## Later Horizons
 

@@ -1,8 +1,154 @@
+use super::capability::{AstCapability, AstLanguage};
 use super::facts::{
     SyntaxCallSite, SyntaxExport, SyntaxFacts, SyntaxImport, SyntaxRiskSeam, SyntaxSpan,
     SyntaxSymbol,
 };
-use tree_sitter::Node;
+use std::error::Error;
+use std::fmt;
+use tree_sitter::{Node, Parser};
+
+pub const TREE_SITTER_PYTHON_CRATE: &str = "tree-sitter-python";
+pub const PYTHON_CAPABILITY: AstCapability =
+    AstCapability::parser_backed_shadow(AstLanguage::Python, TREE_SITTER_PYTHON_CRATE);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PythonAstShadow {
+    pub has_error: bool,
+    pub landmarks: Vec<PythonLandmark>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PythonLandmark {
+    pub kind: PythonLandmarkKind,
+    pub name: String,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum PythonLandmarkKind {
+    ControlFlow,
+    Function,
+    Import,
+}
+
+#[derive(Debug)]
+pub enum PythonAstError {
+    Language(tree_sitter::LanguageError),
+    ParseFailed,
+}
+
+impl fmt::Display for PythonAstError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Language(error) => {
+                write!(f, "failed to load Python Tree-sitter language: {error}")
+            }
+            Self::ParseFailed => f.write_str("failed to parse Python source"),
+        }
+    }
+}
+
+impl Error for PythonAstError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Language(error) => Some(error),
+            Self::ParseFailed => None,
+        }
+    }
+}
+
+pub fn parse_python_landmarks(source: &str) -> Result<PythonAstShadow, PythonAstError> {
+    let mut parser = Parser::new();
+    let language = tree_sitter_python::LANGUAGE;
+    parser
+        .set_language(&language.into())
+        .map_err(PythonAstError::Language)?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or(PythonAstError::ParseFailed)?;
+
+    let mut landmarks = Vec::new();
+    collect_python_landmarks(tree.root_node(), source, &mut landmarks);
+    landmarks.sort_by(|left, right| {
+        left.start_line
+            .cmp(&right.start_line)
+            .then_with(|| left.kind.cmp(&right.kind))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+
+    Ok(PythonAstShadow {
+        has_error: tree.root_node().has_error(),
+        landmarks,
+    })
+}
+
+fn collect_python_landmarks(node: Node<'_>, source: &str, landmarks: &mut Vec<PythonLandmark>) {
+    match node.kind() {
+        "function_definition" => {
+            if let Some(name) = python_function_name(node, source) {
+                push_python_landmark(node, PythonLandmarkKind::Function, name, landmarks);
+            }
+        }
+        "import_statement" | "import_from_statement" => {
+            if let Some(name) = import_statement_name(node, source) {
+                push_python_landmark(node, PythonLandmarkKind::Import, name, landmarks);
+            }
+        }
+        kind => {
+            if let Some(name) = python_control_flow_name(kind) {
+                push_python_landmark(
+                    node,
+                    PythonLandmarkKind::ControlFlow,
+                    name.to_owned(),
+                    landmarks,
+                );
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        collect_python_landmarks(child, source, landmarks);
+    }
+}
+
+fn python_function_name(node: Node<'_>, source: &str) -> Option<String> {
+    node.child_by_field_name("name")
+        .and_then(|name| node_text_checked(source, name))
+        .map(compact_text)
+        .or_else(|| first_identifier_text(node, source))
+}
+
+fn import_statement_name(node: Node<'_>, source: &str) -> Option<String> {
+    Some(compact_text(node_text(source, node)))
+}
+
+fn python_control_flow_name(kind: &str) -> Option<&'static str> {
+    match kind {
+        "if_statement" => Some("if"),
+        "for_statement" => Some("for"),
+        "while_statement" => Some("while"),
+        "match_statement" => Some("match"),
+        _ => None,
+    }
+}
+
+fn push_python_landmark(
+    node: Node<'_>,
+    kind: PythonLandmarkKind,
+    name: String,
+    landmarks: &mut Vec<PythonLandmark>,
+) {
+    let start = node.start_position();
+    let end = node.end_position();
+    landmarks.push(PythonLandmark {
+        kind,
+        name,
+        start_line: start.row + 1,
+        end_line: end.row + 1,
+    });
+}
 
 #[must_use]
 pub fn extract_python_facts(root: Node<'_>, source: &str) -> SyntaxFacts {
