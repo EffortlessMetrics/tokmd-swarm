@@ -56,6 +56,7 @@ fn estimated_file_metrics(stats: &CodeStats) -> (usize, usize) {
     metrics_from_byte_len(bytes)
 }
 
+#[cfg(test)]
 fn metrics_from_bytes(bytes: &[u8]) -> (usize, usize) {
     metrics_from_byte_len(bytes.len())
 }
