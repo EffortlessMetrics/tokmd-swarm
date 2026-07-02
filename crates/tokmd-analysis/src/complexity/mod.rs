@@ -268,5 +268,7 @@ pub(crate) fn bounded_complexity_warnings(
 
 /// Real on-disk size for a repo-relative complexity file, if readable.
 fn actual_file_bytes(root: &Path, rel: &str) -> Option<u64> {
-    std::fs::metadata(root.join(rel)).ok().map(|meta| meta.len())
+    std::fs::metadata(root.join(rel))
+        .ok()
+        .map(|meta| meta.len())
 }
