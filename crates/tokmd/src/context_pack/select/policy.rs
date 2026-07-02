@@ -11,18 +11,30 @@ use tokmd_types::{
 use super::{SelectOptions, assign_policy, classify_file, compute_file_cap};
 
 const POLICY_CHARS_PER_TOKEN: usize = 4;
+/// Must stay aligned with `tokmd_model::rows::ESTIMATED_BYTES_PER_LINE`.
+const ESTIMATED_BYTES_PER_LINE: usize = 40;
 
 /// Tokens used for inclusion-policy caps and density classification.
 ///
 /// Receipt `row.tokens` is a line-derived estimate after the metadata-free model
 /// fast path; policy decisions that gate skip/head-tail need on-disk size when
-/// the scanned file is readable.
+/// the scanned file is readable and the row still carries the line estimate.
 fn policy_tokens(path: &str, row: &FileRow) -> usize {
-    Path::new(path)
-        .metadata()
-        .ok()
-        .map(|meta| meta.len() as usize / POLICY_CHARS_PER_TOKEN)
-        .unwrap_or(row.tokens)
+    let estimated_bytes = row.lines.saturating_mul(ESTIMATED_BYTES_PER_LINE);
+    if row.bytes != estimated_bytes {
+        return row.tokens;
+    }
+
+    let Some(meta) = Path::new(path).metadata().ok() else {
+        return row.tokens;
+    };
+
+    let disk_bytes = meta.len() as usize;
+    if disk_bytes > row.bytes {
+        disk_bytes / POLICY_CHARS_PER_TOKEN
+    } else {
+        row.tokens
+    }
 }
 
 struct FileContextMeta {
