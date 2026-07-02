@@ -19,7 +19,7 @@ against hosted `ci-actuals` measurements.
 | Run | Event | SHA | Run ID | Receipt |
 | --- | --- | --- | --- | --- |
 | Main push | `push` → `main` | `36fbe23d` | `28607897038` | `target/ci/actuals-cache/ci-actuals.json` |
-| PR merge | `pull_request` | `dbe4f280` | `28607236312` | `target/ci/actuals-cache-pr/ci-actuals.json` |
+| PR merge | `pull_request` | `…b318c15f29c` | `28607236312` | `target/ci/actuals-cache-pr/ci-actuals.json` |
 
 Both receipts are `tokmd.ci_actuals.v3`. Reproduce locally:
 
