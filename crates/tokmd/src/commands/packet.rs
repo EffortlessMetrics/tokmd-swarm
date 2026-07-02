@@ -76,7 +76,7 @@ fn generate_packet(args: cli::PacketGenerateArgs, global: &cli::GlobalArgs) -> R
     //    reflects only this run.
     let syntax_arg = if args.want_syntax() {
         progress::emit_stage("Generating syntax evidence...");
-        if let Err(err) = write_syntax(&args, &syntax_json) {
+        if let Err(err) = write_syntax(&args, global, &syntax_json) {
             eprintln!("warning: syntax evidence unavailable: {err}");
         }
         Some(syntax_json.clone())
@@ -183,7 +183,11 @@ fn context_args(args: &cli::PacketGenerateArgs, output: &Path) -> cli::CliContex
 }
 
 #[cfg(feature = "ast")]
-fn write_syntax(args: &cli::PacketGenerateArgs, path: &Path) -> Result<()> {
+fn write_syntax(
+    args: &cli::PacketGenerateArgs,
+    global: &cli::GlobalArgs,
+    path: &Path,
+) -> Result<()> {
     use crate::commands::syntax;
 
     let syntax_args = cli::SyntaxArgs {
@@ -191,13 +195,17 @@ fn write_syntax(args: &cli::PacketGenerateArgs, path: &Path) -> Result<()> {
         include_generated_vendor: false,
         paths: args.paths.clone(),
     };
-    let packet = syntax::build_syntax_packet(&syntax_args)?;
+    let packet = syntax::build_syntax_packet(&syntax_args, &global.excluded)?;
     let json = serde_json::to_string_pretty(&packet)?;
     std::fs::write(path, json).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
 #[cfg(not(feature = "ast"))]
-fn write_syntax(_args: &cli::PacketGenerateArgs, _path: &Path) -> Result<()> {
+fn write_syntax(
+    _args: &cli::PacketGenerateArgs,
+    _global: &cli::GlobalArgs,
+    _path: &Path,
+) -> Result<()> {
     anyhow::bail!("syntax evidence requires the `ast` feature")
 }
