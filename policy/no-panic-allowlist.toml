@@ -416486,3 +416486,326 @@ receiver_fingerprint = "from_zip[\"data\"]"
 [allow.last_seen]
 line = 1258
 column = 13
+
+[[allow]]
+id = "panic-21924"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::core_run_json_bytes_module_matches_inline_inputs"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_zip_raw)"
+
+[allow.last_seen]
+line = 754
+column = 34
+
+[[allow]]
+id = "panic-21925"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::core_run_json_bytes_module_matches_inline_inputs"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_json_raw)"
+
+[allow.last_seen]
+line = 756
+column = 12
+
+[[allow]]
+id = "panic-21926"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_zip_raw)"
+
+[allow.last_seen]
+line = 782
+column = 34
+
+[[allow]]
+id = "panic-21927"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_json_raw)"
+
+[allow.last_seen]
+line = 784
+column = 12
+
+[[allow]]
+id = "panic-21928"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs"
+callee = "expect"
+receiver_fingerprint = "from_zip [\"data\"] [\"rows\"] . as_array ()"
+
+[allow.last_seen]
+line = 788
+column = 31
+
+[[allow]]
+id = "panic-21929"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs"
+callee = "[]"
+receiver_fingerprint = "from_zip [\"data\"][\"rows\"]"
+
+[allow.last_seen]
+line = 788
+column = 31
+
+[[allow]]
+id = "panic-21930"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs"
+callee = "[]"
+receiver_fingerprint = "from_zip[\"data\"]"
+
+[allow.last_seen]
+line = 788
+column = 31
+
+[[allow]]
+id = "panic-21931"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "test_helper"
+owner = "tokmd-wasm"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "tests::core_run_json_bytes_export_matches_inline_inputs::<closure-0>"
+callee = "[]"
+receiver_fingerprint = "row[\"path\"]"
+
+[allow.last_seen]
+line = 792
+column = 30
+
+[[allow]]
+id = "panic-21932"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "wasm_tests::run_json_bytes_module_matches_inline_inputs_over_js_boundary"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_zip_raw)"
+
+[allow.last_seen]
+line = 1286
+column = 12
+
+[[allow]]
+id = "panic-21933"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "wasm_tests::run_json_bytes_module_matches_inline_inputs_over_js_boundary"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_json_raw)"
+
+[allow.last_seen]
+line = 1288
+column = 12
+
+[[allow]]
+id = "panic-21934"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "wasm_tests::run_json_bytes_module_matches_inline_inputs_over_js_boundary"
+callee = "[]"
+receiver_fingerprint = "from_zip[\"data\"]"
+
+[allow.last_seen]
+line = 1297
+column = 73
+
+[[allow]]
+id = "panic-21935"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_zip_raw)"
+
+[allow.last_seen]
+line = 1318
+column = 12
+
+[[allow]]
+id = "panic-21936"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary"
+callee = "expect"
+receiver_fingerprint = "serde_json :: from_str (& from_json_raw)"
+
+[allow.last_seen]
+line = 1320
+column = 12
+
+[[allow]]
+id = "panic-21937"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "expect"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary"
+callee = "expect"
+receiver_fingerprint = "from_zip [\"data\"] [\"rows\"] . as_array ()"
+
+[allow.last_seen]
+line = 1328
+column = 31
+
+[[allow]]
+id = "panic-21938"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary"
+callee = "[]"
+receiver_fingerprint = "from_zip [\"data\"][\"rows\"]"
+
+[allow.last_seen]
+line = 1328
+column = 31
+
+[[allow]]
+id = "panic-21939"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary"
+callee = "[]"
+receiver_fingerprint = "from_zip[\"data\"]"
+
+[allow.last_seen]
+line = 1328
+column = 31
+
+[[allow]]
+id = "panic-21940"
+path = "crates/tokmd-wasm/src/lib.rs"
+family = "element_indexing"
+classification = "ffi"
+owner = "tokmd-wasm"
+explanation = "FFI/binding surface; migrate to fallible error mapping in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "wasm_tests::run_json_bytes_export_matches_inline_inputs_over_js_boundary::<closure-0>"
+callee = "[]"
+receiver_fingerprint = "row[\"path\"]"
+
+[allow.last_seen]
+line = 1332
+column = 30
