@@ -10,7 +10,6 @@ use tree_sitter::{Node, Parser};
 pub const TREE_SITTER_RUST_CRATE: &str = "tree-sitter-rust";
 pub const RUST_CAPABILITY: AstCapability =
     AstCapability::parser_backed_shadow(AstLanguage::Rust, TREE_SITTER_RUST_CRATE);
-pub static CAPABILITIES: &[AstCapability] = &[RUST_CAPABILITY];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RustAstShadow {

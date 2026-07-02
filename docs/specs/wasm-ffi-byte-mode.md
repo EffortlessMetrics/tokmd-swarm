@@ -5,8 +5,8 @@
   (`tokmd_core::ffi::run_json_bytes`, behind the `archive-zip` feature) and the
   WASM `Uint8Array` binding (`tokmd-wasm::runJsonBytes`) have landed with
   native and `wasm-bindgen-test` parity coverage; the capability matrix rows are
-  promoted. Remaining follow-on: wire `runJsonBytes` into the browser runner UI
-  (`web/runner` `zipball` path) and byte/host parity oracle.
+  promoted. The browser runner UI (`web/runner` zipball path) forwards archive
+  bytes to `runJsonBytes` when the wasm bundle is built with `archive-zip`.
 - Schema family, if any: none yet (no new serialized receipt schema is introduced by this seam)
 - Related ADRs: none yet
 - Related proof scopes: `scan`, `model`, `io_port`
@@ -147,10 +147,15 @@ capability promotion.
 - Byte/JSON-mode parity (MET, core): for the same logical file set, the
   byte-mode envelope must match the envelope produced by the existing
   `{ path, text }` JSON mode (same `schema_version`, same payload modulo
-  volatile timestamps). Covered by the
-  `byte_mode_lang_envelope_matches_json_mode_inputs` test in
+  volatile timestamps). Covered by the `byte_mode_lang_envelope_matches_json_mode_inputs`,
+  `byte_mode_module_envelope_matches_json_mode_inputs`, and
+  `byte_mode_export_envelope_matches_json_mode_inputs` tests in
   `crates/tokmd-core/tests/archive_zip_ffi_bytemode.rs` and the `tokmd-scan`
-  decode parity in `crates/tokmd-core/tests/archive_zip_bytemode.rs`.
+  decode parity in `crates/tokmd-core/tests/archive_zip_bytemode.rs`. Rootless
+  `analyze` presets (`receipt`, `estimate`) are covered by
+  `byte_mode_analyze_receipt_envelope_matches_json_mode_inputs` and
+  `byte_mode_analyze_estimate_envelope_matches_json_mode_inputs` in the same
+  file when the `analysis` feature is enabled.
 - Fail-closed admission (MET, core): a traversal entry, a malformed archive, and
   a breached ingestion cap each fail closed with no partial receipt, with no
   second admission path bypassing `crates/tokmd-io-port/src/archive.rs`. Covered
@@ -159,14 +164,20 @@ capability promotion.
   tests in the same file. Broader hostile-fixture coverage
   (absolute/drive-prefix/NUL/non-regular) is already proven at the admission
   engine in `crates/tokmd-io-port`.
-- Byte/host parity (PENDING): scanning a benign archive fixture through the byte
-  mode must yield the same normalized file set and aggregated receipt as
-  scanning the equivalent extracted tree through the host path, reusing the
-  parity oracle the snapshot seam defines.
+- Byte/host parity (MET, lang/module/export): scanning a benign archive fixture
+  through the byte mode must yield the same normalized file set and aggregated
+  receipt as scanning the equivalent extracted tree through the host path,
+  reusing the parity oracle the snapshot seam defines. Covered by
+  `archive_lang_report_matches_host_lang_report`,
+  `archive_module_report_matches_host_module_report`, and
+  `archive_export_report_matches_host_export_report` in
+  `crates/tokmd-core/tests/archive_host_receipt_parity.rs`.
 - WASM boundary coverage (MET): a `wasm-bindgen-test` exercises the
   `Uint8Array` binding end to end and asserts the browser payload matches the
   core payload, in the same style as the existing boundary tests in
-  `crates/tokmd-wasm/src/lib.rs` (`run_json_bytes_lang_matches_inline_inputs_over_js_boundary`).
+  `crates/tokmd-wasm/src/lib.rs` (`run_json_bytes_lang_matches_inline_inputs_over_js_boundary`,
+  `run_json_bytes_analyze_receipt_matches_inline_inputs_over_js_boundary`, and
+  `run_json_bytes_analyze_estimate_matches_inline_inputs_over_js_boundary`).
 - Default-surface guard (MET, CI): the Wasm Compile & Test lane checks and tests
   the default (non-`archive-zip`) feature set separately from the
   `archive-zip`-gated binding, confirming decompression dependencies only enter
