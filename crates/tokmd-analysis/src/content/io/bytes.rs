@@ -60,11 +60,11 @@ mod tests {
     #[test]
     fn as_text_borrows_valid_utf8_without_null() {
         let bytes = "héllo wörld".as_bytes();
-        let text = as_text(bytes).expect("valid utf8 without null is text");
-        assert_eq!(text, "héllo wörld");
+        let text = as_text(bytes);
+        assert_eq!(text, Some("héllo wörld"));
         assert_eq!(
-            text.as_ptr(),
-            bytes.as_ptr(),
+            text.map(str::as_ptr),
+            Some(bytes.as_ptr()),
             "as_text must borrow, not copy"
         );
     }
