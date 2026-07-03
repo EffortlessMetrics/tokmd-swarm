@@ -479,12 +479,15 @@ mod tests {
 
         let receipt = perf_smoke_receipt(&args)?;
 
-        let timing = &receipt.analysis_workflows[0];
+        let timing = receipt
+            .analysis_workflows
+            .first()
+            .context("expected one analysis workflow timing")?;
         assert!(timing.io_trace.is_none());
         let cache = timing
             .io_cache
             .as_ref()
-            .expect("cache_io should populate an io_cache section");
+            .context("cache_io should populate an io_cache section")?;
         assert_eq!(cache.schema, IO_CACHE_SCHEMA);
         assert!(cache.lookups >= 1, "expected at least one cache lookup");
         assert_eq!(cache.misses + cache.hits, cache.lookups);

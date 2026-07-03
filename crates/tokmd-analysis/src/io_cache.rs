@@ -196,13 +196,12 @@ mod tests {
     }
 
     #[test]
-    fn idle_passes_through_and_reports_empty() {
+    fn idle_passes_through_and_reports_empty() -> Result<()> {
         let counter = std::cell::Cell::new(0);
         // No scope active: reader is always called, cache is a no-op.
         let bytes = get_or_read_bytes(IoReadMode::Head, 16, Path::new("a.rs"), || {
             read_calls(&counter, b"hello")
-        })
-        .expect("read");
+        })?;
         assert_eq!(bytes, b"hello");
         assert_eq!(counter.get(), 1);
 
@@ -212,33 +211,34 @@ mod tests {
         assert_eq!(report.misses, 0);
         assert_eq!(report.entries, 0);
         assert_eq!(report.hit_rate(), 0.0);
+        Ok(())
     }
 
     #[test]
-    fn second_read_of_same_key_is_served_from_cache() {
+    fn second_read_of_same_key_is_served_from_cache() -> Result<()> {
         let counter = std::cell::Cell::new(0);
-        let (bytes_pair, report) = scope(|| {
+        let (bytes_pair, report) = scope(|| -> Result<(Vec<u8>, Vec<u8>)> {
             let first = get_or_read_bytes(IoReadMode::Head, 16, Path::new("a.rs"), || {
                 read_calls(&counter, b"content")
-            })
-            .expect("first read");
+            })?;
             let second = get_or_read_bytes(IoReadMode::Head, 16, Path::new("a.rs"), || {
                 read_calls(&counter, b"content")
-            })
-            .expect("second read");
-            (first, second)
+            })?;
+            Ok((first, second))
         });
+        let (first, second) = bytes_pair?;
         // The reader ran exactly once; the second lookup was a cache hit.
         assert_eq!(counter.get(), 1);
         // Cache parity: served bytes equal the originally-read bytes.
-        assert_eq!(bytes_pair.0, b"content");
-        assert_eq!(bytes_pair.1, b"content");
+        assert_eq!(first, b"content");
+        assert_eq!(second, b"content");
         assert_eq!(report.lookups, 2);
         assert_eq!(report.hits, 1);
         assert_eq!(report.misses, 1);
         assert_eq!(report.entries, 1);
         assert_eq!(report.bytes_served, b"content".len() as u64);
         assert_eq!(report.hit_rate(), 0.5);
+        Ok(())
     }
 
     #[test]
@@ -312,17 +312,18 @@ mod content_wiring_tests {
     use super::*;
 
     #[test]
-    fn facade_read_head_is_served_from_cache_on_repeat() {
-        let tmp = tempfile::tempdir().expect("tempdir");
+    fn facade_read_head_is_served_from_cache_on_repeat() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
         let path = tmp.path().join("sample.rs");
-        let mut file = std::fs::File::create(&path).expect("create sample");
-        file.write_all(b"fn main() {}\n").expect("write sample");
+        let mut file = std::fs::File::create(&path)?;
+        file.write_all(b"fn main() {}\n")?;
 
-        let ((first, second), report) = scope(|| {
-            let first = crate::content::io::read_head(&path, 4096).expect("first read");
-            let second = crate::content::io::read_head(&path, 4096).expect("second read");
-            (first, second)
+        let (bytes_pair, report) = scope(|| -> Result<(Vec<u8>, Vec<u8>)> {
+            let first = crate::content::io::read_head(&path, 4096)?;
+            let second = crate::content::io::read_head(&path, 4096)?;
+            Ok((first, second))
         });
+        let (first, second) = bytes_pair?;
 
         // Byte parity between the read-through and the cached copy.
         assert_eq!(first, b"fn main() {}\n");
@@ -331,18 +332,19 @@ mod content_wiring_tests {
         assert_eq!(report.hits, 1);
         assert_eq!(report.misses, 1);
         assert_eq!(report.entries, 1);
+        Ok(())
     }
 
     #[test]
-    fn facade_read_head_matches_uncached_bytes() {
-        let tmp = tempfile::tempdir().expect("tempdir");
+    fn facade_read_head_matches_uncached_bytes() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
         let path = tmp.path().join("parity.rs");
-        let mut file = std::fs::File::create(&path).expect("create parity");
-        file.write_all(b"// parity check\npub fn f() {}\n")
-            .expect("write parity");
+        let mut file = std::fs::File::create(&path)?;
+        file.write_all(b"// parity check\npub fn f() {}\n")?;
 
-        let uncached = crate::content::io::read_head(&path, 4096).expect("uncached read");
+        let uncached = crate::content::io::read_head(&path, 4096)?;
         let (cached, _report) = scope(|| crate::content::io::read_head(&path, 4096));
-        assert_eq!(cached.expect("cached read"), uncached);
+        assert_eq!(cached?, uncached);
+        Ok(())
     }
 }
