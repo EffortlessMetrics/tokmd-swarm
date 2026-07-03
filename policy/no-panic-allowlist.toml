@@ -416809,3 +416809,211 @@ receiver_fingerprint = "row[\"path\"]"
 [allow.last_seen]
 line = 1332
 column = 30
+[[allow]]
+id = "panic-21941"
+path = "crates/tokmd-analysis/src/complexity/tests/unit.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "bounded_complexity_warnings_report_default_file_cap"
+callee = "expect"
+receiver_fingerprint = "tempfile :: tempdir ()"
+
+[allow.last_seen]
+line = 364
+column = 14
+
+[[allow]]
+id = "panic-21942"
+path = "crates/tokmd-analysis/src/complexity/tests/unit.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "bounded_complexity_warnings_report_default_file_cap"
+callee = "expect"
+receiver_fingerprint = "std :: fs :: create_dir_all (& src_dir)"
+
+[allow.last_seen]
+line = 366
+column = 4
+
+[[allow]]
+id = "panic-21943"
+path = "crates/tokmd-analysis/src/complexity/tests/unit.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "bounded_complexity_warnings_report_default_file_cap"
+callee = "expect"
+receiver_fingerprint = "std :: fs :: write (src_dir . join (\"lib.rs\") , & oversized)"
+
+[allow.last_seen]
+line = 370
+column = 4
+
+[[allow]]
+id = "panic-21944"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_head_records_head_open_within_scope"
+callee = "expect"
+receiver_fingerprint = "tempfile :: tempdir ()"
+
+[allow.last_seen]
+line = 261
+column = 18
+
+[[allow]]
+id = "panic-21945"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_head_records_head_open_within_scope"
+callee = "expect"
+receiver_fingerprint = "std :: fs :: File :: create (& path)"
+
+[allow.last_seen]
+line = 263
+column = 23
+
+[[allow]]
+id = "panic-21946"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_head_records_head_open_within_scope"
+callee = "expect"
+receiver_fingerprint = "file . write_all (b\"fn main() {}\\n\")"
+
+[allow.last_seen]
+line = 264
+column = 8
+
+[[allow]]
+id = "panic-21947"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_text_capped_records_single_text_capped_open"
+callee = "expect"
+receiver_fingerprint = "tempfile :: tempdir ()"
+
+[allow.last_seen]
+line = 275
+column = 18
+
+[[allow]]
+id = "panic-21948"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_text_capped_records_single_text_capped_open"
+callee = "expect"
+receiver_fingerprint = "std :: fs :: File :: create (& path)"
+
+[allow.last_seen]
+line = 277
+column = 23
+
+[[allow]]
+id = "panic-21949"
+path = "crates/tokmd-analysis/src/io_trace.rs"
+family = "expect"
+classification = "test_helper"
+owner = "tokmd-analysis"
+explanation = "test helper; preferred fix is fallible test utilities"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "content_wiring_tests::facade_read_text_capped_records_single_text_capped_open"
+callee = "expect"
+receiver_fingerprint = "file . write_all (b\"MIT License\\n\")"
+
+[allow.last_seen]
+line = 278
+column = 8
+
+[[allow]]
+id = "panic-21950"
+path = "xtask/src/tasks/perf_smoke.rs"
+family = "element_indexing"
+classification = "tooling"
+owner = "xtask"
+explanation = "xtask helper; migrate to fallible path in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "indexing"
+container = "tests::trace_io_records_content_open_section"
+callee = "[]"
+receiver_fingerprint = "receipt . analysis_workflows[0]"
+
+[allow.last_seen]
+line = 516
+column = 22
+
+[[allow]]
+id = "panic-21951"
+path = "xtask/src/tasks/perf_smoke.rs"
+family = "expect"
+classification = "tooling"
+owner = "xtask"
+explanation = "xtask helper; migrate to fallible path in follow-up"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "tests::trace_io_records_content_open_section"
+callee = "expect"
+receiver_fingerprint = "timing . io_trace . as_ref ()"
+
+[allow.last_seen]
+line = 517
+column = 20
