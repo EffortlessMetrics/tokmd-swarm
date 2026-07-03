@@ -54270,25 +54270,6 @@ line = 543
 column = 16
 
 [[allow]]
-id = "panic-2857"
-path = "crates/tokmd/tests/determinism_regression.rs"
-family = "expect"
-classification = "test_helper"
-owner = "tokmd"
-explanation = "test helper; preferred fix is fallible test utilities"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "method_call"
-container = "lang_csv_byte_identical::<closure-0>"
-callee = "expect"
-receiver_fingerprint = "tokmd_cmd () . args ([\"lang\" , \"--format\" , \"csv\"]) . output ()"
-
-[allow.last_seen]
-line = 458
-column = 16
-
-[[allow]]
 id = "panic-2858"
 path = "crates/tokmd/tests/determinism_regression.rs"
 family = "expect"
