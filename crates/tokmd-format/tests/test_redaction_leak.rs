@@ -89,17 +89,43 @@ fn strip_prefix_redaction_uses_short_hash_without_extension_leak() {
     };
 
     let mut buffer = Cursor::new(Vec::new());
-    write_export_jsonl_to(&mut buffer, &export, &ScanOptions::default(), &args)
-        .expect("export jsonl must succeed");
+    assert!(
+        write_export_jsonl_to(&mut buffer, &export, &ScanOptions::default(), &args).is_ok(),
+        "export jsonl must succeed"
+    );
 
-    let output = String::from_utf8(buffer.into_inner()).expect("output must be valid UTF-8");
-    let meta: serde_json::Value =
-        serde_json::from_str(output.lines().next().expect("meta line must exist"))
-            .expect("meta line must parse as JSON");
-
-    let redacted = meta["args"]["strip_prefix"]
-        .as_str()
-        .expect("strip_prefix must be a JSON string");
+    let output = match String::from_utf8(buffer.into_inner()) {
+        Ok(output) => output,
+        Err(_) => {
+            assert!(false, "output must be valid UTF-8");
+            return;
+        }
+    };
+    let meta_line = match output.lines().next() {
+        Some(line) => line,
+        None => {
+            assert!(false, "meta line must exist");
+            return;
+        }
+    };
+    let meta = match serde_json::from_str::<serde_json::Value>(meta_line) {
+        Ok(meta) => meta,
+        Err(_) => {
+            assert!(false, "meta line must parse as JSON");
+            return;
+        }
+    };
+    let redacted = match meta
+        .get("args")
+        .and_then(|args| args.get("strip_prefix"))
+        .and_then(|value| value.as_str())
+    {
+        Some(redacted) => redacted,
+        None => {
+            assert!(false, "strip_prefix must be a JSON string");
+            return;
+        }
+    };
     assert_eq!(
         redacted,
         short_hash(prefix),
