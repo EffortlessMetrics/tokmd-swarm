@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `docs_schema_w72` guard tests pinning the current receipt schema
+  constants in this changelog: `COCKPIT_SCHEMA_VERSION = 3`,
+  `CONTEXT_SCHEMA_VERSION = 4`, `CONTEXT_BUNDLE_SCHEMA_VERSION = 2`,
+  `HANDOFF_SCHEMA_VERSION = 5`, and `TOOL_SCHEMA_VERSION = 1`. Bumping any of
+  these constants now requires a matching `CONSTANT = value` changelog entry.
+
 ### Changed
 
 - Enabled `runtime: container` in the `EffortlessMetrics/tokmd` GitHub Action.
