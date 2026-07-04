@@ -1,4 +1,11 @@
-use tokmd_format::redact_path;
+use std::io::Cursor;
+use std::path::PathBuf;
+
+use tokmd_format::{redact_path, short_hash, write_export_jsonl_to};
+use tokmd_settings::ScanOptions;
+use tokmd_types::{
+    ChildIncludeMode, ExportArgs, ExportData, ExportFormat, FileKind, FileRow, RedactMode,
+};
 
 #[test]
 fn test_redact_path_leak() {
@@ -45,4 +52,66 @@ fn redaction_normalizes_known_compound_archive_suffix_case() {
     let redacted = redact_path("archive.TAR.GZ");
     assert!(redacted.ends_with(".tar.gz"));
     assert!(!redacted.ends_with(".TAR.GZ"));
+}
+
+#[test]
+fn strip_prefix_redaction_uses_short_hash_without_extension_leak() {
+    let prefix = "myproject.super_secret_password_123";
+    let export = ExportData {
+        rows: vec![FileRow {
+            path: "myproject/src/main.rs".to_string(),
+            module: "myproject".to_string(),
+            lang: "Rust".to_string(),
+            kind: FileKind::Parent,
+            code: 10,
+            comments: 1,
+            blanks: 1,
+            lines: 12,
+            bytes: 100,
+            tokens: 20,
+        }],
+        module_roots: vec!["myproject".to_string()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+    };
+    let args = ExportArgs {
+        paths: vec![PathBuf::from(".")],
+        format: ExportFormat::Jsonl,
+        output: None,
+        module_roots: vec!["myproject".to_string()],
+        module_depth: 1,
+        children: ChildIncludeMode::Separate,
+        min_code: 0,
+        max_rows: 0,
+        meta: true,
+        redact: RedactMode::Paths,
+        strip_prefix: Some(PathBuf::from(prefix)),
+    };
+
+    let mut buffer = Cursor::new(Vec::new());
+    write_export_jsonl_to(&mut buffer, &export, &ScanOptions::default(), &args)
+        .expect("export jsonl must succeed");
+
+    let output = String::from_utf8(buffer.into_inner()).expect("output must be valid UTF-8");
+    let meta: serde_json::Value =
+        serde_json::from_str(output.lines().next().expect("meta line must exist"))
+            .expect("meta line must parse as JSON");
+
+    let redacted = meta["args"]["strip_prefix"]
+        .as_str()
+        .expect("strip_prefix must be a JSON string");
+    assert_eq!(
+        redacted,
+        short_hash(prefix),
+        "strip_prefix redaction must use short_hash, not redact_path"
+    );
+    assert_eq!(redacted.len(), 16, "redacted strip_prefix must be opaque");
+    assert!(
+        !redacted.contains("super_secret_password_123"),
+        "strip_prefix redaction leaked extension content: {redacted}"
+    );
+    assert!(
+        !redacted.contains('.'),
+        "strip_prefix redaction must not preserve file extensions: {redacted}"
+    );
 }
