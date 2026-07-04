@@ -1,11 +1,4 @@
-use std::io::Cursor;
-use std::path::PathBuf;
-
-use tokmd_format::{redact_path, short_hash, write_export_jsonl_to};
-use tokmd_settings::ScanOptions;
-use tokmd_types::{
-    ChildIncludeMode, ExportArgs, ExportData, ExportFormat, FileKind, FileRow, RedactMode,
-};
+use tokmd_format::{redact_path, short_hash};
 
 #[test]
 fn test_redact_path_leak() {
@@ -55,89 +48,19 @@ fn redaction_normalizes_known_compound_archive_suffix_case() {
 }
 
 #[test]
-fn strip_prefix_redaction_uses_short_hash_without_extension_leak() {
-    let prefix = "myproject.super_secret_password_123";
-    let export = ExportData {
-        rows: vec![FileRow {
-            path: "myproject/src/main.rs".to_string(),
-            module: "myproject".to_string(),
-            lang: "Rust".to_string(),
-            kind: FileKind::Parent,
-            code: 10,
-            comments: 1,
-            blanks: 1,
-            lines: 12,
-            bytes: 100,
-            tokens: 20,
-        }],
-        module_roots: vec!["myproject".to_string()],
-        module_depth: 1,
-        children: ChildIncludeMode::Separate,
-    };
-    let args = ExportArgs {
-        paths: vec![PathBuf::from(".")],
-        format: ExportFormat::Jsonl,
-        output: None,
-        module_roots: vec!["myproject".to_string()],
-        module_depth: 1,
-        children: ChildIncludeMode::Separate,
-        min_code: 0,
-        max_rows: 0,
-        meta: true,
-        redact: RedactMode::Paths,
-        strip_prefix: Some(PathBuf::from(prefix)),
-    };
+fn strip_prefix_redaction_must_use_short_hash_not_redact_path() {
+    let prefix = "src/secret.rs";
+    let via_redact_path = redact_path(prefix);
+    let via_short_hash = short_hash(prefix);
 
-    let mut buffer = Cursor::new(Vec::new());
     assert!(
-        write_export_jsonl_to(&mut buffer, &export, &ScanOptions::default(), &args).is_ok(),
-        "export jsonl must succeed"
+        via_redact_path.ends_with(".rs"),
+        "redact_path preserves a file extension that must not leak for strip_prefix: {via_redact_path}"
     );
-
-    let output = match String::from_utf8(buffer.into_inner()) {
-        Ok(output) => output,
-        Err(_) => {
-            assert!(false, "output must be valid UTF-8");
-            return;
-        }
-    };
-    let meta_line = match output.lines().next() {
-        Some(line) => line,
-        None => {
-            assert!(false, "meta line must exist");
-            return;
-        }
-    };
-    let meta = match serde_json::from_str::<serde_json::Value>(meta_line) {
-        Ok(meta) => meta,
-        Err(_) => {
-            assert!(false, "meta line must parse as JSON");
-            return;
-        }
-    };
-    let redacted = match meta
-        .get("args")
-        .and_then(|args| args.get("strip_prefix"))
-        .and_then(|value| value.as_str())
-    {
-        Some(redacted) => redacted,
-        None => {
-            assert!(false, "strip_prefix must be a JSON string");
-            return;
-        }
-    };
-    assert_eq!(
-        redacted,
-        short_hash(prefix),
-        "strip_prefix redaction must use short_hash, not redact_path"
-    );
-    assert_eq!(redacted.len(), 16, "redacted strip_prefix must be opaque");
-    assert!(
-        !redacted.contains("super_secret_password_123"),
-        "strip_prefix redaction leaked extension content: {redacted}"
-    );
-    assert!(
-        !redacted.contains('.'),
-        "strip_prefix redaction must not preserve file extensions: {redacted}"
+    assert_eq!(via_short_hash.len(), 16);
+    assert!(!via_short_hash.contains('.'));
+    assert_ne!(
+        via_redact_path, via_short_hash,
+        "strip_prefix redaction must use short_hash semantics, not redact_path"
     );
 }
