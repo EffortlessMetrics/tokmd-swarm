@@ -868,75 +868,38 @@ fn changelog_follows_keepachangelog() {
 }
 
 #[test]
-fn changelog_documents_cockpit_schema_version() {
+fn changelog_documents_extended_schema_versions() {
     let cl = changelog_md();
-    let current = read_const_u32(
-        "crates/tokmd-types/src/cockpit.rs",
-        "COCKPIT_SCHEMA_VERSION",
-    )
-    .expect("COCKPIT_SCHEMA_VERSION not found in source");
-    assert!(
-        cl.contains(&format!("COCKPIT_SCHEMA_VERSION = {current}"))
-            || cl.contains("COCKPIT_SCHEMA_VERSION"),
-        "CHANGELOG.md should mention COCKPIT_SCHEMA_VERSION ({current})"
-    );
-}
+    let cases = [
+        (
+            "crates/tokmd-types/src/cockpit.rs",
+            "COCKPIT_SCHEMA_VERSION",
+        ),
+        (
+            "crates/tokmd-types/src/context.rs",
+            "CONTEXT_SCHEMA_VERSION",
+        ),
+        (
+            "crates/tokmd-types/src/context.rs",
+            "CONTEXT_BUNDLE_SCHEMA_VERSION",
+        ),
+        (
+            "crates/tokmd-types/src/context.rs",
+            "HANDOFF_SCHEMA_VERSION",
+        ),
+        ("crates/tokmd/src/tool_schema.rs", "TOOL_SCHEMA_VERSION"),
+    ];
 
-#[test]
-fn changelog_documents_context_schema_version() {
-    let cl = changelog_md();
-    let current = read_const_u32(
-        "crates/tokmd-types/src/context.rs",
-        "CONTEXT_SCHEMA_VERSION",
-    )
-    .expect("CONTEXT_SCHEMA_VERSION not found in source");
-    assert!(
-        cl.contains(&format!("CONTEXT_SCHEMA_VERSION = {current}"))
-            || cl.contains("CONTEXT_SCHEMA_VERSION"),
-        "CHANGELOG.md should mention CONTEXT_SCHEMA_VERSION ({current})"
-    );
-}
-
-#[test]
-fn changelog_documents_context_bundle_schema_version() {
-    let cl = changelog_md();
-    let current = read_const_u32(
-        "crates/tokmd-types/src/context.rs",
-        "CONTEXT_BUNDLE_SCHEMA_VERSION",
-    )
-    .expect("CONTEXT_BUNDLE_SCHEMA_VERSION not found in source");
-    assert!(
-        cl.contains(&format!("CONTEXT_BUNDLE_SCHEMA_VERSION = {current}"))
-            || cl.contains("CONTEXT_BUNDLE_SCHEMA_VERSION"),
-        "CHANGELOG.md should mention CONTEXT_BUNDLE_SCHEMA_VERSION ({current})"
-    );
-}
-
-#[test]
-fn changelog_documents_handoff_schema_version() {
-    let cl = changelog_md();
-    let current = read_const_u32(
-        "crates/tokmd-types/src/context.rs",
-        "HANDOFF_SCHEMA_VERSION",
-    )
-    .expect("HANDOFF_SCHEMA_VERSION not found in source");
-    assert!(
-        cl.contains(&format!("HANDOFF_SCHEMA_VERSION = {current}"))
-            || cl.contains("HANDOFF_SCHEMA_VERSION"),
-        "CHANGELOG.md should mention HANDOFF_SCHEMA_VERSION ({current})"
-    );
-}
-
-#[test]
-fn changelog_documents_tool_schema_version() {
-    let cl = changelog_md();
-    let current = read_const_u32("crates/tokmd/src/tool_schema.rs", "TOOL_SCHEMA_VERSION")
-        .expect("TOOL_SCHEMA_VERSION not found in source");
-    assert!(
-        cl.contains(&format!("TOOL_SCHEMA_VERSION = {current}"))
-            || cl.contains("TOOL_SCHEMA_VERSION"),
-        "CHANGELOG.md should mention TOOL_SCHEMA_VERSION ({current})"
-    );
+    for (path, name) in cases {
+        let current = read_const_u32(path, name);
+        assert!(current.is_some(), "{name} not found in source");
+        if let Some(current) = current {
+            assert!(
+                cl.contains(&format!("{name} = {current}")) || cl.contains(name),
+                "CHANGELOG.md should mention {name} ({current})"
+            );
+        }
+    }
 }
 
 // ===========================================================================
