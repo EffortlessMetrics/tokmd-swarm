@@ -183,8 +183,8 @@ without shell-unsafe character filtering.
 
 **Why not a finding:**
 - The action is a published action; consumers control which version
-  they pin to. The check is bounded to a `MAJOR.MINOR.PATCH`-style
-  string via the `${ver#v}` prefix logic.
+  they pin to. The action normalizes a leading `v` via `${ver#v}` but
+  does not validate the version format. The download URL is quoted.
 - `curl -fsSL` rejects HTTP errors and follows redirects (only to
   HTTPS GitHub release endpoints in practice).
 - The checksum verification, when checksums.txt is present, uses
@@ -229,7 +229,7 @@ The following defenses were re-verified during this scan. All remain intact.
 |------|---------|----------|----------|
 | D-01 | `unsafe_code = "forbid"` workspace lint | `Cargo.toml` | ✓ |
 | D-02 | `unwrap_used`, `expect_used`, `panic`, `unreachable`, `dbg_macro`, `unimplemented`, `todo` lints denied | `Cargo.toml` | ✓ |
-| D-03 | Git subprocess env isolation (`GIT_REPO_SHAPING_ENV`) | `crates/tokmd-git/src/command.rs` | ✓ |
+| D-03 | Git subprocess env isolation (`GIT_REPO_SHAPING_ENV`) | `crates/tokmd-git/src/command.rs`, `crates/tokmd/src/git_support.rs`, `crates/tokmd-scan/src/walk/git.rs` | ✓ |
 | D-04 | Git ref validation (`env_base_ref_is_safe` + `--end-of-options`) | `crates/tokmd-git/src/refs.rs` | ✓ |
 | D-05 | Bounded path canonicalization under root | `crates/tokmd-scan/src/path/bounded_path.rs` | ✓ |
 | D-06 | FFI in-memory input path validation (reject empty, >4096B, control, abs, drive, `..`, all-`.`) | `crates/tokmd-core/src/ffi/inputs.rs` | ✓ |
@@ -277,25 +277,25 @@ The following defenses were re-verified during this scan. All remain intact.
 
 | Area | Files reviewed | Findings |
 |------|----------------|----------|
-| Git subprocess isolation | `crates/tokmd-git/src/command.rs` (`GIT_REPO_SHAPING_ENV`), `crates/tokmd-git/src/refs.rs` | 0 |
+| Git subprocess isolation | `crates/tokmd-git/src/command.rs`, `crates/tokmd/src/git_support.rs`, `crates/tokmd-scan/src/walk/git.rs` (`GIT_REPO_SHAPING_ENV`), `crates/tokmd-git/src/refs.rs` | 0 |
 | Path handling | `crates/tokmd-scan/src/path/bounded_path.rs` | 0 |
 | FFI inputs | `crates/tokmd-core/src/ffi/inputs.rs`, `crates/tokmd-core/src/ffi/parse.rs` | 0 |
 | Redaction / hashing | `crates/tokmd-format/src/redact/mod.rs` | 0 |
 | Supply-chain gate | `crates/tokmd-cockpit/src/supply_chain.rs` | 0 |
 | Workspace lints | `Cargo.toml` (lints section) | 0 |
-| GitHub workflows | `.github/workflows/droid-security-scan.yml` (this scan's entry point) | 0 |
+| GitHub workflows | `.github/workflows/*.yml` (24 files), `.github/settings.yml`, `action.yml` | 0 |
 | Threat model | `.factory/threat-model/threat-model.md` | unchanged |
 
 ### Commit-level Analysis
 
-```
+```console
 $ git log --since="7 days ago" --oneline
 (empty)
 ```
 
 Zero commits in the 7-day scan window. HEAD on `main`:
 
-```
+```text
 5e8edc6a606b82eee9488cbe348e5b596bae1a96
 Author: Steven Zimmerman, CPA <15812269+EffortlessSteven@users.noreply.github.com>
 Date:   Sat Jul 4 19:24:57 2026 -0400
