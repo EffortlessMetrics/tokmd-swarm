@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/install.md`, `docs/install-and-try.md`, `docs/recipes.md`,
   `docs/browser-to-native.md`, and `docs/tokmd-in-cockpit.md`. The workspace is
   at 1.14.0 and `action.yml` already defaults `version` to `latest`, so
-  copy-pasting any of them pinned adopters to a three-minor-versions-old binary
+  copy-pasting any of them would pin adopters to a three-minor-versions-old binary
   — worse than omitting the input entirely. They now inherit the default. The
   Versioning Model section of `docs/github-action.md` still pins explicitly,
   because demonstrating the `version` input is its purpose; that example moves
