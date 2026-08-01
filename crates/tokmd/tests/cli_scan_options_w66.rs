@@ -308,30 +308,30 @@ fn hidden_flag_after_subcommand_is_accepted() {
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Run `tokmd` and return the `scan` object from the export meta line.
+///
+/// Compares the meta line's `scan` object rather than the whole line: the meta
+/// record also carries `generated_at_ms`, which differs between runs.
+///
+/// Errors propagate with `?` rather than `expect` so callers add no
+/// panic-family debt to policy/no-panic-allowlist.toml.
+fn scan_options(args: &[&str]) -> Result<Value, Box<dyn std::error::Error>> {
+    let out = tokmd_cmd().args(args).output()?;
+    if !out.status.success() {
+        return Err(format!("{args:?} failed: {}", String::from_utf8_lossy(&out.stderr)).into());
+    }
+    let stdout = String::from_utf8(out.stdout)?;
+    let first = stdout.lines().next().ok_or("no meta line on stdout")?;
+    let meta: Value = serde_json::from_str(first)?;
+    Ok(meta
+        .get("scan")
+        .ok_or("meta line has no `scan` object")?
+        .clone())
+}
+
 #[test]
 fn hidden_flag_reaches_scan_options_from_either_position() -> TestResult {
     // Both orderings must produce the same scan configuration, not merely exit 0.
-    // Compare the meta line's `scan` object rather than the whole line: the meta
-    // record also carries `generated_at_ms`, which differs between runs.
-    //
-    // Errors propagate with `?` rather than `expect` so this test adds no
-    // panic-family debt to policy/no-panic-allowlist.toml.
-    fn scan_options(args: &[&str]) -> Result<Value, Box<dyn std::error::Error>> {
-        let out = tokmd_cmd().args(args).output()?;
-        if !out.status.success() {
-            return Err(
-                format!("{args:?} failed: {}", String::from_utf8_lossy(&out.stderr)).into(),
-            );
-        }
-        let stdout = String::from_utf8(out.stdout)?;
-        let first = stdout.lines().next().ok_or("no meta line on stdout")?;
-        let meta: Value = serde_json::from_str(first)?;
-        Ok(meta
-            .get("scan")
-            .ok_or("meta line has no `scan` object")?
-            .clone())
-    }
-
     let leading = scan_options(&["--hidden", "export", "--format", "json"])?;
     let trailing = scan_options(&["export", "--hidden", "--format", "json"])?;
     assert_eq!(
@@ -352,6 +352,62 @@ fn no_ignore_flag_after_subcommand_is_accepted() {
         .args(["module", "--no-ignore", "--format", "json"])
         .assert()
         .success();
+}
+
+#[test]
+fn every_global_scan_flag_reaches_scan_options_from_either_position() -> TestResult {
+    // `global = true` on the clap arg and the value actually arriving in the
+    // scan are two different things, and only the second is what users see.
+    // Covering one flag would let a regression that globalizes all seven but
+    // threads only some of them through slip past, so every flag the change
+    // touched is checked here rather than trusting the shape to generalize.
+    //
+    // Each case is (flag tokens, meta key, expected value). `--config` takes a
+    // value and the rest are switches, hence the token slice.
+    let cases: &[(&[&str], &str, Value)] = &[
+        (&["--hidden"], "hidden", Value::Bool(true)),
+        (&["--no-ignore"], "no_ignore", Value::Bool(true)),
+        (
+            &["--no-ignore-parent"],
+            "no_ignore_parent",
+            Value::Bool(true),
+        ),
+        (&["--no-ignore-dot"], "no_ignore_dot", Value::Bool(true)),
+        (&["--no-ignore-vcs"], "no_ignore_vcs", Value::Bool(true)),
+        (
+            &["--treat-doc-strings-as-comments"],
+            "treat_doc_strings_as_comments",
+            Value::Bool(true),
+        ),
+        // Non-default on purpose: `config` defaults to "auto", so asserting
+        // "auto" would pass even if the flag never reached the scan at all.
+        (
+            &["--config", "none"],
+            "config",
+            Value::String("none".to_string()),
+        ),
+    ];
+
+    for (flag, key, expected) in cases {
+        let mut lead: Vec<&str> = flag.to_vec();
+        lead.extend_from_slice(&["export", "--format", "json"]);
+        let mut trail: Vec<&str> = vec!["export"];
+        trail.extend_from_slice(flag);
+        trail.extend_from_slice(&["--format", "json"]);
+
+        let leading = scan_options(&lead)?;
+        let trailing = scan_options(&trail)?;
+        assert_eq!(
+            leading, trailing,
+            "{flag:?} must yield the same scan options before and after the subcommand"
+        );
+        assert_eq!(
+            trailing.get(*key),
+            Some(expected),
+            "{flag:?} after the subcommand must reach the scan as `{key}`"
+        );
+    }
+    Ok(())
 }
 
 #[test]
