@@ -100,7 +100,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -219,7 +219,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -333,7 +333,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --meta <META>
           Include a meta record (JSON / JSONL only). Enabled by default
@@ -451,7 +451,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -569,7 +569,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --max-bytes <MAX_BYTES>
           Limit total bytes read during content scans
@@ -768,7 +768,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -880,7 +880,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --output <OUTPUT>
           Output file for the badge (defaults to stdout)
@@ -998,7 +998,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -1102,7 +1102,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -1247,7 +1247,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --module-depth <MODULE_DEPTH>
           Module depth (see `tokmd module`)
@@ -1444,7 +1444,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --force
           Overwrite existing output directory
@@ -1586,7 +1586,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -1684,7 +1684,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -1809,7 +1809,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --proof-run-summary <PATH>
           Import required proof-run summary evidence into review packets
@@ -2015,7 +2015,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -2093,26 +2093,60 @@ Arguments:
 Options:
       --exclude <PATTERN>
           Exclude pattern(s) using gitignore syntax. Repeatable.
-          
+
           Examples: --exclude target --exclude "**/*.min.js"
-          
-          [aliases: --ignore]
+
+          [alias: --ignore]
 
       --max-bytes <MAX_BYTES>
           Maximum bytes per file before syntax parsing is skipped
-          
+
           [default: 1048576]
+
+      --config <MODE>
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+
+          Possible values:
+          - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
+          - none: Ignore config files
+
+          [default: auto]
 
       --include-generated-vendor
           Include generated and vendor paths instead of recording policy skips
+
+      --hidden
+          Count hidden files and directories
+
+      --no-ignore
+          Don't respect ignore files (.gitignore, .ignore, etc.).
+
+          Implies --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.
+
+      --no-ignore-parent
+          Don't respect ignore files in parent directories
+
+      --no-ignore-dot
+          Don't respect .ignore and .tokeignore files (including in parent directories)
+
+      --no-ignore-vcs
+          Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
+
+          [alias: --no-ignore-git]
+
+      --treat-doc-strings-as-comments
+          Treat doc strings as comments (language-dependent)
 
       --no-progress
           Disable progress spinners
 
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
-          
-          [aliases: --view]
+
+          [alias: --view]
+
+      --show-config
+          Print the resolved configuration sources and values, then exit
 
   -h, --help
           Print help (see a summary with '-h')
@@ -2157,7 +2191,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --preset <PRESET>
           Analysis preset used to generate analyze.md and analyze.json
@@ -2170,10 +2204,27 @@ Options:
 
           [default: origin/main]
 
+      --config <MODE>
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+
+          Possible values:
+          - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
+          - none: Ignore config files
+
+          [default: auto]
+
       --head <HEAD>
           Head reference used by analyze artifacts
 
           [default: HEAD]
+
+      --hidden
+          Count hidden files and directories
+
+      --no-ignore
+          Don't respect ignore files (.gitignore, .ignore, etc.).
+
+          Implies --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.
 
       --output <PATH>
           Output path for the evidence packet manifest
@@ -2183,14 +2234,28 @@ Options:
       --analyze-md <PATH>
           Path to the Markdown analysis artifact
 
+      --no-ignore-parent
+          Don't respect ignore files in parent directories
+
       --analyze-json <PATH>
           Path to the JSON analysis artifact
+
+      --no-ignore-dot
+          Don't respect .ignore and .tokeignore files (including in parent directories)
 
       --context-md <PATH>
           Path to the context Markdown artifact
 
+      --no-ignore-vcs
+          Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
+
+          [alias: --no-ignore-git]
+
       --syntax-json <PATH>
           Path to the optional syntax JSON artifact
+
+      --treat-doc-strings-as-comments
+          Treat doc strings as comments (language-dependent)
 
       --context-budget <CONTEXT_BUDGET>
           Context budget used for the context artifact reproduction command
@@ -2203,7 +2268,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -2288,7 +2353,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -2350,19 +2415,72 @@ Render audience-specific Markdown from cross-tool packet bundles
 Usage: tokmd render [OPTIONS] --from-packets <DIR> --preset <PRESET>
 
 Options:
+      --exclude <PATTERN>
+          Exclude pattern(s) using gitignore syntax. Repeatable.
+
+          Examples: --exclude target --exclude "**/*.min.js"
+
+          [alias: --ignore]
+
       --from-packets <DIR>
           Packet bundle directory containing `tokmd-packets.json`
 
+      --config <MODE>
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+
+          Possible values:
+          - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
+          - none: Ignore config files
+
+          [default: auto]
+
       --preset <PRESET>
           Audience-specific packet preset to render
-          
+
           [possible values: bun-ub-handoff, bun-ub-pr-body, bun-ub-ledger-note, bun-ub-review-map, bun-ub-next-pick]
+
+      --hidden
+          Count hidden files and directories
 
   -o, --output <PATH>
           Optional output file. Prints to stdout when omitted
 
+      --no-ignore
+          Don't respect ignore files (.gitignore, .ignore, etc.).
+
+          Implies --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.
+
+      --no-ignore-parent
+          Don't respect ignore files in parent directories
+
+      --no-ignore-dot
+          Don't respect .ignore and .tokeignore files (including in parent directories)
+
+      --no-ignore-vcs
+          Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
+
+          [alias: --no-ignore-git]
+
+      --treat-doc-strings-as-comments
+          Treat doc strings as comments (language-dependent)
+
+      --no-progress
+          Disable progress spinners
+
+      --profile <PROFILE>
+          Configuration profile to use (e.g., "llm_safe", "ci")
+
+          [alias: --view]
+
+      --show-config
+          Print the resolved configuration sources and values, then exit
+
   -h, --help
           Print help (see a summary with '-h')
+
+Examples:
+  tokmd render --from-packets ./bundle --preset bun-ub-handoff
+  tokmd render --from-packets ./bundle --preset bun-ub-pr-body --output handoff.md
 ```
 <!-- /HELP: render -->
 
@@ -2463,7 +2581,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -2683,7 +2801,7 @@ Options:
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
 
-          [aliases: --no-ignore-git]
+          [alias: --no-ignore-git]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)

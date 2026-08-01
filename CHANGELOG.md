@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suggestion at all — only a generic pointer to `--help`. It is now derived
   from the clap parser, so it stays current automatically and reflects
   feature-gated commands only when they are compiled in.
+- `docs/reference-cli.md` now regenerates the `syntax`, `evidence-packet`, and
+  `render` help blocks. All three had `<!-- HELP: -->` marker pairs in the file
+  but no entry in the `cargo xtask docs` generator list, so they were never
+  rewritten and had frozen at whatever was last pasted in by hand — which meant
+  `cargo xtask docs --check` reported the reference as up to date while those
+  three blocks drifted. They were missing the scan options this release makes
+  global, along with other accumulated changes.
 
 ### Changed
 

@@ -18,6 +18,12 @@ pub fn run(args: DocsArgs) -> Result<()> {
     // We look for patterns like <!-- HELP: lang --> ... <!-- /HELP: lang -->
     // and replace the content with the output of `tokmd <command> --help`
 
+    // Every `<!-- HELP: x -->` / `<!-- /HELP: x -->` pair in reference-cli.md must
+    // appear here. A pair with no entry is never regenerated, so its block silently
+    // freezes at whatever the help output was when it was last written by hand --
+    // which is how `syntax`, `evidence-packet`, and `render` fell behind. The
+    // missing-marker branch below catches the opposite mistake (an entry with no
+    // pair), so the two lists only stay in sync if additions land on both sides.
     let markers = [
         ("lang", "lang"), // Explicitly use lang subcommand help
         ("module", "module"),
@@ -36,6 +42,11 @@ pub fn run(args: DocsArgs) -> Result<()> {
         ("sensor", "sensor"),
         ("gate", "gate"),
         ("packet", "packet"),
+        // `syntax` is gated behind the `ast` feature, which is on by default, so
+        // the default-feature build this generator shells out to always has it.
+        ("syntax", "syntax"),
+        ("evidence-packet", "evidence-packet"),
+        ("render", "render"),
         ("completions", "completions"),
     ];
 
