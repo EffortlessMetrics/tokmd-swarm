@@ -1227,7 +1227,7 @@ Stable release following `v1.10.0-rc.1` validation.
 ## [0.1.0] - 2026-01-25
 - Initial prototype release.
 
-[Unreleased]: https://github.com/EffortlessMetrics/tokmd/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/EffortlessMetrics/tokmd/compare/v1.14.0...main
 [1.14.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.12.0...v1.13.0
