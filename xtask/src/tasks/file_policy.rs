@@ -338,54 +338,52 @@ mod tests {
     /// Unevaluable environments and real errors are deliberately treated
     /// differently, and the line between them is not simply git's exit code.
     ///
-    /// Skipped, because the invariant cannot be evaluated: cargo absent, git
-    /// absent, or the tree is not a git repository at all. That last case is
-    /// the reason for the `--is-inside-work-tree` probe -- an exported source
-    /// archive has no `.git`, and asking `git ls-files` there exits 128 with
-    /// `fatal: not a git repository`. Reading that exit code as a fault would
-    /// fail `cargo test` on a perfectly healthy archive tree.
+    /// Skipped, because the invariant cannot be evaluated: git is absent, or
+    /// the tree is not a git repository at all. An exported source archive has
+    /// no `.git`, and asking `git ls-files` there fails -- treating that as a
+    /// fault would fail `cargo test` on a perfectly healthy archive tree.
     ///
-    /// Asserted, because git is present and the tree *is* a repository, so a
-    /// failure is a real one: a container tripping `safe.directory` ownership
-    /// checks, or a corrupt index. Both also exit 128, which is why the exit
-    /// code alone cannot carry this distinction -- the work-tree probe is what
-    /// separates them. Swallowing these would let a repository that violates
+    /// Asserted, because the tree *is* a repository and something is wrong
+    /// with it: a container tripping `safe.directory` ownership checks, or a
+    /// corrupt index. Swallowing these would let a repository that violates
     /// the invariant report green.
     ///
-    /// The probe runs only after `ls-files` has already failed. That keeps a
-    /// single spawn-failure path (git absent, so skip) instead of two that
-    /// would have to agree with each other, and costs one process instead of
-    /// two on the path everything actually takes.
+    /// All three exit 128, so the exit code cannot carry the distinction, and
+    /// neither can a `rev-parse --is-inside-work-tree` probe: repository
+    /// discovery runs the same ownership check, so a `safe.directory` trip
+    /// fails the probe exactly as it fails `ls-files` -- the very case most
+    /// worth asserting on would have been silently skipped. (A corrupt index
+    /// does *not* fail the probe, since `rev-parse` never reads the index, so
+    /// a probe would have split these two apart for no good reason.) What
+    /// actually separates them is git's own message, so that is what is
+    /// matched, under `LC_ALL=C` to keep the marker stable when a translation
+    /// catalog is installed.
     #[test]
     fn no_tracked_file_lives_under_a_target_component() {
         let Ok(root) = workspace_root() else {
             return;
         };
-        let git = |args: &[&str]| {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(&root)
-                .output()
-        };
-        let Ok(output) = git(&["ls-files"]) else {
+        let Ok(output) = std::process::Command::new("git")
+            .arg("ls-files")
+            .current_dir(&root)
+            .env("LC_ALL", "C")
+            .output()
+        else {
             // git unavailable: nothing to assert against.
             return;
         };
         if !output.status.success() {
-            let inside_work_tree = git(&["rev-parse", "--is-inside-work-tree"]).is_ok_and(|p| {
-                p.status.success() && String::from_utf8_lossy(&p.stdout).trim() == "true"
-            });
-            // Outside a work tree (e.g. an exported source archive) the
-            // invariant is unevaluable rather than violated, so only a failure
-            // inside one is a fault worth failing on.
+            let stderr = String::from_utf8_lossy(&output.stderr);
             assert!(
-                !inside_work_tree,
-                "`git ls-files` failed with {} inside the git work tree at {}; the \
+                stderr.contains("not a git repository"),
+                "`git ls-files` failed with {} in the repository at {}; the \
                  tracked-file invariant could not be checked. stderr: {}",
                 output.status,
                 root.display(),
-                String::from_utf8_lossy(&output.stderr).trim()
+                stderr.trim()
             );
+            // No repository here (e.g. an exported source archive): the
+            // invariant is unevaluable rather than violated.
             return;
         }
         let listing = String::from_utf8_lossy(&output.stdout);
