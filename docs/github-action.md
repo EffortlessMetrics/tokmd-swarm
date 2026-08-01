@@ -49,6 +49,13 @@ Use stable workflows like this:
     paths: .
 ```
 
+This section is the one place in the docs that sets `version` explicitly, and
+it does so because demonstrating the input is the point. Everywhere else the
+examples omit it and inherit the `action.yml` default of `latest`. Omitting it
+is the normal choice; pin only when you specifically want a fixed binary, and
+if you do, remember that a pinned example goes stale the moment the next
+release ships.
+
 For release-candidate smoke tests, pin both the Action ref and the downloaded binary:
 
 ```yaml
