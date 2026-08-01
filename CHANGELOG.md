@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Dropped the stale `version: '1.11.0'` pin from both GitHub Action examples in
+  `README.md`. The workspace is at 1.14.0 and `action.yml` already defaults
+  `version` to `latest`, so copy-pasting the quickstart pinned adopters to a
+  three-minor-versions-old binary — worse than taking no action at all. The
+  examples now inherit the default.
+- Added link-reference definitions to `CHANGELOG.md`. All 29 `## [version]`
+  headings were dangling shortcut references that rendered as literal
+  `[1.14.0]` text; each now resolves to a GitHub compare view (or, for
+  `0.1.0`, the release tag).
+
 ### Changed
 
 - Hardened the `docs_schema_w72` changelog guard to require the current
@@ -1214,3 +1226,33 @@ Stable release following `v1.10.0-rc.1` validation.
 
 ## [0.1.0] - 2026-01-25
 - Initial prototype release.
+
+[Unreleased]: https://github.com/EffortlessMetrics/tokmd/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.13.1...v1.14.0
+[1.13.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.13.0...v1.13.1
+[1.13.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.12.0...v1.13.0
+[1.12.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.11.1...v1.12.0
+[1.11.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.11.0...v1.11.1
+[1.11.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.10.0...v1.11.0
+[1.10.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.9.2...v1.10.0
+[1.9.2]: https://github.com/EffortlessMetrics/tokmd/compare/v1.9.1...v1.9.2
+[1.9.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.8.1...v1.9.0
+[1.8.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.8.0...v1.8.1
+[1.8.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.7.3...v1.8.0
+[1.7.3]: https://github.com/EffortlessMetrics/tokmd/compare/v1.7.2...v1.7.3
+[1.7.2]: https://github.com/EffortlessMetrics/tokmd/compare/v1.7.1...v1.7.2
+[1.7.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.6.3...v1.7.0
+[1.6.3]: https://github.com/EffortlessMetrics/tokmd/compare/v1.6.2...v1.6.3
+[1.6.2]: https://github.com/EffortlessMetrics/tokmd/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.6.0...v1.6.1
+[1.6.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/EffortlessMetrics/tokmd/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/EffortlessMetrics/tokmd/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/EffortlessMetrics/tokmd/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/EffortlessMetrics/tokmd/releases/tag/v0.1.0
