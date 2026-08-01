@@ -335,31 +335,48 @@ mod tests {
     /// e.g. `fixtures/target/` would otherwise vanish from the policy walk
     /// silently.
     ///
-    /// Two failure modes are deliberately treated differently. If cargo or git
-    /// is absent entirely, the invariant cannot be evaluated and the test skips
-    /// -- it is a guard, not a guarantee, and there is nothing to assert
-    /// against. But git being present and *exiting non-zero* is a real error,
-    /// not an unavailable environment: a container tripping `safe.directory`
-    /// ownership checks exits 128, as does a corrupt index. Swallowing that
-    /// would let a repository that violates the invariant report green, so it
-    /// fails loudly with git's own diagnostics.
+    /// Unevaluable environments and real errors are deliberately treated
+    /// differently, and the line between them is not simply git's exit code.
+    ///
+    /// Skipped, because the invariant cannot be evaluated: cargo absent, git
+    /// absent, or the tree is not a git repository at all. That last case is
+    /// the reason for the `--is-inside-work-tree` probe -- an exported source
+    /// archive has no `.git`, and asking `git ls-files` there exits 128 with
+    /// `fatal: not a git repository`. Reading that exit code as a fault would
+    /// fail `cargo test` on a perfectly healthy archive tree.
+    ///
+    /// Asserted, because git is present and the tree *is* a repository, so a
+    /// failure is a real one: a container tripping `safe.directory` ownership
+    /// checks, or a corrupt index. Both also exit 128, which is why the exit
+    /// code alone cannot carry this distinction. Swallowing them would let a
+    /// repository that violates the invariant report green.
     #[test]
     fn no_tracked_file_lives_under_a_target_component() {
         let Ok(root) = workspace_root() else {
             return;
         };
-        let Ok(output) = std::process::Command::new("git")
-            .arg("ls-files")
-            .current_dir(&root)
-            .output()
-        else {
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .output()
+        };
+        // Probe for a repository before trusting any later exit code.
+        let Ok(probe) = git(&["rev-parse", "--is-inside-work-tree"]) else {
             // git unavailable: nothing to assert against.
+            return;
+        };
+        if !probe.status.success() || String::from_utf8_lossy(&probe.stdout).trim() != "true" {
+            // Not a repository (e.g. an exported source archive): unevaluable.
+            return;
+        }
+        let Ok(output) = git(&["ls-files"]) else {
             return;
         };
         assert!(
             output.status.success(),
-            "`git ls-files` ran but failed with {} in {}; the tracked-file \
-             invariant could not be checked. stderr: {}",
+            "`git ls-files` failed with {} inside the git work tree at {}; the \
+             tracked-file invariant could not be checked. stderr: {}",
             output.status,
             root.display(),
             String::from_utf8_lossy(&output.stderr).trim()
