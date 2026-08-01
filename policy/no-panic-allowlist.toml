@@ -404813,7 +404813,7 @@ expires = "2026-12-31"
 kind = "method_call"
 container = "ci_actuals_uploads_receipt_before_advisory_summary"
 callee = "expect"
-receiver_fingerprint = "ci_actuals . find (\"Swatinem/rust-cache@v2\")"
+receiver_fingerprint = "ci_actuals . find (\"Swatinem/rust-cache@\")"
 
 [allow.last_seen]
 line = 162
@@ -404851,7 +404851,7 @@ expires = "2026-12-31"
 kind = "method_call"
 container = "ci_actuals_uploads_receipt_before_advisory_summary"
 callee = "expect"
-receiver_fingerprint = "ci_actuals . find (\"actions/checkout@v7.0.0\")"
+receiver_fingerprint = "ci_actuals . find (\"actions/checkout@\")"
 
 [allow.last_seen]
 line = 156

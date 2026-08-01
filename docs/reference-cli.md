@@ -51,7 +51,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --format <FORMAT>
           Output format [default: md]
@@ -111,7 +111,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -161,7 +161,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --format <FORMAT>
           Output format [default: md]
@@ -196,7 +196,7 @@ Options:
 
           Example: crates/foo/src/lib.rs  (depth=2) => crates/foo crates/foo/src/lib.rs  (depth=1) => crates
 
-          [aliases: --depth]
+          [alias: --depth]
 
       --no-ignore
           Don't respect ignore files (.gitignore, .ignore, etc.).
@@ -230,7 +230,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -270,7 +270,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --format <FORMAT>
           Output format [default: jsonl]
@@ -293,7 +293,7 @@ Options:
       --output <PATH>
           Write output to this file instead of stdout
 
-          [aliases: --out]
+          [alias: --out]
 
       --hidden
           Count hidden files and directories
@@ -304,7 +304,7 @@ Options:
       --module-depth <MODULE_DEPTH>
           Module depth (see `tokmd module`) [default: 2]
 
-          [aliases: --depth]
+          [alias: --depth]
 
       --no-ignore
           Don't respect ignore files (.gitignore, .ignore, etc.).
@@ -360,7 +360,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -404,7 +404,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --output-dir <OUTPUT_DIR>
           Output directory for artifacts (defaults to `.runs/tokmd` inside the repo, or system temp if not possible)
@@ -462,7 +462,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -516,7 +516,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --preset <PRESET>
           Analysis preset to run [default: receipt]
@@ -657,7 +657,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -729,7 +729,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --output <OUTPUT>
           Output path for baseline file
@@ -779,7 +779,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -830,7 +830,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --metric <METRIC>
           Metric to render
@@ -885,7 +885,7 @@ Options:
       --output <OUTPUT>
           Output file for the badge (defaults to stdout)
 
-          [aliases: --out]
+          [alias: --out]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -896,7 +896,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -942,7 +942,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --from <FROM>
           Base receipt/run or git ref to compare from
@@ -1009,7 +1009,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1059,7 +1059,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -1113,7 +1113,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1180,7 +1180,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -1252,7 +1252,7 @@ Options:
       --module-depth <MODULE_DEPTH>
           Module depth (see `tokmd module`)
 
-          [aliases: --depth]
+          [alias: --depth]
 
       --treat-doc-strings-as-comments
           Treat doc strings as comments (language-dependent)
@@ -1279,7 +1279,7 @@ Options:
       --output <PATH>
           Write output to file instead of stdout
 
-          [aliases: --out]
+          [alias: --out]
 
       --force
           Overwrite existing output file
@@ -1309,7 +1309,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1367,7 +1367,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --out-dir <OUT_DIR>
           Output directory for handoff artifacts
@@ -1439,7 +1439,7 @@ Options:
       --module-depth <MODULE_DEPTH>
           Module depth (see `tokmd module`)
 
-          [aliases: --depth]
+          [alias: --depth]
 
       --no-ignore-vcs
           Don't respect VCS ignore files (.gitignore, .hgignore, etc.), including in parents
@@ -1505,7 +1505,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1555,7 +1555,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
   -v, --verbose
           Show verbose output with rule sources
@@ -1597,7 +1597,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1642,7 +1642,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --format <FORMAT>
           Output format for the tool schema
@@ -1695,7 +1695,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1751,7 +1751,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -1852,7 +1852,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -1968,7 +1968,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -2026,7 +2026,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -2260,7 +2260,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -2299,7 +2299,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -2405,7 +2405,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --policy <POLICY>
           Path to policy file (TOML format)
@@ -2474,7 +2474,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
@@ -2655,7 +2655,7 @@ Options:
 
           Examples: --exclude target --exclude "**/*.min.js"
 
-          [aliases: --ignore]
+          [alias: --ignore]
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`)
@@ -2694,7 +2694,7 @@ Options:
       --profile <PROFILE>
           Configuration profile to use (e.g., "llm_safe", "ci")
 
-          [aliases: --view]
+          [alias: --view]
 
       --show-config
           Print the resolved configuration sources and values, then exit
