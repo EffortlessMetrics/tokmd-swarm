@@ -300,40 +300,40 @@ fn no_ignore_flag_succeeds() {
 
 #[test]
 fn hidden_flag_after_subcommand_is_accepted() {
-    let out = tokmd_cmd()
+    tokmd_cmd()
         .args(["export", "--hidden", "--format", "json"])
-        .output()
-        .expect("run export --hidden");
-    assert!(
-        out.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+        .assert()
+        .success();
 }
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 #[test]
-fn hidden_flag_reaches_scan_options_from_either_position() {
+fn hidden_flag_reaches_scan_options_from_either_position() -> TestResult {
     // Both orderings must produce the same scan configuration, not merely exit 0.
     // Compare the meta line's `scan` object rather than the whole line: the meta
     // record also carries `generated_at_ms`, which differs between runs.
-    fn scan_options(args: &[&str]) -> Value {
-        let out = tokmd_cmd().args(args).output().expect("run tokmd");
-        assert!(
-            out.status.success(),
-            "{args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let first = String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .next()
-            .expect("meta line")
-            .to_string();
-        let meta: Value = serde_json::from_str(&first).expect("meta line is json");
-        meta.get("scan").expect("meta.scan").clone()
+    //
+    // Errors propagate with `?` rather than `expect` so this test adds no
+    // panic-family debt to policy/no-panic-allowlist.toml.
+    fn scan_options(args: &[&str]) -> Result<Value, Box<dyn std::error::Error>> {
+        let out = tokmd_cmd().args(args).output()?;
+        if !out.status.success() {
+            return Err(
+                format!("{args:?} failed: {}", String::from_utf8_lossy(&out.stderr)).into(),
+            );
+        }
+        let stdout = String::from_utf8(out.stdout)?;
+        let first = stdout.lines().next().ok_or("no meta line on stdout")?;
+        let meta: Value = serde_json::from_str(first)?;
+        Ok(meta
+            .get("scan")
+            .ok_or("meta line has no `scan` object")?
+            .clone())
     }
 
-    let leading = scan_options(&["--hidden", "export", "--format", "json"]);
-    let trailing = scan_options(&["export", "--hidden", "--format", "json"]);
+    let leading = scan_options(&["--hidden", "export", "--format", "json"])?;
+    let trailing = scan_options(&["export", "--hidden", "--format", "json"])?;
     assert_eq!(
         leading, trailing,
         "both flag positions must yield the same scan options"
@@ -343,6 +343,7 @@ fn hidden_flag_reaches_scan_options_from_either_position() {
         Some(&Value::Bool(true)),
         "--hidden after the subcommand must actually reach the scan"
     );
+    Ok(())
 }
 
 #[test]

@@ -274,13 +274,14 @@ fn typo_subcommand_suggests_correction() {
 /// derived from the clap parser, so it cannot drift again.
 #[test]
 fn typo_suggests_recently_added_subcommands() {
-    for (typo, expected) in [
-        ("renderr", "render"),
-        ("packett", "packet"),
-        ("evidence-packett", "evidence-packet"),
-    ] {
+    // `syntax` is intentionally omitted: it is gated behind the `ast` feature,
+    // so it is only a subcommand in some build configurations.
+    for expected in ["render", "packet", "evidence-packet"] {
+        // Build the typo instead of spelling it out: a literal misspelling in
+        // the source trips the repo's `typos` CI check.
+        let typo = format!("{expected}x");
         tokmd_cmd()
-            .arg(typo)
+            .arg(&typo)
             .assert()
             .failure()
             .stderr(predicate::str::contains(format!(

@@ -20,11 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--help`. `--verbose` deliberately stays root-only because
   `tokmd check-ignore` defines its own `-v`.
 - `tokmd <typo>` can once again suggest every subcommand. The "did you mean"
-  list was a hard-coded literal that had fallen four commands behind, so
-  `tokmd renderr`, `packett`, `evidence-packett`, and `syntaxx` got no
-  suggestion at all. It is now derived from the clap parser, so it stays
-  current automatically and reflects feature-gated commands only when they are
-  compiled in.
+  list was a hard-coded literal that had fallen four commands behind, so a
+  misspelling of `render`, `packet`, `evidence-packet`, or `syntax` produced no
+  suggestion at all — only a generic pointer to `--help`. It is now derived
+  from the clap parser, so it stays current automatically and reflects
+  feature-gated commands only when they are compiled in.
 
 ### Changed
 
