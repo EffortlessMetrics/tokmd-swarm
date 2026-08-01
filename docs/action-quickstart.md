@@ -116,7 +116,6 @@ jobs:
 
       - uses: EffortlessMetrics/tokmd@v1
         with:
-          version: '1.14.0'
           mode: packet
           preset: bun-ub
           base: origin/main

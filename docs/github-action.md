@@ -49,12 +49,14 @@ Use stable workflows like this:
     paths: .
 ```
 
-This section is the one place in the docs that sets `version` explicitly, and
-it does so because demonstrating the input is the point. Everywhere else the
-examples omit it and inherit the `action.yml` default of `latest`. Omitting it
-is the normal choice; pin only when you specifically want a fixed binary, and
-if you do, remember that a pinned example goes stale the moment the next
-release ships.
+This section sets `version` explicitly because demonstrating the input is the
+point. The workflow examples elsewhere in the docs omit it and inherit the
+`action.yml` default of `latest`. The one other place that still pins is the
+container-runtime example in [Packet Workflows](packet-workflows.md), where
+`version` has to match the verification-gated image tag. Omitting it is the
+normal choice; pin only when you specifically want a fixed binary, and if you
+do, remember that a pinned example goes stale the moment the next release
+ships.
 
 For release-candidate smoke tests, pin both the Action ref and the downloaded binary:
 
@@ -507,7 +509,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.14.0'
     mode: packet
     preset: bun-ub
     base: origin/main

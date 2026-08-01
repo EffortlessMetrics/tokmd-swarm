@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to 1.14.0. The release-candidate example and the version-to-tag mapping table
   keep their `1.11.0` strings, which illustrate format rather than recommend a
   release.
+- Dropped the `version: '1.14.0'` pin from the three `mode: packet` Action
+  examples in `docs/github-action.md`, `docs/action-quickstart.md`, and
+  `docs/packet-workflows.md`. The first sweep missed them because they pin the
+  current version rather than a stale one, and one of them quotes the value
+  differently. They are ordinary copy-pasteable examples with no reason to pin,
+  and they would have gone stale on the next release exactly as the `1.11.0`
+  ones did. The `runtime: container` example in `docs/packet-workflows.md` keeps
+  its explicit `version`, which has to match the verification-gated image tag.
 - Added link-reference definitions to `CHANGELOG.md`. All 29 `## [version]`
   headings were dangling shortcut references that rendered as literal
   `[1.14.0]` text; each now resolves to a GitHub compare view (or, for
