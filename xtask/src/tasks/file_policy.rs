@@ -334,6 +334,15 @@ mod tests {
     /// enforce it instead of trusting a one-time check: a fixture added under
     /// e.g. `fixtures/target/` would otherwise vanish from the policy walk
     /// silently.
+    ///
+    /// Two failure modes are deliberately treated differently. If cargo or git
+    /// is absent entirely, the invariant cannot be evaluated and the test skips
+    /// -- it is a guard, not a guarantee, and there is nothing to assert
+    /// against. But git being present and *exiting non-zero* is a real error,
+    /// not an unavailable environment: a container tripping `safe.directory`
+    /// ownership checks exits 128, as does a corrupt index. Swallowing that
+    /// would let a repository that violates the invariant report green, so it
+    /// fails loudly with git's own diagnostics.
     #[test]
     fn no_tracked_file_lives_under_a_target_component() {
         let Ok(root) = workspace_root() else {
@@ -347,9 +356,14 @@ mod tests {
             // git unavailable: nothing to assert against.
             return;
         };
-        if !output.status.success() {
-            return;
-        }
+        assert!(
+            output.status.success(),
+            "`git ls-files` ran but failed with {} in {}; the tracked-file \
+             invariant could not be checked. stderr: {}",
+            output.status,
+            root.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
         let listing = String::from_utf8_lossy(&output.stdout);
         let offenders: Vec<&str> = listing
             .lines()
