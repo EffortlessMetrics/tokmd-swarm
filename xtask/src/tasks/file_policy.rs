@@ -348,8 +348,14 @@ mod tests {
     /// Asserted, because git is present and the tree *is* a repository, so a
     /// failure is a real one: a container tripping `safe.directory` ownership
     /// checks, or a corrupt index. Both also exit 128, which is why the exit
-    /// code alone cannot carry this distinction. Swallowing them would let a
-    /// repository that violates the invariant report green.
+    /// code alone cannot carry this distinction -- the work-tree probe is what
+    /// separates them. Swallowing these would let a repository that violates
+    /// the invariant report green.
+    ///
+    /// The probe runs only after `ls-files` has already failed. That keeps a
+    /// single spawn-failure path (git absent, so skip) instead of two that
+    /// would have to agree with each other, and costs one process instead of
+    /// two on the path everything actually takes.
     #[test]
     fn no_tracked_file_lives_under_a_target_component() {
         let Ok(root) = workspace_root() else {
@@ -361,26 +367,27 @@ mod tests {
                 .current_dir(&root)
                 .output()
         };
-        // Probe for a repository before trusting any later exit code.
-        let Ok(probe) = git(&["rev-parse", "--is-inside-work-tree"]) else {
+        let Ok(output) = git(&["ls-files"]) else {
             // git unavailable: nothing to assert against.
             return;
         };
-        if !probe.status.success() || String::from_utf8_lossy(&probe.stdout).trim() != "true" {
-            // Not a repository (e.g. an exported source archive): unevaluable.
+        if !output.status.success() {
+            let inside_work_tree = git(&["rev-parse", "--is-inside-work-tree"]).is_ok_and(|p| {
+                p.status.success() && String::from_utf8_lossy(&p.stdout).trim() == "true"
+            });
+            // Outside a work tree (e.g. an exported source archive) the
+            // invariant is unevaluable rather than violated, so only a failure
+            // inside one is a fault worth failing on.
+            assert!(
+                !inside_work_tree,
+                "`git ls-files` failed with {} inside the git work tree at {}; the \
+                 tracked-file invariant could not be checked. stderr: {}",
+                output.status,
+                root.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
             return;
         }
-        let Ok(output) = git(&["ls-files"]) else {
-            return;
-        };
-        assert!(
-            output.status.success(),
-            "`git ls-files` failed with {} inside the git work tree at {}; the \
-             tracked-file invariant could not be checked. stderr: {}",
-            output.status,
-            root.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
         let listing = String::from_utf8_lossy(&output.stdout);
         let offenders: Vec<&str> = listing
             .lines()
