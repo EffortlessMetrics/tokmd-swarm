@@ -7,18 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Dropped the stale `version: '1.11.0'` pin from both GitHub Action examples in
-  `README.md`. The workspace is at 1.14.0 and `action.yml` already defaults
-  `version` to `latest`, so copy-pasting the quickstart pinned adopters to a
-  three-minor-versions-old binary — worse than taking no action at all. The
-  examples now inherit the default.
-- Added link-reference definitions to `CHANGELOG.md`. All 29 `## [version]`
-  headings were dangling shortcut references that rendered as literal
-  `[1.14.0]` text; each now resolves to a GitHub compare view (or, for
-  `0.1.0`, the release tag).
-
 ### Changed
 
 - Hardened the `docs_schema_w72` changelog guard to require the current
@@ -36,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `latest` and any non-gated tag are hard errors pointing at
   `docs/specs/packet-ghcr-runtime.md`. The default `binary` runtime is
   unchanged. No version bump, tag, or publish accompanies this change.
+
+### Fixed
+
+- Dropped the stale `version: '1.11.0'` pin from every copy-pasteable GitHub
+  Action example: both blocks in `README.md` plus 16 more across
+  `docs/action-quickstart.md`, `docs/github-action.md`, `docs/start-here.md`,
+  `docs/install.md`, `docs/install-and-try.md`, `docs/recipes.md`,
+  `docs/browser-to-native.md`, and `docs/tokmd-in-cockpit.md`. The workspace is
+  at 1.14.0 and `action.yml` already defaults `version` to `latest`, so
+  copy-pasting any of them pinned adopters to a three-minor-versions-old binary
+  — worse than omitting the input entirely. They now inherit the default. The
+  Versioning Model section of `docs/github-action.md` still pins explicitly,
+  because demonstrating the `version` input is its purpose; that example moves
+  to 1.14.0. The release-candidate example and the version-to-tag mapping table
+  keep their `1.11.0` strings, which illustrate format rather than recommend a
+  release.
+- Added link-reference definitions to `CHANGELOG.md`. All 29 `## [version]`
+  headings were dangling shortcut references that rendered as literal
+  `[1.14.0]` text; each now resolves to a GitHub compare view (or, for
+  `0.1.0`, the release tag).
 
 ## [1.14.0] - 2026-06-25
 

@@ -33,7 +33,6 @@ jobs:
 
       - uses: EffortlessMetrics/tokmd@v1
         with:
-          version: '1.11.0'
           paths: .
           artifact: 'true'
           comment: 'false'
@@ -69,7 +68,6 @@ jobs:
 
       - uses: EffortlessMetrics/tokmd@v1
         with:
-          version: '1.11.0'
           mode: cockpit
           head: HEAD
           review-packet: 'true'
@@ -150,7 +148,6 @@ Set `base` only when you need an explicit compare ref:
 ```yaml
       - uses: EffortlessMetrics/tokmd@v1
         with:
-          version: '1.11.0'
           mode: cockpit
           base: origin/main
           head: HEAD

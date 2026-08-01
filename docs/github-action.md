@@ -26,7 +26,6 @@ jobs:
 
       - uses: EffortlessMetrics/tokmd@v1
         with:
-          version: '1.11.0'
           paths: .
           artifact: 'true'
           comment: 'true'
@@ -39,14 +38,14 @@ There are two version choices in every workflow:
 | Setting | Meaning | Example |
 | :------ | :------ | :------ |
 | Action ref | Which repository ref GitHub uses for `action.yml` | `EffortlessMetrics/tokmd@v1` |
-| `version` input | Which released `tokmd` binary the Action downloads | `version: '1.11.0'` |
+| `version` input | Which released `tokmd` binary the Action downloads | `version: '1.14.0'` |
 
 Use stable workflows like this:
 
 ```yaml
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
+    version: '1.14.0'
     paths: .
 ```
 
@@ -339,7 +338,6 @@ For `cockpit`, `sensor`, and `packet` in external pull request workflows, prefer
 
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     mode: cockpit
     head: HEAD
     artifact: 'true'
@@ -426,7 +424,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 ```yaml
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     paths: .
     artifact: 'true'
     comment: 'true'
@@ -447,7 +444,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     mode: gate
     paths: .
     artifact: 'true'
@@ -463,7 +459,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     mode: cockpit
     head: HEAD
     artifact: 'true'
@@ -479,7 +474,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     mode: sensor
     head: HEAD
     artifact: 'true'
@@ -491,7 +485,6 @@ Stable release tags update the `v1` major tag. Release-candidate tags such as `v
 ```yaml
 - uses: EffortlessMetrics/tokmd@v1
   with:
-    version: '1.11.0'
     mode: baseline
     paths: .
     artifact: 'true'
