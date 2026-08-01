@@ -23,8 +23,12 @@ repository:
     - inventory
 
   # Merge Settings
+  # Squash stays the method for normal development PRs in both repos.
+  # Merge commits must remain enabled because publication imports from
+  # tokmd-swarm into tokmd are deliberate merge commits; see
+  # docs/ci/swarm-routing.md ("Publication" under Merge Policy).
   allow_squash_merge: true
-  allow_merge_commit: false
+  allow_merge_commit: true
   allow_rebase_merge: false
   delete_branch_on_merge: true
   squash_merge_commit_title: PR_TITLE
@@ -48,6 +52,9 @@ branches:
         contexts:
           - "Tokmd Rust Result"
       enforce_admins: false
-      required_linear_history: true
+      # Not linear: publication imports land as two-parent merge commits, and
+      # tokmd-swarm/main then fast-forwards onto them. Requiring linear history
+      # would block the documented import path in docs/ci/swarm-routing.md.
+      required_linear_history: false
       allow_force_pushes: false
       allow_deletions: false
