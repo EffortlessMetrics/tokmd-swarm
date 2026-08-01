@@ -290,6 +290,84 @@ fn no_ignore_flag_succeeds() {
 }
 
 // ===========================================================================
+// 6b. Scan flags also work AFTER the subcommand
+//
+// These were previously root-only: `tokmd export --hidden` failed with
+// "unexpected argument '--hidden' found" (and clap unhelpfully suggested
+// '--children'), while `tokmd --hidden export` worked. Users have no way to
+// tell which flags need to lead, so all scan options are now `global = true`.
+// ===========================================================================
+
+#[test]
+fn hidden_flag_after_subcommand_is_accepted() {
+    let out = tokmd_cmd()
+        .args(["export", "--hidden", "--format", "json"])
+        .output()
+        .expect("run export --hidden");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn hidden_flag_reaches_scan_options_from_either_position() {
+    // Both orderings must produce the same scan configuration, not merely exit 0.
+    // Compare the meta line's `scan` object rather than the whole line: the meta
+    // record also carries `generated_at_ms`, which differs between runs.
+    fn scan_options(args: &[&str]) -> Value {
+        let out = tokmd_cmd().args(args).output().expect("run tokmd");
+        assert!(
+            out.status.success(),
+            "{args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let first = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .next()
+            .expect("meta line")
+            .to_string();
+        let meta: Value = serde_json::from_str(&first).expect("meta line is json");
+        meta.get("scan").expect("meta.scan").clone()
+    }
+
+    let leading = scan_options(&["--hidden", "export", "--format", "json"]);
+    let trailing = scan_options(&["export", "--hidden", "--format", "json"]);
+    assert_eq!(
+        leading, trailing,
+        "both flag positions must yield the same scan options"
+    );
+    assert_eq!(
+        trailing.get("hidden"),
+        Some(&Value::Bool(true)),
+        "--hidden after the subcommand must actually reach the scan"
+    );
+}
+
+#[test]
+fn no_ignore_flag_after_subcommand_is_accepted() {
+    tokmd_cmd()
+        .args(["module", "--no-ignore", "--format", "json"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn check_ignore_keeps_its_own_short_verbose() {
+    // `check-ignore` defines its own -v/--verbose as a bool. The root
+    // --verbose is deliberately NOT global so clap does not see a duplicate
+    // arg id here (which would panic at startup rather than fail gracefully).
+    // The command exits 1 for a file that is not ignored, so assert on the
+    // parse succeeding rather than on the exit status.
+    tokmd_cmd()
+        .args(["check-ignore", "-v", "Cargo.toml"])
+        .assert()
+        .stdout(predicate::str::contains("Cargo.toml"))
+        .stderr(predicate::str::contains("unexpected argument").not());
+}
+
+// ===========================================================================
 // 7. --top flag
 // ===========================================================================
 

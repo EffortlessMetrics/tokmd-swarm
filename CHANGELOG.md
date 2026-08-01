@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Scan options are now accepted after a subcommand as well as before it.
+  `--config`, `--hidden`, `--no-ignore`, `--no-ignore-parent`,
+  `--no-ignore-dot`, `--no-ignore-vcs`, and `--treat-doc-strings-as-comments`
+  were root-only, so `tokmd export --hidden` failed with
+  `unexpected argument '--hidden' found` (and clap unhelpfully suggested
+  `--children`) while `tokmd --hidden export` worked. Nothing in the help
+  output distinguished them from `--exclude` and `--no-progress`, which were
+  already global. They are now all global, and appear in every subcommand's
+  `--help`. `--verbose` deliberately stays root-only because
+  `tokmd check-ignore` defines its own `-v`.
+- `tokmd <typo>` can once again suggest every subcommand. The "did you mean"
+  list was a hard-coded literal that had fallen four commands behind, so
+  `tokmd renderr`, `packett`, `evidence-packett`, and `syntaxx` got no
+  suggestion at all. It is now derived from the clap parser, so it stays
+  current automatically and reflects feature-gated commands only when they are
+  compiled in.
+
 ### Changed
 
 - Hardened the `docs_schema_w72` changelog guard to require the current

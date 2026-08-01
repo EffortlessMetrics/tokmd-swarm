@@ -268,6 +268,27 @@ fn typo_subcommand_suggests_correction() {
         ));
 }
 
+/// Subcommands added after the original hint list was written must also be
+/// suggestible. The list used to be a hard-coded literal that fell four
+/// commands behind (`syntax`, `evidence-packet`, `packet`, `render`); it is now
+/// derived from the clap parser, so it cannot drift again.
+#[test]
+fn typo_suggests_recently_added_subcommands() {
+    for (typo, expected) in [
+        ("renderr", "render"),
+        ("packett", "packet"),
+        ("evidence-packett", "evidence-packet"),
+    ] {
+        tokmd_cmd()
+            .arg(typo)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(format!(
+                "Did you mean the subcommand `{expected}`?"
+            )));
+    }
+}
+
 /// Verify that every expected subcommand responds to --help without error.
 #[test]
 fn known_subcommands_respond_to_help() {
