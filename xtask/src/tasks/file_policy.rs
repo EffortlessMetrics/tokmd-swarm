@@ -358,6 +358,41 @@ mod tests {
     /// actually separates them is git's own message, so that is what is
     /// matched, under `LC_ALL=C` to keep the marker stable when a translation
     /// catalog is installed.
+    /// Whether a failed `git ls-files` means "there is no repository here"
+    /// rather than "this repository is broken".
+    ///
+    /// Anchored to the start of git's fatal line rather than searched across
+    /// the whole of stderr: the dubious-ownership message interpolates the
+    /// repository path, so a bare substring test reads a checkout living under
+    /// a directory named "not a git repository" as having no repository at all
+    /// -- silently skipping the case most worth asserting on.
+    fn stderr_means_no_repository(stderr: &str) -> bool {
+        stderr
+            .lines()
+            .any(|line| line.starts_with("fatal: not a git repository"))
+    }
+
+    #[test]
+    fn only_a_missing_repository_counts_as_unevaluable() {
+        // Verbatim `git ls-files` stderr, measured under `LC_ALL=C`. All three
+        // real cases exit 128, which is why the exit code cannot carry this
+        // distinction and the message has to.
+        assert!(stderr_means_no_repository(
+            "fatal: not a git repository (or any of the parent directories): .git\n"
+        ));
+        assert!(!stderr_means_no_repository(
+            "fatal: detected dubious ownership in repository at '/repo'\n"
+        ));
+        assert!(!stderr_means_no_repository(
+            "fatal: .git/index: index file smaller than expected\n"
+        ));
+        // The repository path is interpolated into the ownership message, so a
+        // checkout that happens to live under this name is still a real fault.
+        assert!(!stderr_means_no_repository(
+            "fatal: detected dubious ownership in repository at '/tmp/not a git repository/wt'\n"
+        ));
+    }
+
     #[test]
     fn no_tracked_file_lives_under_a_target_component() {
         let Ok(root) = workspace_root() else {
@@ -374,12 +409,12 @@ mod tests {
         };
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let root_display = root.to_string_lossy().replace('\\', "/");
             assert!(
-                stderr.contains("not a git repository"),
-                "`git ls-files` failed with {} in the repository at {}; the \
+                stderr_means_no_repository(&stderr),
+                "`git ls-files` failed with {} in the repository at {root_display}; the \
                  tracked-file invariant could not be checked. stderr: {}",
                 output.status,
-                root.display(),
                 stderr.trim()
             );
             // No repository here (e.g. an exported source archive): the
