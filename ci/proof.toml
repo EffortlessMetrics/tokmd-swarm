@@ -1501,8 +1501,9 @@ paths = [
 ]
 proof = [
   "cargo xtask check-file-policy",
+  "cargo test -p xtask file_policy",
 ]
-reason = "Repo-level ignore and attribute control. These files decide which non-Rust files exist in a checkout at all, so the file-policy walk is the proof that the resulting tree is still fully covered."
+reason = "Repo-level ignore and attribute control. These files decide which non-Rust files exist in a checkout at all, so the file-policy walk is the proof that the resulting tree is still fully covered. The unit tests are listed alongside the walk because the walk alone is self-referential: it is the implementation, so it cannot witness its own skip-list regressing."
 mutation = false
 coverage = false
 
