@@ -120,6 +120,7 @@ jobs:
           path: |
             artifacts/tokmd-wasm-${{ github.ref_name }}.tar.gz
             artifacts/tokmd-wasm-${{ github.ref_name }}.sha256
+            artifacts/tokmd-wasm-bundle-size.txt
 
   create-release:
     name: Create GitHub Release
@@ -219,7 +220,7 @@ jobs:
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -282,10 +283,27 @@ jobs:
           DOCKER_CONFIG="$(mktemp -d)"
           export DOCKER_CONFIG
           REF="${IMAGE}:${VERSION}"
-          docker --config "${DOCKER_CONFIG}" pull "${REF}"
-          OUT="$(docker --config "${DOCKER_CONFIG}" run --rm "${REF}" --version)"
-          echo "${OUT}"
-          grep -qF "${VERSION}" <<<"${OUT}"
+          for attempt in 1 2 3; do
+            if docker --config "${DOCKER_CONFIG}" pull "${REF}" && \
+              OUT="$(docker --config "${DOCKER_CONFIG}" run --rm "${REF}" --version)"; then
+              echo "${OUT}"
+              if ! grep -qF "${VERSION}" <<<"${OUT}"; then
+                echo "::error::container reported an unexpected version: ${OUT}"
+                exit 1
+              fi
+              {
+                echo "## Exact container verification"
+                echo "- image: ${REF}"
+                echo "- anonymous_pull: pass"
+                echo "- container_version: pass (${OUT})"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Container pull/version attempt ${attempt}/3 failed; retrying after bounded backoff."
+            sleep $((attempt * 10))
+          done
+          echo "::error::exact container pull/version smoke failed after 3 attempts"
+          exit 1
 
       - name: Mounted packet smoke
         shell: bash
@@ -307,6 +325,11 @@ jobs:
             packet generate --preset bun-ub --base HEAD --head HEAD --no-syntax src
           test "$(jq -r '.schema' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'tokmd.evidence-packet/v1'
           test "$(jq -r '.status' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'complete'
+          {
+            echo "- mounted_packet: pass"
+            echo "- packet_schema: tokmd.evidence-packet/v1"
+            echo "- packet_status: complete"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   verify-action:
     name: Verify exact-tag Action default
@@ -342,23 +365,41 @@ jobs:
     permissions:
       contents: write
       packages: write
+    # contents:write moves the v1 tag; packages:write promotes GHCR aliases
+    # only after exact release, crate, container, and Action verification.
     steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Move v1 tag after release verification
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
             const major = tag.split('.')[0];
-            await github.rest.git.updateRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: `tags/${major}`,
-              sha: context.sha,
-              force: true,
-            });
+            const ref = `tags/${major}`;
+            try {
+              await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref,
+              });
+              await github.rest.git.updateRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref,
+                sha: context.sha,
+                force: true,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/${ref}`,
+                sha: context.sha,
+              });
+            }
 
       - name: Move mutable container aliases after verification
         shell: bash
