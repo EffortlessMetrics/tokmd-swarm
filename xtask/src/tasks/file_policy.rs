@@ -328,12 +328,22 @@ mod tests {
         }
     }
 
-    /// Skipping `target` at any depth is only safe while no tracked file lives
-    /// under such a path. That held when the rule was introduced, but it is an
-    /// assumption about repository contents rather than about this module, so
-    /// enforce it instead of trusting a one-time check: a fixture added under
-    /// e.g. `fixtures/target/` would otherwise vanish from the policy walk
-    /// silently.
+    /// Whether a failed `git ls-files` means "there is no repository here"
+    /// rather than "this repository is broken".
+    ///
+    /// Anchored to the start of git's fatal line rather than searched across
+    /// the whole of stderr: the dubious-ownership message interpolates the
+    /// repository path, so a bare substring test reads a checkout living under
+    /// a directory named "not a git repository" as having no repository at all
+    /// -- silently skipping the case most worth asserting on.
+    fn stderr_means_no_repository(stderr: &str) -> bool {
+        stderr
+            .lines()
+            .any(|line| line.starts_with("fatal: not a git repository"))
+    }
+
+    /// The repo's tracked files, or `None` when the invariant cannot be
+    /// evaluated here.
     ///
     /// Unevaluable environments and real errors are deliberately treated
     /// differently, and the line between them is not simply git's exit code.
@@ -359,21 +369,18 @@ mod tests {
     /// actually separates them is git's own message, so that is what is
     /// matched, under `LC_ALL=C` to keep the marker stable when a translation
     /// catalog is installed.
-    /// Whether a failed `git ls-files` means "there is no repository here"
-    /// rather than "this repository is broken".
-    ///
-    /// Anchored to the start of git's fatal line rather than searched across
-    /// the whole of stderr: the dubious-ownership message interpolates the
-    /// repository path, so a bare substring test reads a checkout living under
-    /// a directory named "not a git repository" as having no repository at all
-    /// -- silently skipping the case most worth asserting on.
-    fn stderr_means_no_repository(stderr: &str) -> bool {
-        stderr
-            .lines()
-            .any(|line| line.starts_with("fatal: not a git repository"))
-    }
-
     fn tracked_files_for_policy(root: &Path) -> Result<Option<String>> {
+        // `NotFound` from `Command::output` is ambiguous: a missing `git`
+        // executable and a missing `current_dir` both surface as ENOENT from
+        // the same call, so the spawn error alone cannot tell them apart.
+        // Rule the bad root out here, or it would take the git-is-absent arm
+        // below and skip the invariant instead of reporting the fault.
+        if !root.is_dir() {
+            anyhow::bail!(
+                "cannot check the tracked-file invariant: {} is not a directory",
+                root.to_string_lossy().replace('\\', "/")
+            );
+        }
         let output = match std::process::Command::new("git")
             .arg("ls-files")
             .current_dir(root)
@@ -459,6 +466,24 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn a_missing_root_is_not_skipped() -> Result<()> {
+        // A root that does not exist makes `Command::output` fail with the same
+        // `NotFound` that a missing `git` produces, so without the explicit
+        // directory check this would report unevaluable rather than a fault.
+        let absent = tempfile::tempdir()?.path().join("gone");
+        let error = tracked_files_for_policy(&absent)
+            .expect_err("a nonexistent root is a caller error, not an unevaluable environment");
+        assert!(error.to_string().contains("is not a directory"));
+        Ok(())
+    }
+
+    /// Skipping `target` at any depth is only safe while no tracked file lives
+    /// under such a path. That held when the rule was introduced, but it is an
+    /// assumption about repository contents rather than about this module, so
+    /// enforce it instead of trusting a one-time check: a fixture added under
+    /// e.g. `fixtures/target/` would otherwise vanish from the policy walk
+    /// silently.
     #[test]
     fn no_tracked_file_lives_under_a_target_component() -> Result<()> {
         let root = match workspace_root() {
