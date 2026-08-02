@@ -49,11 +49,28 @@ fn directory_output_help_uses_canonical_name_and_aliases() -> Result<(), Box<dyn
             return Err(format!("{name} help is missing --output-dir: {text}").into());
         }
     }
-    if !packet.contains("--out")
+    if !packet.contains("[alias: --out]")
         || !handoff.contains("--out-dir")
         || !context.contains("--bundle-dir")
     {
         return Err("directory output compatibility aliases are missing from help".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn handoff_accepts_legacy_output_directory_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let output_dir = tempfile::tempdir()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .args(["handoff", "--no-git", "--budget", "1k", ".", "--out-dir"])
+        .arg(output_dir.path())
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "handoff --out-dir failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     Ok(())
 }

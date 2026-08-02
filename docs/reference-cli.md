@@ -328,7 +328,7 @@ Options:
           - bun-ub:       Manual-candidate UB review packet analysis.
           - health:       Receipt metrics plus TODO density and health indicators.
           - risk:         Health metrics plus git hotspots, coupling, and freshness.
-          - supply:       Supply-chain assets, dependency locks, and license signals.
+          - supply:       Supply-chain assets, dependency locks, and dependency manifests.
           - architecture: Import graph and architecture-oriented relationships.
           - topics:       Semantic topic clouds and repository themes.
           - security:     License radar and entropy-oriented security profiling.
@@ -416,7 +416,7 @@ Options:
           - bun-ub:       Manual-candidate UB review packet analysis.
           - health:       Receipt metrics plus TODO density and health indicators.
           - risk:         Health metrics plus git hotspots, coupling, and freshness.
-          - supply:       Supply-chain assets, dependency locks, and license signals.
+          - supply:       Supply-chain assets, dependency locks, and dependency manifests.
           - architecture: Import graph and architecture-oriented relationships.
           - topics:       Semantic topic clouds and repository themes.
           - security:     License radar and entropy-oriented security profiling.
@@ -686,7 +686,7 @@ Options:
           - bun-ub:       Manual-candidate UB review packet analysis.
           - health:       Receipt metrics plus TODO density and health indicators.
           - risk:         Health metrics plus git hotspots, coupling, and freshness.
-          - supply:       Supply-chain assets, dependency locks, and license signals.
+          - supply:       Supply-chain assets, dependency locks, and dependency manifests.
           - architecture: Import graph and architecture-oriented relationships.
           - topics:       Semantic topic clouds and repository themes.
           - security:     License radar and entropy-oriented security profiling.
@@ -1975,7 +1975,7 @@ Options:
           - bun-ub:       Manual-candidate UB review packet analysis.
           - health:       Receipt metrics plus TODO density and health indicators.
           - risk:         Health metrics plus git hotspots, coupling, and freshness.
-          - supply:       Supply-chain assets, dependency locks, and license signals.
+          - supply:       Supply-chain assets, dependency locks, and dependency manifests.
           - architecture: Import graph and architecture-oriented relationships.
           - topics:       Semantic topic clouds and repository themes.
           - security:     License radar and entropy-oriented security profiling.

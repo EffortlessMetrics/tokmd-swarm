@@ -137,4 +137,21 @@ mod tests {
             assert_eq!(args.out, PathBuf::from("custom"));
         }
     }
+
+    #[test]
+    fn generate_rejects_conflicting_output_directory_aliases() {
+        assert!(
+            Cli::try_parse_from([
+                "tokmd",
+                "packet",
+                "generate",
+                "--output-dir",
+                "canonical",
+                "--out",
+                "legacy",
+                "src/runtime/api",
+            ])
+            .is_err()
+        );
+    }
 }

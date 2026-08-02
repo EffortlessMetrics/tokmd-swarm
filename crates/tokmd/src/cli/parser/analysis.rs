@@ -136,7 +136,7 @@ pub enum AnalysisPreset {
     Health,
     #[value(help = "Health metrics plus git hotspots, coupling, and freshness.")]
     Risk,
-    #[value(help = "Supply-chain assets, dependency locks, and license signals.")]
+    #[value(help = "Supply-chain assets, dependency locks, and dependency manifests.")]
     Supply,
     #[value(help = "Import graph and architecture-oriented relationships.")]
     Architecture,
