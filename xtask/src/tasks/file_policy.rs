@@ -337,16 +337,17 @@ mod tests {
     ///
     /// Unevaluable environments and real errors are deliberately treated
     /// differently, and the line between them is not simply git's exit code.
+    /// A failing `git ls-files` lands in one of two buckets:
     ///
-    /// Skipped, because the invariant cannot be evaluated: git is absent, or
-    /// the tree is not a git repository at all. An exported source archive has
-    /// no `.git`, and asking `git ls-files` there fails -- treating that as a
-    /// fault would fail `cargo test` on a perfectly healthy archive tree.
-    ///
-    /// Asserted, because the tree *is* a repository and something is wrong
-    /// with it: a container tripping `safe.directory` ownership checks, or a
-    /// corrupt index. Swallowing these would let a repository that violates
-    /// the invariant report green.
+    /// - **Skipped**, because the invariant cannot be evaluated: git is
+    ///   absent, or the tree is not a git repository at all. An exported
+    ///   source archive has no `.git`, and asking `git ls-files` there fails
+    ///   -- treating that as a fault would fail `cargo test` on a perfectly
+    ///   healthy archive tree.
+    /// - **Asserted**, because the tree *is* a repository and something is
+    ///   wrong with it: a container tripping `safe.directory` ownership
+    ///   checks, or a corrupt index. Swallowing these would let a repository
+    ///   that violates the invariant report green.
     ///
     /// All three exit 128, so the exit code cannot carry the distinction, and
     /// neither can a `rev-parse --is-inside-work-tree` probe: repository
