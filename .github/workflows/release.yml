@@ -352,10 +352,11 @@ jobs:
           ref: ${{ github.ref }}
           persist-credentials: false
 
-      - name: Run Action with omitted version
+      - name: Run Action against exact release tag
         id: tokmd
         uses: ./
         with:
+          version: ${{ github.ref_name }}
           comment: 'false'
           artifact: 'false'
 
