@@ -120,7 +120,7 @@ pub fn run(args: BumpArgs) -> Result<()> {
         update_action_default_version(&action_content, &args.version)?;
     if old_action_version != args.version {
         changes.push(format!(
-            "action.yml: inputs.version.default = \"{}\" -> \"{}\"",
+            "action.yml: inputs.version.default = '{}' -> '{}'",
             old_action_version, args.version
         ));
     }
