@@ -418,9 +418,8 @@ mod tests {
         }
         fs::write(temp.path().join(".git/index"), b"corrupt")?;
 
-        let error = tracked_files_for_policy(temp.path()).expect_err(
-            "a corrupt index is a real git failure, not an unevaluable source archive",
-        );
+        let error = tracked_files_for_policy(temp.path())
+            .expect_err("a corrupt index is a real git failure, not an unevaluable source archive");
         assert!(error.to_string().contains("git ls-files"));
         Ok(())
     }
