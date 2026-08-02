@@ -25,7 +25,6 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 walkdir = "2"
 tokmd-core = { workspace = true, features = ["analysis"] }
-tokmd.workspace = true
 tokmd-analysis = { path = "../crates/tokmd-analysis", version = "1.11.1", default-features = false, features = ["ast"] }
 tokmd-analysis-types.workspace = true
 
@@ -33,3 +32,4 @@ tokmd-analysis-types.workspace = true
 serde_json = "1"
 tempfile.workspace = true
 toml = "1.1.2"
+tokmd.workspace = true

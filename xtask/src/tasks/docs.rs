@@ -1,5 +1,6 @@
 use crate::{cli::DocsArgs, tasks::doc_artifacts};
 use anyhow::{Context, Result, bail};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 
@@ -38,6 +39,7 @@ pub fn run(args: DocsArgs) -> Result<()> {
     }
 
     let content = std::fs::read_to_string(&ref_md_path)?;
+    validate_help_markers(&content)?;
     let mut new_content = content.clone();
     let mut drift = false;
 
@@ -115,6 +117,44 @@ pub fn run(args: DocsArgs) -> Result<()> {
     Ok(())
 }
 
+fn validate_help_markers(content: &str) -> Result<()> {
+    let configured: BTreeSet<&str> = HELP_MARKERS.iter().map(|(_, marker)| *marker).collect();
+    let mut starts = BTreeSet::new();
+    let mut ends = BTreeSet::new();
+
+    for line in content.lines().map(str::trim) {
+        if let Some(marker) = line
+            .strip_prefix("<!-- HELP: ")
+            .and_then(|value| value.strip_suffix(" -->"))
+        {
+            if !starts.insert(marker) {
+                bail!("Duplicate help marker pair for `{marker}` in docs/reference-cli.md");
+            }
+        }
+        if let Some(marker) = line
+            .strip_prefix("<!-- /HELP: ")
+            .and_then(|value| value.strip_suffix(" -->"))
+        {
+            if !ends.insert(marker) {
+                bail!("Duplicate closing help marker for `{marker}` in docs/reference-cli.md");
+            }
+        }
+    }
+
+    if starts != ends {
+        bail!(
+            "Help marker pairs are unbalanced in docs/reference-cli.md: starts={starts:?}, ends={ends:?}"
+        );
+    }
+    if starts != configured {
+        bail!(
+            "Help marker inventory does not match HELP_MARKERS in docs/reference-cli.md: configured={configured:?}, document={starts:?}"
+        );
+    }
+
+    Ok(())
+}
+
 fn get_tokmd_help(cmd: &str) -> Result<String> {
     let mut command = Command::new("cargo");
     command
@@ -150,7 +190,8 @@ fn get_tokmd_help(cmd: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::HELP_MARKERS;
+    use super::{HELP_MARKERS, validate_help_markers};
+    use anyhow::{Result, bail};
     use clap::CommandFactory;
     use std::collections::BTreeSet;
 
@@ -170,5 +211,24 @@ mod tests {
             "HELP_MARKERS contains duplicate command names"
         );
         assert_eq!(marker_names, cli_names);
+    }
+
+    #[test]
+    fn reference_help_markers_match_configured_inventory() -> Result<()> {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/reference-cli.md");
+        let content = std::fs::read_to_string(path)?;
+        validate_help_markers(&content)?;
+        Ok(())
+    }
+
+    #[test]
+    fn marker_validation_rejects_duplicate_document_ids() -> Result<()> {
+        let content =
+            "<!-- HELP: lang -->\n<!-- /HELP: lang -->\n<!-- HELP: lang -->\n<!-- /HELP: lang -->";
+        if validate_help_markers(content).is_ok() {
+            bail!("duplicate marker must fail");
+        }
+        Ok(())
     }
 }
