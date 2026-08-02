@@ -421,13 +421,45 @@ fn check_ignore_keeps_its_own_short_verbose() {
     // `check-ignore` defines its own -v/--verbose as a bool. The root
     // --verbose is deliberately NOT global so clap does not see a duplicate
     // arg id here (which would panic at startup rather than fail gracefully).
-    // The command exits 1 for a file that is not ignored, so assert on the
-    // parse succeeding rather than on the exit status.
-    tokmd_cmd()
+    //
+    // Asserting the path is echoed would not discriminate: `check-ignore`
+    // prints it either way, so a regression that re-globalized the root
+    // --verbose and let it swallow `-v` would still pass. The verbose note is
+    // the only output that distinguishes the two slots, so assert on that.
+    // Exit code is 1 because `Cargo.toml` is tracked and therefore not ignored.
+    //
+    // Run against the repository rather than the scan fixture: the note says
+    // the path is tracked by git, which requires a real checkout. The fixture
+    // root is not a repository, so the note never appears there and the
+    // assertion would fail for a reason unrelated to flag routing.
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let in_repo = || {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+        cmd.current_dir(&repo_root);
+        cmd
+    };
+
+    in_repo()
         .args(["check-ignore", "-v", "Cargo.toml"])
         .assert()
+        .code(1)
         .stdout(predicate::str::contains("Cargo.toml"))
+        .stdout(predicate::str::contains("note:"))
         .stderr(predicate::str::contains("unexpected argument").not());
+
+    // The pair matters: without `-v` there is no note, which is what makes the
+    // assertion above evidence of routing rather than incidentally true.
+    in_repo()
+        .args(["check-ignore", "Cargo.toml"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("Cargo.toml"))
+        .stdout(predicate::str::contains("note:").not());
 }
 
 // ===========================================================================
