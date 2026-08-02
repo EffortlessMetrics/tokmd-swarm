@@ -53,7 +53,7 @@ The container runtime path consumes these Action inputs:
 | Input | Status | Default | Used for |
 | --- | --- | --- | --- |
 | `runtime` | implemented (`binary` and gated `container`) | `binary` | Selects binary download vs container pull. |
-| `version` | implemented | release-pinned by each Action ref | Resolves the image tag for the container runtime; container callers must use a concrete verified tag. |
+| `version` | implemented | explicit concrete tag for `container`; binary default is governed by the selected Action ref | Resolves the image tag for the container runtime; container callers must use a concrete verified tag. |
 | `image` | implemented | `ghcr.io/effortlessmetrics/tokmd` | Container image reference (without tag) when `runtime: container`. The Action resolves `<image>:<normalized-version>`, accepts only verification-gated tags, and anonymously pulls and runs that image against the mounted workspace. |
 | existing per-mode inputs | implemented | — | Unchanged; the runtime does not alter mode behavior. |
 
