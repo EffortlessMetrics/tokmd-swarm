@@ -11,6 +11,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde_json::Value as JsonValue;
 
+use super::action_manifest::update_action_default_version;
 use crate::cli::BumpArgs;
 
 /// Schema version location for updating.
@@ -369,46 +370,6 @@ fn update_workspace_dependencies(
     }
 
     Ok((result, changes))
-}
-
-fn update_action_default_version(content: &str, new_version: &str) -> Result<(String, String)> {
-    let mut result = String::with_capacity(content.len());
-    let mut in_version_input = false;
-    let mut old_version = None;
-
-    for line in content.lines() {
-        if line.trim() == "version:" && line.starts_with("  ") {
-            in_version_input = true;
-            result.push_str(line);
-            result.push('\n');
-            continue;
-        }
-        if in_version_input {
-            let trimmed = line.trim();
-            if let Some(value) = trimmed.strip_prefix("default:") {
-                let old = value.trim().trim_matches(['\'', '"']).to_string();
-                old_version = Some(old.clone());
-                let indent_end = line.len() - line.trim_start().len();
-                let indent = line
-                    .get(..indent_end)
-                    .context("action.yml default indentation is outside the current line")?;
-                result.push_str(&format!("{indent}default: '{new_version}'\n"));
-                in_version_input = false;
-                continue;
-            }
-            if line.starts_with("  ") && !line.starts_with("    ") {
-                in_version_input = false;
-            }
-        }
-        result.push_str(line);
-        result.push('\n');
-    }
-
-    let old_version = old_version.context("Missing inputs.version.default in action.yml")?;
-    if !content.ends_with('\n') && result.ends_with('\n') {
-        result.pop();
-    }
-    Ok((result, old_version))
 }
 
 /// Extract version from a dependency line like `foo = { path = "...", version = "1.0.0" }`.

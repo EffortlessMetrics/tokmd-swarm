@@ -13,6 +13,7 @@ use semver::Version;
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
+use super::action_manifest::extract_action_default_version;
 use crate::cli::VersionConsistencyArgs;
 
 const NODE_PACKAGE_MANIFESTS: &[&str] = &[
@@ -157,27 +158,6 @@ fn check_action_version(workspace_root: &Path, expected: &str) -> Result<()> {
     }
     println!("  ✓ Action default version matches {}.", expected);
     Ok(())
-}
-
-fn extract_action_default_version(content: &str) -> Option<&str> {
-    let mut in_version_input = false;
-    for line in content.lines() {
-        if line.trim() == "version:" && line.starts_with("  ") {
-            in_version_input = true;
-            continue;
-        }
-        if !in_version_input {
-            continue;
-        }
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("default:") {
-            return Some(value.trim().trim_matches(['\'', '"']));
-        }
-        if line.starts_with("  ") && !line.starts_with("    ") {
-            in_version_input = false;
-        }
-    }
-    None
 }
 
 fn check_msrv_pins(workspace_root: &Path) -> Result<()> {
