@@ -419,7 +419,14 @@ mod tests {
             .output()
         {
             Ok(output) => output,
-            Err(_) => return Ok(()),
+            // Only a missing git makes this witness impossible. Swallowing
+            // every spawn error here would quietly turn the one test that
+            // proves failures are not skipped into a no-op -- the same
+            // conflation it exists to catch.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                anyhow::bail!("failed to spawn `git init` for the corrupt-index case: {error}")
+            }
         };
         if !initialized.status.success() {
             anyhow::bail!(
@@ -456,6 +463,16 @@ mod tests {
         ));
         assert!(!stderr_means_no_repository(
             "fatal: bad config line 1 in file .git/config\n"
+        ));
+        // `str::lines` strips the trailing `\r`, so the anchor still matches
+        // when git writes CRLF; pinned because the prefix test would otherwise
+        // be sensitive to a line ending nobody thinks about.
+        assert!(stderr_means_no_repository(
+            "fatal: not a git repository (or any of the parent directories): .git\r\n"
+        ));
+        // The marker is honoured on any line, not just the first.
+        assert!(stderr_means_no_repository(
+            "warning: unable to access config\nfatal: not a git repository (or any of the parent directories): .git\n"
         ));
     }
 
