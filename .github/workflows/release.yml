@@ -206,8 +206,9 @@ jobs:
   docker:
     name: Build and Push Docker Image
     needs: create-release
-    # Stable-only: avoid moving Docker semver aliases for prerelease tags.
-    if: ${{ github.repository == 'EffortlessMetrics/tokmd' && !contains(github.ref_name, '-') }}
+    # Publish only the exact tag for both RC and stable releases. Mutable
+    # aliases are promoted separately after the stable verification gates.
+    if: ${{ github.repository == 'EffortlessMetrics/tokmd' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -266,7 +267,7 @@ jobs:
   verify-container:
     name: Verify exact container artifact
     needs: docker
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ github.repository == 'EffortlessMetrics/tokmd' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -310,7 +311,7 @@ jobs:
   verify-action:
     name: Verify exact-tag Action default
     needs: [create-release, verify-container]
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ github.repository == 'EffortlessMetrics/tokmd' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -336,12 +337,15 @@ jobs:
   promote-aliases:
     name: Promote stable aliases
     needs: [publish-crates, verify-container, verify-action]
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ github.repository == 'EffortlessMetrics/tokmd' && !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Move v1 tag after release verification
         uses: actions/github-script@v7
         with:
