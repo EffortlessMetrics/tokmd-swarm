@@ -103,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          du -ah web/runner/vendor/tokmd-wasm | sort -h > artifacts/tokmd-wasm-bundle-size.txt
+          du -h --max-depth=1 web/runner/vendor/tokmd-wasm | sort -h > artifacts/tokmd-wasm-bundle-size.txt
       - name: Package reproducible tokmd-wasm artifact
         run: |
           mkdir -p artifacts
@@ -293,7 +293,7 @@ jobs:
             if docker --config "${DOCKER_CONFIG}" pull "${REF}" && \
               OUT="$(docker --config "${DOCKER_CONFIG}" run --rm "${REF}" --version)"; then
               echo "${OUT}"
-              if ! grep -qF "${VERSION}" <<<"${OUT}"; then
+              if ! grep -qxE "tokmd ${VERSION}([[:space:]]|$)" <<<"${OUT}"; then
                 echo "::error::container reported an unexpected version: ${OUT}"
                 exit 1
               fi
@@ -333,6 +333,8 @@ jobs:
             packet generate --preset bun-ub --base HEAD --head HEAD --no-syntax src
           test "$(jq -r '.schema' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'tokmd.evidence-packet/v1'
           test "$(jq -r '.status' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'complete'
+          test -s "${FIXTURE}/sensors/tokmd/analyze.json"
+          test "$(jq -r '.artifacts | length' "${FIXTURE}/sensors/tokmd/manifest.json")" -gt 0
           {
             echo "- mounted_packet: pass"
             echo "- packet_schema: tokmd.evidence-packet/v1"
@@ -390,22 +392,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Move mutable container aliases after verification
-        shell: bash
-        env:
-          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "${CR_PAT}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-          VERSION="${GITHUB_REF_NAME#v}"
-          IFS=. read -r MAJOR MINOR _ <<< "${VERSION}"
-          OWNER="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          IMAGE="ghcr.io/${OWNER}/tokmd"
-          for alias in "${MAJOR}" "${MAJOR}.${MINOR}" latest; do
-            docker buildx imagetools create --tag "${IMAGE}:${alias}" "${IMAGE}:${VERSION}"
-          done
-
-      - name: Move v1 tag after release verification
+      - name: Move v1 tag before mutable aliases
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
@@ -434,3 +421,18 @@ jobs:
                 sha: context.sha,
               });
             }
+
+      - name: Move mutable container aliases after Git tag
+        shell: bash
+        env:
+          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "${CR_PAT}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR _ <<< "${VERSION}"
+          OWNER="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/tokmd"
+          for alias in "${MAJOR}" "${MAJOR}.${MINOR}" latest; do
+            docker buildx imagetools create --tag "${IMAGE}:${alias}" "${IMAGE}:${VERSION}"
+          done
