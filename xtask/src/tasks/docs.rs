@@ -126,18 +126,16 @@ fn validate_help_markers(content: &str) -> Result<()> {
         if let Some(marker) = line
             .strip_prefix("<!-- HELP: ")
             .and_then(|value| value.strip_suffix(" -->"))
+            && !starts.insert(marker)
         {
-            if !starts.insert(marker) {
-                bail!("Duplicate help marker pair for `{marker}` in docs/reference-cli.md");
-            }
+            bail!("Duplicate help marker pair for `{marker}` in docs/reference-cli.md");
         }
         if let Some(marker) = line
             .strip_prefix("<!-- /HELP: ")
             .and_then(|value| value.strip_suffix(" -->"))
+            && !ends.insert(marker)
         {
-            if !ends.insert(marker) {
-                bail!("Duplicate closing help marker for `{marker}` in docs/reference-cli.md");
-            }
+            bail!("Duplicate closing help marker for `{marker}` in docs/reference-cli.md");
         }
     }
 
