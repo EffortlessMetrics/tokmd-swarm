@@ -28,21 +28,31 @@ pub(crate) mod syntax;
 pub(crate) mod tools;
 
 use crate::cli;
-use anyhow::{Result, bail};
+use anyhow::{Error, Result};
 
 use crate::config::ResolvedConfig;
 
+#[derive(Debug)]
+pub(crate) struct UsageError(String);
+
+impl std::fmt::Display for UsageError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UsageError {}
+
 fn reject_implicit_lang_options_with_subcommand(cli: &cli::Cli) -> Result<()> {
     if cli.command.is_some()
-        && (cli.lang.paths.is_some()
-            || cli.lang.format.is_some()
+        && (cli.lang.format.is_some()
             || cli.lang.top.is_some()
             || cli.lang.files
             || cli.lang.children.is_some())
     {
-        bail!(
-            "default `lang` options cannot appear before a subcommand; move them after the command (for example, `tokmd module --format json`)"
-        );
+        return Err(Error::new(UsageError(
+            "default `lang` options cannot appear before a subcommand; move them after the command (for example, `tokmd module --format json`)".to_string(),
+        )));
     }
     Ok(())
 }
@@ -127,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_lang_option_after_a_subcommand() -> Result<()> {
+    fn module_subcommand_rejects_lang_only_files_flag() -> Result<()> {
         if cli::Cli::try_parse_from(["tokmd", "module", "--files"]).is_ok() {
             return Err(anyhow::anyhow!(
                 "module unexpectedly accepted unsupported --files"

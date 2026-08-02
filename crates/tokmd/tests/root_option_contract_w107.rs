@@ -13,6 +13,13 @@ fn ignored_root_format_is_rejected_without_stdout() -> Result<(), Box<dyn std::e
     if output.status.success() {
         return Err("root format unexpectedly succeeded before module".into());
     }
+    if output.status.code() != Some(2) {
+        return Err(format!(
+            "root format should be a usage error (exit 2), got {:?}",
+            output.status.code()
+        )
+        .into());
+    }
     if !output.stdout.is_empty() {
         return Err("rejected root format wrote to stdout".into());
     }
