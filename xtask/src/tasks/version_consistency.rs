@@ -143,7 +143,8 @@ fn check_node_manifest_versions(workspace_root: &Path, expected: &str) -> Result
 
 fn check_action_version(workspace_root: &Path, expected: &str) -> Result<()> {
     let path = workspace_root.join("action.yml");
-    let content = fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
     let actual = extract_action_default_version(&content)
         .context("Missing inputs.version.default in action.yml")?;
     Version::parse(actual).with_context(|| {

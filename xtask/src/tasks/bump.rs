@@ -709,10 +709,37 @@ edition = "2021"
     #[test]
     fn updates_action_default_version_without_changing_other_inputs() {
         let content = "inputs:\n  version:\n    description: install version\n    default: 'latest'\n  paths:\n    default: '.'\n";
-        let (updated, old) = update_action_default_version(content, "1.15.0")
-            .expect("action version should update");
+        let (updated, old) =
+            update_action_default_version(content, "1.15.0").expect("action version should update");
         assert_eq!(old, "latest");
         assert!(updated.contains("default: '1.15.0'"));
+        assert!(updated.contains("  paths:\n    default: '.'"));
+    }
+
+    #[test]
+    fn updates_action_default_version_preserves_missing_trailing_newline() {
+        let content =
+            "inputs:\n  version:\n    description: install version\n    default: 'latest'";
+        let (updated, old) =
+            update_action_default_version(content, "1.15.0").expect("action version should update");
+
+        assert_eq!(old, "latest");
+        assert_eq!(
+            updated,
+            "inputs:\n  version:\n    description: install version\n    default: '1.15.0'"
+        );
+        assert!(!updated.ends_with('\n'));
+    }
+
+    #[test]
+    fn updates_only_the_inputs_version_default() {
+        let content = "version:\n  default: 'outer'\ninputs:\n  version:\n    default: 'latest'\n  paths:\n    default: '.'\n";
+        let (updated, old) =
+            update_action_default_version(content, "1.15.0").expect("action version should update");
+
+        assert_eq!(old, "latest");
+        assert!(updated.contains("version:\n  default: 'outer'"));
+        assert!(updated.contains("inputs:\n  version:\n    default: '1.15.0'"));
         assert!(updated.contains("  paths:\n    default: '.'"));
     }
 
