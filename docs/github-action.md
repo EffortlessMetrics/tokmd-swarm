@@ -50,13 +50,13 @@ Use stable workflows like this:
 ```
 
 This section sets `version` explicitly because demonstrating the input is the
-point. The workflow examples elsewhere in the docs omit it and inherit the
-`action.yml` default of `latest`. The one other place that still pins is the
+point. Ordinary workflow examples omit it and inherit the exact default carried
+by the selected Action ref; they never resolve a future major's binary through
+`@v1`. The other intentional pins are release-candidate smoke examples and the
 container-runtime example in [Packet Workflows](packet-workflows.md), where
-`version` has to match the verification-gated image tag. Omitting it is the
-normal choice; pin only when you specifically want a fixed binary, and if you
-do, remember that a pinned example goes stale the moment the next release
-ships.
+`version` must match a verification-gated image tag. Omitting `version` is the
+normal choice; pin only when teaching version selection, testing an RC, or
+aligning a container with its verified binary.
 
 For release-candidate smoke tests, pin both the Action ref and the downloaded binary:
 
