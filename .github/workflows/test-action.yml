@@ -702,8 +702,8 @@ jobs:
               exit 1
               ;;
           esac
-          if [ -z "${{ steps.packet.outputs['tokmd-version'] }}" ]; then
-            echo "::error::tokmd-version output should be set"
+          if [ "${{ steps.packet.outputs['tokmd-version'] }}" != "1.14.0" ]; then
+            echo "::error::omitted binary version should resolve to 1.14.0; got '${{ steps.packet.outputs['tokmd-version'] }}'"
             exit 1
           fi
           if [ -z "${{ steps.packet.outputs['warnings-count'] }}" ]; then

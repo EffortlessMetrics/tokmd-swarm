@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use cargo_metadata::{Metadata, MetadataCommand, PackageId};
+use semver::Version;
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 
@@ -29,6 +30,7 @@ pub fn run(_args: VersionConsistencyArgs) -> Result<()> {
     check_cargo_versions(&metadata, &workspace_version)?;
     check_workspace_dependency_versions(&workspace_root, &workspace_version)?;
     check_node_manifest_versions(&workspace_root, &workspace_version)?;
+    check_action_version(&workspace_root, &workspace_version)?;
     check_msrv_pins(&workspace_root)?;
     check_case_insensitive_path_collisions(&workspace_root)?;
 
@@ -137,6 +139,44 @@ fn check_node_manifest_versions(workspace_root: &Path, expected: &str) -> Result
 
     println!("  ✓ Node package manifest versions match {}.", expected);
     Ok(())
+}
+
+fn check_action_version(workspace_root: &Path, expected: &str) -> Result<()> {
+    let path = workspace_root.join("action.yml");
+    let content = fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let actual = extract_action_default_version(&content)
+        .context("Missing inputs.version.default in action.yml")?;
+    Version::parse(actual).with_context(|| {
+        format!("action.yml inputs.version.default must be concrete semver, got {actual:?}")
+    })?;
+    if actual != expected {
+        bail!(
+            "action.yml inputs.version.default ({actual}) is out of sync with workspace version ({expected})"
+        );
+    }
+    println!("  ✓ Action default version matches {}.", expected);
+    Ok(())
+}
+
+fn extract_action_default_version(content: &str) -> Option<&str> {
+    let mut in_version_input = false;
+    for line in content.lines() {
+        if line.trim() == "version:" && line.starts_with("  ") {
+            in_version_input = true;
+            continue;
+        }
+        if !in_version_input {
+            continue;
+        }
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("default:") {
+            return Some(value.trim().trim_matches(['\'', '"']));
+        }
+        if line.starts_with("  ") && !line.starts_with("    ") {
+            in_version_input = false;
+        }
+    }
+    None
 }
 
 fn check_msrv_pins(workspace_root: &Path) -> Result<()> {
@@ -681,6 +721,33 @@ mod tests {
     fn test_read_package_manifest_errors() {
         let workspace_root = find_workspace_root().expect("workspace root should parse");
         assert!(read_package_manifest(&workspace_root, "no-such-file.json").is_err());
+    }
+
+    #[test]
+    fn action_default_version_is_concrete_and_matches_workspace() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("action.yml"),
+            "inputs:\n  version:\n    default: '1.14.0'\n  paths:\n    default: '.'\n",
+        )?;
+        check_action_version(temp.path(), "1.14.0")
+    }
+
+    #[test]
+    fn action_default_version_rejects_latest_and_mismatches() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("action.yml"),
+            "inputs:\n  version:\n    default: 'latest'\n",
+        )?;
+        assert!(check_action_version(temp.path(), "1.14.0").is_err());
+
+        fs::write(
+            temp.path().join("action.yml"),
+            "inputs:\n  version:\n    default: '1.13.0'\n",
+        )?;
+        assert!(check_action_version(temp.path(), "1.14.0").is_err());
+        Ok(())
     }
 
     #[test]

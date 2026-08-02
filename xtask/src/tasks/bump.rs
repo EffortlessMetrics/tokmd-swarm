@@ -112,6 +112,18 @@ pub fn run(args: BumpArgs) -> Result<()> {
         changes.extend(update.changes.iter().cloned());
     }
 
+    // 4. Pin the composite Action's omitted-version behavior to this release.
+    let action_path = workspace_root.join("action.yml");
+    let action_content = fs::read_to_string(&action_path).context("Failed to read action.yml")?;
+    let (updated_action, old_action_version) =
+        update_action_default_version(&action_content, &args.version)?;
+    if old_action_version != args.version {
+        changes.push(format!(
+            "action.yml: inputs.version.default = \"{}\" -> \"{}\"",
+            old_action_version, args.version
+        ));
+    }
+
     // Print planned changes
     println!("Planned changes:");
     for change in &changes {
@@ -151,6 +163,11 @@ pub fn run(args: BumpArgs) -> Result<()> {
     fs::write(&cargo_toml_path, &final_content).context("Failed to write root Cargo.toml")?;
     println!("\nWrote: {}", cargo_toml_path.display());
 
+    if old_action_version != args.version {
+        fs::write(&action_path, &updated_action).context("Failed to write action.yml")?;
+        println!("Wrote: {}", action_path.display());
+    }
+
     for update in &node_manifest_updates {
         let manifest_path = workspace_root.join(&update.path);
         fs::write(&manifest_path, &update.updated_content)
@@ -171,7 +188,9 @@ pub fn run(args: BumpArgs) -> Result<()> {
     println!("Version bumped: {} -> {}", current_version, args.version);
     println!(
         "Files modified: {}",
-        1 + node_manifest_updates.len() + args.schema.as_ref().map(|s| s.len()).unwrap_or(0)
+        1 + usize::from(old_action_version != args.version)
+            + node_manifest_updates.len()
+            + args.schema.as_ref().map(|s| s.len()).unwrap_or(0)
     );
 
     println!("\nNext steps:");
@@ -350,6 +369,43 @@ fn update_workspace_dependencies(
     }
 
     Ok((result, changes))
+}
+
+fn update_action_default_version(content: &str, new_version: &str) -> Result<(String, String)> {
+    let mut result = String::with_capacity(content.len());
+    let mut in_version_input = false;
+    let mut old_version = None;
+
+    for line in content.lines() {
+        if line.trim() == "version:" && line.starts_with("  ") {
+            in_version_input = true;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+        if in_version_input {
+            let trimmed = line.trim();
+            if let Some(value) = trimmed.strip_prefix("default:") {
+                let old = value.trim().trim_matches(['\'', '"']).to_string();
+                old_version = Some(old.clone());
+                let indent = &line[..line.len() - line.trim_start().len()];
+                result.push_str(&format!("{indent}default: '{new_version}'\n"));
+                in_version_input = false;
+                continue;
+            }
+            if line.starts_with("  ") && !line.starts_with("    ") {
+                in_version_input = false;
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    let old_version = old_version.context("Missing inputs.version.default in action.yml")?;
+    if !content.ends_with('\n') && result.ends_with('\n') {
+        result.pop();
+    }
+    Ok((result, old_version))
 }
 
 /// Extract version from a dependency line like `foo = { path = "...", version = "1.0.0" }`.
@@ -648,6 +704,16 @@ edition = "2021"
             .expect("Should update valid workspace version");
         assert!(result.contains("version = \"1.3.0\""));
         assert!(!result.contains("version = \"1.2.3\""));
+    }
+
+    #[test]
+    fn updates_action_default_version_without_changing_other_inputs() {
+        let content = "inputs:\n  version:\n    description: install version\n    default: 'latest'\n  paths:\n    default: '.'\n";
+        let (updated, old) = update_action_default_version(content, "1.15.0")
+            .expect("action version should update");
+        assert_eq!(old, "latest");
+        assert!(updated.contains("default: '1.15.0'"));
+        assert!(updated.contains("  paths:\n    default: '.'"));
     }
 
     #[test]
