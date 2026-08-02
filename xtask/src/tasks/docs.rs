@@ -3,6 +3,32 @@ use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::process::Command;
 
+const HELP_MARKERS: &[(&str, &str)] = &[
+    ("lang", "lang"), // Explicitly use lang subcommand help
+    ("module", "module"),
+    ("export", "export"),
+    ("run", "run"),
+    ("analyze", "analyze"),
+    ("baseline", "baseline"),
+    ("badge", "badge"),
+    ("diff", "diff"),
+    ("init", "init"),
+    ("context", "context"),
+    ("handoff", "handoff"),
+    ("check-ignore", "check-ignore"),
+    ("tools", "tools"),
+    ("cockpit", "cockpit"),
+    ("sensor", "sensor"),
+    ("gate", "gate"),
+    ("packet", "packet"),
+    // `syntax` is gated behind the `ast` feature, which is on by default, so
+    // the default-feature build this generator shells out to always has it.
+    ("syntax", "syntax"),
+    ("evidence-packet", "evidence-packet"),
+    ("render", "render"),
+    ("completions", "completions"),
+];
+
 pub fn run(args: DocsArgs) -> Result<()> {
     let repo_root = std::env::current_dir()?;
     let ref_md_path = repo_root.join("docs/reference-cli.md");
@@ -24,33 +50,7 @@ pub fn run(args: DocsArgs) -> Result<()> {
     // which is how `syntax`, `evidence-packet`, and `render` fell behind. The
     // missing-marker branch below catches the opposite mistake (an entry with no
     // pair), so the two lists only stay in sync if additions land on both sides.
-    let markers = [
-        ("lang", "lang"), // Explicitly use lang subcommand help
-        ("module", "module"),
-        ("export", "export"),
-        ("run", "run"),
-        ("analyze", "analyze"),
-        ("baseline", "baseline"),
-        ("badge", "badge"),
-        ("diff", "diff"),
-        ("init", "init"),
-        ("context", "context"),
-        ("handoff", "handoff"),
-        ("check-ignore", "check-ignore"),
-        ("tools", "tools"),
-        ("cockpit", "cockpit"),
-        ("sensor", "sensor"),
-        ("gate", "gate"),
-        ("packet", "packet"),
-        // `syntax` is gated behind the `ast` feature, which is on by default, so
-        // the default-feature build this generator shells out to always has it.
-        ("syntax", "syntax"),
-        ("evidence-packet", "evidence-packet"),
-        ("render", "render"),
-        ("completions", "completions"),
-    ];
-
-    for (cmd_name, marker_id) in markers {
+    for &(cmd_name, marker_id) in HELP_MARKERS {
         let start_marker = format!("<!-- HELP: {} -->", marker_id);
         let end_marker = format!("<!-- /HELP: {} -->", marker_id);
 
@@ -146,4 +146,31 @@ fn get_tokmd_help(cmd: &str) -> Result<String> {
     s = s.replace("tokmd.exe", "tokmd");
     s = s.lines().map(str::trim_end).collect::<Vec<_>>().join("\n");
     Ok(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HELP_MARKERS;
+    use clap::CommandFactory;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn help_markers_match_cli_commands() {
+        let marker_names: BTreeSet<&str> = HELP_MARKERS
+            .iter()
+            .map(|(command, _)| *command)
+            .collect();
+        let cli_command = tokmd::cli::Cli::command();
+        let cli_names: BTreeSet<&str> = cli_command
+            .get_subcommands()
+            .map(|command| command.get_name())
+            .collect();
+
+        assert_eq!(
+            HELP_MARKERS.len(),
+            marker_names.len(),
+            "HELP_MARKERS contains duplicate command names"
+        );
+        assert_eq!(marker_names, cli_names);
+    }
 }
