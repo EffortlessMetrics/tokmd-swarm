@@ -372,6 +372,59 @@ mod tests {
             .any(|line| line.starts_with("fatal: not a git repository"))
     }
 
+    fn tracked_files_for_policy(root: &Path) -> Result<Option<String>> {
+        let output = match std::process::Command::new("git")
+            .arg("ls-files")
+            .current_dir(root)
+            .env("LC_ALL", "C")
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => return Ok(None),
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr_means_no_repository(&stderr) {
+                return Ok(None);
+            }
+            let root_display = root.to_string_lossy().replace('\\', "/");
+            anyhow::bail!(
+                "`git ls-files` failed with {} in the repository at {root_display}; the \
+                 tracked-file invariant could not be checked. stderr: {}",
+                output.status,
+                stderr.trim()
+            );
+        }
+        Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+    }
+
+    #[test]
+    fn a_real_git_ls_files_error_is_not_skipped() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let initialized = match std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(temp.path())
+            .env("LC_ALL", "C")
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => return Ok(()),
+        };
+        if !initialized.status.success() {
+            anyhow::bail!(
+                "git init failed: {}",
+                String::from_utf8_lossy(&initialized.stderr).trim()
+            );
+        }
+        fs::write(temp.path().join(".git/index"), b"corrupt")?;
+
+        let error = tracked_files_for_policy(temp.path()).expect_err(
+            "a corrupt index is a real git failure, not an unevaluable source archive",
+        );
+        assert!(error.to_string().contains("git ls-files"));
+        Ok(())
+    }
+
     #[test]
     fn only_a_missing_repository_counts_as_unevaluable() {
         // Verbatim `git ls-files` stderr, measured under `LC_ALL=C`. All three
@@ -394,34 +447,14 @@ mod tests {
     }
 
     #[test]
-    fn no_tracked_file_lives_under_a_target_component() {
-        let Ok(root) = workspace_root() else {
-            return;
+    fn no_tracked_file_lives_under_a_target_component() -> Result<()> {
+        let root = match workspace_root() {
+            Ok(root) => root,
+            Err(_) => return Ok(()),
         };
-        let Ok(output) = std::process::Command::new("git")
-            .arg("ls-files")
-            .current_dir(&root)
-            .env("LC_ALL", "C")
-            .output()
-        else {
-            // git unavailable: nothing to assert against.
-            return;
+        let Some(listing) = tracked_files_for_policy(&root)? else {
+            return Ok(());
         };
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let root_display = root.to_string_lossy().replace('\\', "/");
-            assert!(
-                stderr_means_no_repository(&stderr),
-                "`git ls-files` failed with {} in the repository at {root_display}; the \
-                 tracked-file invariant could not be checked. stderr: {}",
-                output.status,
-                stderr.trim()
-            );
-            // No repository here (e.g. an exported source archive): the
-            // invariant is unevaluable rather than violated.
-            return;
-        }
-        let listing = String::from_utf8_lossy(&output.stdout);
         let offenders: Vec<&str> = listing
             .lines()
             .filter(|line| !line.is_empty())
@@ -432,6 +465,7 @@ mod tests {
             "tracked files live under a skipped build-output component and would be \
              invisible to the file-policy walk: {offenders:?}"
         );
+        Ok(())
     }
 
     #[test]
