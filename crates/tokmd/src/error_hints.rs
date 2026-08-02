@@ -11,12 +11,10 @@ fn known_subcommands() -> Vec<String> {
     crate::cli::Cli::command()
         .get_subcommands()
         .filter(|c| !c.is_hide_set())
-        .flat_map(|c| {
-            std::iter::once(c.get_name().to_string()).chain(
-                c.get_visible_aliases()
-                    .map(std::string::ToString::to_string),
-            )
-        })
+        // Suggestions are rendered as command-position tokens. Keep this
+        // pool canonical: visible aliases can be accepted by clap in some
+        // contexts but are not necessarily valid as the suggested token.
+        .map(|c| c.get_name().to_string())
         .filter(|name| name != "help")
         .collect()
 }
