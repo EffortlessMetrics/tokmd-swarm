@@ -432,15 +432,13 @@ fn check_ignore_keeps_its_own_short_verbose() {
     // the path is tracked by git, which requires a real checkout. The fixture
     // root is not a repository, so the note never appears there and the
     // assertion would fail for a reason unrelated to flag routing.
-    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    // Built at compile time rather than walked with `parent().unwrap()`: the
+    // no-panic policy counts those unwraps as new panic-family debt, and the
+    // manifest dir is two levels below the workspace root by construction.
+    let repo_root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let in_repo = || {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_tokmd"));
-        cmd.current_dir(&repo_root);
+        cmd.current_dir(repo_root);
         cmd
     };
 
