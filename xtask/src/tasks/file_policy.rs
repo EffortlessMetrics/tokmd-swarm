@@ -409,6 +409,47 @@ mod tests {
         Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
     }
 
+    /// Whether a `workspace_root` failure means "cargo is not installed here"
+    /// rather than "this workspace is broken".
+    ///
+    /// `cargo_metadata` surfaces a missing executable as `Error::Io` with
+    /// `NotFound`; a manifest or workspace fault arrives as a different
+    /// variant. `anyhow` keeps the concrete error in the source chain, so the
+    /// distinction survives the `context` wrapper in `workspace_root`.
+    fn cargo_metadata_is_unavailable(error: &anyhow::Error) -> bool {
+        matches!(
+            error.downcast_ref::<cargo_metadata::Error>(),
+            Some(cargo_metadata::Error::Io(io)) if io.kind() == std::io::ErrorKind::NotFound
+        )
+    }
+
+    /// Tracked paths that live under a component the policy walk skips.
+    ///
+    /// Split out so the detection has a red state: run against the real
+    /// repository it is always empty, which cannot distinguish "no offenders"
+    /// from "the filter never matches anything".
+    fn tracked_offenders(listing: &str) -> Vec<&str> {
+        listing
+            .lines()
+            .filter(|line| !line.is_empty())
+            .filter(|line| line.split('/').any(|c| SKIP_DIRS_ANY_DEPTH.contains(&c)))
+            .collect()
+    }
+
+    #[test]
+    fn tracked_offenders_finds_files_under_a_skipped_component() {
+        // The positive case the repo itself cannot provide. Without this, a
+        // filter that matched nothing would pass the invariant test forever.
+        let listing = "src/main.rs\nfixtures/target/blob.json\ndocs/guide.md\ntarget/out.bin\n";
+        assert_eq!(
+            tracked_offenders(listing),
+            vec!["fixtures/target/blob.json", "target/out.bin"]
+        );
+        // A clean listing must stay clean -- including paths that merely
+        // contain the component name as a substring.
+        assert!(tracked_offenders("src/targeting.rs\ndocs/on-target.md\n").is_empty());
+    }
+
     #[test]
     fn a_real_git_ls_files_error_is_not_skipped() -> Result<()> {
         let temp = tempfile::tempdir()?;
@@ -511,16 +552,17 @@ mod tests {
     fn no_tracked_file_lives_under_a_target_component() -> Result<()> {
         let root = match workspace_root() {
             Ok(root) => root,
-            Err(_) => return Ok(()),
+            // Only an absent `cargo` makes the workspace root unknowable. Any
+            // other metadata failure -- a malformed manifest, an unreadable
+            // workspace -- is a real fault, and swallowing it here would skip
+            // the invariant for the same reason this test exists to reject.
+            Err(error) if cargo_metadata_is_unavailable(&error) => return Ok(()),
+            Err(error) => return Err(error),
         };
         let Some(listing) = tracked_files_for_policy(&root)? else {
             return Ok(());
         };
-        let offenders: Vec<&str> = listing
-            .lines()
-            .filter(|line| !line.is_empty())
-            .filter(|line| line.split('/').any(|c| SKIP_DIRS_ANY_DEPTH.contains(&c)))
-            .collect();
+        let offenders = tracked_offenders(&listing);
         assert!(
             offenders.is_empty(),
             "tracked files live under a skipped build-output component and would be \
