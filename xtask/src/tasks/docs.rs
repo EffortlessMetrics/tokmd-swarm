@@ -121,22 +121,47 @@ fn validate_help_markers(content: &str) -> Result<()> {
     let configured: BTreeSet<&str> = HELP_MARKERS.iter().map(|(_, marker)| *marker).collect();
     let mut starts = BTreeSet::new();
     let mut ends = BTreeSet::new();
+    // Openings still awaiting their close, innermost last.
+    //
+    // Set equality alone accepts a document whose markers are reversed or
+    // crossed. `run` then locates each pair with two independent `find` calls
+    // and slices `range_start..end_idx`: for a reversed pair that range runs
+    // backwards and panics, and for a crossed pair it spans a neighbouring
+    // marker and replaces the wrong help block. Marker blocks never nest, so a
+    // close must match the most recent open.
+    let mut open: Vec<&str> = Vec::new();
 
     for line in content.lines().map(str::trim) {
         if let Some(marker) = line
             .strip_prefix("<!-- HELP: ")
             .and_then(|value| value.strip_suffix(" -->"))
-            && !starts.insert(marker)
         {
-            bail!("Duplicate help marker pair for `{marker}` in docs/reference-cli.md");
+            if !starts.insert(marker) {
+                bail!("Duplicate help marker pair for `{marker}` in docs/reference-cli.md");
+            }
+            open.push(marker);
         }
         if let Some(marker) = line
             .strip_prefix("<!-- /HELP: ")
             .and_then(|value| value.strip_suffix(" -->"))
-            && !ends.insert(marker)
         {
-            bail!("Duplicate closing help marker for `{marker}` in docs/reference-cli.md");
+            if !ends.insert(marker) {
+                bail!("Duplicate closing help marker for `{marker}` in docs/reference-cli.md");
+            }
+            match open.pop() {
+                Some(top) if top == marker => {}
+                Some(top) => bail!(
+                    "Help markers cross in docs/reference-cli.md: `{marker}` closes while `{top}` is still open"
+                ),
+                None => {
+                    bail!("Help marker `{marker}` closes before it opens in docs/reference-cli.md")
+                }
+            }
         }
+    }
+
+    if let Some(unclosed) = open.last() {
+        bail!("Help marker `{unclosed}` is never closed in docs/reference-cli.md");
     }
 
     if starts != ends {
@@ -217,6 +242,30 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/reference-cli.md");
         let content = std::fs::read_to_string(path)?;
         validate_help_markers(&content)?;
+        Ok(())
+    }
+
+    #[test]
+    fn marker_validation_rejects_reversed_pairs() -> Result<()> {
+        // `run` slices `range_start..end_idx`; reversed, that range runs
+        // backwards and panics rather than reporting drift.
+        let content = "<!-- /HELP: lang -->\nstale\n<!-- HELP: lang -->";
+        if validate_help_markers(content).is_ok() {
+            bail!("a close before its open must fail");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn marker_validation_rejects_crossed_pairs() -> Result<()> {
+        // Each pair is individually ordered, so a per-marker check would pass.
+        // The `lang` range still spans `module`'s opening marker, so
+        // regenerating `lang` would overwrite it.
+        let content = "<!-- HELP: lang -->\n<!-- HELP: module -->\n\
+                       <!-- /HELP: lang -->\n<!-- /HELP: module -->";
+        if validate_help_markers(content).is_ok() {
+            bail!("crossed marker pairs must fail");
+        }
         Ok(())
     }
 
