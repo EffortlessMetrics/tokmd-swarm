@@ -881,9 +881,9 @@ blocking         = true
 runner           = "ubuntu_latest"
 base_lem         = 8
 owner            = "release/action"
-intent           = "Verify the tagged Action resolves its baked-in release version when version is omitted."
-failure_mode     = "The v1 Action wrapper downloads a binary from a different release line."
-proof_obligation = "Check out the exact release tag, invoke the local Action without version, and assert the generated receipt names the tag version."
+intent           = "Verify the tagged Action downloads and reports the exact release version."
+failure_mode     = "The release workflow verifies a binary from a different release line than the tag under test."
+proof_obligation = "Check out the exact release tag, invoke the local Action with version=<ref>, and assert the generated receipt names the tag version."
 evidence         = ["release workflow logs", "action-verification-<ref>"]
 allowed_triggers = ["push"]
 duplicate_of     = ["test_action_main"]
