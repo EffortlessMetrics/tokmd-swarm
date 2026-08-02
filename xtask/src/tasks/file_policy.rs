@@ -380,7 +380,10 @@ mod tests {
             .output()
         {
             Ok(output) => output,
-            Err(_) => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => anyhow::bail!(
+                "failed to spawn `git ls-files` while checking tracked files: {error}"
+            ),
         };
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -443,6 +446,16 @@ mod tests {
         assert!(!stderr_means_no_repository(
             "fatal: detected dubious ownership in repository at '/tmp/not a git repository/wt'\n"
         ));
+        assert!(!stderr_means_no_repository(
+            "fatal: bad config line 1 in file .git/config\n"
+        ));
+    }
+
+    #[test]
+    fn source_archive_without_git_is_unevaluable() -> Result<()> {
+        let archive = tempfile::tempdir()?;
+        assert!(tracked_files_for_policy(archive.path())?.is_none());
+        Ok(())
     }
 
     #[test]
