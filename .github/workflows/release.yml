@@ -95,7 +95,15 @@ jobs:
         with:
           tool: wasm-pack
       - name: Build tokmd-wasm bundle
-        run: npm --prefix web/runner run build:wasm
+        run: npm --prefix web/runner run build:wasm:archive-zip
+      - name: Test archive-enabled runner
+        run: npm --prefix web/runner test
+      - name: Record WASM bundle size
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          du -ah web/runner/vendor/tokmd-wasm | sort -h > artifacts/tokmd-wasm-bundle-size.txt
       - name: Package reproducible tokmd-wasm artifact
         run: |
           mkdir -p artifacts
@@ -144,6 +152,7 @@ jobs:
             artifacts/tokmd-windows-amd64.exe/tokmd-windows-amd64.exe
             artifacts/tokmd-wasm-${{ github.ref_name }}/tokmd-wasm-${{ github.ref_name }}.tar.gz
             artifacts/tokmd-wasm-${{ github.ref_name }}/tokmd-wasm-${{ github.ref_name }}.sha256
+            artifacts/tokmd-wasm-${{ github.ref_name }}/tokmd-wasm-bundle-size.txt
 
       - name: Generate shell completions
         run: |
@@ -174,24 +183,6 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
-
-      - name: Update major version tag
-        if: ${{ !contains(github.ref_name, '-') }}
-        env:
-          # Authenticate this intentional tag push without persisting the
-          # checkout token in the workspace.
-          GIT_CONFIG_COUNT: 1
-          GIT_CONFIG_KEY_0: http.https://github.com/.extraheader
-          GIT_CONFIG_VALUE_0: "AUTHORIZATION: bearer ${{ github.token }}"
-        run: |
-          # Extract major version from tag (v1.2.3 -> v1)
-          TAG="${GITHUB_REF#refs/tags/}"
-          MAJOR="${TAG%%.*}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -fa "$MAJOR" -m "Update $MAJOR to $TAG"
-          git push origin "$MAJOR" --force
 
   publish-crates:
     name: Publish to crates.io
@@ -243,9 +234,6 @@ jobs:
           images: ghcr.io/effortlessmetrics/tokmd
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -274,3 +262,110 @@ jobs:
             echo "ghcr_public_visibility=pending tag=${VERSION}"
             exit 1
           fi
+
+  verify-container:
+    name: Verify exact container artifact
+    needs: docker
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/tokmd
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Anonymous pull and version smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          REF="${IMAGE}:${VERSION}"
+          docker --config "${DOCKER_CONFIG}" pull "${REF}"
+          OUT="$(docker --config "${DOCKER_CONFIG}" run --rm "${REF}" --version)"
+          echo "${OUT}"
+          grep -qF "${VERSION}" <<<"${OUT}"
+
+      - name: Mounted packet smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          REF="${IMAGE}:${VERSION}"
+          FIXTURE="$(mktemp -d)"
+          DOCKER_CONFIG="$(mktemp -d)"
+          export DOCKER_CONFIG
+          trap 'rm -rf "${FIXTURE}" "${DOCKER_CONFIG}"' EXIT
+          mkdir -p "${FIXTURE}/src"
+          printf 'pub fn add(a: i32, b: i32) -> i32 { a + b }\n' > "${FIXTURE}/src/lib.rs"
+          git -C "${FIXTURE}" init -q
+          git -C "${FIXTURE}" -c user.email=ci@tokmd.dev -c user.name=tokmd-ci add .
+          git -C "${FIXTURE}" -c user.email=ci@tokmd.dev -c user.name=tokmd-ci commit -q -m fixture
+          docker --config "${DOCKER_CONFIG}" run --rm --user "$(id -u):$(id -g)" \
+            -e HOME=/repo -v "${FIXTURE}:/repo" -w /repo "${REF}" \
+            packet generate --preset bun-ub --base HEAD --head HEAD --no-syntax src
+          test "$(jq -r '.schema' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'tokmd.evidence-packet/v1'
+          test "$(jq -r '.status' "${FIXTURE}/sensors/tokmd/manifest.json")" = 'complete'
+
+  verify-action:
+    name: Verify exact-tag Action default
+    needs: [create-release, verify-container]
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Run Action with omitted version
+        id: tokmd
+        uses: ./
+        with:
+          comment: 'false'
+          artifact: 'false'
+
+      - name: Check exact release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          test -f tokmd-receipt.json
+          grep -qF "${VERSION}" tokmd-receipt.json
+
+  promote-aliases:
+    name: Promote stable aliases
+    needs: [publish-crates, verify-container, verify-action]
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Move v1 tag after release verification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const major = tag.split('.')[0];
+            await github.rest.git.updateRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `tags/${major}`,
+              sha: context.sha,
+              force: true,
+            });
+
+      - name: Move mutable container aliases after verification
+        shell: bash
+        env:
+          CR_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "${CR_PAT}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR _ <<< "${VERSION}"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER}/tokmd"
+          for alias in "${MAJOR}" "${MAJOR}.${MINOR}" latest; do
+            docker buildx imagetools create --tag "${IMAGE}:${alias}" "${IMAGE}:${VERSION}"
+          done
