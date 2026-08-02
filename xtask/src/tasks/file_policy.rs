@@ -488,7 +488,13 @@ mod tests {
         // A root that does not exist makes `Command::output` fail with the same
         // `NotFound` that a missing `git` produces, so without the explicit
         // directory check this would report unevaluable rather than a fault.
-        let absent = tempfile::tempdir()?.path().join("gone");
+        // Bind the `TempDir`: the parent has to outlive the call so that only
+        // `gone` is missing. Joining onto a temporary would drop the directory
+        // at the end of the statement and pass for the wrong reason.
+        let parent = tempfile::tempdir()?;
+        let absent = parent.path().join("gone");
+        assert!(parent.path().is_dir(), "the parent must exist");
+        assert!(!absent.exists(), "only the joined name must be missing");
         let error = tracked_files_for_policy(&absent)
             .expect_err("a nonexistent root is a caller error, not an unevaluable environment");
         assert!(error.to_string().contains("is not a directory"));
