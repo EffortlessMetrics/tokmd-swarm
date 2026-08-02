@@ -156,10 +156,8 @@ mod tests {
 
     #[test]
     fn help_markers_match_cli_commands() {
-        let marker_names: BTreeSet<&str> = HELP_MARKERS
-            .iter()
-            .map(|(command, _)| *command)
-            .collect();
+        let marker_names: BTreeSet<&str> =
+            HELP_MARKERS.iter().map(|(command, _)| *command).collect();
         let cli_command = tokmd::cli::Cli::command();
         let cli_names: BTreeSet<&str> = cli_command
             .get_subcommands()
