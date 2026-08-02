@@ -388,7 +388,10 @@ fn update_action_default_version(content: &str, new_version: &str) -> Result<(St
             if let Some(value) = trimmed.strip_prefix("default:") {
                 let old = value.trim().trim_matches(['\'', '"']).to_string();
                 old_version = Some(old.clone());
-                let indent = &line[..line.len() - line.trim_start().len()];
+                let indent_end = line.len() - line.trim_start().len();
+                let indent = line
+                    .get(..indent_end)
+                    .context("action.yml default indentation is outside the current line")?;
                 result.push_str(&format!("{indent}default: '{new_version}'\n"));
                 in_version_input = false;
                 continue;
@@ -707,21 +710,20 @@ edition = "2021"
     }
 
     #[test]
-    fn updates_action_default_version_without_changing_other_inputs() {
+    fn updates_action_default_version_without_changing_other_inputs() -> Result<()> {
         let content = "inputs:\n  version:\n    description: install version\n    default: 'latest'\n  paths:\n    default: '.'\n";
-        let (updated, old) =
-            update_action_default_version(content, "1.15.0").expect("action version should update");
+        let (updated, old) = update_action_default_version(content, "1.15.0")?;
         assert_eq!(old, "latest");
         assert!(updated.contains("default: '1.15.0'"));
         assert!(updated.contains("  paths:\n    default: '.'"));
+        Ok(())
     }
 
     #[test]
-    fn updates_action_default_version_preserves_missing_trailing_newline() {
+    fn updates_action_default_version_preserves_missing_trailing_newline() -> Result<()> {
         let content =
             "inputs:\n  version:\n    description: install version\n    default: 'latest'";
-        let (updated, old) =
-            update_action_default_version(content, "1.15.0").expect("action version should update");
+        let (updated, old) = update_action_default_version(content, "1.15.0")?;
 
         assert_eq!(old, "latest");
         assert_eq!(
@@ -729,18 +731,19 @@ edition = "2021"
             "inputs:\n  version:\n    description: install version\n    default: '1.15.0'"
         );
         assert!(!updated.ends_with('\n'));
+        Ok(())
     }
 
     #[test]
-    fn updates_only_the_inputs_version_default() {
+    fn updates_only_the_inputs_version_default() -> Result<()> {
         let content = "version:\n  default: 'outer'\ninputs:\n  version:\n    default: 'latest'\n  paths:\n    default: '.'\n";
-        let (updated, old) =
-            update_action_default_version(content, "1.15.0").expect("action version should update");
+        let (updated, old) = update_action_default_version(content, "1.15.0")?;
 
         assert_eq!(old, "latest");
         assert!(updated.contains("version:\n  default: 'outer'"));
         assert!(updated.contains("inputs:\n  version:\n    default: '1.15.0'"));
         assert!(updated.contains("  paths:\n    default: '.'"));
+        Ok(())
     }
 
     #[test]
