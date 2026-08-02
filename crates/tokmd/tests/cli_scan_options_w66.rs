@@ -388,24 +388,30 @@ fn every_global_scan_flag_reaches_scan_options_from_either_position() -> TestRes
         ),
     ];
 
-    for (flag, key, expected) in cases {
-        let mut lead: Vec<&str> = flag.to_vec();
-        lead.extend_from_slice(&["export", "--format", "json"]);
-        let mut trail: Vec<&str> = vec!["export"];
-        trail.extend_from_slice(flag);
-        trail.extend_from_slice(&["--format", "json"]);
+    // Globalizing an arg and each subcommand threading its value into the scan
+    // are also two different things: a regression that wires the value into
+    // only one sink would pass if `export` were the sole subcommand tested.
+    // `module` is the other subcommand that emits a `meta.scan` object.
+    for subcommand in ["export", "module"] {
+        for (flag, key, expected) in cases {
+            let mut lead: Vec<&str> = flag.to_vec();
+            lead.extend_from_slice(&[subcommand, "--format", "json"]);
+            let mut trail: Vec<&str> = vec![subcommand];
+            trail.extend_from_slice(flag);
+            trail.extend_from_slice(&["--format", "json"]);
 
-        let leading = scan_options(&lead)?;
-        let trailing = scan_options(&trail)?;
-        assert_eq!(
-            leading, trailing,
-            "{flag:?} must yield the same scan options before and after the subcommand"
-        );
-        assert_eq!(
-            trailing.get(*key),
-            Some(expected),
-            "{flag:?} after the subcommand must reach the scan as `{key}`"
-        );
+            let leading = scan_options(&lead)?;
+            let trailing = scan_options(&trail)?;
+            assert_eq!(
+                leading, trailing,
+                "{flag:?} must yield the same scan options before and after `{subcommand}`"
+            );
+            assert_eq!(
+                trailing.get(*key),
+                Some(expected),
+                "{flag:?} after `{subcommand}` must reach the scan as `{key}`"
+            );
+        }
     }
     Ok(())
 }
