@@ -236,7 +236,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           OWNER="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/${OWNER}/tokmd"
-          CANDIDATE="${IMAGE}:candidate-${GITHUB_SHA}"
+          CANDIDATE="${IMAGE}:verified-candidate-${GITHUB_SHA}"
           EXACT="${IMAGE}:${VERSION}"
           DIGEST="$(docker buildx imagetools inspect "${CANDIDATE}" | awk '$1 == "Digest:" { print $2; exit }')"
           if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then

@@ -133,3 +133,28 @@ jobs:
           name: container-candidate-${{ steps.source.outputs.commit }}
           path: artifacts/container-candidate-${{ steps.source.outputs.commit }}.json
           if-no-files-found: error
+
+      - name: Mark candidate verified
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          CANDIDATE_TAG: ${{ steps.source.outputs.candidate_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/effortlessmetrics/tokmd"
+          DIGEST="$(jq -r '.digest' "artifacts/container-candidate-${COMMIT}.json")"
+          echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker buildx imagetools create \
+            --tag "${IMAGE}:verified-candidate-${COMMIT}" \
+            "${IMAGE}@${DIGEST}"
+          VERIFIED="$(docker buildx imagetools inspect "${IMAGE}:verified-candidate-${COMMIT}" | awk '$1 == "Digest:" { print $2; exit }')"
+          if [[ "${VERIFIED}" != "${DIGEST}" ]]; then
+            echo "::error::verified candidate marker resolved to ${VERIFIED}, expected ${DIGEST}"
+            exit 1
+          fi
+          {
+            echo "- verified_candidate_tag: ${IMAGE}:verified-candidate-${COMMIT}"
+            echo "- verified_candidate_digest: ${VERIFIED}"
+            echo "- verification_marker: pass"
+          } >> "$GITHUB_STEP_SUMMARY"
