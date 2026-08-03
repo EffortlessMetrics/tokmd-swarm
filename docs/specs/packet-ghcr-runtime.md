@@ -215,14 +215,14 @@ summary copied into `docs/releases/1.14-ledger.md`.
 PR B then wired the `runtime: container` path in `action.yml`: it replaces the
 old hard error with an anonymous `docker pull` of the verification-gated tag plus
 a mounted-workspace `docker run` wrapper (matching the GHCR Container Smoke mount
-pattern). The Action accepts only `1.14.0` today; mutable tags (`latest`, `1.14`,
-`1`) and any non-gated tag remain hard errors pointing at this spec. The
-container-runtime test in `.github/workflows/test-action.yml` exercises both the
-supported-tag success path and the unverified/mutable rejection paths. The
-`1.15.0-rc.1` entry is staged by the RC-prep commit but remains unsupported
-until the pre-tag candidate and exact-tag verification receipts pass. Each new
-stable tag must re-enter the verification gate and be added to the Action's
-supported-tag set before its container runtime is called supported.
+pattern). The published Action currently supports `1.14.0`; mutable tags
+(`latest`, `1.14`, `1`) and any non-gated tag remain hard errors pointing at this
+spec. The container-runtime test in `.github/workflows/test-action.yml` exercises
+both the supported-tag success path and the unverified/mutable rejection paths.
+The `1.15.0-rc.1` entry is staged by the unreleased RC-prep commit but remains
+unsupported until the pre-tag candidate and exact-tag verification receipts pass.
+Each new stable tag must re-enter the verification gate and be added to the
+Action's supported-tag set before its container runtime is called supported.
 
 ## Claim Boundary
 

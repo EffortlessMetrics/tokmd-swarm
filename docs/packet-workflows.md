@@ -255,8 +255,9 @@ supported-tag set before their container runtime is called supported.
 The Action's `runtime: container` path:
 
 - requires a Linux runner with Docker available;
-- accepts only verification-gated tags (`1.14.0` and the staged
-  `1.15.0-rc.1` candidate); any other tag,
+- accepts only verification-gated tags. The unreleased RC-prep source stages
+  `1.15.0-rc.1` for candidate verification; it is not a supported tag until
+  that gate passes. Any other tag,
   including mutable aliases such as `latest`, `1.14`, and `1`, is a hard error
   pointing at the spec;
 - anonymously pulls `<image>:<normalized-version>` with an isolated docker config
@@ -323,9 +324,9 @@ A packet workflow does not:
 5. ~~Add Action examples and job-summary behavior.~~ (done: see
    [GitHub Action reference](github-action.md) and the packet job summary)
 6. ~~Harden publication GHCR as a secondary runtime.~~ (done: `runtime:
-   container` wired in `action.yml` for verification-gated tags, currently
-   `1.14.0`; `1.15.0-rc.1` is staged for RC proof.) Re-verify on each release
-   and extend the supported-tag set only after the gate passes.
+   container` wired in `action.yml` for verification-gated tags; `1.14.0` is
+   verified and `1.15.0-rc.1` is staged for RC proof.) Re-verify on each
+   release and extend the supported-tag set only after the gate passes.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
 
 ## Related Docs
