@@ -44,7 +44,6 @@ expected_crates=(
 
 echo "Running release publish preflight"
 cargo xtask version-consistency
-cargo xtask publish-surface --json --verify-publish >/tmp/tokmd-publish-surface.json
 
 plan_output="$(cargo xtask publish --plan)"
 mapfile -t planned_crates < <(
@@ -118,5 +117,8 @@ publish_one tokmd-cockpit
 publish_one tokmd-core
 publish_one tokmd-wasm
 publish_one tokmd
+
+echo "Verifying the published crate surface"
+cargo xtask publish-surface --json --verify-publish
 
 echo "All publishable tokmd crates are published or already present."
