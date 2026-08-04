@@ -891,3 +891,12 @@ surface = "build"
 classification = "config"
 reason = "Policy baseline receipts for clippy, no-panic, etc."
 covered_by = ["cargo xtask check-file-policy --strict"]
+
+[[allow]]
+glob = "scripts/release-consumer-smoke-browser.mjs"
+kind = "tooling"
+owner = "release/consumer"
+surface = "release"
+classification = "test"
+reason = "Playwright browser harness for exact released WASM archive consumer smoke."
+covered_by = [".github/workflows/release-consumer-smoke.yml"]

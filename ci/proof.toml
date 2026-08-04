@@ -1669,3 +1669,20 @@ allow = [
   "xtask/src/tasks/fixture_blobs_check.rs",
 ]
 reason = "Crypto material should be generated at runtime or explicitly documented in an allowlisted workspace area."
+
+[[scope]]
+name = "release_consumer_smoke"
+kind = "non_rust"
+paths = [
+  ".github/workflows/release-consumer-smoke.yml",
+  "scripts/release-consumer-smoke-browser.mjs",
+]
+proof = [
+  "actionlint .github/workflows/release-consumer-smoke.yml",
+  "node --check scripts/release-consumer-smoke-browser.mjs",
+  "cargo xtask ci-lane-whitelist --strict",
+  "cargo xtask proof-policy --check",
+]
+reason = "Exact release consumer proof is a governed release surface; workflow syntax, browser-script syntax, lane ownership, and proof policy must remain explicit."
+mutation = false
+coverage = false
