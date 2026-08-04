@@ -170,8 +170,8 @@ For an ordinary release-prep PR:
 1. Change version and release metadata in `tokmd-swarm`.
 2. Run the checks above against committed source.
 3. Run a fresh exact-head Codex review and required CI.
-4. Squash-merge the swarm PR.
-5. Freeze unrelated swarm merges.
+4. Freeze unrelated swarm merges.
+5. Squash-merge the swarm PR.
 6. Import the exact swarm tip into `tokmd` with a merge commit.
 7. Assert two parents, fast-forward swarm, and prove graph `0/0`.
 8. Prove the unchanged aligned publication source with the candidate workflow.
