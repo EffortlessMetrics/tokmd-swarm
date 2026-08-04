@@ -39,6 +39,10 @@ jobs:
           fi
           git fetch --no-tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           SOURCE_COMMIT="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          test -f scripts/publish-release-crates.sh || {
+            echo "::error::recovery publisher is missing from the workflow source checkout"
+            exit 1
+          }
           mkdir -p release-source
           git archive --format=tar "${RELEASE_TAG}" | tar -xf - -C release-source
           test -f release-source/Cargo.toml

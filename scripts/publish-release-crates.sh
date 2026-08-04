@@ -11,6 +11,45 @@ if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
   exit 1
 fi
 
+expected_crates=(
+  tokmd-gate
+  tokmd-io-port
+  tokmd-types
+  tokmd-model
+  tokmd-settings
+  tokmd-scan
+  tokmd-git
+  tokmd-envelope
+  tokmd-sensor
+  tokmd-analysis-types
+  tokmd-format
+  tokmd-analysis
+  tokmd-cockpit
+  tokmd-core
+  tokmd-wasm
+  tokmd
+)
+
+echo "Running release publish preflight"
+cargo xtask version-consistency
+cargo xtask publish-surface --json --verify-publish >/tmp/tokmd-publish-surface.json
+
+plan_output="$(cargo xtask publish --plan)"
+mapfile -t planned_crates < <(
+  printf '%s\n' "$plan_output" |
+    sed -nE 's/^[[:space:]]+[0-9]+\. ([a-z0-9-]+)$/\1/p'
+)
+if [[ "${#planned_crates[@]}" -ne "${#expected_crates[@]}" ]]; then
+  echo "publish plan contains ${#planned_crates[@]} crates; expected ${#expected_crates[@]}" >&2
+  exit 1
+fi
+for crate in "${expected_crates[@]}"; do
+  if ! printf '%s\n' "${planned_crates[@]}" | grep -Fxq "$crate"; then
+    echo "publish plan is missing ${crate}; refusing to publish" >&2
+    exit 1
+  fi
+done
+
 publish_one() {
   local crate="$1"
   local no_verify="${2:-false}"
