@@ -42,7 +42,6 @@ jobs:
           mkdir -p release-source
           git archive --format=tar "${RELEASE_TAG}" | tar -xf - -C release-source
           test -f release-source/Cargo.toml
-          echo "source_commit=${SOURCE_COMMIT}" >> "$GITHUB_OUTPUT"
           {
             echo "## Stable crate publication recovery"
             echo "- tag: ${RELEASE_TAG}"
