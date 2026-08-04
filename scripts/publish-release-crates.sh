@@ -11,6 +11,18 @@ if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
   exit 1
 fi
 
+release_tag="${RELEASE_TAG:-${GITHUB_REF_NAME:-}}"
+if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "a stable release tag is required via RELEASE_TAG or GITHUB_REF_NAME" >&2
+  exit 1
+fi
+expected_version="${release_tag#v}"
+actual_version="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; metadata = json.load(sys.stdin); print(next(package["version"] for package in metadata["packages"] if package["name"] == "tokmd"))')"
+if [[ "$actual_version" != "$expected_version" ]]; then
+  echo "release tag ${release_tag} does not match workspace version ${actual_version}" >&2
+  exit 1
+fi
+
 expected_crates=(
   tokmd-gate
   tokmd-io-port
