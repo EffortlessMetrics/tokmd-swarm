@@ -23,6 +23,7 @@ Keep the release states separate:
 | Assets complete | Required assets, checksums, and attestations are retrievable. |
 | Consumer verified | Exact downloaded artifacts passed the consumer-smoke workflow. |
 | Stable promoted | Stable crates and mutable aliases moved only after exact proof. |
+| Closeout complete | Ledger, readiness, changelog, planning docs, and graph alignment are final. |
 
 A green build is not consumer proof. A tag is not a GitHub Release. A queued
 job, timeout, missing receipt, or unavailable required surface is not a pass.
