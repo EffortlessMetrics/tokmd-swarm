@@ -50,6 +50,8 @@ jobs:
   release-assets:
     name: Verify release assets
     runs-on: ubuntu-latest
+    outputs:
+      tag_sha: ${{ steps.assets.outputs.tag_sha }}
     steps:
       - name: Download exact release assets
         id: assets
@@ -80,6 +82,15 @@ jobs:
             PY
           }
           trap write_receipt EXIT
+
+          tag_ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}"
+          tag_sha="$(gh api "$tag_ref" --jq '.object.sha')"
+          tag_type="$(gh api "$tag_ref" --jq '.object.type')"
+          if [ "$tag_type" = tag ]; then
+            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq '.object.sha')"
+          fi
+          printf 'tag_sha=%s\n' "$tag_sha" >> "$GITHUB_OUTPUT"
+          test "${#tag_sha}" -eq 40
 
           gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
@@ -130,22 +141,27 @@ jobs:
       matrix:
         include:
           - id: linux-amd64
+            surface: binary-linux-amd64
             artifact: tokmd-linux-amd64
             runner: ubuntu-latest
             architecture: x86_64
           - id: linux-arm64
+            surface: binary-linux-arm64
             artifact: tokmd-linux-arm64
             runner: ubuntu-24.04-arm
             architecture: aarch64
           - id: macos-amd64
+            surface: binary-macos-amd64
             artifact: tokmd-macos-amd64
             runner: macos-15-intel
             architecture: x86_64
           - id: macos-arm64
+            surface: binary-macos-arm64
             artifact: tokmd-macos-arm64
             runner: macos-14
             architecture: arm64
           - id: windows-amd64
+            surface: binary-windows-amd64
             artifact: tokmd-windows-amd64.exe
             runner: windows-latest
             architecture: x86_64
@@ -168,6 +184,7 @@ jobs:
             Path("receipt/binary-${{ matrix.id }}.json").write_text(json.dumps({
                 "schema": "tokmd.release_consumer_smoke.v1",
                 "kind": "binary",
+                "surface": "${{ matrix.surface }}",
                 "artifact": "${{ matrix.artifact }}",
                 "runner": os.environ.get("RUNNER_NAME", "unknown"),
                 "architecture": "${{ matrix.architecture }}",
@@ -254,6 +271,8 @@ jobs:
     name: Nix exact-tag smoke
     needs: release-assets
     runs-on: ubuntu-latest
+    env:
+      TAG_SHA: ${{ needs.release-assets.outputs.tag_sha }}
     steps:
       - name: Run exact-tag Nix smoke
         shell: bash
@@ -284,8 +303,8 @@ jobs:
             echo "nix=unavailable (runner has no nix executable)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          nix build "github:${GITHUB_REPOSITORY}/${TAG}"
-          version_output="$(nix run "github:${GITHUB_REPOSITORY}/${TAG}" -- --version)"
+          nix build "github:${GITHUB_REPOSITORY}?rev=${TAG_SHA}"
+          version_output="$(nix run "github:${GITHUB_REPOSITORY}?rev=${TAG_SHA}" -- --version)"
           grep -qx "tokmd ${EXPECTED_VERSION}" <<< "$version_output"
           status=passed
           echo "- Nix exact-tag build and version: passed" >> "$GITHUB_STEP_SUMMARY"
@@ -308,7 +327,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.release-assets.outputs.tag_sha }}
           path: tagged
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -384,7 +403,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.release-assets.outputs.tag_sha }}
           persist-credentials: false
       - name: Run exact Action ref with omitted version
         id: tokmd
@@ -453,7 +472,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.release-assets.outputs.tag_sha }}
           persist-credentials: false
       - name: Run exact Action ref with container runtime
         id: tokmd
@@ -561,7 +580,9 @@ jobs:
               kind = entry.get("kind")
               key = entry.get("artifact") or kind
               if kind == "binary":
-                  key = f"binary-{entry['artifact'].removeprefix('tokmd-').removesuffix('.exe')}"
+              key = entry.get("surface")
+              if not key:
+                  raise SystemExit(f"binary receipt is missing canonical surface: {entry}")
               entries[key] = entry
 
           for key in sorted(expected - entries.keys()):
