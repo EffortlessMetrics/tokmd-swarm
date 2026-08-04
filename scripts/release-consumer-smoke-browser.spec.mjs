@@ -30,6 +30,32 @@ test.afterEach(async ({ page }, testInfo) => {
     expect(consoleErrors).toEqual([]);
 });
 
+async function runMode(page, mode, args = null) {
+    const modeInput = page.locator("[data-mode]");
+    const resultOutput = page.locator("[data-result]");
+    await modeInput.selectOption(mode);
+    expect(await modeInput.inputValue()).toBe(mode);
+    if (args !== null) {
+        await page.locator("[data-args]").fill(JSON.stringify(args));
+    }
+    const previous = await resultOutput.textContent();
+    await resultOutput.evaluate((element) => {
+        element.textContent = "";
+    });
+    await page.locator("[data-run]").click();
+    await expect
+        .poll(async () => {
+            const value = await resultOutput.textContent();
+            return value && value !== previous ? value : "";
+        }, { timeout: 30_000 })
+        .not.toBe("");
+    const text = await resultOutput.textContent();
+    const result = JSON.parse(text);
+    expect(result).toBeTruthy();
+    expect(result.data ?? result).toBeTruthy();
+    return result;
+}
+
 test("released archive-enabled WASM supports browser ZIP workflows", async ({ page }) => {
     if (!baseUrl || !zipPath || !expectedVersion) {
         throw new Error("BASE_URL, ZIP_PATH, and EXPECTED_VERSION are required");
@@ -44,26 +70,10 @@ test("released archive-enabled WASM supports browser ZIP workflows", async ({ pa
     await expect(page.locator("[data-load-status]")).toContainText(/loaded/i, { timeout: 30_000 });
 
     for (const mode of ["lang", "module", "export"]) {
-        await page.locator("[data-mode]").selectOption(mode);
-        await page.locator("[data-result]").evaluate((element) => {
-            element.textContent = "";
-        });
-        await page.locator("[data-run]").click();
-        await expect(page.locator("[data-result]")).not.toHaveText("", { timeout: 30_000 });
-        const result = JSON.parse(await page.locator("[data-result]").textContent());
-        expect(result).toBeTruthy();
-        expect(result.data ?? result).toBeTruthy();
+        await runMode(page, mode);
     }
 
-    await page.locator("[data-mode]").selectOption("analyze");
-    await page.locator("[data-args]").fill(JSON.stringify({ preset: "receipt" }));
-    await page.locator("[data-result]").evaluate((element) => {
-        element.textContent = "";
-    });
-    await page.locator("[data-run]").click();
-    await expect(page.locator("[data-result]")).not.toHaveText("", { timeout: 30_000 });
-    const analysis = JSON.parse(await page.locator("[data-result]").textContent());
-    expect(analysis.data ?? analysis).toBeTruthy();
+    await runMode(page, "analyze", { preset: "receipt" });
 
     const downloadPromise = page.waitForEvent("download");
     await page.locator("[data-download]").click();

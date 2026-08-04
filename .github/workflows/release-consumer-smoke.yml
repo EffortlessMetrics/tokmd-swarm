@@ -47,7 +47,9 @@ on:
 
 permissions:
   contents: read
+  # Required by gh attestation verify to read release provenance.
   attestations: read
+  # Required by the exact container Action consumer smoke.
   packages: read
 
 concurrency:
@@ -129,7 +131,15 @@ jobs:
             "${wasm_prefix}.sha256" \
             tokmd-wasm-bundle-size.txt; do
             test -s "release-assets/${asset}"
-              gh attestation verify "release-assets/${asset}" \
+          done
+          for asset in \
+            tokmd-linux-amd64 \
+            tokmd-linux-arm64 \
+            tokmd-macos-amd64 \
+            tokmd-macos-arm64 \
+            tokmd-windows-amd64.exe \
+            "${wasm_prefix}.tar.gz"; do
+            gh attestation verify "release-assets/${asset}" \
               --repo "$RELEASE_REPOSITORY"
           done
           attestation_status=passed
@@ -241,15 +251,15 @@ jobs:
           git -C "$fixture" -c user.email=ci@tokmd.dev -c user.name=tokmd-ci commit -q -m fixture
 
           module_json="$($bin module --format json "$fixture")"
-          printf '%s' "$module_json" | python -c 'import json, sys; json.load(sys.stdin)'
+          printf '%s' "$module_json" | python3 -c 'import json, sys; json.load(sys.stdin)'
           analyze_json="$($bin analyze --preset health --format json "$fixture")"
-          printf '%s' "$analyze_json" | python -c 'import json, sys; json.load(sys.stdin)'
+          printf '%s' "$analyze_json" | python3 -c 'import json, sys; json.load(sys.stdin)'
           (
             cd "$fixture"
             "$bin" packet generate --no-syntax .
           )
           test -s "$fixture/sensors/tokmd/manifest.json"
-          python - "$fixture/sensors/tokmd/manifest.json" <<'PY'
+          python3 - "$fixture/sensors/tokmd/manifest.json" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -389,7 +399,7 @@ jobs:
               archive.writestr("src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n")
               archive.writestr("README.md", "consumer smoke\n")
           PY
-          python3 -m http.server 4173 --directory tagged/web/runner > server.log 2>&1 &
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory tagged/web/runner > server.log 2>&1 &
           echo $! > server.pid
           ready=0
           for attempt in 1 2 3 4 5; do
@@ -489,10 +499,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p receipt
-          status=passed
-          if [ "$ACTION_OUTCOME" != success ] || [ "$PACKET_STATUS" != complete ] && [ "$PACKET_STATUS" != partial ]; then
-            status=failed
-          fi
           python3 - <<'PY'
           import json
           import os
