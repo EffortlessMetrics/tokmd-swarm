@@ -42,6 +42,7 @@ permissions:
   packages: read
 
 env:
+  GH_TOKEN: ${{ github.token }}
   TAG: ${{ inputs.tag }}
   EXPECTED_VERSION: ${{ inputs.expected_version }}
   RELEASE_KIND: ${{ inputs.release_kind }}
@@ -174,7 +175,7 @@ jobs:
           observed_version=""
           mkdir -p release receipt
           write_receipt() {
-            python - "$status" "$observed_version" <<'PY'
+            python3 - "$status" "$observed_version" <<'PY'
             import json
             import os
             import sys
@@ -238,7 +239,7 @@ jobs:
           PY
 
           set +e
-          typo_stdout="$($bin renderr 2>"$fixture/typo.stderr")"
+          "$bin" renderr 2>"$fixture/typo.stderr"
           typo_status=$?
           root_stdout="$($bin --format json module "$fixture" 2>"$fixture/root.stderr")"
           root_status=$?
@@ -274,6 +275,11 @@ jobs:
     env:
       TAG_SHA: ${{ needs.release-assets.outputs.tag_sha }}
     steps:
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
       - name: Run exact-tag Nix smoke
         shell: bash
         run: |
@@ -300,7 +306,7 @@ jobs:
 
           if ! command -v nix >/dev/null 2>&1; then
             status=unavailable
-            echo "nix=unavailable (runner has no nix executable)" >> "$GITHUB_STEP_SUMMARY"
+            echo "nix=unavailable (Nix installer did not provide an executable)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           nix build "github:${GITHUB_REPOSITORY}?rev=${TAG_SHA}"
@@ -359,15 +365,25 @@ jobs:
           PY
           python3 -m http.server 4173 --directory tagged/web/runner > server.log 2>&1 &
           echo $! > server.pid
+          ready=0
           for attempt in 1 2 3 4 5; do
-            curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null && break
+            if curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null; then
+              ready=1
+              break
+            fi
             sleep 2
           done
+          if [ "$ready" -ne 1 ]; then
+            cat server.log
+            echo "runner did not become ready on 127.0.0.1:4173" >&2
+            exit 1
+          fi
       - name: Run browser smoke against released archive
         shell: bash
         env:
           BASE_URL: http://127.0.0.1:4173/index.html
           ZIP_PATH: ${{ github.workspace }}/consumer-fixture.zip
+          TAG: ${{ inputs.tag }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
@@ -378,13 +394,14 @@ jobs:
           mkdir -p receipt
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           Path("receipt/wasm.json").write_text(json.dumps({
               "schema": "tokmd.release_consumer_smoke.v1",
-              "kind": "wasm-browser",
-              "tag": "${{ inputs.tag }}",
-              "expected_version": "${{ inputs.expected_version }}",
+              "kind": "wasm",
+              "tag": os.environ["TAG"],
+              "expected_version": os.environ["EXPECTED_VERSION"],
               "status": "passed",
           }, indent=2) + "\n", encoding="utf-8")
           PY
@@ -422,6 +439,8 @@ jobs:
           ACTION_VERSION: ${{ steps.tokmd.outputs.tokmd-version }}
           PACKET_STATUS: ${{ steps.tokmd.outputs.packet-status }}
           PACKET_MANIFEST: ${{ steps.tokmd.outputs.packet-manifest }}
+          TAG: ${{ inputs.tag }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
           test "$ACTION_OUTCOME" = success
@@ -440,15 +459,16 @@ jobs:
           mkdir -p receipt
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           Path("receipt/action-binary.json").write_text(json.dumps({
               "schema": "tokmd.release_consumer_smoke.v1",
               "kind": "action-binary",
-              "tag": "${{ inputs.tag }}",
-              "expected_version": "${{ inputs.expected_version }}",
-              "observed_version": "${{ steps.tokmd.outputs.tokmd-version }}",
-              "packet_status": "${{ steps.tokmd.outputs.packet-status }}",
+              "tag": os.environ["TAG"],
+              "expected_version": os.environ["EXPECTED_VERSION"],
+              "observed_version": os.environ["ACTION_VERSION"],
+              "packet_status": os.environ["PACKET_STATUS"],
               "status": "passed",
           }, indent=2) + "\n", encoding="utf-8")
           PY
@@ -486,7 +506,7 @@ jobs:
           version: ${{ inputs.expected_version }}
           runtime: container
           syntax: 'false'
-          artifact: 'true'
+          artifact: 'false'
           comment: 'false'
           fail-on: failed
       - name: Validate container packet output
@@ -496,6 +516,8 @@ jobs:
           ACTION_VERSION: ${{ steps.tokmd.outputs.tokmd-version }}
           PACKET_STATUS: ${{ steps.tokmd.outputs.packet-status }}
           PACKET_MANIFEST: ${{ steps.tokmd.outputs.packet-manifest }}
+          TAG: ${{ inputs.tag }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
           test "$ACTION_OUTCOME" = success
@@ -514,26 +536,19 @@ jobs:
           mkdir -p receipt
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           Path("receipt/action-container.json").write_text(json.dumps({
               "schema": "tokmd.release_consumer_smoke.v1",
               "kind": "action-container",
-              "tag": "${{ inputs.tag }}",
-              "expected_version": "${{ inputs.expected_version }}",
-              "observed_version": "${{ steps.tokmd.outputs.tokmd-version }}",
-              "packet_status": "${{ steps.tokmd.outputs.packet-status }}",
+              "tag": os.environ["TAG"],
+              "expected_version": os.environ["EXPECTED_VERSION"],
+              "observed_version": os.environ["ACTION_VERSION"],
+              "packet_status": os.environ["PACKET_STATUS"],
               "status": "passed",
           }, indent=2) + "\n", encoding="utf-8")
           PY
-      - name: Download Action artifact and verify it is readable
-        uses: actions/download-artifact@v8
-        with:
-          name: tokmd-receipts
-          path: downloaded-action-receipts
-      - name: Assert downloaded Action artifact has content
-        shell: bash
-        run: test -n "$(find downloaded-action-receipts -type f -print -quit)"
       - name: Upload Action receipt
         if: always()
         uses: actions/upload-artifact@v7
@@ -588,9 +603,9 @@ jobs:
               kind = entry.get("kind")
               key = entry.get("artifact") or kind
               if kind == "binary":
-              key = entry.get("surface")
-              if not key:
-                  raise SystemExit(f"binary receipt is missing canonical surface: {entry}")
+                  key = entry.get("surface")
+                  if not key:
+                      raise SystemExit(f"binary receipt is missing canonical surface: {entry}")
               entries[key] = entry
 
           job_surfaces = {

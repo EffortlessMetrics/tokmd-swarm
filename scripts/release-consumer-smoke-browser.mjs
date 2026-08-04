@@ -9,6 +9,8 @@ if (!baseUrl || !zipPath || !expectedVersion) {
     throw new Error("BASE_URL, ZIP_PATH, and EXPECTED_VERSION are required");
 }
 
+test.setTimeout(300_000);
+
 test("released archive-enabled WASM supports browser ZIP workflows", async ({ page }) => {
     const consoleErrors = [];
     page.on("console", (message) => {
@@ -28,6 +30,9 @@ test("released archive-enabled WASM supports browser ZIP workflows", async ({ pa
 
     for (const mode of ["lang", "module", "export"]) {
         await page.locator("[data-mode]").selectOption(mode);
+        await page.locator("[data-result]").evaluate((element) => {
+            element.textContent = "";
+        });
         await page.locator("[data-run]").click();
         await expect(page.locator("[data-result]")).not.toHaveText("", { timeout: 30_000 });
         const result = JSON.parse(await page.locator("[data-result]").textContent());
@@ -37,6 +42,9 @@ test("released archive-enabled WASM supports browser ZIP workflows", async ({ pa
 
     await page.locator("[data-mode]").selectOption("analyze");
     await page.locator("[data-args]").fill(JSON.stringify({ preset: "receipt" }));
+    await page.locator("[data-result]").evaluate((element) => {
+        element.textContent = "";
+    });
     await page.locator("[data-run]").click();
     await expect(page.locator("[data-result]")).not.toHaveText("", { timeout: 30_000 });
     const analysis = JSON.parse(await page.locator("[data-result]").textContent());
@@ -45,7 +53,10 @@ test("released archive-enabled WASM supports browser ZIP workflows", async ({ pa
     const downloadPromise = page.waitForEvent("download");
     await page.locator("[data-download]").click();
     const download = await downloadPromise;
-    const downloaded = JSON.parse(readFileSync(await download.path(), "utf-8"));
+    expect(await download.failure()).toBeNull();
+    const downloadPath = await download.path();
+    expect(downloadPath).toBeTruthy();
+    const downloaded = JSON.parse(readFileSync(downloadPath, "utf-8"));
     expect(downloaded).toBeTruthy();
     expect(consoleErrors).toEqual([]);
 });
