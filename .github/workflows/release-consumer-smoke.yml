@@ -457,6 +457,9 @@ jobs:
         with:
           name: tokmd-receipts
           path: downloaded-action-receipts
+      - name: Assert downloaded Action artifact has content
+        shell: bash
+        run: test -n "$(find downloaded-action-receipts -type f -print -quit)"
       - name: Upload Action receipt
         if: always()
         uses: actions/upload-artifact@v7
@@ -528,6 +531,9 @@ jobs:
         with:
           name: tokmd-receipts
           path: downloaded-action-receipts
+      - name: Assert downloaded Action artifact has content
+        shell: bash
+        run: test -n "$(find downloaded-action-receipts -type f -print -quit)"
       - name: Upload Action receipt
         if: always()
         uses: actions/upload-artifact@v7
@@ -547,6 +553,8 @@ jobs:
       - action-binary-smoke
       - action-container-smoke
     runs-on: ubuntu-latest
+    env:
+      NEEDS_RESULTS: ${{ toJSON(needs) }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -584,6 +592,27 @@ jobs:
               if not key:
                   raise SystemExit(f"binary receipt is missing canonical surface: {entry}")
               entries[key] = entry
+
+          job_surfaces = {
+              "release-assets": "release-assets",
+              "binary-smoke": "binary-linux-amd64,binary-linux-arm64,binary-macos-amd64,binary-macos-arm64,binary-windows-amd64",
+              "nix-smoke": "nix",
+              "wasm-smoke": "wasm",
+              "action-binary-smoke": "action-binary",
+              "action-container-smoke": "action-container",
+          }
+          needs = json.loads(os.environ["NEEDS_RESULTS"])
+          for job, surfaces in job_surfaces.items():
+              if needs[job]["result"] != "failure":
+                  continue
+              for surface in surfaces.split(","):
+                  if surface not in entries:
+                      entries[surface] = {
+                          "schema": "tokmd.release_consumer_smoke.v1",
+                          "kind": surface,
+                          "status": "failed",
+                          "reason": f"{job} failed before producing a receipt",
+                      }
 
           for key in sorted(expected - entries.keys()):
               entries[key] = {
