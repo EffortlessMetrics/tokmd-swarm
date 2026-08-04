@@ -362,7 +362,9 @@ jobs:
     needs: [create-release, verify-container]
     if: ${{ github.repository == 'EffortlessMetrics/tokmd' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     permissions:
+      actions: write
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -395,6 +397,64 @@ jobs:
           path: tokmd-receipt.json
           if-no-files-found: error
 
+      - name: Dispatch and enforce exact-artifact consumer proof
+        id: consumer-proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if [[ "${TAG}" == *-* ]]; then
+            KIND=rc
+          else
+            KIND=stable
+          fi
+          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          gh workflow run release-consumer-smoke.yml \
+            --ref "${TAG}" \
+            -f release_repository="${GITHUB_REPOSITORY}" \
+            -f tag="${TAG}" \
+            -f expected_version="${VERSION}" \
+            -f release_kind="${KIND}"
+
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            RUN_ID="$(
+              gh run list \
+                --workflow release-consumer-smoke.yml \
+                --event workflow_dispatch \
+                --commit "${GITHUB_SHA}" \
+                --limit 20 \
+                --json databaseId,createdAt,headSha \
+                | jq -r \
+                    --arg started "${STARTED_AT}" \
+                    --arg sha "${GITHUB_SHA}" \
+                    'map(select(.headSha == $sha and .createdAt >= $started)) | first | .databaseId // empty'
+            )"
+            if [[ -n "${RUN_ID}" ]]; then
+              break
+            fi
+            echo "Waiting for consumer workflow run (${attempt}/30)."
+            sleep 10
+          done
+
+          if [[ -z "${RUN_ID}" ]]; then
+            echo "::error::could not identify the exact consumer workflow run"
+            exit 1
+          fi
+
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Exact-artifact consumer proof"
+            echo "- release_kind: ${KIND}"
+            echo "- tag: ${TAG}"
+            echo "- workflow_run: ${RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh run watch "${RUN_ID}" --exit-status
+
   promote-aliases:
     name: Promote stable aliases
     needs: [publish-crates, verify-container, verify-action]
@@ -404,7 +464,8 @@ jobs:
       contents: write
       packages: write
     # contents:write moves the v1 tag; packages:write promotes GHCR aliases
-    # only after exact release, crate, container, and Action verification.
+    # only after exact release, crates, container, Action, and full consumer
+    # verification pass.
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
