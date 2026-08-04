@@ -44,6 +44,7 @@ expected_crates=(
 
 echo "Running release publish preflight"
 cargo xtask version-consistency
+cargo xtask publish-surface --json
 
 plan_output="$(cargo xtask publish --plan)"
 mapfile -t planned_crates < <(
