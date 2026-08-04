@@ -3,6 +3,11 @@ name: Release Consumer Smoke
 on:
   workflow_dispatch:
     inputs:
+      release_repository:
+        description: Publication repository containing the release
+        required: true
+        default: EffortlessMetrics/tokmd
+        type: string
       tag:
         description: GitHub release tag to consume
         required: true
@@ -23,6 +28,10 @@ on:
           - stable
   workflow_call:
     inputs:
+      release_repository:
+        description: Publication repository containing the release
+        required: true
+        type: string
       tag:
         description: GitHub release tag to consume
         required: true
@@ -41,8 +50,13 @@ permissions:
   attestations: read
   packages: read
 
+concurrency:
+  group: release-consumer-smoke-${{ inputs.release_repository }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
 env:
   GH_TOKEN: ${{ github.token }}
+  RELEASE_REPOSITORY: ${{ inputs.release_repository }}
   TAG: ${{ inputs.tag }}
   EXPECTED_VERSION: ${{ inputs.expected_version }}
   RELEASE_KIND: ${{ inputs.release_kind }}
@@ -60,16 +74,17 @@ jobs:
         run: |
           set -euo pipefail
           status=failed
+          checksum_status=failed
           attestation_status=not_run
           mkdir -p release-assets receipt
           write_receipt() {
-            python3 - "$status" "$attestation_status" <<'PY'
+            python3 - "$status" "$checksum_status" "$attestation_status" <<'PY'
             import json
             import os
             import sys
             from pathlib import Path
 
-            status, attestations = sys.argv[1:]
+            status, checksums, attestations = sys.argv[1:]
             Path("receipt/release-assets.json").write_text(json.dumps({
                 "schema": "tokmd.release_consumer_smoke.v1",
                 "kind": "release-assets",
@@ -77,30 +92,31 @@ jobs:
                 "expected_version": os.environ["EXPECTED_VERSION"],
                 "release_kind": os.environ["RELEASE_KIND"],
                 "status": status,
-                "checksums": "passed" if status == "passed" else "failed",
+                "checksums": checksums,
                 "attestations": attestations,
             }, indent=2) + "\n", encoding="utf-8")
             PY
           }
           trap write_receipt EXIT
 
-          tag_ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}"
+          tag_ref="repos/${RELEASE_REPOSITORY}/git/ref/tags/${TAG}"
           tag_sha="$(gh api "$tag_ref" --jq '.object.sha')"
           tag_type="$(gh api "$tag_ref" --jq '.object.type')"
           if [ "$tag_type" = tag ]; then
-            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq '.object.sha')"
+            tag_sha="$(gh api "repos/${RELEASE_REPOSITORY}/git/tags/${tag_sha}" --jq '.object.sha')"
           fi
           printf 'tag_sha=%s\n' "$tag_sha" >> "$GITHUB_OUTPUT"
           test "${#tag_sha}" -eq 40
 
           gh release download "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
+            --repo "$RELEASE_REPOSITORY" \
             --dir release-assets
           test -s release-assets/checksums.txt
           (
             cd release-assets
             sha256sum -c checksums.txt
           )
+          checksum_status=passed
 
           wasm_prefix="tokmd-wasm-${TAG}"
           for asset in \
@@ -113,8 +129,8 @@ jobs:
             "${wasm_prefix}.sha256" \
             tokmd-wasm-bundle-size.txt; do
             test -s "release-assets/${asset}"
-            gh attestation verify "release-assets/${asset}" \
-              --repo "$GITHUB_REPOSITORY"
+              gh attestation verify "release-assets/${asset}" \
+              --repo "$RELEASE_REPOSITORY"
           done
           attestation_status=passed
           status=passed
@@ -127,7 +143,7 @@ jobs:
 
       - name: Upload asset receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: consumer-smoke-release-assets
           path: receipt/release-assets.json
@@ -169,6 +185,11 @@ jobs:
     steps:
       - name: Download exact binary
         shell: bash
+        env:
+          MATRIX_ID: ${{ matrix.id }}
+          MATRIX_SURFACE: ${{ matrix.surface }}
+          MATRIX_ARTIFACT: ${{ matrix.artifact }}
+          MATRIX_ARCHITECTURE: ${{ matrix.architecture }}
         run: |
           set -euo pipefail
           status=failed
@@ -182,13 +203,13 @@ jobs:
             from pathlib import Path
 
             status, observed = sys.argv[1:]
-            Path("receipt/binary-${{ matrix.id }}.json").write_text(json.dumps({
+            Path(f"receipt/binary-{os.environ['MATRIX_ID']}.json").write_text(json.dumps({
                 "schema": "tokmd.release_consumer_smoke.v1",
                 "kind": "binary",
-                "surface": "${{ matrix.surface }}",
-                "artifact": "${{ matrix.artifact }}",
+                "surface": os.environ["MATRIX_SURFACE"],
+                "artifact": os.environ["MATRIX_ARTIFACT"],
                 "runner": os.environ.get("RUNNER_NAME", "unknown"),
-                "architecture": "${{ matrix.architecture }}",
+                "architecture": os.environ["MATRIX_ARCHITECTURE"],
                 "tag": os.environ["TAG"],
                 "expected_version": os.environ["EXPECTED_VERSION"],
                 "observed_version": observed,
@@ -199,19 +220,19 @@ jobs:
           trap write_receipt EXIT
 
           gh release download "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern '${{ matrix.artifact }}' \
+            --repo "$RELEASE_REPOSITORY" \
+            --pattern "$MATRIX_ARTIFACT" \
             --dir release
-          bin="$PWD/release/${{ matrix.artifact }}"
+          bin="$PWD/release/$MATRIX_ARTIFACT"
           chmod +x "$bin" 2>/dev/null || true
-          observed_version="$($bin --version)"
+          observed_version="$($bin --version | tr -d '\r')"
           grep -qx "tokmd ${EXPECTED_VERSION}" <<< "$observed_version"
 
           machine="$($bin --show-config)"
           test -n "$machine"
 
           fixture="$(mktemp -d)"
-          trap 'rm -rf "$fixture"; write_receipt' EXIT
+          trap 'write_receipt; rm -rf "$fixture"' EXIT
           mkdir -p "$fixture/src"
           printf 'pub fn add(a: i32, b: i32) -> i32 { a + b }\n' > "$fixture/src/lib.rs"
           printf '# consumer smoke\n' > "$fixture/README.md"
@@ -252,8 +273,8 @@ jobs:
 
           status=passed
           {
-            echo "## Binary smoke: ${{ matrix.id }}"
-            echo "- artifact: ${{ matrix.artifact }}"
+            echo "## Binary smoke: $MATRIX_ID"
+            echo "- artifact: $MATRIX_ARTIFACT"
             echo "- version: passed"
             echo "- JSON outputs: passed"
             echo "- packet content: passed"
@@ -262,7 +283,7 @@ jobs:
 
       - name: Upload binary receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: consumer-smoke-binary-${{ matrix.id }}
           path: receipt/binary-${{ matrix.id }}.json
@@ -309,15 +330,15 @@ jobs:
             echo "nix=unavailable (Nix installer did not provide an executable)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          nix build "github:${GITHUB_REPOSITORY}?rev=${TAG_SHA}"
-          version_output="$(nix run "github:${GITHUB_REPOSITORY}?rev=${TAG_SHA}" -- --version)"
+          nix build "github:${RELEASE_REPOSITORY}?rev=${TAG_SHA}"
+          version_output="$(nix run "github:${RELEASE_REPOSITORY}?rev=${TAG_SHA}" -- --version)"
           grep -qx "tokmd ${EXPECTED_VERSION}" <<< "$version_output"
           status=passed
           echo "- Nix exact-tag build and version: passed" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Nix receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: consumer-smoke-nix
           path: receipt/nix.json
@@ -330,22 +351,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: ${{ inputs.release_repository }}
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: ${{ inputs.release_repository }}
           ref: ${{ needs.release-assets.outputs.tag_sha }}
           path: tagged
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+      - name: Install browser test dependencies
+        shell: bash
+        run: npm install --no-save --no-package-lock --ignore-scripts @playwright/test@1.55.0
       - name: Download and extract exact WASM archive
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p tagged/web/runner/vendor/tokmd-wasm
           gh release download "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
+            --repo "$RELEASE_REPOSITORY" \
             --pattern "tokmd-wasm-${TAG}.tar.gz" \
             --dir tagged/web/runner/vendor/tokmd-wasm
           tar -xzf "tagged/web/runner/vendor/tokmd-wasm/tokmd-wasm-${TAG}.tar.gz" \
@@ -387,9 +413,9 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
-          npx --yes @playwright/test@1.55.0 install --with-deps chromium
-          npx --yes @playwright/test@1.55.0 test \
-            scripts/release-consumer-smoke-browser.mjs \
+          npx --no-install playwright install --with-deps chromium
+          npx --no-install playwright test \
+            scripts/release-consumer-smoke-browser.spec.mjs \
             --reporter=line
           mkdir -p receipt
           python3 - <<'PY'
@@ -407,7 +433,7 @@ jobs:
           PY
       - name: Upload WASM receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: consumer-smoke-wasm
           path: receipt/wasm.json
@@ -420,6 +446,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: ${{ inputs.release_repository }}
           ref: ${{ needs.release-assets.outputs.tag_sha }}
           persist-credentials: false
       - name: Run exact Action ref with omitted version
@@ -429,7 +456,7 @@ jobs:
         with:
           mode: packet
           syntax: 'false'
-          artifact: 'true'
+          artifact: 'false'
           comment: 'false'
           fail-on: failed
       - name: Validate binary packet output
@@ -456,7 +483,16 @@ jobs:
           assert manifest.get("artifacts")
           assert manifest.get("status") in {"complete", "partial"}
           PY
+      - name: Write binary Action receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p receipt
+          status=passed
+          if [ "$ACTION_OUTCOME" != success ] || [ "$PACKET_STATUS" != complete ] && [ "$PACKET_STATUS" != partial ]; then
+            status=failed
+          fi
           python3 - <<'PY'
           import json
           import os
@@ -469,22 +505,21 @@ jobs:
               "expected_version": os.environ["EXPECTED_VERSION"],
               "observed_version": os.environ["ACTION_VERSION"],
               "packet_status": os.environ["PACKET_STATUS"],
-              "status": "passed",
+              "status": os.environ["RECEIPT_STATUS"],
           }, indent=2) + "\n", encoding="utf-8")
           PY
-      - name: Download Action artifact and verify it is readable
-        uses: actions/download-artifact@v8
-        with:
-          name: tokmd-receipts
-          path: downloaded-action-receipts
-      - name: Assert downloaded Action artifact has content
-        shell: bash
-        run: test -n "$(find downloaded-action-receipts -type f -print -quit)"
+        env:
+          ACTION_OUTCOME: ${{ steps.tokmd.outcome }}
+          ACTION_VERSION: ${{ steps.tokmd.outputs.tokmd-version }}
+          PACKET_STATUS: ${{ steps.tokmd.outputs.packet-status }}
+          TAG: ${{ inputs.tag }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          RECEIPT_STATUS: ${{ steps.tokmd.outcome == 'success' && (steps.tokmd.outputs.packet-status == 'complete' || steps.tokmd.outputs.packet-status == 'partial') && 'passed' || 'failed' }}
       - name: Upload Action receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
-          name: consumer-smoke-action-binary
+          name: consumer-smoke-action-binary-packet
           path: receipt/action-binary.json
           if-no-files-found: error
 
@@ -495,6 +530,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: ${{ inputs.release_repository }}
           ref: ${{ needs.release-assets.outputs.tag_sha }}
           persist-credentials: false
       - name: Run exact Action ref with container runtime
@@ -533,6 +569,11 @@ jobs:
           assert manifest.get("artifacts")
           assert manifest.get("status") in {"complete", "partial"}
           PY
+      - name: Write container Action receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p receipt
           python3 - <<'PY'
           import json
@@ -546,14 +587,21 @@ jobs:
               "expected_version": os.environ["EXPECTED_VERSION"],
               "observed_version": os.environ["ACTION_VERSION"],
               "packet_status": os.environ["PACKET_STATUS"],
-              "status": "passed",
+              "status": os.environ["RECEIPT_STATUS"],
           }, indent=2) + "\n", encoding="utf-8")
           PY
+        env:
+          ACTION_OUTCOME: ${{ steps.tokmd.outcome }}
+          ACTION_VERSION: ${{ steps.tokmd.outputs.tokmd-version }}
+          PACKET_STATUS: ${{ steps.tokmd.outputs.packet-status }}
+          TAG: ${{ inputs.tag }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          RECEIPT_STATUS: ${{ steps.tokmd.outcome == 'success' && (steps.tokmd.outputs.packet-status == 'complete' || steps.tokmd.outputs.packet-status == 'partial') && 'passed' || 'failed' }}
       - name: Upload Action receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
-          name: consumer-smoke-action-container
+          name: consumer-smoke-action-container-packet
           path: receipt/action-container.json
           if-no-files-found: error
 
@@ -571,105 +619,36 @@ jobs:
     env:
       NEEDS_RESULTS: ${{ toJSON(needs) }}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.0
+        if: always()
+        continue-on-error: true
         with:
           pattern: consumer-smoke-*
           path: receipts
           merge-multiple: true
       - name: Build machine-readable receipt and summary
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          expected = {
-              "release-assets",
-              "binary-linux-amd64",
-              "binary-linux-arm64",
-              "binary-macos-amd64",
-              "binary-macos-arm64",
-              "binary-windows-amd64",
-              "nix",
-              "wasm",
-              "action-binary",
-              "action-container",
-          }
-          entries = {}
-          for path in Path("receipts").glob("*.json"):
-              entry = json.loads(path.read_text(encoding="utf-8"))
-              kind = entry.get("kind")
-              key = entry.get("artifact") or kind
-              if kind == "binary":
-                  key = entry.get("surface")
-                  if not key:
-                      raise SystemExit(f"binary receipt is missing canonical surface: {entry}")
-              entries[key] = entry
-
-          job_surfaces = {
-              "release-assets": "release-assets",
-              "binary-smoke": "binary-linux-amd64,binary-linux-arm64,binary-macos-amd64,binary-macos-arm64,binary-windows-amd64",
-              "nix-smoke": "nix",
-              "wasm-smoke": "wasm",
-              "action-binary-smoke": "action-binary",
-              "action-container-smoke": "action-container",
-          }
-          needs = json.loads(os.environ["NEEDS_RESULTS"])
-          for job, surfaces in job_surfaces.items():
-              if needs[job]["result"] != "failure":
-                  continue
-              for surface in surfaces.split(","):
-                  if surface not in entries:
-                      entries[surface] = {
-                          "schema": "tokmd.release_consumer_smoke.v1",
-                          "kind": surface,
-                          "status": "failed",
-                          "reason": f"{job} failed before producing a receipt",
-                      }
-
-          for key in sorted(expected - entries.keys()):
-              entries[key] = {
-                  "schema": "tokmd.release_consumer_smoke.v1",
-                  "kind": key,
-                  "status": "not_run",
-                  "reason": "job did not produce a receipt",
-              }
-
-          statuses = [entry.get("status", "not_run") for entry in entries.values()]
-          overall = "failed" if "failed" in statuses else (
-              "passed" if all(status == "passed" for status in statuses) else "passed_with_gaps"
-          )
-          receipt = {
-              "schema": "tokmd.release_consumer_smoke.v1",
-              "tag": os.environ["TAG"],
-              "expected_version": os.environ["EXPECTED_VERSION"],
-              "release_kind": os.environ["RELEASE_KIND"],
-              "overall": overall,
-              "entries": [entries[key] for key in sorted(entries)],
-          }
-          Path("tokmd.release_consumer_smoke.v1.json").write_text(
-              json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
-          )
-          with Path("release-consumer-smoke.md").open("w", encoding="utf-8") as output:
-              output.write(f"# Release consumer smoke: {os.environ['TAG']}\n\n")
-              output.write(f"Overall: `{overall}`\n\n")
-              output.write("| Surface | Status |\n| --- | --- |\n")
-              for key in sorted(entries):
-                  output.write(f"| `{key}` | `{entries[key].get('status', 'not_run')}` |\n")
-          if overall == "failed":
-              raise SystemExit("one or more release consumer smokes failed")
-          PY
+          python3 scripts/release_consumer_smoke_aggregate.py
       - name: Publish summary
+        if: always()
         shell: bash
         run: cat release-consumer-smoke.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload consolidated receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: consumer-smoke-final
           path: |
             tokmd.release_consumer_smoke.v1.json
             release-consumer-smoke.md
           if-no-files-found: error
+      - name: Enforce aggregate verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s tokmd.release_consumer_smoke.v1.json
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["overall"])' tokmd.release_consumer_smoke.v1.json)" = passed

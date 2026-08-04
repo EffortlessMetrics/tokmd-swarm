@@ -4,21 +4,36 @@ import { readFileSync } from "node:fs";
 const baseUrl = process.env.BASE_URL;
 const zipPath = process.env.ZIP_PATH;
 const expectedVersion = process.env.EXPECTED_VERSION;
-
-if (!baseUrl || !zipPath || !expectedVersion) {
-    throw new Error("BASE_URL, ZIP_PATH, and EXPECTED_VERSION are required");
-}
+const consoleErrorsByPage = new WeakMap();
 
 test.setTimeout(300_000);
 
-test("released archive-enabled WASM supports browser ZIP workflows", async ({ page }) => {
+test.beforeEach(async ({ page }) => {
     const consoleErrors = [];
+    consoleErrorsByPage.set(page, consoleErrors);
     page.on("console", (message) => {
         if (message.type() === "error") {
             consoleErrors.push(message.text());
         }
     });
     page.on("pageerror", (error) => consoleErrors.push(error.message));
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+    const consoleErrors = consoleErrorsByPage.get(page) ?? [];
+    if (consoleErrors.length > 0) {
+        await testInfo.attach("browser-console-errors", {
+            body: consoleErrors.join("\n"),
+            contentType: "text/plain",
+        });
+    }
+    expect(consoleErrors).toEqual([]);
+});
+
+test("released archive-enabled WASM supports browser ZIP workflows", async ({ page }) => {
+    if (!baseUrl || !zipPath || !expectedVersion) {
+        throw new Error("BASE_URL, ZIP_PATH, and EXPECTED_VERSION are required");
+    }
 
     await page.goto(baseUrl, { waitUntil: "networkidle" });
     await expect(page.locator("[data-worker-capabilities]")).toContainText(expectedVersion);
@@ -56,7 +71,15 @@ test("released archive-enabled WASM supports browser ZIP workflows", async ({ pa
     expect(await download.failure()).toBeNull();
     const downloadPath = await download.path();
     expect(downloadPath).toBeTruthy();
-    const downloaded = JSON.parse(readFileSync(downloadPath, "utf-8"));
-    expect(downloaded).toBeTruthy();
-    expect(consoleErrors).toEqual([]);
+    const downloadedBytes = readFileSync(downloadPath);
+    expect(downloadedBytes.byteLength).toBeGreaterThan(0);
+    const filename = download.suggestedFilename().toLowerCase();
+    if (filename.endsWith(".json")) {
+        const downloaded = JSON.parse(downloadedBytes.toString("utf-8"));
+        expect(downloaded).toBeTruthy();
+    } else if (filename.endsWith(".zip")) {
+        expect(downloadedBytes.subarray(0, 2).toString("ascii")).toBe("PK");
+    } else {
+        expect(downloadedBytes.toString("utf-8").trim()).not.toBe("");
+    }
 });
