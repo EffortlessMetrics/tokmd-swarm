@@ -7,6 +7,7 @@
 //! - Requires confirmation for actual publishing (unless --yes or CI)
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
@@ -18,6 +19,8 @@ use cargo_metadata::{DependencyKind, Metadata, MetadataCommand, Package, Package
 use chrono::{DateTime, FixedOffset, Utc};
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
+use serde::Serialize;
+use serde_json::Value;
 
 use crate::cli::PublishArgs;
 
@@ -81,6 +84,13 @@ pub fn run(args: PublishArgs) -> Result<()> {
     // Resolve the publish plan (workspace-scoped, validated)
     let plan = resolve_publish_plan(&metadata, &args)?;
 
+    // Registry inventory is intentionally read-only and writes its receipt even
+    // when the registry is incomplete. It must not run publish preflight or
+    // mutate crates.io.
+    if let Some(path) = args.registry_inventory.as_deref() {
+        return run_registry_inventory(&metadata, &plan, path);
+    }
+
     // Handle --plan mode: just print and exit
     if args.plan {
         print_plan(&plan, &args);
@@ -132,6 +142,249 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryInventoryReceipt {
+    schema_version: &'static str,
+    generated_at: String,
+    workspace_version: String,
+    dependency_check_scope: &'static str,
+    status: &'static str,
+    crates: Vec<RegistryCrateReceipt>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegistryCrateReceipt {
+    name: String,
+    version: String,
+    state: &'static str,
+    dependencies_resolvable: bool,
+    published_at: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug)]
+struct RegistryVersionLookup {
+    state: &'static str,
+    published_at: Option<String>,
+    error: Option<String>,
+}
+
+/// Query the crates.io registry for every crate in the resolved publish plan.
+///
+/// The receipt is deliberately written before the command returns an error.
+/// `dependencies_resolvable` covers the internal publish-plan edges; a clean
+/// external `cargo install` remains the proof for the complete dependency graph.
+fn run_registry_inventory(
+    metadata: &Metadata,
+    plan: &PublishPlan,
+    output_path: &Path,
+) -> Result<()> {
+    let mut receipts = Vec::with_capacity(plan.publish_order.len());
+    for name in &plan.publish_order {
+        let lookup = query_registry_version(name, &plan.workspace_version);
+        receipts.push(RegistryCrateReceipt {
+            name: name.clone(),
+            version: plan.workspace_version.clone(),
+            state: lookup.state,
+            dependencies_resolvable: false,
+            published_at: lookup.published_at,
+            error: lookup.error,
+        });
+    }
+
+    let present: BTreeSet<String> = receipts
+        .iter()
+        .filter(|receipt| receipt.state == "present")
+        .map(|receipt| receipt.name.clone())
+        .collect();
+    let publishable: BTreeSet<String> = plan.publish_order.iter().cloned().collect();
+    let packages: BTreeMap<&str, &Package> = metadata
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package))
+        .collect();
+
+    for receipt in &mut receipts {
+        if receipt.state != "present" {
+            continue;
+        }
+        let Some(package) = packages.get(receipt.name.as_str()) else {
+            receipt.error = Some("publish-plan package metadata is missing".to_string());
+            continue;
+        };
+        receipt.dependencies_resolvable = package
+            .dependencies
+            .iter()
+            .filter(|dependency| is_publish_dependency(&dependency.kind))
+            .filter(|dependency| publishable.contains(dependency.name.as_str()))
+            .all(|dependency| present.contains(dependency.name.as_str()));
+    }
+
+    let complete = receipts
+        .iter()
+        .all(|receipt| receipt.state == "present" && receipt.dependencies_resolvable);
+    let receipt = RegistryInventoryReceipt {
+        schema_version: "tokmd.publish_registry.v1",
+        generated_at: Utc::now().to_rfc3339(),
+        workspace_version: plan.workspace_version.clone(),
+        dependency_check_scope: "workspace_internal_publish_edges",
+        status: if complete { "passed" } else { "failed" },
+        crates: receipts,
+    };
+
+    if let Some(parent) = output_path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create registry inventory parent {}", parent.display()))?;
+    }
+    let json = serde_json::to_string_pretty(&receipt).context("serialize registry inventory")?;
+    fs::write(output_path, format!("{json}\n"))
+        .with_context(|| format!("write registry inventory {}", output_path.display()))?;
+    println!(
+        "Registry inventory written to {} ({})",
+        output_path.display(),
+        receipt.status
+    );
+
+    if !complete {
+        bail!(
+            "registry inventory is incomplete; inspect {}",
+            output_path.display()
+        );
+    }
+    Ok(())
+}
+
+fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLookup {
+    if !crate_name
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some("crate name contains an unsafe URL character".to_string()),
+        };
+    }
+
+    let curl = if cfg!(windows) { "curl.exe" } else { "curl" };
+    let url = format!("https://crates.io/api/v1/crates/{crate_name}");
+    let output = Command::new(curl)
+        .args([
+            "--silent",
+            "--show-error",
+            "--location",
+            "--connect-timeout",
+            "20",
+            "--max-time",
+            "60",
+            "--user-agent",
+            "tokmd-xtask-registry-inventory",
+            "--write-out",
+            "\n%{http_code}",
+            &url,
+        ])
+        .output();
+
+    let output = match output {
+        Ok(output) => output,
+        Err(error) => {
+            return RegistryVersionLookup {
+                state: "unavailable",
+                published_at: None,
+                error: Some(format!("failed to execute {curl}: {error}")),
+            };
+        }
+    };
+    if !output.status.success() {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
+        };
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout);
+    let Some((body, status)) = response.trim_end().rsplit_once('\n') else {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some("crates.io response omitted HTTP status".to_string()),
+        };
+    };
+    let status = match status.parse::<u16>() {
+        Ok(status) => status,
+        Err(error) => {
+            return RegistryVersionLookup {
+                state: "unavailable",
+                published_at: None,
+                error: Some(format!("invalid crates.io HTTP status: {error}")),
+            };
+        }
+    };
+    parse_registry_version_response(crate_name, version, status, body)
+}
+
+fn parse_registry_version_response(
+    crate_name: &str,
+    version: &str,
+    http_status: u16,
+    body: &str,
+) -> RegistryVersionLookup {
+    if http_status == 404 {
+        return RegistryVersionLookup {
+            state: "missing",
+            published_at: None,
+            error: None,
+        };
+    }
+    if http_status != 200 {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some(format!("crates.io returned HTTP {http_status}")),
+        };
+    }
+
+    let parsed: Value = match serde_json::from_str(body) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return RegistryVersionLookup {
+                state: "unavailable",
+                published_at: None,
+                error: Some(format!("invalid crates.io response for {crate_name}: {error}")),
+            };
+        }
+    };
+    let Some(versions) = parsed.get("versions").and_then(Value::as_array) else {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some("crates.io response omitted versions".to_string()),
+        };
+    };
+    let Some(version_entry) = versions.iter().find(|entry| {
+        entry.get("num").and_then(Value::as_str) == Some(version)
+    }) else {
+        return RegistryVersionLookup {
+            state: "missing",
+            published_at: None,
+            error: None,
+        };
+    };
+    let yanked = version_entry
+        .get("yanked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    RegistryVersionLookup {
+        state: if yanked { "yanked" } else { "present" },
+        published_at: version_entry
+            .get("created_at")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        error: None,
+    }
 }
 
 /// Resolve the publish plan from workspace metadata.
@@ -1193,5 +1446,37 @@ mod tests {
 
         // Marker present but invalid timestamp
         assert!(parse_rate_limit_timestamp("try again after not-a-real-timestamp").is_none());
+    }
+
+    #[test]
+    fn registry_response_distinguishes_present_yanked_and_missing() {
+        let body = r#"{
+            "versions": [
+                {"num":"1.15.0","yanked":false,"created_at":"2026-08-01T00:00:00Z"},
+                {"num":"1.14.0","yanked":true,"created_at":"2026-07-01T00:00:00Z"}
+            ]
+        }"#;
+
+        let present = parse_registry_version_response("tokmd", "1.15.0", 200, body);
+        assert_eq!(present.state, "present");
+        assert_eq!(present.published_at.as_deref(), Some("2026-08-01T00:00:00Z"));
+
+        let yanked = parse_registry_version_response("tokmd", "1.14.0", 200, body);
+        assert_eq!(yanked.state, "yanked");
+
+        let missing = parse_registry_version_response("tokmd", "1.13.0", 200, body);
+        assert_eq!(missing.state, "missing");
+    }
+
+    #[test]
+    fn registry_response_fails_closed_for_transport_and_shape_errors() {
+        let not_found = parse_registry_version_response("tokmd", "1.15.0", 404, "");
+        assert_eq!(not_found.state, "missing");
+
+        let server_error = parse_registry_version_response("tokmd", "1.15.0", 503, "");
+        assert_eq!(server_error.state, "unavailable");
+
+        let malformed = parse_registry_version_response("tokmd", "1.15.0", 200, "{}");
+        assert_eq!(malformed.state, "unavailable");
     }
 }

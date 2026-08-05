@@ -1714,6 +1714,10 @@ pub struct PublishArgs {
     #[arg(long)]
     pub plan: bool,
 
+    /// Query exact publish-plan versions on crates.io and write a fail-closed receipt.
+    #[arg(long, value_name = "PATH", conflicts_with_all = ["plan", "dry_run"])]
+    pub registry_inventory: Option<std::path::PathBuf>,
+
     /// Run in dry-run mode (runs `cargo package --list` per crate for local packaging validation)
     #[arg(long, short = 'n')]
     pub dry_run: bool,
