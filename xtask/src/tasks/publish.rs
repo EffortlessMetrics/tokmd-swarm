@@ -183,6 +183,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
     let (succeeded, failed) = execute_publish(
         &crates_to_publish,
         &args,
+        &plan.workspace_version,
         args.receipt.as_deref(),
         receipt.as_mut(),
     )?;
@@ -433,7 +434,7 @@ fn crates_to_publish(
                         !matches!(
                             entry.state,
                             PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-                        )
+                        ) || entry.registry_visible != Some(true)
                     })
             })
         })
@@ -461,6 +462,34 @@ fn update_publish_receipt(
     entry.reason = reason;
     entry.updated_at = Utc::now().to_rfc3339();
     receipt.state = PublishReceiptState::InProgress;
+    write_publish_receipt(path, receipt)
+}
+
+fn update_publish_receipt_visibility(
+    path: &Path,
+    receipt: &mut PublishReceipt,
+    crate_name: &str,
+    lookup: &RegistryVersionLookup,
+) -> Result<()> {
+    let entry = receipt
+        .crates
+        .iter_mut()
+        .find(|entry| entry.name == crate_name)
+        .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
+    entry.registry_visible = match lookup.state {
+        "present" => Some(true),
+        "missing" | "yanked" => Some(false),
+        _ => None,
+    };
+    if lookup.state != "present" {
+        entry.reason = lookup.error.clone().or_else(|| {
+            Some(format!(
+                "registry visibility check ended in `{}`",
+                lookup.state
+            ))
+        });
+    }
+    entry.updated_at = Utc::now().to_rfc3339();
     write_publish_receipt(path, receipt)
 }
 
@@ -493,6 +522,8 @@ pub const PUBLISH_REGISTRY_SCHEMA_VERSION: &str = "tokmd.publish_registry.v1";
 /// 16-crate publish surface issues 16 back-to-back requests and reliably
 /// earns HTTP 429, which would misreport published crates as `unavailable`.
 const REGISTRY_REQUEST_DELAY: Duration = Duration::from_millis(1_000);
+/// Maximum number of bounded visibility observations after an upload.
+const REGISTRY_VISIBILITY_ATTEMPTS: u32 = 3;
 
 /// Maximum number of retries for a single rate-limited crates.io request.
 const REGISTRY_RATE_LIMIT_RETRIES: u32 = 3;
@@ -654,6 +685,27 @@ fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLoo
 
         return parse_registry_version_response(crate_name, version, fetched.status, &fetched.body);
     }
+}
+
+fn wait_for_registry_visibility(
+    crate_name: &str,
+    version: &str,
+    interval: u64,
+) -> RegistryVersionLookup {
+    let mut lookup = query_registry_version(crate_name, version);
+    for attempt in 1..REGISTRY_VISIBILITY_ATTEMPTS {
+        if matches!(lookup.state, "present" | "yanked") {
+            return lookup;
+        }
+        if interval > 0 {
+            sleep(Duration::from_secs(interval));
+        }
+        lookup = query_registry_version(crate_name, version);
+        if attempt + 1 == REGISTRY_VISIBILITY_ATTEMPTS {
+            break;
+        }
+    }
+    lookup
 }
 
 /// A single crates.io API response, reduced to what classification needs.
@@ -1136,6 +1188,7 @@ fn confirm_publish() -> Result<bool> {
 fn execute_publish(
     crates: &[String],
     args: &PublishArgs,
+    version: &str,
     receipt_path: Option<&Path>,
     mut receipt: Option<&mut PublishReceipt>,
 ) -> Result<(Vec<String>, Vec<String>)> {
@@ -1161,6 +1214,39 @@ fn execute_publish(
 
         match result {
             PublishResult::Success => {
+                let visibility = (!args.dry_run)
+                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
+                if let Some(lookup) = visibility
+                    .as_ref()
+                    .filter(|lookup| lookup.state != "present")
+                {
+                    let reason = lookup.error.clone().unwrap_or_else(|| {
+                        format!("registry visibility check ended in `{}`", lookup.state)
+                    });
+                    println!(
+                        "  ✗ Published {} but registry visibility was not proven",
+                        crate_name
+                    );
+                    failed.push(crate_name.clone());
+                    if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                        update_publish_receipt(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::Failed,
+                            Some(reason),
+                            false,
+                        )?;
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                    }
+                    if !args.continue_on_error {
+                        bail!(
+                            "Published {} but registry visibility was not proven. Resume with --receipt",
+                            crate_name
+                        );
+                    }
+                    continue;
+                }
                 println!("  ✓ Published {}", crate_name);
                 succeeded.push(crate_name.clone());
                 if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
@@ -1172,15 +1258,45 @@ fn execute_publish(
                         None,
                         false,
                     )?;
-                }
-
-                // Wait for crates.io propagation (unless last or dry-run)
-                if idx < crates.len() - 1 && !args.dry_run {
-                    println!("  Waiting {}s for crates.io propagation...", args.interval);
-                    sleep(Duration::from_secs(args.interval));
+                    if let Some(lookup) = visibility.as_ref() {
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                    }
                 }
             }
             PublishResult::AlreadyPublished => {
+                let visibility = (!args.dry_run)
+                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
+                if let Some(lookup) = visibility
+                    .as_ref()
+                    .filter(|lookup| lookup.state != "present")
+                {
+                    let reason = lookup.error.clone().unwrap_or_else(|| {
+                        format!("registry visibility check ended in `{}`", lookup.state)
+                    });
+                    println!(
+                        "  ✗ {} was reported already published but registry visibility was not proven",
+                        crate_name
+                    );
+                    failed.push(crate_name.clone());
+                    if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                        update_publish_receipt(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::Failed,
+                            Some(reason),
+                            false,
+                        )?;
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                    }
+                    if !args.continue_on_error {
+                        bail!(
+                            "{} was reported already published but registry visibility was not proven. Resume with --receipt",
+                            crate_name
+                        );
+                    }
+                    continue;
+                }
                 println!("  ✓ {} already published", crate_name);
                 succeeded.push(crate_name.clone());
                 if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
@@ -1192,6 +1308,9 @@ fn execute_publish(
                         None,
                         false,
                     )?;
+                    if let Some(lookup) = visibility.as_ref() {
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                    }
                 }
             }
             PublishResult::Failed(e) => {
@@ -2115,6 +2234,7 @@ mod tests {
         };
         entry.state = PublishReceiptState::Published;
         entry.attempts = 1;
+        entry.registry_visible = Some(true);
 
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != vec!["tokmd".to_string()] {
@@ -2130,6 +2250,41 @@ mod tests {
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != plan.publish_order {
             bail!("resume should retry a failed publication entry");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_retries_published_entries_without_visibility_proof() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+        entry.registry_visible = Some(false);
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != plan.publish_order {
+            bail!("resume must retry a published entry without visibility proof");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_retries_unobserved_registry_visibility() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != plan.publish_order {
+            bail!("resume must retry an unobserved registry entry");
         }
         Ok(())
     }
