@@ -208,22 +208,26 @@ jobs:
           if [ "${RUNNER_KIND}" = "self-hosted" ]; then
             if [ "${core_exit}" != "0" ] && [ "${core_exit}" != "124" ]; then
               echo "Concurrent core gate failed (exit ${core_exit}); retrying serially"
-              cargo xtask gate --check
+              { echo; echo "--- serial retry ---"; } >> target/ci-core/core.log
+              cargo xtask gate --check >> target/ci-core/core.log 2>&1
               core_exit=$?
             fi
             if [ "${test_exit}" != "0" ] && [ "${test_exit}" != "124" ]; then
               echo "Concurrent tests failed (exit ${test_exit}); retrying serially"
-              cargo test --all-features
+              { echo; echo "--- serial retry ---"; } >> target/ci-core/test.log
+              cargo test --all-features >> target/ci-core/test.log 2>&1
               test_exit=$?
             fi
             if [ "${xtask_test_exit}" != "0" ] && [ "${xtask_test_exit}" != "124" ]; then
               echo "Concurrent xtask tests failed (exit ${xtask_test_exit}); retrying serially"
-              cargo test -p xtask --all-features
+              { echo; echo "--- serial retry ---"; } >> target/ci-core/xtask_test.log
+              cargo test -p xtask --all-features >> target/ci-core/xtask_test.log 2>&1
               xtask_test_exit=$?
             fi
             if [ "${proof_policy_exit}" != "0" ] && [ "${proof_policy_exit}" != "124" ]; then
               echo "Concurrent proof-policy failed (exit ${proof_policy_exit}); retrying serially"
-              cargo xtask proof-policy --check
+              { echo; echo "--- serial retry ---"; } >> target/ci-core/proof_policy.log
+              cargo xtask proof-policy --check >> target/ci-core/proof_policy.log 2>&1
               proof_policy_exit=$?
             fi
           fi
