@@ -19,7 +19,7 @@ use cargo_metadata::{DependencyKind, Metadata, MetadataCommand, Package, Package
 use chrono::{DateTime, FixedOffset, Utc};
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::PublishArgs;
@@ -71,6 +71,43 @@ pub struct PublishPlan {
     pub workspace_version: String,
 }
 
+const PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v1";
+const PUBLISH_RECEIPT_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum PublishReceiptState {
+    Planned,
+    InProgress,
+    Published,
+    AlreadyPresent,
+    Failed,
+    Complete,
+    Incomplete,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct PublishCrateReceipt {
+    name: String,
+    version: String,
+    state: PublishReceiptState,
+    attempts: u32,
+    registry_visible: Option<bool>,
+    dependency_closure: Option<bool>,
+    reason: Option<String>,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct PublishReceipt {
+    schema: String,
+    schema_version: u32,
+    workspace_version: String,
+    state: PublishReceiptState,
+    publish_order: Vec<String>,
+    crates: Vec<PublishCrateReceipt>,
+}
+
 /// Publish all workspace crates in dependency order.
 pub fn run(args: PublishArgs) -> Result<()> {
     // Load workspace metadata
@@ -89,6 +126,25 @@ pub fn run(args: PublishArgs) -> Result<()> {
     // mutate crates.io.
     if let Some(path) = args.registry_inventory.as_deref() {
         return run_registry_inventory(&metadata, &plan, path);
+    }
+
+    let mut receipt = match args.receipt.as_deref() {
+        Some(path) if args.resume => Some(load_publish_receipt(path, &plan)?),
+        Some(path) => {
+            if path.exists() {
+                bail!(
+                    "publication receipt {} already exists; use --resume to continue it",
+                    path.display()
+                );
+            }
+            Some(new_publish_receipt(&plan))
+        }
+        None if args.resume => bail!("--resume requires --receipt <path>"),
+        None => None,
+    };
+
+    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
+        write_publish_receipt(path, receipt)?;
     }
 
     // Handle --plan mode: just print and exit
@@ -112,7 +168,24 @@ pub fn run(args: PublishArgs) -> Result<()> {
         0
     };
 
-    let crates_to_publish = &plan.publish_order[start_idx..];
+    let crates_to_publish: Vec<String> = plan.publish_order[start_idx..]
+        .iter()
+        .filter(|name| {
+            receipt.as_ref().is_none_or(|receipt| {
+                receipt
+                    .crates
+                    .iter()
+                    .find(|entry| entry.name == **name)
+                    .is_none_or(|entry| {
+                        !matches!(
+                            entry.state,
+                            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
+                        )
+                    })
+            })
+        })
+        .cloned()
+        .collect();
 
     // Print summary and require confirmation for real publishing
     print_pre_publish_summary(&plan, &args, start_idx);
@@ -123,7 +196,12 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     // Execute publishing
-    let (succeeded, failed) = execute_publish(crates_to_publish, &args)?;
+    let (succeeded, failed) = execute_publish(
+        &crates_to_publish,
+        &args,
+        args.receipt.as_deref(),
+        receipt.as_mut(),
+    )?;
 
     // Print summary
     println!("\n--- Summary ---");
@@ -138,10 +216,124 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if !failed.is_empty() {
+        if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
+            receipt.state = PublishReceiptState::Incomplete;
+            write_publish_receipt(path, receipt)?;
+        }
         bail!("{} crate(s) failed to publish", failed.len());
     }
 
+    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
+        receipt.state = PublishReceiptState::Complete;
+        write_publish_receipt(path, receipt)?;
+    }
+
     Ok(())
+}
+
+fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
+    let now = Utc::now().to_rfc3339();
+    PublishReceipt {
+        schema: PUBLISH_RECEIPT_SCHEMA.to_string(),
+        schema_version: PUBLISH_RECEIPT_VERSION,
+        workspace_version: plan.workspace_version.clone(),
+        state: PublishReceiptState::Planned,
+        publish_order: plan.publish_order.clone(),
+        crates: plan
+            .publish_order
+            .iter()
+            .map(|name| PublishCrateReceipt {
+                name: name.clone(),
+                version: plan.workspace_version.clone(),
+                state: PublishReceiptState::Planned,
+                attempts: 0,
+                registry_visible: None,
+                dependency_closure: None,
+                reason: None,
+                updated_at: now.clone(),
+            })
+            .collect(),
+    }
+}
+
+fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceipt> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("read publication receipt {}", path.display()))?;
+    let receipt: PublishReceipt = serde_json::from_str(&content)
+        .with_context(|| format!("parse publication receipt {}", path.display()))?;
+    if receipt.schema != PUBLISH_RECEIPT_SCHEMA {
+        bail!(
+            "publication receipt {} has schema `{}`; expected `{PUBLISH_RECEIPT_SCHEMA}`",
+            path.display(),
+            receipt.schema
+        );
+    }
+    if receipt.schema_version != PUBLISH_RECEIPT_VERSION {
+        bail!(
+            "publication receipt {} has schema_version {}; expected {PUBLISH_RECEIPT_VERSION}",
+            path.display(),
+            receipt.schema_version
+        );
+    }
+    if receipt.workspace_version != plan.workspace_version {
+        bail!(
+            "publication receipt version {} does not match workspace version {}",
+            receipt.workspace_version,
+            plan.workspace_version
+        );
+    }
+    if receipt.publish_order != plan.publish_order {
+        bail!(
+            "publication receipt order does not match the current publish plan; rebuild the receipt from the same workspace and filters"
+        );
+    }
+    if receipt.crates.len() != plan.publish_order.len()
+        || receipt
+            .crates
+            .iter()
+            .zip(plan.publish_order.iter())
+            .any(|(entry, name)| entry.name != *name || entry.version != plan.workspace_version)
+    {
+        bail!("publication receipt crate entries do not match the current publish plan");
+    }
+    Ok(receipt)
+}
+
+fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create publication receipt parent {}", parent.display()))?;
+    }
+    let json = serde_json::to_string_pretty(receipt).context("serialize publication receipt")?;
+    fs::write(path, format!("{json}\n"))
+        .with_context(|| format!("write publication receipt {}", path.display()))?;
+    Ok(())
+}
+
+fn update_publish_receipt(
+    path: &Path,
+    receipt: &mut PublishReceipt,
+    crate_name: &str,
+    state: PublishReceiptState,
+    reason: Option<String>,
+    increment_attempt: bool,
+) -> Result<()> {
+    let entry = receipt
+        .crates
+        .iter_mut()
+        .find(|entry| entry.name == crate_name)
+        .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
+    if increment_attempt {
+        entry.attempts = entry.attempts.saturating_add(1);
+    }
+    entry.state = state;
+    entry.reason = reason;
+    entry.updated_at = Utc::now().to_rfc3339();
+    receipt.state = PublishReceiptState::InProgress;
+    write_publish_receipt(path, receipt)
 }
 
 #[derive(Debug, Serialize)]
@@ -814,7 +1006,12 @@ fn confirm_publish() -> Result<bool> {
 }
 
 /// Execute the publish for a list of crates.
-fn execute_publish(crates: &[String], args: &PublishArgs) -> Result<(Vec<String>, Vec<String>)> {
+fn execute_publish(
+    crates: &[String],
+    args: &PublishArgs,
+    receipt_path: Option<&Path>,
+    mut receipt: Option<&mut PublishReceipt>,
+) -> Result<(Vec<String>, Vec<String>)> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
@@ -822,12 +1019,33 @@ fn execute_publish(crates: &[String], args: &PublishArgs) -> Result<(Vec<String>
         let position = format!("[{}/{}]", idx + 1, crates.len());
         println!("{} Publishing {}...", position, crate_name);
 
+        if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+            update_publish_receipt(
+                path,
+                receipt,
+                crate_name,
+                PublishReceiptState::InProgress,
+                None,
+                true,
+            )?;
+        }
+
         let result = publish_crate_with_retry(crate_name, args)?;
 
         match result {
             PublishResult::Success => {
                 println!("  ✓ Published {}", crate_name);
                 succeeded.push(crate_name.clone());
+                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                    update_publish_receipt(
+                        path,
+                        receipt,
+                        crate_name,
+                        PublishReceiptState::Published,
+                        None,
+                        false,
+                    )?;
+                }
 
                 // Wait for crates.io propagation (unless last or dry-run)
                 if idx < crates.len() - 1 && !args.dry_run {
@@ -838,10 +1056,30 @@ fn execute_publish(crates: &[String], args: &PublishArgs) -> Result<(Vec<String>
             PublishResult::AlreadyPublished => {
                 println!("  ✓ {} already published", crate_name);
                 succeeded.push(crate_name.clone());
+                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                    update_publish_receipt(
+                        path,
+                        receipt,
+                        crate_name,
+                        PublishReceiptState::AlreadyPresent,
+                        None,
+                        false,
+                    )?;
+                }
             }
             PublishResult::Failed(e) => {
                 println!("  ✗ Failed to publish {}: {}", crate_name, e);
                 failed.push(crate_name.clone());
+                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                    update_publish_receipt(
+                        path,
+                        receipt,
+                        crate_name,
+                        PublishReceiptState::Failed,
+                        Some(e.to_string()),
+                        false,
+                    )?;
+                }
 
                 if !args.continue_on_error {
                     bail!(
@@ -1447,6 +1685,7 @@ fn create_git_tag(args: &PublishArgs, version: &str) -> Result<()> {
 mod tests {
     use super::*;
     use chrono::Datelike;
+    use tempfile::tempdir;
 
     #[test]
     fn test_classify_already_published() {
@@ -1680,5 +1919,62 @@ mod tests {
         assert!(is_registry_rate_limited(503));
         assert!(!is_registry_rate_limited(200));
         assert!(!is_registry_rate_limited(404));
+    }
+
+    fn receipt_test_plan() -> PublishPlan {
+        PublishPlan {
+            publish_order: vec!["tokmd-core".to_string(), "tokmd".to_string()],
+            inclusion_reasons: BTreeMap::new(),
+            exclusion_reasons: BTreeMap::new(),
+            workspace_version: "1.15.0".to_string(),
+        }
+    }
+
+    #[test]
+    fn publication_receipt_round_trips_terminal_state_and_attempt_count() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir().context("create receipt test directory")?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        write_publish_receipt(&path, &receipt)?;
+        update_publish_receipt(
+            &path,
+            &mut receipt,
+            "tokmd-core",
+            PublishReceiptState::InProgress,
+            None,
+            true,
+        )?;
+        update_publish_receipt(
+            &path,
+            &mut receipt,
+            "tokmd-core",
+            PublishReceiptState::Published,
+            None,
+            false,
+        )?;
+
+        let loaded = load_publish_receipt(&path, &plan)?;
+        let Some(entry) = loaded.crates.first() else {
+            bail!("receipt should contain the first planned crate");
+        };
+        if entry.state != PublishReceiptState::Published || entry.attempts != 1 {
+            bail!("terminal receipt state and attempt count were not persisted");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_rejects_a_different_publish_plan() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir().context("create receipt test directory")?;
+        let path = directory.path().join("publish.json");
+        write_publish_receipt(&path, &new_publish_receipt(&plan))?;
+        let mut changed = plan;
+        changed.publish_order.reverse();
+        if load_publish_receipt(&path, &changed).is_ok() {
+            bail!("resume must reject a receipt created for a different publish order");
+        }
+        Ok(())
     }
 }

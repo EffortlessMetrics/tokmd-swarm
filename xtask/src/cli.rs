@@ -1718,6 +1718,14 @@ pub struct PublishArgs {
     #[arg(long, value_name = "PATH", conflicts_with_all = ["plan", "dry_run", "verify"])]
     pub registry_inventory: Option<std::path::PathBuf>,
 
+    /// Write a durable per-crate publication receipt while publishing.
+    #[arg(long, value_name = "PATH")]
+    pub receipt: Option<std::path::PathBuf>,
+
+    /// Resume from a publication receipt, skipping crates already marked terminal.
+    #[arg(long, requires = "receipt", conflicts_with_all = ["plan", "registry_inventory", "dry_run", "verify"])]
+    pub resume: bool,
+
     /// Run in dry-run mode (runs `cargo package --list` per crate for local packaging validation)
     #[arg(long, short = 'n')]
     pub dry_run: bool,
