@@ -75,8 +75,8 @@ docs route as `handoff_review_packet` instead of also appearing as generic
       "proof_packs": ["core_receipts"],
       "reason": "manifest_match",
       "policy": "blocking",
-      "lanes": ["build_test_linux", "proof_policy", "ripr_advisory"],
-      "deep_lanes": ["build_test_windows", "proptest_smoke"]
+      "lanes": ["build_test_linux", "proof_policy", "ripr_advisory", "proptest_smoke"],
+      "deep_lanes": ["build_test_windows"]
     }
   ],
   "unmatched_files": [],
@@ -84,9 +84,9 @@ docs route as `handoff_review_packet` instead of also appearing as generic
     "changed_file_count": 1,
     "routed_file_count": 1,
     "unmatched_file_count": 0,
-    "skipped_lane_count": 2,
+    "skipped_lane_count": 1,
     "skipped_reason_counts": {
-      "deep_lane_requires_label": 2
+      "deep_lane_requires_label": 1
     }
   },
   "skipped_by_policy": [
@@ -101,19 +101,6 @@ docs route as `handoff_review_packet` instead of also appearing as generic
       "expensive": true,
       "required_labels": ["windows"],
       "estimated_lem": 40,
-      "estimate_source": "static"
-    },
-    {
-      "lane": "proptest_smoke",
-      "status": "skipped_by_policy",
-      "reason": "deep_lane_requires_label",
-      "matched_files": ["crates/tokmd/src/main.rs"],
-      "lane_kind": "property",
-      "tier": "risk-gated",
-      "blocking": true,
-      "expensive": false,
-      "required_labels": ["property-tests"],
-      "estimated_lem": 8,
       "estimate_source": "static"
     }
   ]
