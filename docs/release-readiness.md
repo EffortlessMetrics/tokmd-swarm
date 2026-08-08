@@ -61,8 +61,9 @@ requirement matching the planned package version. A successful preflight records
 `dependency_closure: true` for every planned crate. After a non-dry-run upload,
 the publisher performs bounded crates.io visibility observations and records
 `registry_visible`; an unobserved result is retryable on resume rather than
-terminal. The receipt does not authorize publication or replace the registry
-inventory check.
+terminal. `dependency_closure` remains null until the package/closure proof
+records that fact. The receipt does not authorize publication or replace the
+registry inventory check.
 
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
