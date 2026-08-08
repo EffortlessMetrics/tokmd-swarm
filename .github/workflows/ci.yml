@@ -260,6 +260,15 @@ jobs:
           test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
 
+      - name: Upload deterministic core receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tokmd-rust-result-core
+          path: target/ci-core/
+          if-no-files-found: warn
+          retention-days: 14
+
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
   # this output into their `if:` so the deep lanes also run when matching
   # paths change, even without an explicit label. Mirrors the routing
