@@ -203,10 +203,22 @@ jobs:
 
           status=failed
 
-          cargo install tokmd \
-            --version "$EXPECTED_VERSION" \
-            --locked \
-            --root "$PWD/install-root"
+          install_ok=false
+          for attempt in 1 2 3; do
+            if cargo install tokmd \
+              --version "$EXPECTED_VERSION" \
+              --locked \
+              --force \
+              --root "$PWD/install-root"; then
+              install_ok=true
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Cargo install attempt ${attempt} failed; waiting for registry propagation before retry."
+              sleep 30
+            fi
+          done
+          test "$install_ok" = true
           bin="$PWD/install-root/bin/tokmd"
           test -x "$bin"
           observed_version="$($bin --version | head -n 1)"
