@@ -152,7 +152,10 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     // Run pre-publish checks (unless skipped)
     if !args.skip_checks {
-        run_pre_publish_checks(&args, &plan.workspace_version)?;
+        run_pre_publish_checks(&args, &metadata, &plan)?;
+        if let Some(receipt) = receipt.as_mut() {
+            mark_dependency_closure_verified(receipt);
+        }
     }
 
     // Handle --from flag
@@ -1348,6 +1351,105 @@ fn is_publish_dependency(kind: &DependencyKind) -> bool {
     )
 }
 
+/// Mark every planned crate as having passed the pre-upload dependency check.
+fn mark_dependency_closure_verified(receipt: &mut PublishReceipt) {
+    for entry in &mut receipt.crates {
+        entry.dependency_closure = Some(true);
+    }
+}
+
+/// Prove that every non-development workspace dependency has a publish target
+/// and that its manifest requirement accepts the version in the same plan.
+///
+/// This is deliberately a metadata check, not a crates.io lookup: registry
+/// visibility is recorded separately after each upload and remains a distinct
+/// receipt fact.
+fn validate_publish_dependency_closure(metadata: &Metadata, plan: &PublishPlan) -> Result<()> {
+    let publishable: BTreeSet<&str> = plan.publish_order.iter().map(String::as_str).collect();
+    let workspace_member_ids: HashSet<&PackageId> = metadata.workspace_members.iter().collect();
+    let packages: BTreeMap<&str, &Package> = metadata
+        .packages
+        .iter()
+        .filter(|package| workspace_member_ids.contains(&package.id))
+        .map(|package| (package.name.as_str(), package))
+        .collect();
+    let mut violations = Vec::new();
+
+    for name in &plan.publish_order {
+        let Some(package) = packages.get(name.as_str()) else {
+            violations.push(format!(
+                "publish-plan package metadata is missing for '{name}'"
+            ));
+            continue;
+        };
+
+        for dependency in &package.dependencies {
+            if !is_publish_dependency(&dependency.kind) {
+                continue;
+            }
+            let Some(target) = packages.get(dependency.name.as_str()) else {
+                continue;
+            };
+            if !publishable.contains(dependency.name.as_str()) {
+                violations.push(format!(
+                    "'{}' depends on workspace crate '{}' outside the publish plan",
+                    package.name, dependency.name
+                ));
+                continue;
+            }
+            if !dependency.req.matches(&target.version) {
+                violations.push(format!(
+                    "'{}' requires '{}' as {}, but the publish plan contains {}",
+                    package.name, dependency.name, dependency.req, target.version
+                ));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        bail!(
+            "Cannot publish: dependency closure verification failed:\n  - {}",
+            violations.join("\n  - ")
+        )
+    }
+}
+
+/// Validate the package file list for every crate before the first upload.
+fn validate_publish_packages(plan: &PublishPlan) -> Result<()> {
+    let mut failures = Vec::new();
+    for crate_name in &plan.publish_order {
+        let output = Command::new("cargo")
+            .args(["package", "-p", crate_name, "--list", "--locked"])
+            .output()
+            .with_context(|| format!("spawn cargo package for {crate_name}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let details = if stderr.trim().is_empty() {
+                stdout.trim()
+            } else {
+                stderr.trim()
+            };
+            let details = if details.is_empty() {
+                format!("cargo package exited with status {}", output.status)
+            } else {
+                details.to_string()
+            };
+            failures.push(format!("{crate_name}: {details}"));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        bail!(
+            "Cannot publish: package preflight failed:\n  - {}",
+            failures.join("\n  - ")
+        )
+    }
+}
+
 /// Validate that publishable crates don't depend on non-publishable workspace crates.
 ///
 /// This catches the "silent broken publish" case where:
@@ -1760,7 +1862,11 @@ fn publish_crate_with_retry(crate_name: &str, args: &PublishArgs) -> Result<Publ
 }
 
 /// Run pre-publish checks.
-fn run_pre_publish_checks(args: &PublishArgs, workspace_version: &str) -> Result<()> {
+fn run_pre_publish_checks(
+    args: &PublishArgs,
+    metadata: &Metadata,
+    plan: &PublishPlan,
+) -> Result<()> {
     println!("Running pre-publish checks...\n");
 
     // Git status check
@@ -1806,7 +1912,7 @@ fn run_pre_publish_checks(args: &PublishArgs, workspace_version: &str) -> Result
             }
 
             let pkg_version = pkg.version.to_string();
-            if pkg_version != workspace_version {
+            if pkg_version != plan.workspace_version {
                 inconsistent.push(format!("{} ({})", pkg.name, pkg_version));
             }
         }
@@ -1815,16 +1921,19 @@ fn run_pre_publish_checks(args: &PublishArgs, workspace_version: &str) -> Result
             println!("✗");
             bail!(
                 "Version mismatch! Expected {}, but found:\n  {}",
-                workspace_version,
+                plan.workspace_version,
                 inconsistent.join("\n  ")
             );
         }
-        println!("✓ (all crates at {})", workspace_version);
+        println!("✓ (all crates at {})", plan.workspace_version);
     }
 
     // Changelog check
     if !args.skip_changelog_check {
-        print!("  Checking CHANGELOG.md contains {}... ", workspace_version);
+        print!(
+            "  Checking CHANGELOG.md contains {}... ",
+            plan.workspace_version
+        );
         io::stdout().flush()?;
 
         let changelog_path = Path::new("CHANGELOG.md");
@@ -1838,8 +1947,8 @@ fn run_pre_publish_checks(args: &PublishArgs, workspace_version: &str) -> Result
 
         // Look for version header like [1.3.0] or ## 1.3.0
         let version_patterns = [
-            format!("[{}]", workspace_version),
-            format!("## {}", workspace_version),
+            format!("[{}]", plan.workspace_version),
+            format!("## {}", plan.workspace_version),
         ];
 
         let has_version = version_patterns
@@ -1850,11 +1959,21 @@ fn run_pre_publish_checks(args: &PublishArgs, workspace_version: &str) -> Result
             println!("✗");
             bail!(
                 "CHANGELOG.md does not contain version {}. Add a changelog entry first.",
-                workspace_version
+                plan.workspace_version
             );
         }
         println!("✓");
     }
+
+    print!("  Checking dependency closure... ");
+    io::stdout().flush()?;
+    validate_publish_dependency_closure(metadata, plan)?;
+    println!("✓");
+
+    print!("  Checking package contents... ");
+    io::stdout().flush()?;
+    validate_publish_packages(plan)?;
+    println!("✓ ({} crates)", plan.publish_order.len());
 
     // Tests
     if !args.skip_tests {
@@ -2206,6 +2325,117 @@ mod tests {
         };
         if entry.state != PublishReceiptState::Published || entry.attempts != 1 {
             bail!("terminal receipt state and attempt count were not persisted");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_records_dependency_closure_preflight() -> Result<()> {
+        let mut receipt = new_publish_receipt(&receipt_test_plan());
+        if receipt
+            .crates
+            .iter()
+            .any(|entry| entry.dependency_closure.is_some())
+        {
+            bail!("new receipt must not claim dependency closure before preflight");
+        }
+
+        mark_dependency_closure_verified(&mut receipt);
+        if receipt
+            .crates
+            .iter()
+            .any(|entry| entry.dependency_closure != Some(true))
+        {
+            bail!("preflight must mark every planned crate as verified");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn dependency_closure_preflight_accepts_the_current_workspace() -> Result<()> {
+        let metadata = MetadataCommand::new()
+            .no_deps()
+            .exec()
+            .context("load workspace metadata for closure fixture")?;
+        let workspace_member_ids: HashSet<&PackageId> = metadata.workspace_members.iter().collect();
+        let publish_order = metadata
+            .packages
+            .iter()
+            .filter(|package| workspace_member_ids.contains(&package.id))
+            .filter(|package| {
+                package
+                    .publish
+                    .as_ref()
+                    .map_or(true, |targets| !targets.is_empty())
+            })
+            .map(|package| package.name.clone())
+            .collect();
+        let plan = PublishPlan {
+            publish_order,
+            inclusion_reasons: BTreeMap::new(),
+            exclusion_reasons: BTreeMap::new(),
+            workspace_version: "fixture".to_string(),
+        };
+
+        validate_publish_dependency_closure(&metadata, &plan)?;
+        let mut receipt = new_publish_receipt(&plan);
+        mark_dependency_closure_verified(&mut receipt);
+        if receipt
+            .crates
+            .iter()
+            .any(|entry| entry.dependency_closure != Some(true))
+        {
+            bail!("validated closure must be recorded for every planned crate");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn dependency_closure_preflight_rejects_an_omitted_workspace_dependency() -> Result<()> {
+        let metadata = MetadataCommand::new()
+            .no_deps()
+            .exec()
+            .context("load workspace metadata for negative closure fixture")?;
+        let workspace_member_ids: HashSet<&PackageId> = metadata.workspace_members.iter().collect();
+        let packages: Vec<&Package> = metadata
+            .packages
+            .iter()
+            .filter(|package| workspace_member_ids.contains(&package.id))
+            .filter(|package| {
+                package
+                    .publish
+                    .as_ref()
+                    .map_or(true, |targets| !targets.is_empty())
+            })
+            .collect();
+        let Some((dependent, dependency)) = packages.iter().find_map(|package| {
+            package
+                .dependencies
+                .iter()
+                .find(|candidate| is_publish_dependency(&candidate.kind))
+                .and_then(|candidate| {
+                    packages
+                        .iter()
+                        .any(|target| target.name == candidate.name)
+                        .then(|| (package.name.as_str(), candidate.name.as_str()))
+                })
+        }) else {
+            bail!("workspace fixture must contain a publish-relevant workspace dependency");
+        };
+        let publish_order = packages
+            .iter()
+            .filter(|package| package.name != dependency || package.name == dependent)
+            .map(|package| package.name.clone())
+            .collect();
+        let plan = PublishPlan {
+            publish_order,
+            inclusion_reasons: BTreeMap::new(),
+            exclusion_reasons: BTreeMap::new(),
+            workspace_version: "fixture".to_string(),
+        };
+
+        if validate_publish_dependency_closure(&metadata, &plan).is_ok() {
+            bail!("closure preflight must reject an omitted workspace dependency");
         }
         Ok(())
     }
