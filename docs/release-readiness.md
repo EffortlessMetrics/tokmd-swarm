@@ -42,23 +42,6 @@ The next patch release exists to make the successful 1.15.0 path repeatable:
 - keep recovery overlays explicit and fixture-tested rather than rewriting
   package manifests with broad regexes.
 
-### Receipt-backed publication resume
-
-The publisher can persist a local, plan-bound receipt after each crate attempt:
-
-```bash
-cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
-cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
-```
-
-`--resume` skips only crates recorded as `published` or `already_present` and
-rejects a receipt whose workspace version or dependency order no longer matches
-the current plan. After a non-dry-run upload, it performs bounded crates.io
-visibility observations and records `registry_visible`; an unobserved result is
-retryable on resume rather than terminal. `dependency_closure` remains null
-until the separate package/closure proof records that fact. The receipt does
-not authorize publication or replace the registry inventory check.
-
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
 themselves.

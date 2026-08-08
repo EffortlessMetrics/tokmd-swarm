@@ -11,7 +11,6 @@ use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -20,7 +19,7 @@ use cargo_metadata::{DependencyKind, Metadata, MetadataCommand, Package, Package
 use chrono::{DateTime, FixedOffset, Utc};
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli::PublishArgs;
@@ -72,44 +71,6 @@ pub struct PublishPlan {
     pub workspace_version: String,
 }
 
-const PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v1";
-const PUBLISH_RECEIPT_VERSION: u32 = 1;
-static RECEIPT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum PublishReceiptState {
-    Planned,
-    InProgress,
-    Published,
-    AlreadyPresent,
-    Failed,
-    Complete,
-    Incomplete,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-struct PublishCrateReceipt {
-    name: String,
-    version: String,
-    state: PublishReceiptState,
-    attempts: u32,
-    registry_visible: Option<bool>,
-    dependency_closure: Option<bool>,
-    reason: Option<String>,
-    updated_at: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-struct PublishReceipt {
-    schema: String,
-    schema_version: u32,
-    workspace_version: String,
-    state: PublishReceiptState,
-    publish_order: Vec<String>,
-    crates: Vec<PublishCrateReceipt>,
-}
-
 /// Publish all workspace crates in dependency order.
 pub fn run(args: PublishArgs) -> Result<()> {
     // Load workspace metadata
@@ -129,20 +90,6 @@ pub fn run(args: PublishArgs) -> Result<()> {
     if let Some(path) = args.registry_inventory.as_deref() {
         return run_registry_inventory(&metadata, &plan, path);
     }
-
-    let mut receipt = match args.receipt.as_deref() {
-        Some(path) if args.resume => Some(load_publish_receipt(path, &plan)?),
-        Some(path) => {
-            if path.exists() {
-                bail!(
-                    "publication receipt {} already exists; use --resume to continue it",
-                    path.display()
-                );
-            }
-            Some(new_publish_receipt(&plan))
-        }
-        None => None,
-    };
 
     // Handle --plan mode: just print and exit
     if args.plan {
@@ -165,28 +112,18 @@ pub fn run(args: PublishArgs) -> Result<()> {
         0
     };
 
-    let crates_to_publish = crates_to_publish(&plan, start_idx, receipt.as_ref());
+    let crates_to_publish = &plan.publish_order[start_idx..];
 
     // Print summary and require confirmation for real publishing
-    print_pre_publish_summary(&crates_to_publish, &args);
+    print_pre_publish_summary(&plan, &args, start_idx);
 
     if !args.dry_run && !args.yes && !confirm_publish()? {
         println!("\nPublish cancelled.");
         return Ok(());
     }
 
-    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
-        write_publish_receipt(path, receipt)?;
-    }
-
     // Execute publishing
-    let (succeeded, failed) = execute_publish(
-        &crates_to_publish,
-        &args,
-        &plan.workspace_version,
-        args.receipt.as_deref(),
-        receipt.as_mut(),
-    )?;
+    let (succeeded, failed) = execute_publish(crates_to_publish, &args)?;
 
     // Print summary
     println!("\n--- Summary ---");
@@ -201,296 +138,10 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if !failed.is_empty() {
-        if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-            receipt.state = PublishReceiptState::Incomplete;
-            write_publish_receipt(path, receipt)?;
-        }
         bail!("{} crate(s) failed to publish", failed.len());
     }
 
-    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-        receipt.state = PublishReceiptState::Complete;
-        write_publish_receipt(path, receipt)?;
-    }
-
     Ok(())
-}
-
-fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
-    let now = Utc::now().to_rfc3339();
-    PublishReceipt {
-        schema: PUBLISH_RECEIPT_SCHEMA.to_string(),
-        schema_version: PUBLISH_RECEIPT_VERSION,
-        workspace_version: plan.workspace_version.clone(),
-        state: PublishReceiptState::Planned,
-        publish_order: plan.publish_order.clone(),
-        crates: plan
-            .publish_order
-            .iter()
-            .map(|name| PublishCrateReceipt {
-                name: name.clone(),
-                version: plan.workspace_version.clone(),
-                state: PublishReceiptState::Planned,
-                attempts: 0,
-                registry_visible: None,
-                dependency_closure: None,
-                reason: None,
-                updated_at: now.clone(),
-            })
-            .collect(),
-    }
-}
-
-fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceipt> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("read publication receipt {}", path.display()))?;
-    let receipt: PublishReceipt = serde_json::from_str(&content)
-        .with_context(|| format!("parse publication receipt {}", path.display()))?;
-    if receipt.schema != PUBLISH_RECEIPT_SCHEMA {
-        bail!(
-            "publication receipt {} has schema `{}`; expected `{PUBLISH_RECEIPT_SCHEMA}`",
-            path.display(),
-            receipt.schema
-        );
-    }
-    if receipt.schema_version != PUBLISH_RECEIPT_VERSION {
-        bail!(
-            "publication receipt {} has schema_version {}; expected {PUBLISH_RECEIPT_VERSION}",
-            path.display(),
-            receipt.schema_version
-        );
-    }
-    if receipt.workspace_version != plan.workspace_version {
-        bail!(
-            "publication receipt version {} does not match workspace version {}",
-            receipt.workspace_version,
-            plan.workspace_version
-        );
-    }
-    if receipt.publish_order != plan.publish_order {
-        bail!(
-            "publication receipt order does not match the current publish plan; rebuild the receipt from the same workspace and filters"
-        );
-    }
-    if receipt.crates.len() != plan.publish_order.len()
-        || receipt
-            .crates
-            .iter()
-            .zip(plan.publish_order.iter())
-            .any(|(entry, name)| entry.name != *name || entry.version != plan.workspace_version)
-    {
-        bail!("publication receipt crate entries do not match the current publish plan");
-    }
-    for entry in &receipt.crates {
-        validate_publish_receipt_entry(entry)?;
-    }
-    if receipt.state == PublishReceiptState::Complete
-        && receipt.crates.iter().any(|entry| {
-            !matches!(
-                entry.state,
-                PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-            )
-        })
-    {
-        bail!("complete publication receipt contains a non-terminal crate entry");
-    }
-    Ok(receipt)
-}
-
-fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create publication receipt parent {}", parent.display()))?;
-    }
-    let json = serde_json::to_string_pretty(receipt).context("serialize publication receipt")?;
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
-        .to_string_lossy();
-    let temp_path = parent.join(format!(
-        ".{file_name}.tmp-{}-{}",
-        std::process::id(),
-        RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    let mut temp = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&temp_path)
-        .with_context(|| {
-            format!(
-                "create temporary publication receipt {}",
-                temp_path.display()
-            )
-        })?;
-    let write_result = (|| -> Result<()> {
-        temp.write_all(format!("{json}\n").as_bytes())?;
-        temp.sync_all()
-            .context("sync temporary publication receipt")?;
-        Ok(())
-    })();
-    drop(temp);
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&temp_path);
-        return Err(error).with_context(|| format!("write publication receipt {}", path.display()));
-    }
-    install_publish_receipt(&temp_path, path)
-}
-
-#[cfg(not(windows))]
-fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
-    fs::rename(temp_path, path)
-        .with_context(|| format!("install publication receipt {}", path.display()))?;
-    Ok(())
-}
-
-#[cfg(windows)]
-fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
-    if !path.exists() {
-        fs::rename(temp_path, path)
-            .with_context(|| format!("install publication receipt {}", path.display()))?;
-        return Ok(());
-    }
-
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
-        .to_string_lossy();
-    let backup_path = parent.join(format!(
-        ".{file_name}.backup-{}-{}",
-        std::process::id(),
-        RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::rename(path, &backup_path)
-        .with_context(|| format!("stage existing publication receipt {}", path.display()))?;
-
-    if let Err(error) = fs::rename(temp_path, path) {
-        let restore_result = fs::rename(&backup_path, path);
-        let _ = fs::remove_file(temp_path);
-        if let Err(restore_error) = restore_result {
-            return Err(anyhow!(
-                "install publication receipt failed: {error}; restoring the previous receipt also failed: {restore_error}; previous receipt remains at {}",
-                backup_path.display()
-            ));
-        }
-        return Err(error)
-            .with_context(|| format!("install publication receipt {}", path.display()));
-    }
-
-    let _ = fs::remove_file(backup_path);
-    Ok(())
-}
-
-fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
-    let valid = match (&entry.state, entry.attempts, entry.reason.as_deref()) {
-        (PublishReceiptState::Planned, 0, None) => true,
-        (PublishReceiptState::InProgress, attempts, None) if attempts > 0 => true,
-        (PublishReceiptState::Published | PublishReceiptState::AlreadyPresent, attempts, None)
-            if attempts > 0 =>
-        {
-            true
-        }
-        (PublishReceiptState::Failed, attempts, Some(reason))
-            if attempts > 0 && !reason.trim().is_empty() =>
-        {
-            true
-        }
-        _ => false,
-    };
-    if !valid {
-        bail!(
-            "publication receipt entry `{}` has inconsistent state, attempts, or reason",
-            entry.name
-        );
-    }
-    Ok(())
-}
-
-fn crates_to_publish(
-    plan: &PublishPlan,
-    start_idx: usize,
-    receipt: Option<&PublishReceipt>,
-) -> Vec<String> {
-    plan.publish_order
-        .iter()
-        .skip(start_idx)
-        .filter(|name| {
-            receipt.is_none_or(|receipt| {
-                receipt
-                    .crates
-                    .iter()
-                    .find(|entry| entry.name == **name)
-                    .is_none_or(|entry| {
-                        !matches!(
-                            entry.state,
-                            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-                        ) || entry.registry_visible != Some(true)
-                    })
-            })
-        })
-        .cloned()
-        .collect()
-}
-
-fn update_publish_receipt(
-    path: &Path,
-    receipt: &mut PublishReceipt,
-    crate_name: &str,
-    state: PublishReceiptState,
-    reason: Option<String>,
-    increment_attempt: bool,
-) -> Result<()> {
-    let entry = receipt
-        .crates
-        .iter_mut()
-        .find(|entry| entry.name == crate_name)
-        .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
-    if increment_attempt {
-        entry.attempts = entry.attempts.saturating_add(1);
-    }
-    entry.state = state;
-    entry.reason = reason;
-    entry.updated_at = Utc::now().to_rfc3339();
-    receipt.state = PublishReceiptState::InProgress;
-    write_publish_receipt(path, receipt)
-}
-
-fn update_publish_receipt_visibility(
-    path: &Path,
-    receipt: &mut PublishReceipt,
-    crate_name: &str,
-    lookup: &RegistryVersionLookup,
-) -> Result<()> {
-    let entry = receipt
-        .crates
-        .iter_mut()
-        .find(|entry| entry.name == crate_name)
-        .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
-    entry.registry_visible = match lookup.state {
-        "present" => Some(true),
-        "missing" | "yanked" => Some(false),
-        _ => None,
-    };
-    if lookup.state != "present" {
-        entry.reason = lookup.error.clone().or_else(|| {
-            Some(format!(
-                "registry visibility check ended in `{}`",
-                lookup.state
-            ))
-        });
-    }
-    entry.updated_at = Utc::now().to_rfc3339();
-    write_publish_receipt(path, receipt)
 }
 
 #[derive(Debug, Serialize)]
@@ -522,8 +173,6 @@ pub const PUBLISH_REGISTRY_SCHEMA_VERSION: &str = "tokmd.publish_registry.v1";
 /// 16-crate publish surface issues 16 back-to-back requests and reliably
 /// earns HTTP 429, which would misreport published crates as `unavailable`.
 const REGISTRY_REQUEST_DELAY: Duration = Duration::from_millis(1_000);
-/// Maximum number of bounded visibility observations after an upload.
-const REGISTRY_VISIBILITY_ATTEMPTS: u32 = 3;
 
 /// Maximum number of retries for a single rate-limited crates.io request.
 const REGISTRY_RATE_LIMIT_RETRIES: u32 = 3;
@@ -685,27 +334,6 @@ fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLoo
 
         return parse_registry_version_response(crate_name, version, fetched.status, &fetched.body);
     }
-}
-
-fn wait_for_registry_visibility(
-    crate_name: &str,
-    version: &str,
-    interval: u64,
-) -> RegistryVersionLookup {
-    let mut lookup = query_registry_version(crate_name, version);
-    for attempt in 1..REGISTRY_VISIBILITY_ATTEMPTS {
-        if matches!(lookup.state, "present" | "yanked") {
-            return lookup;
-        }
-        if interval > 0 {
-            sleep(Duration::from_secs(interval));
-        }
-        lookup = query_registry_version(crate_name, version);
-        if attempt + 1 == REGISTRY_VISIBILITY_ATTEMPTS {
-            break;
-        }
-    }
-    lookup
 }
 
 /// A single crates.io API response, reduced to what classification needs.
@@ -1152,7 +780,8 @@ fn reconstruct_publish_command(args: &PublishArgs) -> String {
 }
 
 /// Print pre-publish summary before execution.
-fn print_pre_publish_summary(crates_to_publish: &[String], args: &PublishArgs) {
+fn print_pre_publish_summary(plan: &PublishPlan, args: &PublishArgs, start_idx: usize) {
+    let crates_to_publish = &plan.publish_order[start_idx..];
     let mode = if args.dry_run { "[DRY RUN] " } else { "" };
 
     println!("\n{}Publishing {} crate(s):", mode, crates_to_publish.len());
@@ -1185,13 +814,7 @@ fn confirm_publish() -> Result<bool> {
 }
 
 /// Execute the publish for a list of crates.
-fn execute_publish(
-    crates: &[String],
-    args: &PublishArgs,
-    version: &str,
-    receipt_path: Option<&Path>,
-    mut receipt: Option<&mut PublishReceipt>,
-) -> Result<(Vec<String>, Vec<String>)> {
+fn execute_publish(crates: &[String], args: &PublishArgs) -> Result<(Vec<String>, Vec<String>)> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
@@ -1199,133 +822,26 @@ fn execute_publish(
         let position = format!("[{}/{}]", idx + 1, crates.len());
         println!("{} Publishing {}...", position, crate_name);
 
-        if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-            update_publish_receipt(
-                path,
-                receipt,
-                crate_name,
-                PublishReceiptState::InProgress,
-                None,
-                true,
-            )?;
-        }
-
         let result = publish_crate_with_retry(crate_name, args)?;
 
         match result {
             PublishResult::Success => {
-                let visibility = (!args.dry_run)
-                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
-                if let Some(lookup) = visibility
-                    .as_ref()
-                    .filter(|lookup| lookup.state != "present")
-                {
-                    let reason = lookup.error.clone().unwrap_or_else(|| {
-                        format!("registry visibility check ended in `{}`", lookup.state)
-                    });
-                    println!(
-                        "  ✗ Published {} but registry visibility was not proven",
-                        crate_name
-                    );
-                    failed.push(crate_name.clone());
-                    if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                        update_publish_receipt(
-                            path,
-                            receipt,
-                            crate_name,
-                            PublishReceiptState::Failed,
-                            Some(reason),
-                            false,
-                        )?;
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
-                    }
-                    if !args.continue_on_error {
-                        bail!(
-                            "Published {} but registry visibility was not proven. Resume with --receipt",
-                            crate_name
-                        );
-                    }
-                    continue;
-                }
                 println!("  ✓ Published {}", crate_name);
                 succeeded.push(crate_name.clone());
-                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                    update_publish_receipt(
-                        path,
-                        receipt,
-                        crate_name,
-                        PublishReceiptState::Published,
-                        None,
-                        false,
-                    )?;
-                    if let Some(lookup) = visibility.as_ref() {
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
-                    }
+
+                // Wait for crates.io propagation (unless last or dry-run)
+                if idx < crates.len() - 1 && !args.dry_run {
+                    println!("  Waiting {}s for crates.io propagation...", args.interval);
+                    sleep(Duration::from_secs(args.interval));
                 }
             }
             PublishResult::AlreadyPublished => {
-                let visibility = (!args.dry_run)
-                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
-                if let Some(lookup) = visibility
-                    .as_ref()
-                    .filter(|lookup| lookup.state != "present")
-                {
-                    let reason = lookup.error.clone().unwrap_or_else(|| {
-                        format!("registry visibility check ended in `{}`", lookup.state)
-                    });
-                    println!(
-                        "  ✗ {} was reported already published but registry visibility was not proven",
-                        crate_name
-                    );
-                    failed.push(crate_name.clone());
-                    if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                        update_publish_receipt(
-                            path,
-                            receipt,
-                            crate_name,
-                            PublishReceiptState::Failed,
-                            Some(reason),
-                            false,
-                        )?;
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
-                    }
-                    if !args.continue_on_error {
-                        bail!(
-                            "{} was reported already published but registry visibility was not proven. Resume with --receipt",
-                            crate_name
-                        );
-                    }
-                    continue;
-                }
                 println!("  ✓ {} already published", crate_name);
                 succeeded.push(crate_name.clone());
-                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                    update_publish_receipt(
-                        path,
-                        receipt,
-                        crate_name,
-                        PublishReceiptState::AlreadyPresent,
-                        None,
-                        false,
-                    )?;
-                    if let Some(lookup) = visibility.as_ref() {
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
-                    }
-                }
             }
             PublishResult::Failed(e) => {
                 println!("  ✗ Failed to publish {}: {}", crate_name, e);
                 failed.push(crate_name.clone());
-                if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                    update_publish_receipt(
-                        path,
-                        receipt,
-                        crate_name,
-                        PublishReceiptState::Failed,
-                        Some(e.to_string()),
-                        false,
-                    )?;
-                }
 
                 if !args.continue_on_error {
                     bail!(
@@ -1931,7 +1447,6 @@ fn create_git_tag(args: &PublishArgs, version: &str) -> Result<()> {
 mod tests {
     use super::*;
     use chrono::Datelike;
-    use tempfile::tempdir;
 
     #[test]
     fn test_classify_already_published() {
@@ -2165,140 +1680,5 @@ mod tests {
         assert!(is_registry_rate_limited(503));
         assert!(!is_registry_rate_limited(200));
         assert!(!is_registry_rate_limited(404));
-    }
-
-    fn receipt_test_plan() -> PublishPlan {
-        PublishPlan {
-            publish_order: vec!["tokmd-core".to_string(), "tokmd".to_string()],
-            inclusion_reasons: BTreeMap::new(),
-            exclusion_reasons: BTreeMap::new(),
-            workspace_version: "1.15.0".to_string(),
-        }
-    }
-
-    #[test]
-    fn publication_receipt_round_trips_terminal_state_and_attempt_count() -> Result<()> {
-        let plan = receipt_test_plan();
-        let directory = tempdir().context("create receipt test directory")?;
-        let path = directory.path().join("publish.json");
-        let mut receipt = new_publish_receipt(&plan);
-        write_publish_receipt(&path, &receipt)?;
-        update_publish_receipt(
-            &path,
-            &mut receipt,
-            "tokmd-core",
-            PublishReceiptState::InProgress,
-            None,
-            true,
-        )?;
-        update_publish_receipt(
-            &path,
-            &mut receipt,
-            "tokmd-core",
-            PublishReceiptState::Published,
-            None,
-            false,
-        )?;
-
-        let loaded = load_publish_receipt(&path, &plan)?;
-        let Some(entry) = loaded.crates.first() else {
-            bail!("receipt should contain the first planned crate");
-        };
-        if entry.state != PublishReceiptState::Published || entry.attempts != 1 {
-            bail!("terminal receipt state and attempt count were not persisted");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publication_receipt_rejects_a_different_publish_plan() -> Result<()> {
-        let plan = receipt_test_plan();
-        let directory = tempdir().context("create receipt test directory")?;
-        let path = directory.path().join("publish.json");
-        write_publish_receipt(&path, &new_publish_receipt(&plan))?;
-        let mut changed = plan;
-        changed.publish_order.reverse();
-        if load_publish_receipt(&path, &changed).is_ok() {
-            bail!("resume must reject a receipt created for a different publish order");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publication_receipt_resume_skips_terminal_entries_and_retries_failed_entries() -> Result<()>
-    {
-        let plan = receipt_test_plan();
-        let mut receipt = new_publish_receipt(&plan);
-        let Some(entry) = receipt.crates.get_mut(0) else {
-            bail!("receipt test plan should contain a first crate");
-        };
-        entry.state = PublishReceiptState::Published;
-        entry.attempts = 1;
-        entry.registry_visible = Some(true);
-
-        let crates = crates_to_publish(&plan, 0, Some(&receipt));
-        if crates != vec!["tokmd".to_string()] {
-            bail!("resume should skip only the terminal publication entry");
-        }
-
-        let Some(entry) = receipt.crates.get_mut(0) else {
-            bail!("receipt test plan should contain a first crate");
-        };
-        entry.state = PublishReceiptState::Failed;
-        entry.attempts = 1;
-        entry.reason = Some("registry unavailable".to_string());
-        let crates = crates_to_publish(&plan, 0, Some(&receipt));
-        if crates != plan.publish_order {
-            bail!("resume should retry a failed publication entry");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publication_receipt_retries_published_entries_without_visibility_proof() -> Result<()> {
-        let plan = receipt_test_plan();
-        let mut receipt = new_publish_receipt(&plan);
-        let Some(entry) = receipt.crates.get_mut(0) else {
-            bail!("receipt test plan should contain a first crate");
-        };
-        entry.state = PublishReceiptState::Published;
-        entry.attempts = 1;
-        entry.registry_visible = Some(false);
-
-        let crates = crates_to_publish(&plan, 0, Some(&receipt));
-        if crates != plan.publish_order {
-            bail!("resume must retry a published entry without visibility proof");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publication_receipt_retries_unobserved_registry_visibility() -> Result<()> {
-        let plan = receipt_test_plan();
-        let mut receipt = new_publish_receipt(&plan);
-        let Some(entry) = receipt.crates.get_mut(0) else {
-            bail!("receipt test plan should contain a first crate");
-        };
-        entry.state = PublishReceiptState::Published;
-        entry.attempts = 1;
-
-        let crates = crates_to_publish(&plan, 0, Some(&receipt));
-        if crates != plan.publish_order {
-            bail!("resume must retry an unobserved registry entry");
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publication_receipt_rejects_inconsistent_entry_state() -> Result<()> {
-        let mut receipt = new_publish_receipt(&receipt_test_plan());
-        let Some(entry) = receipt.crates.get_mut(0) else {
-            bail!("receipt test plan should contain a first crate");
-        };
-        entry.state = PublishReceiptState::Published;
-        if validate_publish_receipt_entry(entry).is_ok() {
-            bail!("inconsistent published entry should be rejected");
-        }
-        Ok(())
     }
 }
