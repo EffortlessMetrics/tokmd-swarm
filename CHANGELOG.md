@@ -13,28 +13,10 @@ promotion. No product or schema changes are implied by this section.
 
 ## [1.15.0] - 2026-08-04
 
-The 1.15.0 stable release includes the capabilities and fixes carried by RC1,
-RC2, and RC3. The release required immutable-tag crates.io recovery; all 16
-planned crates, published artifacts, Action/container paths, GHCR aliases, and
-the released WASM browser path are recorded as consumer-proven in the 1.15
-ledger.
-
-## [1.15.0-rc.3] - 2026-08-04
-
-### Fixed
-
-- Refresh the browser repository-load controls when the WASM worker reports
-  archive ZIP capability, so the released ZIP workflow is actionable.
-
-## [1.15.0-rc.2] - 2026-08-04
-
-### Fixed
-
-- Corrected the release candidate WASM artifact path so the published bundle
-  includes the archive-enabled ZIP ingestion capability proved by the browser
-  runner.
-
-## [1.15.0-rc.1] - 2026-08-03
+The 1.15.0 stable release includes the user-facing capabilities and fixes
+carried by RC1, RC2, and RC3. All 16 planned crates, published artifacts,
+Action/container paths, GHCR aliases, and the released WASM browser path are
+recorded as consumer-proven in the [1.15 release ledger](docs/releases/1.15-ledger.md).
 
 ### Added
 
@@ -42,8 +24,6 @@ ledger.
   fail-closed ZIP admission across native and browser/WASM paths.
 - `--show-config`, richer progress events, and packet-consumption contracts for
   review workflows.
-- Opt-in syntax and shadow evidence improvements, with explicit advisory
-  evidence boundaries for downstream consumers.
 
 ### Changed
 
@@ -53,95 +33,42 @@ ledger.
   `version` remains available for RC selection, rollback, and verified pins.
 - The release workflow builds the archive-enabled WASM artifact and proves a
   pre-tag candidate container digest before exact-tag promotion.
+- The Action container runtime accepts only verification-gated GHCR tags; the
+  binary runtime remains the default.
+- The dependency refresh changes only generated help wording, and the golden
+  CLI snapshot and reference are kept in sync.
 
 ### Fixed
 
-- Scan options are now accepted after a subcommand as well as before it.
-  `--config`, `--hidden`, `--no-ignore`, `--no-ignore-parent`,
-  `--no-ignore-dot`, `--no-ignore-vcs`, and `--treat-doc-strings-as-comments`
-  were root-only, so `tokmd export --hidden` failed with
-  `unexpected argument '--hidden' found` (and clap unhelpfully suggested
-  `--children`) while `tokmd --hidden export` worked. Nothing in the help
-  output distinguished them from `--exclude` and `--no-progress`, which were
-  already global. They are now all global, and appear in every subcommand's
-  `--help`. `--verbose` deliberately stays root-only because
-  `tokmd check-ignore` defines its own `-v`.
-- `tokmd <typo>` can once again suggest every subcommand. The "did you mean"
-  list was a hard-coded literal that had fallen four commands behind, so a
-  misspelling of `render`, `packet`, `evidence-packet`, or `syntax` produced no
-  suggestion at all — only a generic pointer to `--help`. It is now derived
-  from the clap parser, so it stays current automatically and reflects
-  feature-gated commands only when they are compiled in.
-- `docs/reference-cli.md` now regenerates the `syntax`, `evidence-packet`, and
-  `render` help blocks. All three had `<!-- HELP: -->` marker pairs in the file
-  but no entry in the `cargo xtask docs` generator list, so they were never
-  rewritten and had frozen at whatever was last pasted in by hand — which meant
-  `cargo xtask docs --check` reported the reference as up to date while those
-  three blocks drifted. They were missing the scan options this release makes
-  global, along with other accumulated changes.
-
-### Changed
-
-- Refreshed the `rust-minor-patch` dependency group to semver-compatible
-  minor/patch releases. The only user-visible effect is in `--help` output:
-  clap 4.6.5 renders a single alias as `[alias: --ignore]` where 4.6.1 rendered
-  `[aliases: --ignore]`. Flag names and behavior are unchanged; the golden CLI
-  snapshot and `docs/reference-cli.md` are regenerated to match.
-- Hardened the `docs_schema_w72` changelog guard to require the current
-  schema constants in `CONSTANT = value` form: `COCKPIT_SCHEMA_VERSION = 3`,
-  `CONTEXT_SCHEMA_VERSION = 4`, `CONTEXT_BUNDLE_SCHEMA_VERSION = 2`,
-  `HANDOFF_SCHEMA_VERSION = 5`, and `TOOL_SCHEMA_VERSION = 1`. A name-only
-  mention no longer satisfies the guard, so bumping any of these constants
-  now requires a matching changelog entry.
-- Enabled `runtime: container` in the `EffortlessMetrics/tokmd` GitHub Action.
-  It anonymously pulls the publication GHCR image
-  (`ghcr.io/effortlessmetrics/tokmd`) and runs it against the mounted workspace
-  through a `docker run` wrapper, matching the binary runtime's repo-relative
-  scoped-path and base/head behavior. It requires a Linux runner with Docker and
-  accepts only verification-gated tags (currently `1.14.0`); mutable tags such
-  as `latest` and any non-gated tag are hard errors pointing at
-  `docs/specs/packet-ghcr-runtime.md`. The default `binary` runtime is
-  unchanged. No version bump, tag, or publish accompanies this change.
-
-### Fixed
-
-- Dropped the stale `version: '1.11.0'` pin from every copy-pasteable GitHub
-  Action example: both blocks in `README.md` plus 16 more across
-  `docs/action-quickstart.md`, `docs/github-action.md`, `docs/start-here.md`,
-  `docs/install.md`, `docs/install-and-try.md`, `docs/recipes.md`,
-  `docs/browser-to-native.md`, and `docs/tokmd-in-cockpit.md`. The workspace is
-  at 1.14.0 and released Action refs now carry an exact default matching the
-  workspace release, so copy-pasting any of them would pin adopters to a
-  three-minor-versions-old binary — worse than inheriting the ref's exact
-  default. They now omit the input. The
-  Versioning Model section of `docs/github-action.md` still pins explicitly,
-  because demonstrating the `version` input is its purpose; that example moves
-  to 1.14.0. The release-candidate example and the version-to-tag mapping table
-  keep their `1.11.0` strings, which illustrate format rather than recommend a
-  release.
-- Dropped the `version: '1.14.0'` pin from the three `mode: packet` Action
-  examples in `docs/github-action.md`, `docs/action-quickstart.md`, and
-  `docs/packet-workflows.md`. The first sweep missed them because they pin the
-  current version rather than a stale one, and one of them quotes the value
-  differently. They are ordinary copy-pasteable examples with no reason to pin,
-  and they would have gone stale on the next release exactly as the `1.11.0`
-  ones did. The `runtime: container` example in `docs/packet-workflows.md` keeps
-  its explicit `version`, which has to match the verification-gated image tag.
-- Added link-reference definitions to `CHANGELOG.md`. All 29 `## [version]`
-  headings were dangling shortcut references that rendered as literal
-  `[1.14.0]` text; each now resolves to a GitHub compare view (or, for
-  `0.1.0`, the release tag).
-
-### Fixed
-
+- Scan options are accepted after a subcommand as well as before it, and typo
+  suggestions are derived from the current parser.
+- The generated CLI reference now includes the `syntax`, `evidence-packet`,
+  and `render` help blocks.
 - Root/default-mode options that were parsed before a subcommand and then
   silently ignored now fail as typed usage errors instead of producing output
   under the wrong contract.
 - Output aliases preserve script compatibility while generated help and
   examples use canonical `--output` and `--output-dir` spellings.
-- Release metadata and artifact checks now cover the Action default, CFF
-  version/date, archive-enabled WASM, exact container digests, and delayed
-  mutable-alias promotion.
+- Copy-pasteable Action examples no longer pin stale or current versions unless
+  the example explicitly demonstrates version selection or a verified image.
+- Release metadata and artifact checks cover the Action default, CFF version and
+  date, archive-enabled WASM, exact container digests, and delayed aliases.
+
+### Security
+
+- ZIP admission remains fail-closed across native and browser/WASM paths; this
+  release makes no claim of undefined-behavior absence.
+
+### Documentation
+
+- The CLI reference, release ledger, and readiness record describe the same
+  shipped surface and evidence boundary.
+
+### Release process
+
+- Stable publication required recovery from the immutable `v1.15.0` tag. The
+  incident receipt records per-crate recovery and the ledger records final
+  consumer proof; the tag itself was not rewritten.
 
 ### Non-claims
 
@@ -151,8 +78,18 @@ ledger.
   decisions, or promote proof, mutation, coverage, or AST results by default.
 - The inactive Homebrew, AUR, Scoop, and WinGet prototypes are not supported
   distribution channels for 1.15.
-- A container tag is unsupported until its exact image passes the candidate and
+- A container tag is unsupported until its exact image passes candidate and
   anonymous runtime verification gates.
+
+### Release-candidate history
+
+- [RC1][1.15.0-rc.1] established the snapshot, packet, CLI, Action, and
+  archive-enabled WASM surfaces summarized above.
+- [RC2][1.15.0-rc.2] corrected the release-candidate WASM artifact path so the
+  archive-enabled ZIP capability was included in the published bundle.
+- [RC3][1.15.0-rc.3] refreshed browser repository-load controls after the WASM
+  worker reported archive ZIP capability, making the released ZIP flow
+  actionable.
 
 ## [1.14.0] - 2026-06-25
 
