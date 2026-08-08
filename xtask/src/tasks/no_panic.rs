@@ -1365,22 +1365,26 @@ mod tests {
         // this the test would pass vacuously if a future syn stopped parsing
         // `impl !Send for Thing {}` as an `ItemImpl`: the negative impl would
         // simply vanish, and the surrounding containers would still line up.
-        let syntax = syn::parse_file(source).expect("parse test source");
+        let syntax = syn::parse_file(source);
+        assert!(syntax.is_ok(), "fixture must parse under the current syn");
         let impls: Vec<&syn::ItemImpl> = syntax
-            .items
             .iter()
+            .flat_map(|file| &file.items)
             .filter_map(|item| match item {
                 syn::Item::Impl(item) => Some(item),
                 _ => None,
             })
             .collect();
         assert_eq!(impls.len(), 3, "fixture must contribute three impl blocks");
-        let negative = impls.get(1).expect("negative impl is the second block");
-        let (trait_path, _) = negative
-            .trait_
-            .as_ref()
-            .expect("negative impl still carries a trait path");
-        assert_eq!(path_string(trait_path), "Send");
+        let negative_trait = impls
+            .get(1)
+            .and_then(|item| item.trait_.as_ref())
+            .map(|(trait_path, _)| path_string(trait_path));
+        assert_eq!(
+            negative_trait.as_deref(),
+            Some("Send"),
+            "the negative impl must still parse with its trait path"
+        );
 
         let findings = parse(source);
 
