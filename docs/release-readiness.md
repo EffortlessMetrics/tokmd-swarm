@@ -57,9 +57,11 @@ known bootstrap crates, an intentional release may pass
 `--bootstrap tokmd-types,tokmd-envelope`; this maps only those selected crates
 to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
 verification, and an unknown or out-of-plan bootstrap name is rejected.
-The release shell entry point only guards the immutable tag and credentials;
-the xtask publisher owns ordering, retries, receipts, visibility, and the
-final publish-surface check.
+The release shell entry point guards the immutable tag and credentials and
+orchestrates the preflight and final surface commands; the xtask publisher owns
+ordering, retries, receipts, visibility, and bootstrap behavior. Release
+workflow artifacts persist the receipt so a rerun of the same workflow can
+restore and resume it.
 
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
