@@ -51,6 +51,12 @@ cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
 cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
 ```
 
+Development-only bootstrap cycles are opt-in and plan-bound. For the two
+known bootstrap crates, an intentional release may pass
+`--bootstrap tokmd-types,tokmd-envelope`; this maps only those selected crates
+to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
+verification, and an unknown or out-of-plan bootstrap name is rejected.
+
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
 the current plan. On the normal path (without `--skip-checks`), before the first
