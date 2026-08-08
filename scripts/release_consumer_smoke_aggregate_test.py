@@ -25,6 +25,13 @@ class AggregateContractTests(unittest.TestCase):
         result = aggregate_entries(receipts(statuses), {}, "stable")
         self.assertEqual(result["overall"], "failed")
 
+    def test_cargo_install_failure_blocks(self):
+        statuses = all_passed()
+        statuses["cargo-install"] = "failed"
+        result = aggregate_entries(receipts(statuses), {}, "stable")
+        self.assertEqual(result["entries"]["cargo-install"]["status"], "failed")
+        self.assertEqual(result["overall"], "failed")
+
     def test_absent_receipt_blocks(self):
         statuses = all_passed()
         del statuses["nix"]
