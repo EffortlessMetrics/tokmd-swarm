@@ -1346,8 +1346,7 @@ mod tests {
         // has an empty body, so it contributes no findings of its own — what
         // this pins is that the visitor still traverses one cleanly and
         // leaves the container stack balanced for the impls around it.
-        let findings = parse(
-            r#"
+        let source = r#"
             struct Thing;
             impl Thing {
                 fn helper(&self) {
@@ -1360,8 +1359,30 @@ mod tests {
                     panic!("eq");
                 }
             }
-            "#,
-        );
+            "#;
+
+        // Assert the fixture's shape before asserting behavior over it. Without
+        // this the test would pass vacuously if a future syn stopped parsing
+        // `impl !Send for Thing {}` as an `ItemImpl`: the negative impl would
+        // simply vanish, and the surrounding containers would still line up.
+        let syntax = syn::parse_file(source).expect("parse test source");
+        let impls: Vec<&syn::ItemImpl> = syntax
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                syn::Item::Impl(item) => Some(item),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(impls.len(), 3, "fixture must contribute three impl blocks");
+        let negative = impls.get(1).expect("negative impl is the second block");
+        let (trait_path, _) = negative
+            .trait_
+            .as_ref()
+            .expect("negative impl still carries a trait path");
+        assert_eq!(path_string(trait_path), "Send");
+
+        let findings = parse(source);
 
         let containers: Vec<&str> = findings
             .iter()
