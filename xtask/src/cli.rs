@@ -14,6 +14,8 @@ pub enum Commands {
     Bump(BumpArgs),
     /// Publish all crates in dependency order
     Publish(PublishArgs),
+    /// Inspect release state without mutating release surfaces
+    ReleaseStatus(ReleaseStatusArgs),
     /// Audit the publish surface and optional package/publish dry-run closure checks
     PublishSurface(PublishSurfaceArgs),
     /// Generate PR cockpit metrics for CI
@@ -1793,6 +1795,21 @@ pub struct PublishArgs {
     /// Skip confirmation prompt (required for non-dry-run without TTY)
     #[arg(long, short = 'y')]
     pub yes: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ReleaseStatusArgs {
+    /// Git tag to inspect, for example v1.15.1
+    #[arg(long)]
+    pub tag: String,
+
+    /// Optional machine-readable output path
+    #[arg(long, value_name = "PATH")]
+    pub json: Option<std::path::PathBuf>,
+
+    /// Offline status fixture containing a tokmd.release_status.v1 receipt
+    #[arg(long, value_name = "PATH")]
+    pub fixture: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug, Clone, Default)]
