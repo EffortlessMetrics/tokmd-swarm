@@ -1715,7 +1715,11 @@ pub struct PublishArgs {
     pub plan: bool,
 
     /// Query exact publish-plan versions on crates.io and write a fail-closed receipt.
-    #[arg(long, value_name = "PATH", conflicts_with_all = ["plan", "dry_run", "verify"])]
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with_all = ["plan", "dry_run", "verify", "bootstrap"]
+    )]
     pub registry_inventory: Option<std::path::PathBuf>,
 
     /// Write a durable per-crate publication receipt while publishing.
@@ -1789,6 +1793,15 @@ pub struct PublishArgs {
     /// Exclude specific crates from publishing (comma-separated). Fails if exclusion would break dependencies.
     #[arg(long, value_delimiter = ',')]
     pub exclude: Option<Vec<String>>,
+
+    /// Publish selected development-cycle bootstrap crates with Cargo verification disabled.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "CRATE",
+        conflicts_with = "dry_run"
+    )]
+    pub bootstrap: Option<Vec<String>>,
 
     /// Create and push git tag after successful publish (e.g., v1.3.0)
     #[arg(long)]
