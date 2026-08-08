@@ -87,11 +87,11 @@ For CI adoption, start with the GitHub Action quickstart. A review or packet
 workflow must fetch full history so `origin/main` and `HEAD` resolve:
 
 ```yaml
-- uses: actions/checkout@v6
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   with:
     fetch-depth: 0
 
-- uses: EffortlessMetrics/tokmd@v1
+- uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
   with:
     mode: packet
     base: origin/main
@@ -101,8 +101,10 @@ workflow must fetch full history so `origin/main` and `HEAD` resolve:
     artifact: 'true'
 ```
 
-Use the released `@v1` Action contract for stable adoption; pin a specific
-release when your workflow requires immutable action resolution.
+Use the released `@v1` Action contract for stable adoption. For immutable
+Action execution, pin the `uses:` reference to a full-length commit SHA and
+use the Action's `version` input separately to pin the downloaded `tokmd`
+release.
 
 For complete Action inputs and modes, see the [GitHub Action quickstart](docs/action-quickstart.md)
 and [reference](docs/github-action.md).
