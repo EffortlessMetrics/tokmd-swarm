@@ -112,10 +112,21 @@ fn validate_staged(root: &Path, paths: &[String]) -> Result<()> {
         println!("precommit: pass (no staged changes)");
         return Ok(());
     }
-    let fragments: Vec<&String> = paths.iter().filter(|path| is_fragment(path)).collect();
-    for path in &fragments {
-        let content = read_index_file(root, path)?;
-        validate_fragment(path, &content)?;
+    let mut fragments = Vec::new();
+    let mut deleted_fragment = false;
+    for path in paths.iter().filter(|path| is_fragment(path)) {
+        match read_index_file(root, path) {
+            Ok(content) => {
+                validate_fragment(path, &content)?;
+                fragments.push(path);
+            }
+            Err(_) => deleted_fragment = true,
+        }
+    }
+    if deleted_fragment && fragments.is_empty() {
+        bail!(
+            "precommit: a release-note fragment was deleted without a replacement\n\nCreate one explicitly, then stage it:\n  cargo change --kind changed --component Release --body \"Describe the release-note correction\""
+        );
     }
 
     let class = classify_paths(paths);
