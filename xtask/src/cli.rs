@@ -21,6 +21,12 @@ pub enum Commands {
     /// Manage documentation and verify examples
     #[command(alias = "docs-sync")]
     Docs(DocsArgs),
+    /// Create and validate Changie release-note fragments
+    Change(ChangeArgs),
+    /// Validate staged changes and require a release-note fragment when needed
+    Precommit(PrecommitArgs),
+    /// Install repository-managed Git hooks
+    Hooks(HooksArgs),
     /// Verify source-of-truth documentation artifact shape and links
     DocArtifacts(DocArtifactsArgs),
     /// Validate the Rust-native proof policy
@@ -167,6 +173,44 @@ pub struct AstShadowCheckArgs {
     /// Optional JSON receipt path for the verifier result.
     #[arg(long)]
     pub json: Option<std::path::PathBuf>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ChangeArgs {
+    /// Changie kind, such as added, changed, fixed, security, documentation, or internal
+    #[arg(long)]
+    pub kind: String,
+
+    /// Configured Changie component, such as CLI or Release
+    #[arg(long)]
+    pub component: String,
+
+    /// Release-note intent to record
+    #[arg(long)]
+    pub body: String,
+
+    /// Optional output path under .changes/unreleased/
+    #[arg(long)]
+    pub output: Option<std::path::PathBuf>,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct PrecommitArgs {
+    /// Inspect the Git index rather than the working tree
+    #[arg(long)]
+    pub staged: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct HooksArgs {
+    #[command(subcommand)]
+    pub command: HooksCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum HooksCommand {
+    /// Configure this repository to use .githooks
+    Install,
 }
 
 #[derive(Args, Debug, Clone, Default)]

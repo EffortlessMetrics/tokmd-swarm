@@ -1,0 +1,3 @@
+component: Release
+kind: changed
+body: "Added a staged Changie pre-commit path with explicit fragment validation and actionable creation guidance."
