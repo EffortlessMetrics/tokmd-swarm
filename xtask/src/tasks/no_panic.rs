@@ -1295,6 +1295,83 @@ mod tests {
     }
 
     #[test]
+    fn trait_impl_containers_disambiguate_same_named_methods() {
+        // Pins the `visit_item_impl` container naming across the syn 3
+        // `ItemImpl::trait_` tuple change. The dropped element was the `!` of
+        // a negative impl, so every case below must name the trait exactly as
+        // it did under syn 2.
+        let findings = parse(
+            r#"
+            struct Thing;
+            impl std::fmt::Display for Thing {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    panic!("display");
+                }
+            }
+            impl std::fmt::Debug for Thing {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    panic!("debug");
+                }
+            }
+            impl Thing {
+                fn fmt(&self) {
+                    panic!("inherent");
+                }
+            }
+            "#,
+        );
+
+        let containers: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.selector.container.as_str())
+            .collect();
+
+        // Three same-named `fmt` methods must produce three distinct
+        // identities, or allowlist entries would collide.
+        assert_eq!(
+            containers,
+            vec![
+                "<Thing as std::fmt::Display>::fmt",
+                "<Thing as std::fmt::Debug>::fmt",
+                "Thing::fmt",
+            ],
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn negative_trait_impl_names_the_trait_like_a_positive_impl() {
+        // The syn 2 destructure discarded a leading `Option<Not>`; syn 3 drops
+        // it from the tuple entirely. Either way the container must be the
+        // trait path, so a negative impl is named like a positive one.
+        let findings = parse(
+            r#"
+            struct Thing;
+            impl Thing {
+                fn helper(&self) {
+                    panic!("inherent");
+                }
+            }
+            impl PartialEq for Thing {
+                fn eq(&self, other: &Self) -> bool {
+                    panic!("eq");
+                }
+            }
+            "#,
+        );
+
+        let containers: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.selector.container.as_str())
+            .collect();
+        assert_eq!(
+            containers,
+            vec!["Thing::helper", "<Thing as PartialEq>::eq"],
+            "{findings:?}"
+        );
+    }
+
+    #[test]
     fn detects_element_and_range_indexing() {
         let findings = parse(
             r#"
