@@ -167,16 +167,16 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     let crates_to_publish = crates_to_publish(&plan, start_idx, receipt.as_ref());
 
-    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
-        write_publish_receipt(path, receipt)?;
-    }
-
     // Print summary and require confirmation for real publishing
-    print_pre_publish_summary(&plan, &args, start_idx);
+    print_pre_publish_summary(&crates_to_publish, &args);
 
     if !args.dry_run && !args.yes && !confirm_publish()? {
         println!("\nPublish cancelled.");
         return Ok(());
+    }
+
+    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
+        write_publish_receipt(path, receipt)?;
     }
 
     // Execute publishing
@@ -339,16 +339,54 @@ fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
         let _ = fs::remove_file(&temp_path);
         return Err(error).with_context(|| format!("write publication receipt {}", path.display()));
     }
-    #[cfg(windows)]
-    if path.exists() {
-        fs::remove_file(path)
-            .with_context(|| format!("replace publication receipt {}", path.display()))?;
+    install_publish_receipt(&temp_path, path)
+}
+
+#[cfg(not(windows))]
+fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
+    fs::rename(temp_path, path)
+        .with_context(|| format!("install publication receipt {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
+    if !path.exists() {
+        fs::rename(temp_path, path)
+            .with_context(|| format!("install publication receipt {}", path.display()))?;
+        return Ok(());
     }
-    if let Err(error) = fs::rename(&temp_path, path) {
-        let _ = fs::remove_file(&temp_path);
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
+        .to_string_lossy();
+    let backup_path = parent.join(format!(
+        ".{file_name}.backup-{}-{}",
+        std::process::id(),
+        RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::rename(path, &backup_path)
+        .with_context(|| format!("stage existing publication receipt {}", path.display()))?;
+
+    if let Err(error) = fs::rename(temp_path, path) {
+        let restore_result = fs::rename(&backup_path, path);
+        let _ = fs::remove_file(temp_path);
+        if let Err(restore_error) = restore_result {
+            return Err(anyhow!(
+                "install publication receipt failed: {error}; restoring the previous receipt also failed: {restore_error}; previous receipt remains at {}",
+                backup_path.display()
+            ));
+        }
         return Err(error)
             .with_context(|| format!("install publication receipt {}", path.display()));
     }
+
+    let _ = fs::remove_file(backup_path);
     Ok(())
 }
 
@@ -1062,8 +1100,7 @@ fn reconstruct_publish_command(args: &PublishArgs) -> String {
 }
 
 /// Print pre-publish summary before execution.
-fn print_pre_publish_summary(plan: &PublishPlan, args: &PublishArgs, start_idx: usize) {
-    let crates_to_publish = &plan.publish_order[start_idx..];
+fn print_pre_publish_summary(crates_to_publish: &[String], args: &PublishArgs) {
     let mode = if args.dry_run { "[DRY RUN] " } else { "" };
 
     println!("\n{}Publishing {} crate(s):", mode, crates_to_publish.len());
