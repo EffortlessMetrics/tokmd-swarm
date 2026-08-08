@@ -382,8 +382,9 @@ fn crates_to_publish(
     start_idx: usize,
     receipt: Option<&PublishReceipt>,
 ) -> Vec<String> {
-    plan.publish_order[start_idx..]
+    plan.publish_order
         .iter()
+        .skip(start_idx)
         .filter(|name| {
             receipt.is_none_or(|receipt| {
                 receipt
