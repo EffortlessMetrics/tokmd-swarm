@@ -855,7 +855,7 @@ impl<'ast> Visit<'ast> for PanicVisitor {
         // For trait impls, encode the trait so that `impl Display for Foo`
         // and `impl Debug for Foo` produce different containers for methods
         // with the same name (e.g. `fmt`).
-        let segment = if let Some((_, trait_path, _)) = &item.trait_ {
+        let segment = if let Some((trait_path, _)) = &item.trait_ {
             format!("<{} as {}>", type_name, path_string(trait_path))
         } else {
             type_name
@@ -1292,6 +1292,111 @@ mod tests {
         assert_eq!(f.family, Family::PanicMacro);
         assert_eq!(f.selector.kind, SelectorKind::MacroInvocation);
         assert_eq!(f.selector.container, "Thing::boom");
+    }
+
+    #[test]
+    fn trait_impl_containers_disambiguate_same_named_methods() {
+        // Pins the `visit_item_impl` container naming across the syn 3
+        // `ItemImpl::trait_` tuple change. The dropped element was the `!` of
+        // a negative impl, so every case below must name the trait exactly as
+        // it did under syn 2.
+        let findings = parse(
+            r#"
+            struct Thing;
+            impl std::fmt::Display for Thing {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    panic!("display");
+                }
+            }
+            impl std::fmt::Debug for Thing {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    panic!("debug");
+                }
+            }
+            impl Thing {
+                fn fmt(&self) {
+                    panic!("inherent");
+                }
+            }
+            "#,
+        );
+
+        let containers: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.selector.container.as_str())
+            .collect();
+
+        // Three same-named `fmt` methods must produce three distinct
+        // identities, or allowlist entries would collide.
+        assert_eq!(
+            containers,
+            vec![
+                "<Thing as std::fmt::Display>::fmt",
+                "<Thing as std::fmt::Debug>::fmt",
+                "Thing::fmt",
+            ],
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn negative_impl_is_traversed_without_disturbing_later_containers() {
+        // syn 2 carried the negative-impl `!` as a leading `Option<Not>` in
+        // `ItemImpl::trait_`; syn 3 drops it from the tuple. A negative impl
+        // has an empty body, so it contributes no findings of its own — what
+        // this pins is that the visitor still traverses one cleanly and
+        // leaves the container stack balanced for the impls around it.
+        let source = r#"
+            struct Thing;
+            impl Thing {
+                fn helper(&self) {
+                    panic!("inherent");
+                }
+            }
+            impl !Send for Thing {}
+            impl PartialEq for Thing {
+                fn eq(&self, other: &Self) -> bool {
+                    panic!("eq");
+                }
+            }
+            "#;
+
+        // Assert the fixture's shape before asserting behavior over it. Without
+        // this the test would pass vacuously if a future syn stopped parsing
+        // `impl !Send for Thing {}` as an `ItemImpl`: the negative impl would
+        // simply vanish, and the surrounding containers would still line up.
+        let syntax = syn::parse_file(source);
+        assert!(syntax.is_ok(), "fixture must parse under the current syn");
+        let impls: Vec<&syn::ItemImpl> = syntax
+            .iter()
+            .flat_map(|file| &file.items)
+            .filter_map(|item| match item {
+                syn::Item::Impl(item) => Some(item),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(impls.len(), 3, "fixture must contribute three impl blocks");
+        let negative_trait = impls
+            .get(1)
+            .and_then(|item| item.trait_.as_ref())
+            .map(|(trait_path, _)| path_string(trait_path));
+        assert_eq!(
+            negative_trait.as_deref(),
+            Some("Send"),
+            "the negative impl must still parse with its trait path"
+        );
+
+        let findings = parse(source);
+
+        let containers: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.selector.container.as_str())
+            .collect();
+        assert_eq!(
+            containers,
+            vec!["Thing::helper", "<Thing as PartialEq>::eq"],
+            "{findings:?}"
+        );
     }
 
     #[test]
