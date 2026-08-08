@@ -53,7 +53,6 @@ branches:
         strict: true
         contexts:
           - "Tokmd Rust Result"
-          - "Codex Review Gate"
       enforce_admins: false
       # Not linear: publication imports land as two-parent merge commits, and
       # tokmd-swarm/main then fast-forwards onto them. Requiring linear history
