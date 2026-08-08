@@ -1,7 +1,7 @@
 //! Read-only, fail-closed release state inspection.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -100,18 +100,38 @@ fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
     let expected_version = tag.strip_prefix('v').unwrap_or(tag).to_string();
     let workspace_version = workspace_version()?;
     let tag_sha = local_tag_sha(tag)?;
+    let head_sha = local_head_sha()?;
     let source_state = match (&workspace_version, &tag_sha) {
-        (Some(version), Some(_)) if version == &expected_version => ReleaseState::Passed,
+        (Some(version), Some(tag_sha))
+            if source_matches_tag_commit(
+                Some(version.as_str()),
+                &expected_version,
+                Some(tag_sha.as_str()),
+                Some(head_sha.as_str()),
+            ) =>
+        {
+            ReleaseState::Passed
+        }
         (Some(_), Some(_)) => ReleaseState::Failed,
         (_, None) => ReleaseState::Missing,
         (None, Some(_)) => ReleaseState::Failed,
     };
     let source_detail = match (&workspace_version, &tag_sha) {
-        (Some(version), Some(_)) if version == &expected_version => {
-            Some("workspace version matches the inspected tag".to_string())
+        (Some(version), Some(tag_sha))
+            if source_matches_tag_commit(
+                Some(version.as_str()),
+                &expected_version,
+                Some(tag_sha.as_str()),
+                Some(head_sha.as_str()),
+            ) =>
+        {
+            Some(
+                "workspace version matches the inspected tag and HEAD resolves to its commit"
+                    .to_string(),
+            )
         }
         (Some(version), Some(_)) => Some(format!(
-            "workspace version {version} does not match expected {expected_version}"
+            "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
         )),
         (_, None) => Some("tag does not exist in the local repository".to_string()),
         (None, Some(_)) => Some("workspace version could not be read".to_string()),
@@ -202,6 +222,27 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
             "passed source evidence must contain the tag-derived workspace version and a non-empty SHA"
         );
     }
+    for (name, fact) in [
+        ("git_tag", &receipt.git_tag),
+        ("github_release", &receipt.github_release),
+        ("assets", &receipt.assets),
+        ("registry", &receipt.registry),
+        ("ghcr_exact", &receipt.ghcr_exact),
+        ("ghcr_aliases", &receipt.ghcr_aliases),
+        ("action_exact", &receipt.action_exact),
+        ("action_alias", &receipt.action_alias),
+        ("consumer_proof", &receipt.consumer_proof),
+        ("nix", &receipt.nix),
+        ("wasm", &receipt.wasm),
+        ("finalization", &receipt.finalization),
+    ] {
+        validate_passed_state_fact(name, fact)?;
+    }
+    if receipt.source.state == ReleaseState::Passed
+        && receipt.source.evidence.as_deref().is_none_or(str::is_empty)
+    {
+        bail!("passed source evidence must include a non-empty evidence field");
+    }
     if receipt.publication.state == ReleaseState::Passed
         && receipt
             .publication
@@ -210,6 +251,22 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
             .is_none_or(str::is_empty)
     {
         bail!("passed publication evidence must contain a non-empty merge SHA");
+    }
+    if receipt.publication.state == ReleaseState::Passed
+        && (receipt.publication.parent_count != Some(2)
+            || receipt.publication.publication_ahead != Some(0)
+            || receipt.publication.swarm_ahead != Some(0))
+    {
+        bail!("passed publication evidence must include parent_count=2 and graph counters of 0/0");
+    }
+    if receipt.publication.state == ReleaseState::Passed
+        && receipt
+            .publication
+            .evidence
+            .as_deref()
+            .is_none_or(str::is_empty)
+    {
+        bail!("passed publication evidence must include a non-empty evidence field");
     }
     let computed = is_complete(receipt);
     if receipt.complete != computed {
@@ -242,7 +299,9 @@ fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
 }
 
 fn workspace_version() -> Result<Option<String>> {
-    let content = fs::read_to_string("Cargo.toml").context("read workspace Cargo.toml")?;
+    let workspace_root = find_workspace_root()?;
+    let content = fs::read_to_string(workspace_root.join("Cargo.toml"))
+        .context("read workspace Cargo.toml")?;
     let manifest: toml::Value = toml::from_str(&content).context("parse workspace Cargo.toml")?;
     Ok(manifest
         .get("workspace")
@@ -250,6 +309,60 @@ fn workspace_version() -> Result<Option<String>> {
         .and_then(|package| package.get("version"))
         .and_then(toml::Value::as_str)
         .map(str::to_string))
+}
+
+fn find_workspace_root() -> Result<PathBuf> {
+    let mut directory = std::env::current_dir().context("read current directory")?;
+    loop {
+        let cargo_toml = directory.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            let content = fs::read_to_string(&cargo_toml)
+                .with_context(|| format!("read workspace candidate {}", cargo_toml.display()))?;
+            if content.contains("[workspace]") {
+                return Ok(directory);
+            }
+        }
+        if !directory.pop() {
+            bail!("could not find workspace root");
+        }
+    }
+}
+
+fn local_head_sha() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD^{commit}"])
+        .output()
+        .context("resolve current Git HEAD")?;
+    if !output.status.success() {
+        bail!(
+            "resolve current Git HEAD failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8(output.stdout)
+        .context("current Git HEAD is not UTF-8")?
+        .trim()
+        .to_string())
+}
+
+fn source_matches_tag_commit(
+    workspace_version: Option<&str>,
+    expected_version: &str,
+    tag_sha: Option<&str>,
+    head_sha: Option<&str>,
+) -> bool {
+    workspace_version == Some(expected_version) && tag_sha == head_sha
+}
+
+fn validate_passed_state_fact(name: &str, fact: &StateFact) -> Result<()> {
+    if fact.state == ReleaseState::Passed
+        && (fact.evidence.as_deref().is_none_or(str::is_empty)
+            || fact.detail.as_deref().is_none_or(str::is_empty))
+    {
+        bail!("passed {name} evidence must include non-empty detail and evidence fields");
+    }
+    Ok(())
 }
 
 fn local_tag_sha(tag: &str) -> Result<Option<String>> {
@@ -442,6 +555,37 @@ mod tests {
         fixture.publication.merge_sha = None;
         if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
             bail!("passed publication evidence must include a merge SHA");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_validation_rejects_missing_passed_surface_evidence() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.github_release.evidence = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed surfaces must carry evidence");
+        }
+
+        let mut fixture = complete_fixture();
+        fixture.publication.parent_count = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed publication must carry graph evidence");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_status_requires_current_head_to_match_tag() -> Result<()> {
+        let tag_sha = "a".repeat(40);
+        let head_sha = "b".repeat(40);
+        if source_matches_tag_commit(
+            Some("1.15.1"),
+            "1.15.1",
+            Some(tag_sha.as_str()),
+            Some(head_sha.as_str()),
+        ) {
+            bail!("a same-version post-tag checkout must not pass source validation");
         }
         Ok(())
     }
