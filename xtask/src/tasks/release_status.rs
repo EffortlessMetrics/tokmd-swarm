@@ -187,6 +187,30 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
         );
     }
     validate_tag(&receipt.tag)?;
+    let expected_version = receipt.tag.strip_prefix('v').unwrap_or(&receipt.tag);
+    if receipt.source.expected_version != expected_version {
+        bail!(
+            "release status fixture source expected_version `{}` does not match tag-derived version `{expected_version}`",
+            receipt.source.expected_version
+        );
+    }
+    if receipt.source.state == ReleaseState::Passed
+        && (receipt.source.workspace_version.as_deref() != Some(expected_version)
+            || receipt.source.sha.as_deref().is_none_or(str::is_empty))
+    {
+        bail!(
+            "passed source evidence must contain the tag-derived workspace version and a non-empty SHA"
+        );
+    }
+    if receipt.publication.state == ReleaseState::Passed
+        && receipt
+            .publication
+            .merge_sha
+            .as_deref()
+            .is_none_or(str::is_empty)
+    {
+        bail!("passed publication evidence must contain a non-empty merge SHA");
+    }
     let computed = is_complete(receipt);
     if receipt.complete != computed {
         bail!(
@@ -235,7 +259,14 @@ fn local_tag_sha(tag: &str) -> Result<Option<String>> {
         .output()
         .context("inspect local Git tag")?;
     if !output.status.success() {
-        return Ok(None);
+        if output.status.code() == Some(1) {
+            return Ok(None);
+        }
+        bail!(
+            "inspect local Git tag `{tag}` failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
     let commit_reference = format!("{reference}^{{commit}}");
     let output = Command::new("git")
@@ -255,6 +286,17 @@ fn local_tag_sha(tag: &str) -> Result<Option<String>> {
 fn validate_tag(tag: &str) -> Result<()> {
     if tag.is_empty() || tag.chars().any(char::is_whitespace) || tag.contains('\0') {
         bail!("release tag must be a non-empty single Git reference name");
+    }
+    let reference = format!("refs/tags/{tag}");
+    let output = Command::new("git")
+        .args(["check-ref-format", "--allow-onelevel", &reference])
+        .output()
+        .context("validate Git tag reference")?;
+    if !output.status.success() {
+        bail!(
+            "invalid Git tag `{tag}`: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
     Ok(())
 }
@@ -374,6 +416,32 @@ mod tests {
         let path = Path::new("fixture.json");
         if validate_fixture(&fixture, "v1.15.1", path).is_ok() {
             bail!("stale complete claim should be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_validation_rejects_contradictory_source_evidence() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.source.expected_version = "1.15.0".to_string();
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("tag and source expected version must agree");
+        }
+
+        let mut fixture = complete_fixture();
+        fixture.source.sha = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed source evidence must include a SHA");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_validation_rejects_missing_publication_merge_sha() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.publication.merge_sha = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed publication evidence must include a merge SHA");
         }
         Ok(())
     }
