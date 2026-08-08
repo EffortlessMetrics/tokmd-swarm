@@ -523,7 +523,6 @@ fn mark_publish_receipt_bootstrap(
     entry.bootstrap = bootstrap;
     Ok(())
 }
-
 #[derive(Debug, Serialize)]
 struct RegistryInventoryReceipt {
     schema_version: &'static str,
@@ -1420,7 +1419,6 @@ fn validate_bootstrap_crates(
     }
     Ok(selected)
 }
-
 /// Mark every planned crate as having passed the pre-upload dependency check.
 fn mark_dependency_closure_verified(receipt: &mut PublishReceipt) {
     for entry in &mut receipt.crates {
