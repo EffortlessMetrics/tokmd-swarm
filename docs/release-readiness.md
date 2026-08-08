@@ -58,6 +58,12 @@ known bootstrap crates, an intentional release may pass
 to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
 verification, and an unknown or out-of-plan bootstrap name is rejected.
 
+The per-crate `bootstrap` field records a successful upload performed with
+`--no-verify`; an `already_present` observation preserves that historical
+decision because the current invocation did not upload the crate. Receipts
+written by the v1 publisher are accepted and upgraded to v2 on their next
+durable write, with the new field defaulting to `false`.
+
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
 the current plan. On the normal path (without `--skip-checks`), before the first

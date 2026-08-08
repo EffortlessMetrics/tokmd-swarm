@@ -74,6 +74,8 @@ pub struct PublishPlan {
 
 const PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v2";
 const PUBLISH_RECEIPT_VERSION: u32 = 2;
+const LEGACY_PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v1";
+const LEGACY_PUBLISH_RECEIPT_VERSION: u32 = 1;
 static RECEIPT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -255,21 +257,25 @@ fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
 fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceipt> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("read publication receipt {}", path.display()))?;
-    let receipt: PublishReceipt = serde_json::from_str(&content)
+    let mut receipt: PublishReceipt = serde_json::from_str(&content)
         .with_context(|| format!("parse publication receipt {}", path.display()))?;
-    if receipt.schema != PUBLISH_RECEIPT_SCHEMA {
+    let is_current = receipt.schema == PUBLISH_RECEIPT_SCHEMA
+        && receipt.schema_version == PUBLISH_RECEIPT_VERSION;
+    let is_legacy = receipt.schema == LEGACY_PUBLISH_RECEIPT_SCHEMA
+        && receipt.schema_version == LEGACY_PUBLISH_RECEIPT_VERSION;
+    if !is_current && !is_legacy {
         bail!(
-            "publication receipt {} has schema `{}`; expected `{PUBLISH_RECEIPT_SCHEMA}`",
+            "publication receipt {} has schema `{}` and schema_version {}; expected `{PUBLISH_RECEIPT_SCHEMA}` version {PUBLISH_RECEIPT_VERSION}",
             path.display(),
-            receipt.schema
-        );
-    }
-    if receipt.schema_version != PUBLISH_RECEIPT_VERSION {
-        bail!(
-            "publication receipt {} has schema_version {}; expected {PUBLISH_RECEIPT_VERSION}",
-            path.display(),
+            receipt.schema,
             receipt.schema_version
         );
+    }
+    if is_legacy {
+        // v1 receipts predate the bootstrap audit field. Serde defaults that
+        // field to false, then the next durable write upgrades the receipt.
+        receipt.schema = PUBLISH_RECEIPT_SCHEMA.to_string();
+        receipt.schema_version = PUBLISH_RECEIPT_VERSION;
     }
     if receipt.workspace_version != plan.workspace_version {
         bail!(
@@ -1240,13 +1246,6 @@ fn execute_publish(
                 None,
                 true,
             )?;
-        }
-
-        if !args.dry_run {
-            if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                mark_publish_receipt_bootstrap(receipt, crate_name, false)?;
-                write_publish_receipt(path, receipt)?;
-            }
         }
 
         let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
@@ -2401,6 +2400,45 @@ mod tests {
         };
         if entry.state != PublishReceiptState::Published || entry.attempts != 1 {
             bail!("terminal receipt state and attempt count were not persisted");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_accepts_and_upgrades_v1() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir().context("create legacy receipt test directory")?;
+        let path = directory.path().join("publish.json");
+        let mut legacy = serde_json::to_value(new_publish_receipt(&plan))?;
+        let object = legacy
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("receipt should serialize as an object"))?;
+        object.insert(
+            "schema".to_string(),
+            Value::String(LEGACY_PUBLISH_RECEIPT_SCHEMA.to_string()),
+        );
+        object.insert(
+            "schema_version".to_string(),
+            Value::Number(LEGACY_PUBLISH_RECEIPT_VERSION.into()),
+        );
+        let crates = object
+            .get_mut("crates")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow!("legacy receipt should contain crate entries"))?;
+        for entry in crates {
+            entry
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("crate receipt should serialize as an object"))?
+                .remove("bootstrap");
+        }
+        fs::write(&path, serde_json::to_string_pretty(&legacy)?)?;
+
+        let loaded = load_publish_receipt(&path, &plan)?;
+        if loaded.schema != PUBLISH_RECEIPT_SCHEMA
+            || loaded.schema_version != PUBLISH_RECEIPT_VERSION
+            || loaded.crates.iter().any(|entry| entry.bootstrap)
+        {
+            bail!("v1 receipt should load as v2 with false bootstrap decisions");
         }
         Ok(())
     }
