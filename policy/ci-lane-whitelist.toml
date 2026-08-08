@@ -2,7 +2,7 @@ schema_version = "1.0"
 policy = "ci-lane-whitelist"
 owner = "release/ci"
 status = "advisory"
-updated = "2026-07-02"
+updated = "2026-08-08"
 
 # CI lane whitelist: every CI item maps to purpose, cost, trigger, owner,
 # and evidence. Reviewers and `cargo xtask ci-lane-whitelist` read from this
@@ -110,8 +110,8 @@ evidence = [
 ]
 allowed_triggers = ["pull_request"]
 duplicate_of     = ["pr_plan_advisory"]
-review_after     = "2026-06-07"
-expires          = "2026-08-07"
+review_after     = "2026-08-08"
+expires          = "2026-11-07"
 
 [[lane]]
 id               = "ci_detect_risk_packs"
@@ -368,8 +368,8 @@ evidence               = ["job logs"]
 allowed_triggers       = ["pull_request", "push"]
 labels                 = ["property-tests"]
 duplicate_of           = []
-review_after           = "2026-06-07"
-expires                = "2026-08-07"
+review_after           = "2026-08-08"
+expires                = "2026-11-07"
 
 [[lane]]
 id                     = "publish_surface"
@@ -388,8 +388,8 @@ proof_obligation       = "Run cargo xtask publish-surface --json --verify-publis
 evidence               = ["job logs"]
 allowed_triggers       = ["pull_request", "push"]
 duplicate_of           = ["nix_pr_package_gate"]
-review_after           = "2026-06-07"
-expires                = "2026-08-07"
+review_after           = "2026-08-08"
+expires                = "2026-11-07"
 
 # -----------------------------------------------------------------------
 # Swarm routed frontdoor lanes
