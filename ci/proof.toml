@@ -125,6 +125,7 @@ paths = [
   ".github/workflows/droid.yml",
   ".github/workflows/droid-security-scan.yml",
   ".github/workflows/release.yml",
+  ".github/workflows/recover-stable-crates.yml",
   ".github/workflows/release-candidate.yml",
   ".github/workflows/swarm-ghcr.yml",
   ".github/workflows/ripr.yml",
@@ -182,6 +183,7 @@ paths = [
   "xtask/src/tasks/proof_workflow_status.rs",
   "xtask/src/tasks/repo_graph.rs",
   "scripts/check-no-bare-self-hosted.sh",
+  "scripts/publish-release-crates.sh",
   "xtask/src/tasks/workspace.rs",
   "xtask/tests/affected_w91.rs",
   "xtask/tests/ci_actuals_w96.rs",
@@ -1674,6 +1676,7 @@ reason = "Crypto material should be generated at runtime or explicitly documente
 name = "release_consumer_smoke"
 kind = "non_rust"
 paths = [
+  ".github/workflows/promote-release-aliases.yml",
   ".github/workflows/release-consumer-smoke.yml",
   "scripts/release-consumer-smoke-browser.mjs",
   "scripts/release-consumer-smoke-browser.spec.mjs",
@@ -1681,6 +1684,7 @@ paths = [
   "scripts/release_consumer_smoke_aggregate_test.py",
 ]
 proof = [
+  "actionlint .github/workflows/promote-release-aliases.yml",
   "actionlint .github/workflows/release-consumer-smoke.yml",
   "node --check scripts/release-consumer-smoke-browser.spec.mjs",
   "python3 -m unittest scripts/release_consumer_smoke_aggregate_test.py",

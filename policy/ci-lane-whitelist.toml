@@ -851,6 +851,26 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
+id               = "release_crates_recovery"
+workflow         = ".github/workflows/recover-stable-crates.yml"
+job              = "Publish crates from exact stable tag"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 20
+owner            = "release/publish"
+intent           = "Recover crates.io publication from an immutable stable tag without rebuilding release artifacts."
+failure_mode     = "A stable release tag exists but the workspace crates are incomplete on crates.io."
+proof_obligation = "Extract the exact stable tag, bootstrap only its development-dependency cycle crates, publish the remaining crates, and retain the workflow receipt."
+evidence         = ["workflow logs", "crates.io package versions"]
+allowed_triggers = ["workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-08-04"
+expires          = "2027-02-04"
+
+[[lane]]
 id               = "release_verify_container"
 workflow         = ".github/workflows/release.yml"
 job              = "Verify exact container artifact"
@@ -931,6 +951,26 @@ review_after     = "2026-08-02"
 expires          = "2027-02-02"
 
 [[lane]]
+id               = "release_finalize"
+workflow         = ".github/workflows/release.yml"
+job              = "Finalize stable GitHub Release"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 5
+owner            = "release/publish"
+intent           = "Finalize a stable GitHub Release as latest only after registry and exact consumer proof pass."
+failure_mode     = "A partial stable publication is presented as the latest release before registry completion."
+proof_obligation = "Verify the release is non-draft and non-prerelease, finalize it as latest, and verify the latest tag points at the expected stable tag."
+evidence         = ["release workflow logs", "GitHub latest release tag"]
+allowed_triggers = ["push"]
+duplicate_of     = []
+review_after     = "2026-08-05"
+expires          = "2027-02-05"
+
+[[lane]]
 id               = "release_promote_aliases"
 workflow         = ".github/workflows/release.yml"
 job              = "Promote stable aliases"
@@ -943,7 +983,7 @@ base_lem         = 4
 owner            = "release/publish"
 intent           = "Move v1 and mutable GHCR aliases only after exact release, crate, container, and Action gates pass."
 failure_mode     = "Mutable consumer aliases move before the release surfaces are proven."
-proof_obligation = "Require publish-crates, exact-container verification, and exact-tag Action verification before moving aliases."
+proof_obligation = "Require finalized stable release, exact-container verification, and exact-tag Action verification before moving aliases."
 evidence         = ["release workflow logs", "GitHub tag ref", "GHCR manifest tags"]
 allowed_triggers = ["push"]
 duplicate_of     = []
@@ -1235,5 +1275,25 @@ proof_obligation = "Emit tokmd.release_consumer_smoke.v1.json and release-consum
 evidence         = ["tokmd.release_consumer_smoke.v1.json", "release-consumer-smoke.md"]
 allowed_triggers = ["workflow_dispatch", "workflow_call"]
 duplicate_of     = []
+review_after     = "2026-08-04"
+expires          = "2027-02-04"
+
+[[lane]]
+id               = "release_promote_aliases_manual"
+workflow         = ".github/workflows/promote-release-aliases.yml"
+job              = "Promote exact release aliases"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 5
+owner            = "release/publish"
+intent           = "Promote mutable GHCR and Action aliases only after an exact published stable digest is verified."
+failure_mode     = "A mutable release alias moves to an unverified or incorrect artifact."
+proof_obligation = "Verify the supplied exact release digest, promote and recheck GHCR aliases, then move v1 to the resolved release commit."
+evidence         = ["workflow logs", "GHCR manifest tags", "GitHub tag ref"]
+allowed_triggers = ["workflow_dispatch"]
+duplicate_of     = ["release_promote_aliases"]
 review_after     = "2026-08-04"
 expires          = "2027-02-04"
