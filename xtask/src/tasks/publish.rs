@@ -410,12 +410,10 @@ fn fetch_registry_crate(crate_name: &str) -> Result<RegistryFetch, String> {
 /// `--location` can emit several header blocks, so the body starts after the
 /// *last* blank line separating a header block from what follows it.
 fn split_registry_headers(response: &str) -> (&str, &str) {
-    let normalized_end = response.rfind("\r\n\r\n").map(|index| (index, 4));
-    let separator = normalized_end.or_else(|| response.rfind("\n\n").map(|index| (index, 2)));
-    match separator {
-        Some((index, width)) => (&response[..index], &response[index + width..]),
-        None => ("", response),
-    }
+    response
+        .rsplit_once("\r\n\r\n")
+        .or_else(|| response.rsplit_once("\n\n"))
+        .unwrap_or(("", response))
 }
 
 /// Case-insensitively read a header value from a raw header block.
