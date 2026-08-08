@@ -123,6 +123,7 @@ jobs:
             echo
             echo "- core gate (gates the merge; serial Cargo lane): cargo xtask gate --check"
             echo "- core tests (serial Cargo lane): cargo test --all-features"
+            echo "- xtask tests (serial Cargo lane): cargo test -p xtask --all-features"
             echo "- proof policy (serial Cargo lane): cargo xtask proof-policy --check"
             echo "- runner: ${RUNNER_KIND:-github} event: ${GITHUB_EVENT_NAME}"
           } > target/ci-core/precontext.md
@@ -134,6 +135,11 @@ jobs:
           echo "$?" > target/ci-core/core_exit
           cargo test --all-features > target/ci-core/test.log 2>&1
           echo "$?" > target/ci-core/test_exit
+          # `xtask` is not a default-member, so the lane above never builds it.
+          # Test it explicitly: it owns the publish plan, the policy linters,
+          # and the no-panic checker, and breakage there is invisible otherwise.
+          cargo test -p xtask --all-features > target/ci-core/xtask_test.log 2>&1
+          echo "$?" > target/ci-core/xtask_test_exit
           cargo xtask proof-policy --check > target/ci-core/proof_policy.log 2>&1
           echo "$?" > target/ci-core/proof_policy_exit
           echo "completed serial core gate, tests, and proof-policy"
@@ -183,7 +189,7 @@ jobs:
         run: |
           set -uo pipefail
           deadline=$((SECONDS + 3000))
-          for marker in core_exit test_exit proof_policy_exit; do
+          for marker in core_exit test_exit xtask_test_exit proof_policy_exit; do
             while [ ! -f "target/ci-core/${marker}" ]; do
               if [ "${SECONDS}" -ge "${deadline}" ]; then
                 echo "124" > "target/ci-core/${marker}"
@@ -194,6 +200,7 @@ jobs:
           done
           core_exit="$(cat target/ci-core/core_exit)"
           test_exit="$(cat target/ci-core/test_exit)"
+          xtask_test_exit="$(cat target/ci-core/xtask_test_exit)"
           proof_policy_exit="$(cat target/ci-core/proof_policy_exit)"
 
           # Self-hosted runners can exhaust CPU/RAM under concurrent cargo; retry
@@ -208,6 +215,11 @@ jobs:
               echo "Concurrent tests failed (exit ${test_exit}); retrying serially"
               cargo test --all-features
               test_exit=$?
+            fi
+            if [ "${xtask_test_exit}" != "0" ] && [ "${xtask_test_exit}" != "124" ]; then
+              echo "Concurrent xtask tests failed (exit ${xtask_test_exit}); retrying serially"
+              cargo test -p xtask --all-features
+              xtask_test_exit=$?
             fi
             if [ "${proof_policy_exit}" != "0" ] && [ "${proof_policy_exit}" != "124" ]; then
               echo "Concurrent proof-policy failed (exit ${proof_policy_exit}); retrying serially"
@@ -228,6 +240,11 @@ jobs:
             else
               echo "Tests: FAIL (exit ${test_exit})"
             fi
+            if [ "${xtask_test_exit}" = "0" ]; then
+              echo "xtask tests: PASS (cargo test -p xtask --all-features exit 0)"
+            else
+              echo "xtask tests: FAIL (exit ${xtask_test_exit})"
+            fi
             if [ "${proof_policy_exit}" = "0" ]; then
               echo "Proof policy: PASS (cargo xtask proof-policy --check exit 0)"
             else
@@ -236,6 +253,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           test "${core_exit}" = "0"
           test "${test_exit}" = "0"
+          test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
 
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
