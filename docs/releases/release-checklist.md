@@ -324,7 +324,9 @@ Required surfaces are release-policy dependent, but the 1.15 train includes:
 - released archive-enabled WASM in a real browser with ZIP input;
 - exact Action binary packet mode;
 - exact Action container packet mode;
-- exact crates.io Cargo install with `--locked` and the expected version;
+- exact stable crates.io Cargo install with `--locked` and the expected
+  version (RCs record this surface as `not_supported` because RC crates are
+  not published);
 - strict aggregate receipt.
 
 Every required surface must be one of:

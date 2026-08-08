@@ -378,8 +378,8 @@ jobs:
 
   verify-action:
     name: Verify exact-tag Action default
-    needs: [create-release, verify-container]
-    if: ${{ github.repository == 'EffortlessMetrics/tokmd' }}
+    needs: [create-release, publish-crates, verify-container]
+    if: ${{ always() && github.repository == 'EffortlessMetrics/tokmd' && (contains(github.ref_name, '-') || needs.publish-crates.result == 'success') }}
     uses: ./.github/workflows/release-consumer-smoke.yml
     with:
       release_repository: ${{ github.repository }}

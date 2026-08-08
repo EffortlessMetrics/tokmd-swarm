@@ -277,8 +277,8 @@ rebuild substitutes.
 
 The consumer matrix also installs `tokmd` from crates.io with
 `cargo install tokmd --version <expected-version> --locked` and checks the
-installed binary version. This proves the documented Cargo install path in
-addition to downloaded release artifacts.
+installed binary version for stable releases. RCs intentionally record this
+surface as `not_supported` because RC crates are not published.
 
 For required surfaces, missing receipts, crashed jobs, `unavailable`, and
 `not_run` fail closed. A consumer failure rejects the RC and requires the next

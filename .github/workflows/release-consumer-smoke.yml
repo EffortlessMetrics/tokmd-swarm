@@ -62,6 +62,7 @@ env:
   TAG: ${{ inputs.tag }}
   EXPECTED_VERSION: ${{ inputs.expected_version }}
   RELEASE_KIND: ${{ inputs.release_kind }}
+  ALLOWED_NOT_SUPPORTED: ${{ inputs.release_kind == 'rc' && 'cargo-install' || '' }}
 
 jobs:
   release-assets:
@@ -170,7 +171,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status=failed
+          status=not_supported
           observed_version=""
           mkdir -p receipt install-root
           write_receipt() {
@@ -193,6 +194,14 @@ jobs:
           PY
           }
           trap write_receipt EXIT
+
+          if [[ "$RELEASE_KIND" == "rc" ]]; then
+            echo "Cargo install is not supported for RCs because RC crates are not published."
+            echo "- cargo-install: not_supported (RC has no crates.io publication)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          status=failed
 
           cargo install tokmd \
             --version "$EXPECTED_VERSION" \
