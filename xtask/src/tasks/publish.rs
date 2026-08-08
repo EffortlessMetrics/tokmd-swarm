@@ -122,6 +122,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     // Resolve the publish plan (workspace-scoped, validated)
     let plan = resolve_publish_plan(&metadata, &args)?;
+    let bootstrap = validate_bootstrap_crates(&plan, args.bootstrap.as_deref())?;
 
     // Registry inventory is intentionally read-only and writes its receipt even
     // when the registry is incomplete. It must not run publish preflight or
@@ -187,6 +188,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         &crates_to_publish,
         &args,
         &plan.workspace_version,
+        &bootstrap,
         args.receipt.as_deref(),
         receipt.as_mut(),
     )?;
@@ -1078,6 +1080,9 @@ fn print_plan(plan: &PublishPlan, args: &PublishArgs) {
                 .replace("{version}", &plan.workspace_version)
         );
     }
+    if let Some(ref bootstrap) = args.bootstrap {
+        println!("  --bootstrap: {}", bootstrap.join(","));
+    }
     if let Some(ref from) = args.from {
         println!("  --from: {}", from);
     }
@@ -1098,6 +1103,9 @@ fn reconstruct_publish_command(args: &PublishArgs) -> String {
     }
     if let Some(ref exclude) = args.exclude {
         parts.push(format!("--exclude {}", exclude.join(",")));
+    }
+    if let Some(ref bootstrap) = args.bootstrap {
+        parts.push(format!("--bootstrap {}", bootstrap.join(",")));
     }
     if let Some(ref from) = args.from {
         parts.push(format!("--from {}", from));
@@ -1192,6 +1200,7 @@ fn execute_publish(
     crates: &[String],
     args: &PublishArgs,
     version: &str,
+    bootstrap: &BTreeSet<String>,
     receipt_path: Option<&Path>,
     mut receipt: Option<&mut PublishReceipt>,
 ) -> Result<(Vec<String>, Vec<String>)> {
@@ -1213,7 +1222,7 @@ fn execute_publish(
             )?;
         }
 
-        let result = publish_crate_with_retry(crate_name, args)?;
+        let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
@@ -1349,6 +1358,27 @@ fn is_publish_dependency(kind: &DependencyKind) -> bool {
         kind,
         DependencyKind::Normal | DependencyKind::Build | DependencyKind::Unknown
     )
+}
+
+/// Validate the explicitly opted-in development-cycle bootstrap crates.
+fn validate_bootstrap_crates(
+    plan: &PublishPlan,
+    bootstrap: Option<&[String]>,
+) -> Result<BTreeSet<String>> {
+    let selected: BTreeSet<String> = bootstrap.unwrap_or_default().iter().cloned().collect();
+    let planned: BTreeSet<&str> = plan.publish_order.iter().map(String::as_str).collect();
+    let unknown: Vec<_> = selected
+        .iter()
+        .filter(|name| !planned.contains(name.as_str()))
+        .cloned()
+        .collect();
+    if !unknown.is_empty() {
+        bail!(
+            "bootstrap crate(s) are not in the publish plan: {}",
+            unknown.join(", ")
+        );
+    }
+    Ok(selected)
 }
 
 /// Mark every planned crate as having passed the pre-upload dependency check.
@@ -1695,7 +1725,11 @@ fn parse_rate_limit_timestamp(stderr: &str) -> Option<DateTime<FixedOffset>> {
 }
 
 /// Publish a single crate with retry logic for propagation delays.
-fn publish_crate_with_retry(crate_name: &str, args: &PublishArgs) -> Result<PublishResult> {
+fn publish_crate_with_retry(
+    crate_name: &str,
+    args: &PublishArgs,
+    bootstrap: bool,
+) -> Result<PublishResult> {
     const MAX_RETRIES: u32 = 5;
     const MAX_RATE_LIMIT_WAITS: u32 = 6;
     const RATE_LIMIT_FALLBACK_SECS: u64 = 300;
@@ -1742,8 +1776,12 @@ fn publish_crate_with_retry(crate_name: &str, args: &PublishArgs) -> Result<Publ
     loop {
         attempt += 1;
 
+        let mut cargo_args = vec!["publish", "-p", crate_name, "--locked"];
+        if bootstrap {
+            cargo_args.push("--no-verify");
+        }
         let output = Command::new("cargo")
-            .args(["publish", "-p", crate_name, "--locked"])
+            .args(cargo_args)
             .output()
             .context("Failed to spawn cargo publish")?;
 
@@ -2347,6 +2385,19 @@ mod tests {
             .any(|entry| entry.dependency_closure != Some(true))
         {
             bail!("preflight must mark every planned crate as verified");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bootstrap_selection_is_explicit_and_plan_bound() -> Result<()> {
+        let plan = receipt_test_plan();
+        let selected = validate_bootstrap_crates(&plan, Some(&["tokmd-core".to_string()]))?;
+        if selected != BTreeSet::from(["tokmd-core".to_string()]) {
+            bail!("bootstrap selection should preserve the requested planned crate");
+        }
+        if validate_bootstrap_crates(&plan, Some(&["not-in-plan".to_string()])).is_ok() {
+            bail!("bootstrap selection must reject crates outside the publish plan");
         }
         Ok(())
     }
