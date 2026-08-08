@@ -96,6 +96,8 @@ struct PublishCrateReceipt {
     attempts: u32,
     registry_visible: Option<bool>,
     dependency_closure: Option<bool>,
+    #[serde(default)]
+    bootstrap: bool,
     reason: Option<String>,
     updated_at: String,
 }
@@ -146,6 +148,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     // Handle --plan mode: just print and exit
     if args.plan {
+        validate_bootstrap_crates(&plan.publish_order, args.bootstrap.as_deref(), None)?;
         print_plan(&plan, &args);
         return Ok(());
     }
@@ -169,6 +172,14 @@ pub fn run(args: PublishArgs) -> Result<()> {
     };
 
     let crates_to_publish = crates_to_publish(&plan, start_idx, receipt.as_ref());
+    let bootstrap = validate_bootstrap_crates(
+        &crates_to_publish,
+        args.bootstrap.as_deref(),
+        receipt.as_ref(),
+    )?;
+    if !args.dry_run && !bootstrap.is_empty() && args.receipt.is_none() {
+        bail!("--bootstrap requires --receipt so the no-verify decision is auditable");
+    }
 
     // Print summary and require confirmation for real publishing
     print_pre_publish_summary(&crates_to_publish, &args);
@@ -187,6 +198,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         &crates_to_publish,
         &args,
         &plan.workspace_version,
+        &bootstrap,
         args.receipt.as_deref(),
         receipt.as_mut(),
     )?;
@@ -237,6 +249,7 @@ fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
                 attempts: 0,
                 registry_visible: None,
                 dependency_closure: None,
+                bootstrap: false,
                 reason: None,
                 updated_at: now.clone(),
             })
@@ -494,6 +507,16 @@ fn update_publish_receipt_visibility(
     }
     entry.updated_at = Utc::now().to_rfc3339();
     write_publish_receipt(path, receipt)
+}
+
+fn mark_publish_receipt_bootstrap(receipt: &mut PublishReceipt, crate_name: &str) -> Result<()> {
+    let entry = receipt
+        .crates
+        .iter_mut()
+        .find(|entry| entry.name == crate_name)
+        .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
+    entry.bootstrap = true;
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -1078,6 +1101,9 @@ fn print_plan(plan: &PublishPlan, args: &PublishArgs) {
                 .replace("{version}", &plan.workspace_version)
         );
     }
+    if let Some(ref bootstrap) = args.bootstrap {
+        println!("  --bootstrap: {}", bootstrap.join(","));
+    }
     if let Some(ref from) = args.from {
         println!("  --from: {}", from);
     }
@@ -1098,6 +1124,9 @@ fn reconstruct_publish_command(args: &PublishArgs) -> String {
     }
     if let Some(ref exclude) = args.exclude {
         parts.push(format!("--exclude {}", exclude.join(",")));
+    }
+    if let Some(ref bootstrap) = args.bootstrap {
+        parts.push(format!("--bootstrap {}", bootstrap.join(",")));
     }
     if let Some(ref from) = args.from {
         parts.push(format!("--from {}", from));
@@ -1192,6 +1221,7 @@ fn execute_publish(
     crates: &[String],
     args: &PublishArgs,
     version: &str,
+    bootstrap: &BTreeSet<String>,
     receipt_path: Option<&Path>,
     mut receipt: Option<&mut PublishReceipt>,
 ) -> Result<(Vec<String>, Vec<String>)> {
@@ -1213,7 +1243,15 @@ fn execute_publish(
             )?;
         }
 
-        let result = publish_crate_with_retry(crate_name, args)?;
+        if bootstrap.contains(crate_name) {
+            let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) else {
+                bail!("bootstrap publication requires a durable receipt");
+            };
+            mark_publish_receipt_bootstrap(receipt, crate_name)?;
+            write_publish_receipt(path, receipt)?;
+        }
+
+        let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
@@ -1349,6 +1387,34 @@ fn is_publish_dependency(kind: &DependencyKind) -> bool {
         kind,
         DependencyKind::Normal | DependencyKind::Build | DependencyKind::Unknown
     )
+}
+
+/// Validate the explicitly opted-in development-cycle bootstrap crates.
+fn validate_bootstrap_crates(
+    crates_to_publish: &[String],
+    bootstrap: Option<&[String]>,
+    receipt: Option<&PublishReceipt>,
+) -> Result<BTreeSet<String>> {
+    let selected: BTreeSet<String> = bootstrap.unwrap_or_default().iter().cloned().collect();
+    let executable: BTreeSet<&str> = crates_to_publish.iter().map(String::as_str).collect();
+    let recorded: BTreeSet<&str> = receipt
+        .into_iter()
+        .flat_map(|receipt| receipt.crates.iter())
+        .filter(|entry| entry.bootstrap)
+        .map(|entry| entry.name.as_str())
+        .collect();
+    let unknown: Vec<_> = selected
+        .iter()
+        .filter(|name| !executable.contains(name.as_str()) && !recorded.contains(name.as_str()))
+        .cloned()
+        .collect();
+    if !unknown.is_empty() {
+        bail!(
+            "bootstrap crate(s) are not pending or previously recorded in the publish receipt: {}",
+            unknown.join(", ")
+        );
+    }
+    Ok(selected)
 }
 
 /// Mark every planned crate as having passed the pre-upload dependency check.
@@ -1695,7 +1761,11 @@ fn parse_rate_limit_timestamp(stderr: &str) -> Option<DateTime<FixedOffset>> {
 }
 
 /// Publish a single crate with retry logic for propagation delays.
-fn publish_crate_with_retry(crate_name: &str, args: &PublishArgs) -> Result<PublishResult> {
+fn publish_crate_with_retry(
+    crate_name: &str,
+    args: &PublishArgs,
+    bootstrap: bool,
+) -> Result<PublishResult> {
     const MAX_RETRIES: u32 = 5;
     const MAX_RATE_LIMIT_WAITS: u32 = 6;
     const RATE_LIMIT_FALLBACK_SECS: u64 = 300;
@@ -1742,8 +1812,12 @@ fn publish_crate_with_retry(crate_name: &str, args: &PublishArgs) -> Result<Publ
     loop {
         attempt += 1;
 
+        let mut cargo_args = vec!["publish", "-p", crate_name, "--locked"];
+        if bootstrap {
+            cargo_args.push("--no-verify");
+        }
         let output = Command::new("cargo")
-            .args(["publish", "-p", crate_name, "--locked"])
+            .args(cargo_args)
             .output()
             .context("Failed to spawn cargo publish")?;
 
@@ -2348,6 +2422,40 @@ mod tests {
         {
             bail!("preflight must mark every planned crate as verified");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn bootstrap_selection_is_explicit_and_plan_bound() -> Result<()> {
+        let plan = receipt_test_plan();
+        let selected = validate_bootstrap_crates(
+            &plan.publish_order,
+            Some(&["tokmd-core".to_string()]),
+            None,
+        )?;
+        if selected != BTreeSet::from(["tokmd-core".to_string()]) {
+            bail!("bootstrap selection should preserve the requested planned crate");
+        }
+        if validate_bootstrap_crates(
+            &plan.publish_order,
+            Some(&["not-in-plan".to_string()]),
+            None,
+        )
+        .is_ok()
+        {
+            bail!("bootstrap selection must reject crates outside the publish plan");
+        }
+
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.first_mut() else {
+            bail!("bootstrap fixture should contain a planned crate");
+        };
+        entry.bootstrap = true;
+        validate_bootstrap_crates(
+            &["tokmd".to_string()],
+            Some(&["tokmd-core".to_string()]),
+            Some(&receipt),
+        )?;
         Ok(())
     }
 
