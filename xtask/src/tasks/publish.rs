@@ -1248,9 +1248,10 @@ fn execute_publish(
             )?;
         }
 
-        let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
-
-        if !args.dry_run && matches!(&result, PublishResult::Success) {
+        // Record the verification decision before invoking Cargo. This field
+        // is an audit of the requested invocation, not proof that the upload
+        // succeeded; state and registry_visible carry those outcomes.
+        if !args.dry_run {
             if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
                 mark_publish_receipt_bootstrap(
                     receipt,
@@ -1260,6 +1261,8 @@ fn execute_publish(
                 write_publish_receipt(path, receipt)?;
             }
         }
+
+        let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
@@ -2472,6 +2475,11 @@ mod tests {
             validate_bootstrap_crates(&plan.publish_order, Some(&["tokmd-core".to_string()]))?;
         if selected != BTreeSet::from(["tokmd-core".to_string()]) {
             bail!("bootstrap selection should preserve the requested planned crate");
+        }
+        let selected_from_filtered_execution =
+            validate_bootstrap_crates(&["tokmd".to_string()], Some(&["tokmd".to_string()]))?;
+        if selected_from_filtered_execution != BTreeSet::from(["tokmd".to_string()]) {
+            bail!("bootstrap selection should accept an in-window filtered crate");
         }
         if validate_bootstrap_crates(&plan.publish_order, Some(&["not-in-plan".to_string()]))
             .is_ok()
