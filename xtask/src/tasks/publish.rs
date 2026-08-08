@@ -164,6 +164,22 @@ struct RegistryCrateReceipt {
     error: Option<String>,
 }
 
+/// Schema version for the crates.io registry inventory receipt.
+pub const PUBLISH_REGISTRY_SCHEMA_VERSION: &str = "tokmd.publish_registry.v1";
+
+/// Delay between consecutive crates.io API requests.
+///
+/// crates.io asks API clients to rate-limit themselves. Without this the
+/// 16-crate publish surface issues 16 back-to-back requests and reliably
+/// earns HTTP 429, which would misreport published crates as `unavailable`.
+const REGISTRY_REQUEST_DELAY: Duration = Duration::from_millis(1_000);
+
+/// Maximum number of retries for a single rate-limited crates.io request.
+const REGISTRY_RATE_LIMIT_RETRIES: u32 = 3;
+
+/// Fallback backoff when a rate-limit response omits a usable `Retry-After`.
+const REGISTRY_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(5);
+
 #[derive(Debug)]
 struct RegistryVersionLookup {
     state: &'static str,
@@ -182,7 +198,10 @@ fn run_registry_inventory(
     output_path: &Path,
 ) -> Result<()> {
     let mut receipts = Vec::with_capacity(plan.publish_order.len());
-    for name in &plan.publish_order {
+    for (index, name) in plan.publish_order.iter().enumerate() {
+        if index > 0 {
+            sleep(REGISTRY_REQUEST_DELAY);
+        }
         let lookup = query_registry_version(name, &plan.workspace_version);
         receipts.push(RegistryCrateReceipt {
             name: name.clone(),
@@ -222,11 +241,9 @@ fn run_registry_inventory(
             .all(|dependency| present.contains(dependency.name.as_str()));
     }
 
-    let complete = receipts
-        .iter()
-        .all(|receipt| receipt.state == "present" && receipt.dependencies_resolvable);
+    let complete = registry_inventory_is_complete(&receipts);
     let receipt = RegistryInventoryReceipt {
-        schema_version: "tokmd.publish_registry.v1",
+        schema_version: PUBLISH_REGISTRY_SCHEMA_VERSION,
         generated_at: Utc::now().to_rfc3339(),
         workspace_version: plan.workspace_version.clone(),
         dependency_check_scope: "workspace_internal_publish_edges",
@@ -234,7 +251,10 @@ fn run_registry_inventory(
         crates: receipts,
     };
 
-    if let Some(parent) = output_path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)
             .with_context(|| format!("create registry inventory parent {}", parent.display()))?;
     }
@@ -256,6 +276,18 @@ fn run_registry_inventory(
     Ok(())
 }
 
+/// Decide whether a registry inventory proves every planned crate is publishable.
+///
+/// An empty plan is deliberately *not* complete. `--crates`/`--exclude` filters
+/// can reduce the publish order to nothing, and a receipt claiming `passed` over
+/// zero crates would assert publishability the registry never confirmed.
+fn registry_inventory_is_complete(receipts: &[RegistryCrateReceipt]) -> bool {
+    !receipts.is_empty()
+        && receipts
+            .iter()
+            .all(|receipt| receipt.state == "present" && receipt.dependencies_resolvable)
+}
+
 fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLookup {
     if !crate_name
         .chars()
@@ -268,6 +300,68 @@ fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLoo
         };
     }
 
+    let mut attempt = 0;
+    loop {
+        let fetched = match fetch_registry_crate(crate_name) {
+            Ok(fetched) => fetched,
+            Err(error) => {
+                return RegistryVersionLookup {
+                    state: "unavailable",
+                    published_at: None,
+                    error: Some(error),
+                };
+            }
+        };
+
+        // 429 means "ask again later", not "this version does not exist".
+        // Classifying it immediately would report a published crate as
+        // unavailable and fail an otherwise-complete inventory.
+        if is_registry_rate_limited(fetched.status) && attempt < REGISTRY_RATE_LIMIT_RETRIES {
+            let backoff = fetched
+                .retry_after
+                .as_deref()
+                .and_then(parse_retry_after)
+                .unwrap_or(REGISTRY_RATE_LIMIT_BACKOFF * (attempt + 1));
+            eprintln!(
+                "crates.io rate-limited {crate_name} (HTTP {}); retrying in {}s",
+                fetched.status,
+                backoff.as_secs()
+            );
+            sleep(backoff);
+            attempt += 1;
+            continue;
+        }
+
+        return parse_registry_version_response(crate_name, version, fetched.status, &fetched.body);
+    }
+}
+
+/// A single crates.io API response, reduced to what classification needs.
+#[derive(Debug)]
+struct RegistryFetch {
+    status: u16,
+    body: String,
+    retry_after: Option<String>,
+}
+
+/// HTTP statuses crates.io uses to ask a client to slow down.
+fn is_registry_rate_limited(status: u16) -> bool {
+    matches!(status, 429 | 503)
+}
+
+/// Parse a `Retry-After` header value expressed in delta-seconds.
+///
+/// crates.io sends the delta-seconds form. The HTTP-date form is intentionally
+/// unhandled: falling back to the caller's bounded backoff is safer than
+/// trusting a parsed absolute time from a rate-limit response.
+fn parse_retry_after(value: &str) -> Option<Duration> {
+    let seconds: u64 = value.trim().parse().ok()?;
+    // Cap the honored delay so a hostile or misconfigured header cannot stall
+    // the inventory indefinitely.
+    Some(Duration::from_secs(seconds.min(60)))
+}
+
+fn fetch_registry_crate(crate_name: &str) -> Result<RegistryFetch, String> {
     let curl = if cfg!(windows) { "curl.exe" } else { "curl" };
     let url = format!("https://crates.io/api/v1/crates/{crate_name}");
     let output = Command::new(curl)
@@ -281,49 +375,57 @@ fn query_registry_version(crate_name: &str, version: &str) -> RegistryVersionLoo
             "60",
             "--user-agent",
             "tokmd-xtask-registry-inventory",
+            "--dump-header",
+            "-",
             "--write-out",
             "\n%{http_code}",
             &url,
         ])
-        .output();
+        .output()
+        .map_err(|error| format!("failed to execute {curl}: {error}"))?;
 
-    let output = match output {
-        Ok(output) => output,
-        Err(error) => {
-            return RegistryVersionLookup {
-                state: "unavailable",
-                published_at: None,
-                error: Some(format!("failed to execute {curl}: {error}")),
-            };
-        }
-    };
     if !output.status.success() {
-        return RegistryVersionLookup {
-            state: "unavailable",
-            published_at: None,
-            error: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
-        };
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
 
     let response = String::from_utf8_lossy(&output.stdout);
-    let Some((body, status)) = response.trim_end().rsplit_once('\n') else {
-        return RegistryVersionLookup {
-            state: "unavailable",
-            published_at: None,
-            error: Some("crates.io response omitted HTTP status".to_string()),
-        };
-    };
-    let status = match status.parse::<u16>() {
-        Ok(status) => status,
-        Err(error) => {
-            return RegistryVersionLookup {
-                state: "unavailable",
-                published_at: None,
-                error: Some(format!("invalid crates.io HTTP status: {error}")),
-            };
-        }
-    };
-    parse_registry_version_response(crate_name, version, status, body)
+    let (headers_and_body, status) = response
+        .trim_end()
+        .rsplit_once('\n')
+        .ok_or_else(|| "crates.io response omitted HTTP status".to_string())?;
+    let status: u16 = status
+        .parse()
+        .map_err(|error| format!("invalid crates.io HTTP status: {error}"))?;
+
+    let (headers, body) = split_registry_headers(headers_and_body);
+    Ok(RegistryFetch {
+        status,
+        body: body.to_string(),
+        retry_after: header_value(headers, "retry-after"),
+    })
+}
+
+/// Split `--dump-header -` output from the response body.
+///
+/// `--location` can emit several header blocks, so the body starts after the
+/// *last* blank line separating a header block from what follows it.
+fn split_registry_headers(response: &str) -> (&str, &str) {
+    let normalized_end = response.rfind("\r\n\r\n").map(|index| (index, 4));
+    let separator = normalized_end.or_else(|| response.rfind("\n\n").map(|index| (index, 2)));
+    match separator {
+        Some((index, width)) => (&response[..index], &response[index + width..]),
+        None => ("", response),
+    }
+}
+
+/// Case-insensitively read a header value from a raw header block.
+fn header_value(headers: &str, name: &str) -> Option<String> {
+    headers.lines().rev().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| value.trim().to_string())
+    })
 }
 
 fn parse_registry_version_response(
@@ -353,7 +455,9 @@ fn parse_registry_version_response(
             return RegistryVersionLookup {
                 state: "unavailable",
                 published_at: None,
-                error: Some(format!("invalid crates.io response for {crate_name}: {error}")),
+                error: Some(format!(
+                    "invalid crates.io response for {crate_name}: {error}"
+                )),
             };
         }
     };
@@ -364,19 +468,26 @@ fn parse_registry_version_response(
             error: Some("crates.io response omitted versions".to_string()),
         };
     };
-    let Some(version_entry) = versions.iter().find(|entry| {
-        entry.get("num").and_then(Value::as_str) == Some(version)
-    }) else {
+    let Some(version_entry) = versions
+        .iter()
+        .find(|entry| entry.get("num").and_then(Value::as_str) == Some(version))
+    else {
         return RegistryVersionLookup {
             state: "missing",
             published_at: None,
             error: None,
         };
     };
-    let yanked = version_entry
-        .get("yanked")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    // Every other unexpected response shape here fails closed. An absent or
+    // non-boolean `yanked` field must too, otherwise the receipt would call a
+    // crate publishable on evidence the registry never gave.
+    let Some(yanked) = version_entry.get("yanked").and_then(Value::as_bool) else {
+        return RegistryVersionLookup {
+            state: "unavailable",
+            published_at: None,
+            error: Some("crates.io version entry omitted a boolean yanked field".to_string()),
+        };
+    };
     RegistryVersionLookup {
         state: if yanked { "yanked" } else { "present" },
         published_at: version_entry
@@ -1459,7 +1570,10 @@ mod tests {
 
         let present = parse_registry_version_response("tokmd", "1.15.0", 200, body);
         assert_eq!(present.state, "present");
-        assert_eq!(present.published_at.as_deref(), Some("2026-08-01T00:00:00Z"));
+        assert_eq!(
+            present.published_at.as_deref(),
+            Some("2026-08-01T00:00:00Z")
+        );
 
         let yanked = parse_registry_version_response("tokmd", "1.14.0", 200, body);
         assert_eq!(yanked.state, "yanked");
@@ -1478,5 +1592,95 @@ mod tests {
 
         let malformed = parse_registry_version_response("tokmd", "1.15.0", 200, "{}");
         assert_eq!(malformed.state, "unavailable");
+
+        // An HTML error page served with HTTP 200 must not be read as success.
+        let html = parse_registry_version_response(
+            "tokmd",
+            "1.15.0",
+            200,
+            "<html><body>502 Bad Gateway</body></html>",
+        );
+        assert_eq!(html.state, "unavailable");
+
+        // A version entry without a boolean `yanked` field proves nothing.
+        let body = r#"{"versions":[{"num":"1.15.0","created_at":"2026-08-01T00:00:00Z"}]}"#;
+        let no_yanked = parse_registry_version_response("tokmd", "1.15.0", 200, body);
+        assert_eq!(no_yanked.state, "unavailable");
+    }
+
+    #[test]
+    fn registry_query_rejects_unsafe_crate_names_without_network() {
+        for name in ["tokmd/../admin", "tokmd:1", "tokmd?x=1", "tok md"] {
+            let lookup = query_registry_version(name, "1.15.0");
+            assert_eq!(lookup.state, "unavailable", "name {name} must be rejected");
+            assert!(lookup.published_at.is_none());
+        }
+    }
+
+    fn receipt(
+        name: &str,
+        state: &'static str,
+        dependencies_resolvable: bool,
+    ) -> RegistryCrateReceipt {
+        RegistryCrateReceipt {
+            name: name.to_string(),
+            version: "1.15.0".to_string(),
+            state,
+            dependencies_resolvable,
+            published_at: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn registry_inventory_completeness_is_fail_closed() {
+        // An empty plan proves nothing and must not report success.
+        assert!(!registry_inventory_is_complete(&[]));
+
+        assert!(registry_inventory_is_complete(&[
+            receipt("tokmd-core", "present", true),
+            receipt("tokmd", "present", true),
+        ]));
+
+        assert!(!registry_inventory_is_complete(&[
+            receipt("tokmd-core", "present", true),
+            receipt("tokmd", "missing", false),
+        ]));
+
+        assert!(!registry_inventory_is_complete(&[receipt(
+            "tokmd", "present", false
+        )]));
+
+        assert!(!registry_inventory_is_complete(&[receipt(
+            "tokmd", "yanked", true
+        )]));
+    }
+
+    #[test]
+    fn retry_after_is_parsed_and_capped() {
+        assert_eq!(parse_retry_after("30"), Some(Duration::from_secs(30)));
+        assert_eq!(parse_retry_after("  7 "), Some(Duration::from_secs(7)));
+        // Hostile or misconfigured values must not stall the inventory.
+        assert_eq!(parse_retry_after("100000"), Some(Duration::from_secs(60)));
+        // The HTTP-date form falls back to the caller's bounded backoff.
+        assert_eq!(parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT"), None);
+        assert_eq!(parse_retry_after(""), None);
+    }
+
+    #[test]
+    fn registry_headers_split_from_body_across_redirects() {
+        let response = "HTTP/2 301\r\nlocation: https://crates.io/x\r\n\r\nHTTP/2 429\r\nretry-after: 12\r\n\r\n{\"versions\":[]}";
+        let (headers, body) = split_registry_headers(response);
+        assert_eq!(body, "{\"versions\":[]}");
+        assert_eq!(header_value(headers, "Retry-After").as_deref(), Some("12"));
+        assert!(header_value(headers, "x-absent").is_none());
+    }
+
+    #[test]
+    fn rate_limit_statuses_are_retryable() {
+        assert!(is_registry_rate_limited(429));
+        assert!(is_registry_rate_limited(503));
+        assert!(!is_registry_rate_limited(200));
+        assert!(!is_registry_rate_limited(404));
     }
 }
