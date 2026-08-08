@@ -1321,7 +1321,6 @@ fn execute_publish_with_backend<B: PublishBackend>(
         }
 
         let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
-        let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
@@ -2589,6 +2588,23 @@ mod tests {
             ]
         {
             bail!("fixture should observe visibility after each non-failed publish");
+        }
+
+        receipt = load_publish_receipt(&path, &plan)?;
+        let persisted_bootstrap: BTreeMap<_, _> = receipt
+            .crates
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.bootstrap))
+            .collect();
+        if persisted_bootstrap
+            != BTreeMap::from([
+                ("tokmd-types", true),
+                ("tokmd-envelope", true),
+                ("tokmd-core", false),
+                ("tokmd", false),
+            ])
+        {
+            bail!("on-disk receipt must preserve each bootstrap invocation decision");
         }
 
         let resume = crates_to_publish(&plan, 0, Some(&receipt));
