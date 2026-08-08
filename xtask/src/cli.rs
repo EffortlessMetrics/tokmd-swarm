@@ -1719,7 +1719,11 @@ pub struct PublishArgs {
     pub registry_inventory: Option<std::path::PathBuf>,
 
     /// Write a durable per-crate publication receipt while publishing.
-    #[arg(long, value_name = "PATH")]
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with_all = ["plan", "registry_inventory", "dry_run", "verify"]
+    )]
     pub receipt: Option<std::path::PathBuf>,
 
     /// Resume from a publication receipt, skipping crates already marked terminal.

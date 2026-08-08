@@ -11,6 +11,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -73,6 +74,7 @@ pub struct PublishPlan {
 
 const PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v1";
 const PUBLISH_RECEIPT_VERSION: u32 = 1;
+static RECEIPT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -139,13 +141,8 @@ pub fn run(args: PublishArgs) -> Result<()> {
             }
             Some(new_publish_receipt(&plan))
         }
-        None if args.resume => bail!("--resume requires --receipt <path>"),
         None => None,
     };
-
-    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
-        write_publish_receipt(path, receipt)?;
-    }
 
     // Handle --plan mode: just print and exit
     if args.plan {
@@ -168,24 +165,11 @@ pub fn run(args: PublishArgs) -> Result<()> {
         0
     };
 
-    let crates_to_publish: Vec<String> = plan.publish_order[start_idx..]
-        .iter()
-        .filter(|name| {
-            receipt.as_ref().is_none_or(|receipt| {
-                receipt
-                    .crates
-                    .iter()
-                    .find(|entry| entry.name == **name)
-                    .is_none_or(|entry| {
-                        !matches!(
-                            entry.state,
-                            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-                        )
-                    })
-            })
-        })
-        .cloned()
-        .collect();
+    let crates_to_publish = crates_to_publish(&plan, start_idx, receipt.as_ref());
+
+    if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_ref()) {
+        write_publish_receipt(path, receipt)?;
+    }
 
     // Print summary and require confirmation for real publishing
     print_pre_publish_summary(&plan, &args, start_idx);
@@ -296,6 +280,19 @@ fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceip
     {
         bail!("publication receipt crate entries do not match the current publish plan");
     }
+    for entry in &receipt.crates {
+        validate_publish_receipt_entry(entry)?;
+    }
+    if receipt.state == PublishReceiptState::Complete
+        && receipt.crates.iter().any(|entry| {
+            !matches!(
+                entry.state,
+                PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
+            )
+        })
+    {
+        bail!("complete publication receipt contains a non-terminal crate entry");
+    }
     Ok(receipt)
 }
 
@@ -308,9 +305,101 @@ fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
             .with_context(|| format!("create publication receipt parent {}", parent.display()))?;
     }
     let json = serde_json::to_string_pretty(receipt).context("serialize publication receipt")?;
-    fs::write(path, format!("{json}\n"))
-        .with_context(|| format!("write publication receipt {}", path.display()))?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
+        .to_string_lossy();
+    let temp_path = parent.join(format!(
+        ".{file_name}.tmp-{}-{}",
+        std::process::id(),
+        RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut temp = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temp_path)
+        .with_context(|| {
+            format!(
+                "create temporary publication receipt {}",
+                temp_path.display()
+            )
+        })?;
+    let write_result = (|| -> Result<()> {
+        temp.write_all(format!("{json}\n").as_bytes())?;
+        temp.sync_all()
+            .context("sync temporary publication receipt")?;
+        Ok(())
+    })();
+    drop(temp);
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error).with_context(|| format!("write publication receipt {}", path.display()));
+    }
+    #[cfg(windows)]
+    if path.exists() {
+        fs::remove_file(path)
+            .with_context(|| format!("replace publication receipt {}", path.display()))?;
+    }
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error)
+            .with_context(|| format!("install publication receipt {}", path.display()));
+    }
     Ok(())
+}
+
+fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
+    let valid = match (&entry.state, entry.attempts, entry.reason.as_deref()) {
+        (PublishReceiptState::Planned, 0, None) => true,
+        (PublishReceiptState::InProgress, attempts, None) if attempts > 0 => true,
+        (PublishReceiptState::Published | PublishReceiptState::AlreadyPresent, attempts, None)
+            if attempts > 0 =>
+        {
+            true
+        }
+        (PublishReceiptState::Failed, attempts, Some(reason))
+            if attempts > 0 && !reason.trim().is_empty() =>
+        {
+            true
+        }
+        _ => false,
+    };
+    if !valid {
+        bail!(
+            "publication receipt entry `{}` has inconsistent state, attempts, or reason",
+            entry.name
+        );
+    }
+    Ok(())
+}
+
+fn crates_to_publish(
+    plan: &PublishPlan,
+    start_idx: usize,
+    receipt: Option<&PublishReceipt>,
+) -> Vec<String> {
+    plan.publish_order[start_idx..]
+        .iter()
+        .filter(|name| {
+            receipt.is_none_or(|receipt| {
+                receipt
+                    .crates
+                    .iter()
+                    .find(|entry| entry.name == **name)
+                    .is_none_or(|entry| {
+                        !matches!(
+                            entry.state,
+                            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
+                        )
+                    })
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 fn update_publish_receipt(
@@ -1974,6 +2063,48 @@ mod tests {
         changed.publish_order.reverse();
         if load_publish_receipt(&path, &changed).is_ok() {
             bail!("resume must reject a receipt created for a different publish order");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_resume_skips_terminal_entries_and_retries_failed_entries() -> Result<()>
+    {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != vec!["tokmd".to_string()] {
+            bail!("resume should skip only the terminal publication entry");
+        }
+
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Failed;
+        entry.attempts = 1;
+        entry.reason = Some("registry unavailable".to_string());
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != plan.publish_order {
+            bail!("resume should retry a failed publication entry");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_rejects_inconsistent_entry_state() -> Result<()> {
+        let mut receipt = new_publish_receipt(&receipt_test_plan());
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        if validate_publish_receipt_entry(entry).is_ok() {
+            bail!("inconsistent published entry should be rejected");
         }
         Ok(())
     }
