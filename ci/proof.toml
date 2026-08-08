@@ -182,6 +182,7 @@ paths = [
   "xtask/src/tasks/proof_run_pr_policy.rs",
   "xtask/src/tasks/proof_workflow_status.rs",
   "xtask/src/tasks/publish.rs",
+  "xtask/src/tasks/release_status.rs",
   "xtask/src/tasks/repo_graph.rs",
   "scripts/check-no-bare-self-hosted.sh",
   "scripts/publish-release-crates.sh",
