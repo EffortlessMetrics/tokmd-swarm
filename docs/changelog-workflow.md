@@ -14,19 +14,24 @@ changie new --kind fixed --component CLI \
 ```
 
 Use one of the configured components and kinds. `Documentation` and `Internal`
-are intentionally non-bumping for Changie's advisory `batch auto` mode; release
-preparation still chooses the explicit version.
+are intentionally `auto: none`: a batch containing only those kinds must use an
+explicit version, never `batch auto`.
 
 ## Prepare a release
 
-Release preparation supplies the version explicitly:
+The historical import is not complete yet, so release preparation is currently
+dry-run-only:
 
 ```bash
-changie batch 1.15.1
-changie merge
+changie batch 1.15.1 --dry-run
+changie merge --dry-run
 ```
 
-Review the generated version file before merging it into `CHANGELOG.md`.
+Do not run a write-mode `changie merge` until the lossless historical baseline
+is present in `.changes/`. Changie reconstructs `CHANGELOG.md` from its header
+and version fragments; running it now would discard the existing pre-1.15
+history. The future write-mode sequence will supply an explicit version,
+review the generated version file, and then merge it into `CHANGELOG.md`.
 Publishing, tagging, alias promotion, and release creation remain governed by
 the [canonical release checklist](releases/release-checklist.md).
 
