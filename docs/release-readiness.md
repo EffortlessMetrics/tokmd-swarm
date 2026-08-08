@@ -53,10 +53,11 @@ cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --
 
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
-the current plan. The receipt is recovery state for publisher invocations; its
-`registry_visible` and `dependency_closure` fields remain null until a separate
-registry/closure proof records those facts. It does not authorize publication,
-prove crates.io visibility, or replace the registry inventory check.
+the current plan. After a non-dry-run upload, it performs bounded crates.io
+visibility observations and records `registry_visible`; an unobserved result is
+retryable on resume rather than terminal. `dependency_closure` remains null
+until the separate package/closure proof records that fact. The receipt does
+not authorize publication or replace the registry inventory check.
 
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
