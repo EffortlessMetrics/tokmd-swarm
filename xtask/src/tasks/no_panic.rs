@@ -1340,10 +1340,12 @@ mod tests {
     }
 
     #[test]
-    fn negative_trait_impl_names_the_trait_like_a_positive_impl() {
-        // The syn 2 destructure discarded a leading `Option<Not>`; syn 3 drops
-        // it from the tuple entirely. Either way the container must be the
-        // trait path, so a negative impl is named like a positive one.
+    fn negative_impl_is_traversed_without_disturbing_later_containers() {
+        // syn 2 carried the negative-impl `!` as a leading `Option<Not>` in
+        // `ItemImpl::trait_`; syn 3 drops it from the tuple. A negative impl
+        // has an empty body, so it contributes no findings of its own — what
+        // this pins is that the visitor still traverses one cleanly and
+        // leaves the container stack balanced for the impls around it.
         let findings = parse(
             r#"
             struct Thing;
@@ -1352,6 +1354,7 @@ mod tests {
                     panic!("inherent");
                 }
             }
+            impl !Send for Thing {}
             impl PartialEq for Thing {
                 fn eq(&self, other: &Self) -> bool {
                     panic!("eq");
