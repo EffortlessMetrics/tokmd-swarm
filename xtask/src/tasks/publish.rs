@@ -289,7 +289,7 @@ fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceip
             !matches!(
                 entry.state,
                 PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-            ) || entry.registry_visible == Some(false)
+            )
         })
     {
         bail!("complete publication receipt contains a non-terminal crate entry");
@@ -434,7 +434,7 @@ fn crates_to_publish(
                         !matches!(
                             entry.state,
                             PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-                        ) || entry.registry_visible == Some(false)
+                        ) || entry.registry_visible != Some(true)
                     })
             })
         })
@@ -479,7 +479,7 @@ fn update_publish_receipt_visibility(
     entry.registry_visible = match lookup.state {
         "present" => Some(true),
         "missing" | "yanked" => Some(false),
-        _ => Some(false),
+        _ => None,
     };
     if lookup.state != "present" {
         entry.reason = lookup.error.clone().or_else(|| {
@@ -1264,10 +1264,14 @@ fn execute_publish(
                 }
             }
             PublishResult::AlreadyPublished => {
-                let visibility = wait_for_registry_visibility(crate_name, version, args.interval);
-                if visibility.state != "present" {
-                    let reason = visibility.error.clone().unwrap_or_else(|| {
-                        format!("registry visibility check ended in `{}`", visibility.state)
+                let visibility = (!args.dry_run)
+                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
+                if let Some(lookup) = visibility
+                    .as_ref()
+                    .filter(|lookup| lookup.state != "present")
+                {
+                    let reason = lookup.error.clone().unwrap_or_else(|| {
+                        format!("registry visibility check ended in `{}`", lookup.state)
                     });
                     println!(
                         "  ✗ {} was reported already published but registry visibility was not proven",
@@ -1283,7 +1287,7 @@ fn execute_publish(
                             Some(reason),
                             false,
                         )?;
-                        update_publish_receipt_visibility(path, receipt, crate_name, &visibility)?;
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
                     }
                     if !args.continue_on_error {
                         bail!(
@@ -1304,7 +1308,9 @@ fn execute_publish(
                         None,
                         false,
                     )?;
-                    update_publish_receipt_visibility(path, receipt, crate_name, &visibility)?;
+                    if let Some(lookup) = visibility.as_ref() {
+                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                    }
                 }
             }
             PublishResult::Failed(e) => {
@@ -2228,6 +2234,7 @@ mod tests {
         };
         entry.state = PublishReceiptState::Published;
         entry.attempts = 1;
+        entry.registry_visible = Some(true);
 
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != vec!["tokmd".to_string()] {
@@ -2261,6 +2268,23 @@ mod tests {
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != plan.publish_order {
             bail!("resume must retry a published entry without visibility proof");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_retries_unobserved_registry_visibility() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != plan.publish_order {
+            bail!("resume must retry an unobserved registry entry");
         }
         Ok(())
     }
