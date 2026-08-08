@@ -523,7 +523,6 @@ fn mark_publish_receipt_bootstrap(
     entry.bootstrap = bootstrap;
     Ok(())
 }
-
 #[derive(Debug, Serialize)]
 struct RegistryInventoryReceipt {
     schema_version: &'static str,
@@ -1322,6 +1321,7 @@ fn execute_publish_with_backend<B: PublishBackend>(
         }
 
         let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
+        let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
@@ -1479,7 +1479,6 @@ fn validate_bootstrap_crates(
     }
     Ok(selected)
 }
-
 /// Mark every planned crate as having passed the pre-upload dependency check.
 fn mark_dependency_closure_verified(receipt: &mut PublishReceipt) {
     for entry in &mut receipt.crates {
@@ -2739,8 +2738,12 @@ mod tests {
         if selected != BTreeSet::from(["tokmd-core".to_string()]) {
             bail!("bootstrap selection should preserve the requested planned crate");
         }
+        let filtered_execution = crates_to_publish(&plan, 1, None);
+        if filtered_execution != vec!["tokmd".to_string()] {
+            bail!("filtered execution should begin at the requested --from crate");
+        }
         let selected_from_filtered_execution =
-            validate_bootstrap_crates(&["tokmd".to_string()], Some(&["tokmd".to_string()]))?;
+            validate_bootstrap_crates(&filtered_execution, Some(&["tokmd".to_string()]))?;
         if selected_from_filtered_execution != BTreeSet::from(["tokmd".to_string()]) {
             bail!("bootstrap selection should accept an in-window filtered crate");
         }
@@ -2754,6 +2757,28 @@ mod tests {
             .is_ok()
         {
             bail!("bootstrap selection must reject a terminal skipped crate");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bootstrap_receipt_audit_records_true_and_false_decisions() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        mark_publish_receipt_bootstrap(&mut receipt, "tokmd-core", true)?;
+        mark_publish_receipt_bootstrap(&mut receipt, "tokmd", false)?;
+        let core = receipt
+            .crates
+            .iter()
+            .find(|entry| entry.name == "tokmd-core")
+            .ok_or_else(|| anyhow!("bootstrap receipt should contain tokmd-core"))?;
+        let tokmd = receipt
+            .crates
+            .iter()
+            .find(|entry| entry.name == "tokmd")
+            .ok_or_else(|| anyhow!("bootstrap receipt should contain tokmd"))?;
+        if !core.bootstrap || tokmd.bootstrap {
+            bail!("receipt must preserve both opted-in and ordinary invocation decisions");
         }
         Ok(())
     }
