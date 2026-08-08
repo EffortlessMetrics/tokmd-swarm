@@ -855,7 +855,7 @@ impl<'ast> Visit<'ast> for PanicVisitor {
         // For trait impls, encode the trait so that `impl Display for Foo`
         // and `impl Debug for Foo` produce different containers for methods
         // with the same name (e.g. `fmt`).
-        let segment = if let Some((_, trait_path, _)) = &item.trait_ {
+        let segment = if let Some((trait_path, _)) = &item.trait_ {
             format!("<{} as {}>", type_name, path_string(trait_path))
         } else {
             type_name
