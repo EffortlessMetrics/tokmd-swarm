@@ -1,8 +1,24 @@
 # Release status receipt
 
+- Status: active
+- Schema family: `tokmd.release_status.v1`
+- Related ADRs: `docs/adr/0005-release-train-and-rc-semantics.md`
+- Related proof scopes: `release_metadata`, `workspace_dependency_graph`
+
 `cargo xtask release-status` is a read-only inspection surface for release
 state. It does not publish crates, create or edit GitHub Releases, move tags,
 change GHCR aliases, or move the Action `v1` ref.
+
+## Inputs
+
+The command requires a Git tag. It optionally accepts a JSON output path and an
+offline receipt fixture assembled from authoritative release-system evidence.
+
+## Outputs
+
+The command writes the `tokmd.release_status.v1` receipt described below. It
+reports each release surface independently and derives `complete` from those
+states rather than trusting an imported boolean.
 
 ## Commands
 
@@ -62,3 +78,27 @@ The fixture validator rejects schema/version mismatches, tag mismatches, and
 stale `complete` claims. It is intended to become the input seam for the
 registry, hosted Release, alias, and consumer receipt adapters in follow-up
 slices.
+
+## Compatibility
+
+The receipt is additive and versioned. Existing publish, graph, alias, and
+consumer receipts remain authoritative for their own surfaces; this command
+does not replace or reinterpret them. A future schema revision must preserve
+`not_run` and unavailable evidence as distinct states.
+
+## Proof Requirements
+
+- Unit fixtures must discriminate a complete stable release from draft,
+  partial-asset, partial-registry, exact-proof/alias-pending, and missing-proof
+  states.
+- Fixture validation must reject stale completion claims and tag/schema
+  mismatches.
+- Local checks must prove deterministic formatting and JSON field ordering.
+- Release completion must remain false unless every required surface is
+  `passed`, publication has two parents, and graph ahead/behind is `0/0`.
+
+## Open Questions
+
+Remote receipt adapters and the closeout consumer are intentionally separate
+follow-up slices. They must name their authoritative source and preserve the
+same state vocabulary before being wired into this command.
