@@ -53,11 +53,16 @@ cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --
 
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
-the current plan. After a non-dry-run upload, it performs bounded crates.io
-visibility observations and records `registry_visible`; an unobserved result is
-retryable on resume rather than terminal. `dependency_closure` remains null
-until the separate package/closure proof records that fact. The receipt does
-not authorize publication or replace the registry inventory check.
+the current plan. On the normal path (without `--skip-checks`), before the first
+upload and during dry-run, preflight checks the package file list for every
+planned crate and verifies that each normal, build, or otherwise
+publish-relevant workspace dependency is in the same plan with a version
+requirement matching the planned package version. A successful preflight records
+`dependency_closure: true` for every planned crate. After a non-dry-run upload,
+the publisher performs bounded crates.io visibility observations and records
+`registry_visible`; an unobserved result is retryable on resume rather than
+terminal. The receipt does not authorize publication or replace the registry
+inventory check.
 
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
