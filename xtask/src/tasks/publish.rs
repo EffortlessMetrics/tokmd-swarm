@@ -1220,14 +1220,73 @@ fn confirm_publish() -> Result<bool> {
     Ok(input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes"))
 }
 
-/// Execute the publish for a list of crates.
+trait PublishBackend {
+    fn publish(
+        &mut self,
+        crate_name: &str,
+        args: &PublishArgs,
+        bootstrap: bool,
+    ) -> Result<PublishResult>;
+
+    fn wait_for_visibility(
+        &mut self,
+        crate_name: &str,
+        version: &str,
+        interval: u64,
+    ) -> RegistryVersionLookup;
+}
+
+struct LivePublishBackend;
+
+impl PublishBackend for LivePublishBackend {
+    fn publish(
+        &mut self,
+        crate_name: &str,
+        args: &PublishArgs,
+        bootstrap: bool,
+    ) -> Result<PublishResult> {
+        publish_crate_with_retry(crate_name, args, bootstrap)
+    }
+
+    fn wait_for_visibility(
+        &mut self,
+        crate_name: &str,
+        version: &str,
+        interval: u64,
+    ) -> RegistryVersionLookup {
+        wait_for_registry_visibility(crate_name, version, interval)
+    }
+}
+
+/// Execute the publish for a list of crates using the live Cargo/registry path.
 fn execute_publish(
     crates: &[String],
     args: &PublishArgs,
     version: &str,
     bootstrap: &BTreeSet<String>,
     receipt_path: Option<&Path>,
+    receipt: Option<&mut PublishReceipt>,
+) -> Result<(Vec<String>, Vec<String>)> {
+    let mut backend = LivePublishBackend;
+    execute_publish_with_backend(
+        crates,
+        args,
+        version,
+        bootstrap,
+        receipt_path,
+        receipt,
+        &mut backend,
+    )
+}
+
+fn execute_publish_with_backend<B: PublishBackend>(
+    crates: &[String],
+    args: &PublishArgs,
+    version: &str,
+    bootstrap: &BTreeSet<String>,
+    receipt_path: Option<&Path>,
     mut receipt: Option<&mut PublishReceipt>,
+    backend: &mut B,
 ) -> Result<(Vec<String>, Vec<String>)> {
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
@@ -1261,12 +1320,12 @@ fn execute_publish(
             }
         }
 
-        let result = publish_crate_with_retry(crate_name, args, bootstrap.contains(crate_name))?;
+        let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
 
         match result {
             PublishResult::Success => {
                 let visibility = (!args.dry_run)
-                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
+                    .then(|| backend.wait_for_visibility(crate_name, version, args.interval));
                 if let Some(lookup) = visibility
                     .as_ref()
                     .filter(|lookup| lookup.state != "present")
@@ -1316,7 +1375,7 @@ fn execute_publish(
             }
             PublishResult::AlreadyPublished => {
                 let visibility = (!args.dry_run)
-                    .then(|| wait_for_registry_visibility(crate_name, version, args.interval));
+                    .then(|| backend.wait_for_visibility(crate_name, version, args.interval));
                 if let Some(lookup) = visibility
                     .as_ref()
                     .filter(|lookup| lookup.state != "present")
@@ -2126,7 +2185,114 @@ fn create_git_tag(args: &PublishArgs, version: &str) -> Result<()> {
 mod tests {
     use super::*;
     use chrono::Datelike;
+    use std::collections::VecDeque;
     use tempfile::tempdir;
+
+    enum FixturePublish {
+        Success,
+        AlreadyPublished,
+        Failed(&'static str),
+    }
+
+    struct FixtureAttempt {
+        publish: FixturePublish,
+        visibility: VecDeque<RegistryVersionLookup>,
+    }
+
+    struct FixtureBackend {
+        attempts: VecDeque<FixtureAttempt>,
+        pending_visibility: VecDeque<RegistryVersionLookup>,
+        publish_calls: Vec<(String, bool)>,
+        visibility_calls: Vec<String>,
+    }
+
+    impl FixtureBackend {
+        fn new(attempts: impl IntoIterator<Item = FixtureAttempt>) -> Self {
+            Self {
+                attempts: attempts.into_iter().collect(),
+                pending_visibility: VecDeque::new(),
+                publish_calls: Vec::new(),
+                visibility_calls: Vec::new(),
+            }
+        }
+    }
+
+    impl PublishBackend for FixtureBackend {
+        fn publish(
+            &mut self,
+            crate_name: &str,
+            _args: &PublishArgs,
+            bootstrap: bool,
+        ) -> Result<PublishResult> {
+            let attempt = self
+                .attempts
+                .pop_front()
+                .ok_or_else(|| anyhow!("fixture has no attempt for {crate_name}"))?;
+            self.publish_calls.push((crate_name.to_string(), bootstrap));
+            self.pending_visibility = attempt.visibility;
+            Ok(match attempt.publish {
+                FixturePublish::Success => PublishResult::Success,
+                FixturePublish::AlreadyPublished => PublishResult::AlreadyPublished,
+                FixturePublish::Failed(message) => PublishResult::Failed(anyhow!(message)),
+            })
+        }
+
+        fn wait_for_visibility(
+            &mut self,
+            crate_name: &str,
+            _version: &str,
+            _interval: u64,
+        ) -> RegistryVersionLookup {
+            self.visibility_calls.push(crate_name.to_string());
+            let mut last = RegistryVersionLookup {
+                state: "unavailable",
+                published_at: None,
+                error: Some("fixture omitted a visibility response".to_string()),
+            };
+            for _ in 0..REGISTRY_VISIBILITY_ATTEMPTS {
+                let Some(lookup) = self.pending_visibility.pop_front() else {
+                    break;
+                };
+                last = lookup;
+                if matches!(last.state, "present" | "yanked") {
+                    break;
+                }
+            }
+            last
+        }
+    }
+
+    fn fixture_lookup(state: &'static str) -> RegistryVersionLookup {
+        RegistryVersionLookup {
+            state,
+            published_at: None,
+            error: (state != "present").then(|| format!("fixture state: {state}")),
+        }
+    }
+
+    fn fixture_attempt(
+        publish: FixturePublish,
+        visibility: impl IntoIterator<Item = &'static str>,
+    ) -> FixtureAttempt {
+        FixtureAttempt {
+            publish,
+            visibility: visibility.into_iter().map(fixture_lookup).collect(),
+        }
+    }
+
+    fn fixture_plan() -> PublishPlan {
+        PublishPlan {
+            publish_order: vec![
+                "tokmd-types".to_string(),
+                "tokmd-envelope".to_string(),
+                "tokmd-core".to_string(),
+                "tokmd".to_string(),
+            ],
+            inclusion_reasons: BTreeMap::new(),
+            exclusion_reasons: BTreeMap::new(),
+            workspace_version: "1.15.1".to_string(),
+        }
+    }
 
     #[test]
     fn test_classify_already_published() {
@@ -2369,6 +2535,120 @@ mod tests {
             exclusion_reasons: BTreeMap::new(),
             workspace_version: "1.15.0".to_string(),
         }
+    }
+
+    #[test]
+    fn publisher_fixture_covers_resume_propagation_existing_and_yanked() -> Result<()> {
+        let plan = fixture_plan();
+        let directory = tempdir().context("create publisher fixture directory")?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        write_publish_receipt(&path, &receipt)?;
+
+        let mut args = PublishArgs {
+            continue_on_error: true,
+            interval: 0,
+            ..PublishArgs::default()
+        };
+        let bootstrap = BTreeSet::from(["tokmd-types".to_string(), "tokmd-envelope".to_string()]);
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        let mut first = FixtureBackend::new([
+            fixture_attempt(FixturePublish::Success, ["missing", "present"]),
+            fixture_attempt(FixturePublish::AlreadyPublished, ["present"]),
+            fixture_attempt(FixturePublish::Success, ["yanked"]),
+            fixture_attempt(FixturePublish::Failed("simulated partial failure"), []),
+        ]);
+        let (succeeded, failed) = execute_publish_with_backend(
+            &crates,
+            &args,
+            &plan.workspace_version,
+            &bootstrap,
+            Some(&path),
+            Some(&mut receipt),
+            &mut first,
+        )?;
+        if succeeded != ["tokmd-types", "tokmd-envelope"] || failed != ["tokmd-core", "tokmd"] {
+            bail!("fixture should record clean, existing, yanked, and failed outcomes");
+        }
+        if first.publish_calls
+            != [
+                ("tokmd-types".to_string(), true),
+                ("tokmd-envelope".to_string(), true),
+                ("tokmd-core".to_string(), false),
+                ("tokmd".to_string(), false),
+            ]
+        {
+            bail!("fixture should record the per-crate bootstrap invocation decision");
+        }
+        if first.visibility_calls
+            != [
+                "tokmd-types".to_string(),
+                "tokmd-envelope".to_string(),
+                "tokmd-core".to_string(),
+            ]
+        {
+            bail!("fixture should observe visibility after each non-failed publish");
+        }
+
+        receipt = load_publish_receipt(&path, &plan)?;
+        let persisted_bootstrap: BTreeMap<_, _> = receipt
+            .crates
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.bootstrap))
+            .collect();
+        if persisted_bootstrap
+            != BTreeMap::from([
+                ("tokmd-types", true),
+                ("tokmd-envelope", true),
+                ("tokmd-core", false),
+                ("tokmd", false),
+            ])
+        {
+            bail!("on-disk receipt must preserve each bootstrap invocation decision");
+        }
+
+        let resume = crates_to_publish(&plan, 0, Some(&receipt));
+        if resume != ["tokmd-core", "tokmd"].map(str::to_string) {
+            bail!("resume should skip only visible published and existing crates");
+        }
+
+        args.continue_on_error = false;
+        let mut second = FixtureBackend::new([
+            fixture_attempt(FixturePublish::Success, ["present"]),
+            fixture_attempt(FixturePublish::AlreadyPublished, ["present"]),
+        ]);
+        let (succeeded, failed) = execute_publish_with_backend(
+            &resume,
+            &args,
+            &plan.workspace_version,
+            &BTreeSet::new(),
+            Some(&path),
+            Some(&mut receipt),
+            &mut second,
+        )?;
+        if succeeded != ["tokmd-core", "tokmd"] || !failed.is_empty() {
+            bail!("resume fixture should complete the previously failed suffix");
+        }
+        if second.publish_calls
+            != [
+                ("tokmd-core".to_string(), false),
+                ("tokmd".to_string(), false),
+            ]
+        {
+            bail!("resume must not republish terminal entries or retain bootstrap intent");
+        }
+
+        receipt.state = PublishReceiptState::Complete;
+        write_publish_receipt(&path, &receipt)?;
+        let loaded = load_publish_receipt(&path, &plan)?;
+        if loaded
+            .crates
+            .iter()
+            .any(|entry| entry.registry_visible != Some(true))
+        {
+            bail!("completed fixture receipt must prove visibility for every crate");
+        }
+        Ok(())
     }
 
     #[test]
