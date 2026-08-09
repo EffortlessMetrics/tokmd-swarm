@@ -58,16 +58,21 @@ If you want cache hits across multiple worktrees or checkout roots, use `cargo x
 
 ### Local Hooks
 
-Enable the project's git hooks for automated lint-fix and quality gating:
+Enable the project's git hooks for staged release-note checks, automated
+lint-fix, and quality gating:
 
 ```bash
-git config core.hooksPath .githooks
+cargo xtask hooks install
 ```
 
 This is a one-time setup. Two hooks are provided:
 
-- **pre-commit** — Runs `cargo xtask lint-fix` (fmt + clippy --fix + clippy verify), restages fixed files, and runs `typos --diff` (if installed). Only triggers when `.rs`, `Cargo.toml`, or `Cargo.lock` files are staged.
+- **pre-commit** — Runs `cargo precommit` against staged paths, then runs `cargo xtask lint-fix` (fmt + clippy --fix + clippy verify) and `typos --diff` (if installed) for Rust-relevant staged files. User-visible or unknown changes require a staged Changie fragment; create one with `cargo change --kind fixed --component CLI --body "..."`.
 - **pre-push** — Runs `cargo xtask gate --check` (fmt check + cargo check + clippy + test compile-only) to catch issues before they reach CI.
+
+`cargo precommit` inspects only the Git index, never unstaged working-tree
+noise. It does not create fragments silently, run the full workspace gate, or
+overwrite an unrelated existing hook configuration.
 
 You can bypass hooks with `git commit --no-verify` or `git push --no-verify` in emergencies.
 
