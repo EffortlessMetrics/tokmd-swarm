@@ -276,6 +276,12 @@ Then dispatch `.github/workflows/release-consumer-smoke.yml` against the exact
 publication tag. The workflow must download the released artifacts rather than
 rebuild substitutes.
 
+The consumer matrix also installs `tokmd` from crates.io with
+`cargo install tokmd --version <expected-version> --locked` and checks the
+installed binary version for stable releases. RCs intentionally record this
+surface as `not_supported` because RC crates are not published.
+The stable install probe waits for registry propagation with bounded retries.
+
 For required surfaces, missing receipts, crashed jobs, `unavailable`, and
 `not_run` fail closed. A consumer failure rejects the RC and requires the next
 RC number after the defect is fixed and re-imported. Never move an existing RC
