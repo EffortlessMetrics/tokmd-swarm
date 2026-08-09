@@ -163,6 +163,7 @@ paths = [
   "xtask/src/tasks/ci_plan.rs",
   "xtask/src/tasks/ci_route.rs",
   "xtask/src/tasks/ci_runner_health.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/coverage_receipt.rs",
   "xtask/src/tasks/doc_artifacts.rs",
   "xtask/src/tasks/file_policy.rs",
@@ -404,6 +405,7 @@ paths = [
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
   "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/no_panic.rs",
   "xtask/tests/no_panic_w94.rs",
 ]
@@ -1339,6 +1341,8 @@ paths = [
   ".changes/**",
   ".changie-version",
   ".changie.yaml",
+  ".cargo/config.toml",
+  ".githooks/pre-commit",
   "docs/changelog-workflow.md",
 ]
 proof = ["cargo xtask docs --check"]

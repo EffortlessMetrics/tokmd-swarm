@@ -43,9 +43,10 @@ pub fn run_change(args: ChangeArgs) -> Result<()> {
         bail!("--body must not be empty");
     }
 
-    let output = args
-        .output
-        .unwrap_or_else(|| default_fragment_path(&component, &kind));
+    let output = match args.output {
+        Some(output) => output,
+        None => default_fragment_path(&component, &kind),
+    };
     let relative = normalize_relative(&output);
     if !relative.starts_with(".changes/unreleased/") {
         bail!("fragment output must be under .changes/unreleased/: {relative}");
@@ -299,14 +300,26 @@ fn parse_name_status(bytes: &[u8]) -> Result<Vec<String>> {
     let mut paths = Vec::new();
     let mut index = 0;
     while index < tokens.len() {
-        let status = &tokens[index];
-        index += 1;
+        let status = tokens
+            .get(index)
+            .ok_or_else(|| anyhow::anyhow!("missing staged diff status record"))?;
+        index = index
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("staged diff status index overflowed"))?;
         let path_count = usize::from(status.starts_with('R') || status.starts_with('C')) + 1;
-        if index + path_count > tokens.len() {
+        let end = index
+            .checked_add(path_count)
+            .ok_or_else(|| anyhow::anyhow!("staged diff path index overflowed"))?;
+        if end > tokens.len() {
             bail!("malformed staged diff status record `{status}`");
         }
-        paths.extend(tokens[index..index + path_count].iter().cloned());
-        index += path_count;
+        for offset in 0..path_count {
+            let path = tokens
+                .get(index + offset)
+                .ok_or_else(|| anyhow::anyhow!("missing staged diff path"))?;
+            paths.push(path.clone());
+        }
+        index = end;
     }
     paths.sort();
     paths.dedup();
@@ -360,37 +373,50 @@ mod tests {
     fn parses_added_modified_deleted_and_rename_records() -> Result<()> {
         let bytes = b"A\0README.md\0M\0src/lib.rs\0D\0tests/old.rs\0R100\0old.md\0new.md\0";
         let paths = parse_name_status(bytes)?;
-        assert_eq!(
-            paths,
-            vec![
-                "README.md".to_string(),
-                "new.md".to_string(),
-                "old.md".to_string(),
-                "src/lib.rs".to_string(),
-                "tests/old.rs".to_string()
-            ]
-        );
+        let expected = vec![
+            "README.md".to_string(),
+            "new.md".to_string(),
+            "old.md".to_string(),
+            "src/lib.rs".to_string(),
+            "tests/old.rs".to_string(),
+        ];
+        if paths != expected {
+            bail!("parsed paths did not match expected Git name-status records");
+        }
         Ok(())
     }
 
     #[test]
-    fn classifies_user_visible_and_unknown_paths_conservatively() {
-        assert!(matches!(
-            classify_paths(&["README.md".to_string()]),
-            ChangeClass::Required(_)
-        ));
-        assert!(matches!(
-            classify_paths(&["tests/unit.rs".to_string(), "Cargo.lock".to_string()]),
-            ChangeClass::Exempt(_)
-        ));
-        assert!(matches!(
-            classify_paths(&["crates/example/tests/fixture.rs".to_string()]),
-            ChangeClass::Exempt(_)
-        ));
-        assert!(matches!(
-            classify_paths(&["scripts/new-tool.ps1".to_string()]),
-            ChangeClass::Required(_)
-        ));
+    fn classifies_user_visible_and_unknown_paths_conservatively() -> Result<()> {
+        let cases = [
+            (
+                vec!["README.md".to_string()],
+                true,
+                "README should require a release note",
+            ),
+            (
+                vec!["tests/unit.rs".to_string(), "Cargo.lock".to_string()],
+                false,
+                "test and lockfile changes should be exempt",
+            ),
+            (
+                vec!["crates/example/tests/fixture.rs".to_string()],
+                false,
+                "fixture-only changes should be exempt",
+            ),
+            (
+                vec!["scripts/new-tool.ps1".to_string()],
+                true,
+                "unknown scripts should require a release note",
+            ),
+        ];
+        for (paths, required, message) in cases {
+            let is_required = matches!(classify_paths(&paths), ChangeClass::Required(_));
+            if is_required != required {
+                bail!("{message}");
+            }
+        }
+        Ok(())
     }
 
     #[test]
@@ -399,21 +425,25 @@ mod tests {
             ".changes/unreleased/CLI-fixed-20260808.yaml",
             "component: CLI\nkind: fixed\nbody: \"Make the error actionable\"\n",
         )?;
-        assert!(
-            validate_fragment(
-                ".changes/unreleased/CLI-fixed-20260808.yaml",
-                "component: Nope\nkind: fixed\nbody: broken\n",
-            )
-            .is_err()
-        );
-        assert!(
-            validate_fragment(
-                ".changes/unreleased/CLI-fixed-20260808.yaml",
-                "component: CLI\nkind: fixed\nbody:\n",
-            )
-            .is_err()
-        );
-        assert_eq!(canonical_component("release")?, "Release");
+        if validate_fragment(
+            ".changes/unreleased/CLI-fixed-20260808.yaml",
+            "component: Nope\nkind: fixed\nbody: broken\n",
+        )
+        .is_ok()
+        {
+            bail!("invalid component should be rejected");
+        }
+        if validate_fragment(
+            ".changes/unreleased/CLI-fixed-20260808.yaml",
+            "component: CLI\nkind: fixed\nbody:\n",
+        )
+        .is_ok()
+        {
+            bail!("empty body should be rejected");
+        }
+        if canonical_component("release")? != "Release" {
+            bail!("component aliases should normalize to their canonical spelling");
+        }
         Ok(())
     }
 }
