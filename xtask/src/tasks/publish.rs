@@ -93,6 +93,13 @@ enum PublishReceiptState {
     AlreadyPresent,
     Yanked,
     Failed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum PublishRunState {
+    Planned,
+    InProgress,
     Complete,
     Incomplete,
 }
@@ -116,7 +123,7 @@ struct PublishReceipt {
     schema: String,
     schema_version: u32,
     workspace_version: String,
-    state: PublishReceiptState,
+    state: PublishRunState,
     publish_order: Vec<String>,
     crates: Vec<PublishCrateReceipt>,
 }
@@ -180,8 +187,8 @@ pub fn run(args: PublishArgs) -> Result<()> {
     if crates_to_publish.is_empty() {
         validate_no_work_resume(&args, receipt.as_deref())?;
         if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-            if receipt.state != PublishReceiptState::Complete {
-                receipt.state = PublishReceiptState::Complete;
+            if receipt.state != PublishRunState::Complete {
+                receipt.state = PublishRunState::Complete;
                 write_publish_receipt(path, receipt)?;
             }
         }
@@ -237,14 +244,14 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     if !failed.is_empty() {
         if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-            receipt.state = PublishReceiptState::Incomplete;
+            receipt.state = PublishRunState::Incomplete;
             write_publish_receipt(path, receipt)?;
         }
         bail!("{} crate(s) failed to publish", failed.len());
     }
 
     if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-        receipt.state = PublishReceiptState::Complete;
+        receipt.state = PublishRunState::Complete;
         write_publish_receipt(path, receipt)?;
     }
 
@@ -269,7 +276,7 @@ fn validate_no_work_resume(args: &PublishArgs, receipt: Option<&PublishReceipt>)
         return Ok(());
     }
     let receipt = receipt.ok_or_else(|| anyhow!("--resume requires a publication receipt"))?;
-    if receipt.state != PublishReceiptState::Complete
+    if receipt.state != PublishRunState::Complete
         && (receipt.crates.is_empty()
             || receipt
                 .crates
@@ -289,7 +296,7 @@ fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
         schema: PUBLISH_RECEIPT_SCHEMA.to_string(),
         schema_version: PUBLISH_RECEIPT_VERSION,
         workspace_version: plan.workspace_version.clone(),
-        state: PublishReceiptState::Planned,
+        state: PublishRunState::Planned,
         publish_order: plan.publish_order.clone(),
         crates: plan
             .publish_order
@@ -356,7 +363,7 @@ fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceip
     for entry in &receipt.crates {
         validate_publish_receipt_entry(entry)?;
     }
-    if receipt.state == PublishReceiptState::Complete
+    if receipt.state == PublishRunState::Complete
         && receipt
             .crates
             .iter()
@@ -601,7 +608,7 @@ fn update_publish_receipt_entry(
     entry.state = state;
     entry.reason = reason;
     entry.updated_at = Utc::now().to_rfc3339();
-    receipt.state = PublishReceiptState::InProgress;
+    receipt.state = PublishRunState::InProgress;
     Ok(())
 }
 
@@ -2831,7 +2838,7 @@ mod tests {
             bail!("resume must not republish terminal entries or retain bootstrap intent");
         }
 
-        receipt.state = PublishReceiptState::Complete;
+        receipt.state = PublishRunState::Complete;
         write_publish_receipt(&path, &receipt)?;
         let loaded = load_publish_receipt(&path, &plan)?;
         if loaded
@@ -3278,6 +3285,28 @@ mod tests {
     }
 
     #[test]
+    fn publication_receipt_state_types_reject_cross_level_values() -> Result<()> {
+        let receipt = new_publish_receipt(&receipt_test_plan());
+        let mut crate_value = serde_json::to_value(
+            receipt
+                .crates
+                .first()
+                .ok_or_else(|| anyhow!("receipt test plan should contain a crate"))?,
+        )?;
+        crate_value["state"] = Value::String("complete".to_string());
+        if serde_json::from_value::<PublishCrateReceipt>(crate_value).is_ok() {
+            bail!("crate receipt must reject a run-level state");
+        }
+
+        let mut run_value = serde_json::to_value(&receipt)?;
+        run_value["state"] = Value::String("published".to_string());
+        if serde_json::from_value::<PublishReceipt>(run_value).is_ok() {
+            bail!("run receipt must reject a crate-level state");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn verify_alias_normalizes_to_dry_run() -> Result<()> {
         let args = PublishArgs {
             verify: true,
@@ -3310,7 +3339,7 @@ mod tests {
             ..PublishArgs::default()
         };
         let mut receipt = new_publish_receipt(&receipt_test_plan());
-        receipt.state = PublishReceiptState::Incomplete;
+        receipt.state = PublishRunState::Incomplete;
         if validate_no_work_resume(&args, Some(&receipt)).is_ok() {
             bail!("an incomplete no-work resume must fail closed");
         }
@@ -3320,7 +3349,7 @@ mod tests {
             entry.registry_visible = Some(true);
         }
         validate_no_work_resume(&args, Some(&receipt))?;
-        receipt.state = PublishReceiptState::Complete;
+        receipt.state = PublishRunState::Complete;
         validate_no_work_resume(&args, Some(&receipt))?;
         Ok(())
     }
