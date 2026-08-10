@@ -43,8 +43,9 @@ repository:
 branches:
   - name: main
     protection:
-      # Codex is the exact-head reviewer for this single-maintainer workflow;
-      # native human approval and CODEOWNERS review are intentionally absent.
+      # This is a single-maintainer workflow: independent agentic review passes
+      # use separate lanes and inline conversations, not reviewer accounts,
+      # native approval, or CODEOWNERS review.
       required_pull_request_reviews:
         required_approving_review_count: 0
         dismiss_stale_reviews: false
