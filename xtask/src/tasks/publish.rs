@@ -170,6 +170,11 @@ pub fn run(args: PublishArgs) -> Result<()> {
         return Ok(());
     }
 
+    if crates_to_publish.is_empty() {
+        println!("No crates require publication.");
+        return Ok(());
+    }
+
     // Run pre-publish checks (unless skipped)
     if !args.skip_checks {
         run_pre_publish_checks(&args, &metadata, &plan)?;
@@ -2981,6 +2986,21 @@ mod tests {
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != plan.publish_order {
             bail!("resume must retry an unobserved registry entry");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_with_all_terminal_entries_has_no_work() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        for entry in &mut receipt.crates {
+            entry.state = PublishReceiptState::Published;
+            entry.attempts = 1;
+        }
+
+        if !crates_to_publish(&plan, 0, Some(&receipt)).is_empty() {
+            bail!("resume should not offer work after every crate is terminal");
         }
         Ok(())
     }
