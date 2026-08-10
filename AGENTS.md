@@ -16,17 +16,19 @@ This file provides guidance to AI agents (Claude, Factory Droid, etc.) when work
 ## Review and Conversation Resolution
 
 Conversation resolution is part of the merge process. Every actionable inline
-comment from a bot or agent reviewer must be addressed and its review thread
-resolved before merge. A general bot summary comment with no review thread is
-not an unresolved conversation.
+comment from a bot or agent reviewer must be addressed, independently checked,
+and its review thread resolved before merge. Resolution is necessary process
+evidence, not proof by itself that the finding was fixed. A general bot summary
+comment with no review thread is not an unresolved conversation.
 
 This is a single-maintainer repository: a separate human reviewer account,
 native approval, and CODEOWNERS approval are intentionally not merge
 requirements. Independent agentic review passes are part of the normal review
-process. Use separate agent lanes or reviewer identities for those passes when
-appropriate; they may leave inline findings, and the resulting conversations
-must be resolved. Do not manufacture a second approval identity or status
-check as a substitute for that process.
+process. Use separate agent lanes for those passes when appropriate; they may
+leave inline findings, and the resulting conversations must be independently
+checked and resolved. This is an agent workflow requirement, not a native
+approval or required-review status gate. Do not manufacture a second GitHub
+reviewer account, approval identity, or status check merely to satisfy one.
 
 ## Project Overview
 
