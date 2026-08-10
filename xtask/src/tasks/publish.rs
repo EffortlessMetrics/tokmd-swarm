@@ -137,6 +137,8 @@ pub fn run(args: PublishArgs) -> Result<()> {
         return run_registry_inventory(&metadata, &plan, path);
     }
 
+    validate_publish_mode(&args)?;
+
     let mut receipt = match args.receipt.as_deref() {
         Some(path) if args.resume => Some(load_publish_receipt(path, &plan)?),
         Some(path) => {
@@ -235,6 +237,13 @@ fn normalize_publish_args(mut args: PublishArgs) -> PublishArgs {
     args.dry_run |= args.verify;
     args.verify = false;
     args
+}
+
+fn validate_publish_mode(args: &PublishArgs) -> Result<()> {
+    if args.dry_run && args.receipt.is_some() {
+        bail!("--receipt cannot be combined with --dry-run or --verify");
+    }
+    Ok(())
 }
 
 fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
@@ -2998,6 +3007,19 @@ mod tests {
         let normalized = normalize_publish_args(args);
         if !normalized.dry_run || normalized.verify {
             bail!("--verify should behave as a hidden --dry-run alias");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn dry_run_rejects_publication_receipt() -> Result<()> {
+        let args = PublishArgs {
+            dry_run: true,
+            receipt: Some(std::path::PathBuf::from("publish.json")),
+            ..PublishArgs::default()
+        };
+        if validate_publish_mode(&args).is_ok() {
+            bail!("dry-run must not create a publication receipt");
         }
         Ok(())
     }
