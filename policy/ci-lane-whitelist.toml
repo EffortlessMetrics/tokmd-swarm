@@ -1151,6 +1151,26 @@ review_after     = "2026-08-04"
 expires          = "2027-02-04"
 
 [[lane]]
+id               = "release_consumer_cargo_install"
+workflow         = ".github/workflows/release-consumer-smoke.yml"
+job              = "Cargo install smoke"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 8
+owner            = "release/consumer"
+intent           = "Prove the published crate installs and runs through the documented cargo-install consumer path."
+failure_mode     = "A published crate is available but cannot be installed or used by a downstream cargo consumer."
+proof_obligation = "Install the exact published crate with cargo install, run the installed binary, and record the version and receipt."
+evidence         = ["tokmd.release_consumer_smoke.v1.json", "release-consumer-smoke.md"]
+allowed_triggers = ["workflow_dispatch", "workflow_call"]
+duplicate_of     = []
+review_after     = "2026-08-10"
+expires          = "2027-02-10"
+
+[[lane]]
 id               = "release_consumer_binary"
 workflow         = ".github/workflows/release-consumer-smoke.yml"
 job              = "Binary smoke (${{ matrix.id }})"
