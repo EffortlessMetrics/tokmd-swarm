@@ -509,6 +509,15 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
             entry.name
         );
     }
+    if entry.dependency_closure == Some(true)
+        && entry.state == PublishReceiptState::Planned
+        && entry.attempts == 0
+    {
+        bail!(
+            "publication receipt entry `{}` claims dependency closure verified before any attempt",
+            entry.name
+        );
+    }
     let visibility_valid = match (&entry.state, entry.attempts, entry.registry_visible) {
         (_, _, None) => true,
         (
@@ -3286,6 +3295,10 @@ mod tests {
         entry.dependency_closure = Some(false);
         if validate_publish_receipt_entry(entry).is_ok() {
             bail!("receipt must not accept a failed dependency-closure proof");
+        }
+        entry.dependency_closure = Some(true);
+        if validate_publish_receipt_entry(entry).is_ok() {
+            bail!("receipt must not accept dependency closure before an attempt");
         }
         Ok(())
     }
