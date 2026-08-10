@@ -503,6 +503,17 @@ fn update_publish_receipt(
     reason: Option<String>,
     increment_attempt: bool,
 ) -> Result<()> {
+    update_publish_receipt_entry(receipt, crate_name, state, reason, increment_attempt)?;
+    write_publish_receipt(path, receipt)
+}
+
+fn update_publish_receipt_entry(
+    receipt: &mut PublishReceipt,
+    crate_name: &str,
+    state: PublishReceiptState,
+    reason: Option<String>,
+    increment_attempt: bool,
+) -> Result<()> {
     let entry = receipt
         .crates
         .iter_mut()
@@ -515,11 +526,10 @@ fn update_publish_receipt(
     entry.reason = reason;
     entry.updated_at = Utc::now().to_rfc3339();
     receipt.state = PublishReceiptState::InProgress;
-    write_publish_receipt(path, receipt)
+    Ok(())
 }
 
-fn update_publish_receipt_visibility(
-    path: &Path,
+fn update_publish_receipt_visibility_entry(
     receipt: &mut PublishReceipt,
     crate_name: &str,
     lookup: &RegistryVersionLookup,
@@ -543,6 +553,20 @@ fn update_publish_receipt_visibility(
         });
     }
     entry.updated_at = Utc::now().to_rfc3339();
+    Ok(())
+}
+
+fn update_publish_receipt_with_visibility(
+    path: &Path,
+    receipt: &mut PublishReceipt,
+    crate_name: &str,
+    state: PublishReceiptState,
+    reason: Option<String>,
+    increment_attempt: bool,
+    lookup: &RegistryVersionLookup,
+) -> Result<()> {
+    update_publish_receipt_entry(receipt, crate_name, state, reason, increment_attempt)?;
+    update_publish_receipt_visibility_entry(receipt, crate_name, lookup)?;
     write_publish_receipt(path, receipt)
 }
 
@@ -1380,15 +1404,15 @@ fn execute_publish_with_backend<B: PublishBackend>(
                         } else {
                             PublishReceiptState::Failed
                         };
-                        update_publish_receipt(
+                        update_publish_receipt_with_visibility(
                             path,
                             receipt,
                             crate_name,
                             state,
                             Some(reason),
                             false,
+                            lookup,
                         )?;
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
                     }
                     if !args.continue_on_error {
                         bail!(
@@ -1401,16 +1425,25 @@ fn execute_publish_with_backend<B: PublishBackend>(
                 println!("  ✓ Published {}", crate_name);
                 succeeded.push(crate_name.clone());
                 if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                    update_publish_receipt(
-                        path,
-                        receipt,
-                        crate_name,
-                        PublishReceiptState::Published,
-                        None,
-                        false,
-                    )?;
                     if let Some(lookup) = visibility.as_ref() {
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                        update_publish_receipt_with_visibility(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::Published,
+                            None,
+                            false,
+                            lookup,
+                        )?;
+                    } else {
+                        update_publish_receipt(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::Published,
+                            None,
+                            false,
+                        )?;
                     }
                 }
             }
@@ -1435,15 +1468,15 @@ fn execute_publish_with_backend<B: PublishBackend>(
                         } else {
                             PublishReceiptState::Failed
                         };
-                        update_publish_receipt(
+                        update_publish_receipt_with_visibility(
                             path,
                             receipt,
                             crate_name,
                             state,
                             Some(reason),
                             false,
+                            lookup,
                         )?;
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
                     }
                     if !args.continue_on_error {
                         bail!(
@@ -1456,16 +1489,25 @@ fn execute_publish_with_backend<B: PublishBackend>(
                 println!("  ✓ {} already published", crate_name);
                 succeeded.push(crate_name.clone());
                 if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                    update_publish_receipt(
-                        path,
-                        receipt,
-                        crate_name,
-                        PublishReceiptState::AlreadyPresent,
-                        None,
-                        false,
-                    )?;
                     if let Some(lookup) = visibility.as_ref() {
-                        update_publish_receipt_visibility(path, receipt, crate_name, lookup)?;
+                        update_publish_receipt_with_visibility(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::AlreadyPresent,
+                            None,
+                            false,
+                            lookup,
+                        )?;
+                    } else {
+                        update_publish_receipt(
+                            path,
+                            receipt,
+                            crate_name,
+                            PublishReceiptState::AlreadyPresent,
+                            None,
+                            false,
+                        )?;
                     }
                 }
             }
