@@ -1415,6 +1415,15 @@ fn execute_publish_with_backend<B: PublishBackend>(
         }
 
         if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+            // Record the invocation decision before the single durable state
+            // write; this avoids a second receipt installation per crate.
+            if !args.dry_run {
+                mark_publish_receipt_bootstrap(
+                    receipt,
+                    crate_name,
+                    bootstrap.contains(crate_name),
+                )?;
+            }
             update_publish_receipt(
                 path,
                 receipt,
@@ -1423,20 +1432,6 @@ fn execute_publish_with_backend<B: PublishBackend>(
                 None,
                 true,
             )?;
-        }
-
-        // Record the verification decision before invoking Cargo. This field
-        // is an audit of the requested invocation, not proof that the upload
-        // succeeded; state and registry_visible carry those outcomes.
-        if !args.dry_run {
-            if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-                mark_publish_receipt_bootstrap(
-                    receipt,
-                    crate_name,
-                    bootstrap.contains(crate_name),
-                )?;
-                write_publish_receipt(path, receipt)?;
-            }
         }
 
         let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
