@@ -44,19 +44,41 @@ The next patch release exists to make the successful 1.15.0 path repeatable:
 
 ### Receipt-backed publication resume
 
-The publisher can persist a local, plan-bound receipt after each crate attempt:
+The publisher can persist a local, plan-bound `tokmd.publish_receipt.v2` receipt
+after each crate attempt:
 
 ```bash
 cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
 cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
 ```
 
+Development-only bootstrap cycles are opt-in and plan-bound. For the two
+known bootstrap crates, an intentional release may pass
+`--bootstrap tokmd-types,tokmd-envelope`; this maps only those selected crates
+to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
+verification, and an unknown or out-of-plan bootstrap name is rejected.
+
+The per-crate `bootstrap` field records whether the current publisher
+invocation requested Cargo's `--no-verify`, including when Cargo reports
+`already_present` or the attempt fails. It is an audit of the invocation
+decision, not proof that an upload succeeded; receipt state and registry
+visibility carry those outcomes. Receipts written by the v1 publisher are
+accepted and upgraded to v2 on their next durable write, with the new field
+defaulting to `false`.
+
 `--resume` skips only crates recorded as `published` or `already_present` and
 rejects a receipt whose workspace version or dependency order no longer matches
-the current plan. The receipt is recovery state for publisher invocations; its
-`registry_visible` and `dependency_closure` fields remain null until a separate
-registry/closure proof records those facts. It does not authorize publication,
-prove crates.io visibility, or replace the registry inventory check.
+the current plan. On the normal path (without `--skip-checks`), before the first
+upload and during dry-run, preflight checks the package file list for every
+planned crate and verifies that each normal, build, or otherwise
+publish-relevant workspace dependency is in the same plan with a version
+requirement matching the planned package version. A successful preflight records
+`dependency_closure: true` for every planned crate. After a non-dry-run upload,
+the publisher performs bounded crates.io visibility observations and records
+`registry_visible`; an unobserved result is retryable on resume rather than
+terminal. `dependency_closure` remains null until the package/closure proof
+records that fact. The receipt does not authorize publication or replace the
+registry inventory check.
 
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
@@ -253,6 +275,12 @@ After tagging, verify independently:
 Then dispatch `.github/workflows/release-consumer-smoke.yml` against the exact
 publication tag. The workflow must download the released artifacts rather than
 rebuild substitutes.
+
+The consumer matrix also installs `tokmd` from crates.io with
+`cargo install tokmd --version <expected-version> --locked` and checks the
+installed binary version for stable releases. RCs intentionally record this
+surface as `not_supported` because RC crates are not published.
+The stable install probe waits for registry propagation with bounded retries.
 
 For required surfaces, missing receipts, crashed jobs, `unavailable`, and
 `not_run` fail closed. A consumer failure rejects the RC and requires the next

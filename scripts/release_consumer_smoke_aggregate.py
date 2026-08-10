@@ -9,6 +9,7 @@ from typing import Any
 
 REQUIRED_SURFACES = (
     "release-assets",
+    "cargo-install",
     "binary-linux-amd64",
     "binary-linux-arm64",
     "binary-macos-amd64",
@@ -22,6 +23,7 @@ REQUIRED_SURFACES = (
 
 JOB_SURFACES = {
     "release-assets": ("release-assets",),
+    "cargo-install-smoke": ("cargo-install",),
     "binary-smoke": (
         "binary-linux-amd64",
         "binary-linux-arm64",
