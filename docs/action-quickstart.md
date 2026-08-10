@@ -78,8 +78,8 @@ jobs:
 Open first:
 
 1. the `tokmd-receipts` artifact;
-2. `.tokmd/review/review-map.md`;
-3. `.tokmd/review/comment.md`;
+2. `.tokmd/review/comment.md`;
+3. `.tokmd/review/review-map.md`;
 4. `.tokmd/review/evidence.json`;
 5. `target/tokmd/review-packet-check.json`.
 

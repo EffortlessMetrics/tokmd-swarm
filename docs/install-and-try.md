@@ -63,8 +63,8 @@ tokmd cockpit \
 
 Open first:
 
-1. `.tokmd/review/review-map.md`
-2. `.tokmd/review/comment.md`
+1. `.tokmd/review/comment.md`
+2. `.tokmd/review/review-map.md`
 3. `.tokmd/review/evidence.json`
 
 In a tokmd contributor checkout, verify the packet:
