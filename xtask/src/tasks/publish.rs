@@ -326,12 +326,10 @@ fn load_publish_receipt(path: &Path, plan: &PublishPlan) -> Result<PublishReceip
         validate_publish_receipt_entry(entry)?;
     }
     if receipt.state == PublishReceiptState::Complete
-        && receipt.crates.iter().any(|entry| {
-            !matches!(
-                entry.state,
-                PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-            )
-        })
+        && receipt
+            .crates
+            .iter()
+            .any(|entry| !is_release_complete_entry(entry))
     {
         bail!("complete publication receipt contains a non-terminal crate entry");
     }
@@ -436,11 +434,11 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
     let valid = match (&entry.state, entry.attempts, entry.reason.as_deref()) {
         (PublishReceiptState::Planned, 0, None) => true,
         (PublishReceiptState::InProgress, attempts, None) if attempts > 0 => true,
-        (PublishReceiptState::Published | PublishReceiptState::AlreadyPresent, attempts, None)
-            if attempts > 0 =>
-        {
-            true
-        }
+        (
+            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
+            attempts,
+            reason,
+        ) if attempts > 0 && reason.is_none_or(|reason| !reason.trim().is_empty()) => true,
         (PublishReceiptState::Yanked, attempts, Some(reason))
             if attempts > 0 && !reason.trim().is_empty() =>
         {
@@ -493,6 +491,29 @@ fn is_terminal_publish_entry(entry: &PublishCrateReceipt) -> bool {
         PublishReceiptState::Yanked => true,
         _ => false,
     }
+}
+
+fn is_release_complete_entry(entry: &PublishCrateReceipt) -> bool {
+    matches!(
+        &entry.state,
+        PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
+    ) && entry.registry_visible == Some(true)
+}
+
+fn pending_visibility_state(
+    receipt: Option<&PublishReceipt>,
+    crate_name: &str,
+) -> Option<PublishReceiptState> {
+    receipt
+        .and_then(|receipt| receipt.crates.iter().find(|entry| entry.name == crate_name))
+        .and_then(|entry| match &entry.state {
+            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
+                if entry.registry_visible != Some(true) =>
+            {
+                Some(entry.state.clone())
+            }
+            _ => None,
+        })
 }
 
 fn update_publish_receipt(
@@ -1355,6 +1376,44 @@ fn execute_publish_with_backend<B: PublishBackend>(
         let position = format!("[{}/{}]", idx + 1, crates.len());
         println!("{} Publishing {}...", position, crate_name);
 
+        if let Some(previous_state) = pending_visibility_state(receipt.as_deref(), crate_name) {
+            println!("  Checking registry visibility for {}...", crate_name);
+            let lookup = backend.wait_for_visibility(crate_name, version, args.interval);
+            let visible = lookup.state == "present";
+            if visible {
+                println!("  ✓ Registry visibility confirmed for {}", crate_name);
+                succeeded.push(crate_name.clone());
+            } else {
+                println!(
+                    "  ✗ Registry visibility remains unproven for {} ({})",
+                    crate_name, lookup.state
+                );
+                failed.push(crate_name.clone());
+            }
+            if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                let state = if lookup.state == "yanked" {
+                    PublishReceiptState::Yanked
+                } else {
+                    previous_state
+                };
+                let reason = (!visible).then(|| {
+                    lookup.error.clone().unwrap_or_else(|| {
+                        format!("registry visibility check ended in `{}`", lookup.state)
+                    })
+                });
+                update_publish_receipt_with_visibility(
+                    path, receipt, crate_name, state, reason, false, &lookup,
+                )?;
+            }
+            if !visible && !args.continue_on_error {
+                bail!(
+                    "Registry visibility for {} remains unproven. Resume with --receipt",
+                    crate_name
+                );
+            }
+            continue;
+        }
+
         if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
             update_publish_receipt(
                 path,
@@ -1402,7 +1461,7 @@ fn execute_publish_with_backend<B: PublishBackend>(
                         let state = if lookup.state == "yanked" {
                             PublishReceiptState::Yanked
                         } else {
-                            PublishReceiptState::Failed
+                            PublishReceiptState::Published
                         };
                         update_publish_receipt_with_visibility(
                             path,
@@ -1466,7 +1525,7 @@ fn execute_publish_with_backend<B: PublishBackend>(
                         let state = if lookup.state == "yanked" {
                             PublishReceiptState::Yanked
                         } else {
-                            PublishReceiptState::Failed
+                            PublishReceiptState::AlreadyPresent
                         };
                         update_publish_receipt_with_visibility(
                             path,
@@ -2730,6 +2789,57 @@ mod tests {
             .any(|entry| entry.registry_visible != Some(true))
         {
             bail!("completed fixture receipt must prove visibility for every crate");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn resume_rechecks_visibility_without_republishing_uploaded_crate() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir().context("create visibility resume fixture directory")?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+        write_publish_receipt(&path, &receipt)?;
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        let mut backend =
+            FixtureBackend::new([fixture_attempt(FixturePublish::Success, ["present"])]);
+        backend
+            .pending_visibility
+            .push_back(fixture_lookup("present"));
+        let args = PublishArgs {
+            interval: 0,
+            ..PublishArgs::default()
+        };
+        let (succeeded, failed) = execute_publish_with_backend(
+            &crates,
+            &args,
+            &plan.workspace_version,
+            &BTreeSet::new(),
+            Some(&path),
+            Some(&mut receipt),
+            &mut backend,
+        )?;
+
+        if succeeded != ["tokmd-core", "tokmd"] || !failed.is_empty() {
+            bail!("resume should verify the uploaded crate and publish only the pending crate");
+        }
+        if backend.publish_calls != [("tokmd".to_string(), false)] {
+            bail!("resume must not republish a crate whose upload already succeeded");
+        }
+        let loaded = load_publish_receipt(&path, &plan)?;
+        if loaded
+            .crates
+            .first()
+            .and_then(|entry| entry.registry_visible)
+            != Some(true)
+        {
+            bail!("visibility-only resume should persist the successful observation");
         }
         Ok(())
     }
