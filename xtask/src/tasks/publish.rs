@@ -811,17 +811,18 @@ fn wait_for_registry_visibility(
     version: &str,
     interval: u64,
 ) -> RegistryVersionLookup {
-    let mut lookup = query_registry_version(crate_name, version);
-    for attempt in 1..REGISTRY_VISIBILITY_ATTEMPTS {
+    let mut lookup = RegistryVersionLookup {
+        state: "unavailable",
+        published_at: None,
+        error: Some("registry visibility was not observed".to_string()),
+    };
+    for attempt in 0..REGISTRY_VISIBILITY_ATTEMPTS {
+        lookup = query_registry_version(crate_name, version);
         if matches!(lookup.state, "present" | "yanked") {
             return lookup;
         }
-        if interval > 0 {
+        if attempt + 1 < REGISTRY_VISIBILITY_ATTEMPTS && interval > 0 {
             sleep(Duration::from_secs(interval));
-        }
-        lookup = query_registry_version(crate_name, version);
-        if attempt + 1 == REGISTRY_VISIBILITY_ATTEMPTS {
-            break;
         }
     }
     lookup
