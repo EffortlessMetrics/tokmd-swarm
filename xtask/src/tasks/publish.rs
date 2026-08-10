@@ -169,10 +169,10 @@ pub fn run(args: PublishArgs) -> Result<()> {
         0
     };
     let crates_to_publish = crates_to_publish(&plan, start_idx, receipt.as_ref());
+    let bootstrap = validate_bootstrap_crates(&crates_to_publish, args.bootstrap.as_deref())?;
 
     // Handle --plan mode: just print and exit
     if args.plan {
-        validate_bootstrap_crates(&crates_to_publish, args.bootstrap.as_deref())?;
         print_plan(&plan, &args);
         return Ok(());
     }
@@ -191,7 +191,6 @@ pub fn run(args: PublishArgs) -> Result<()> {
         }
     }
 
-    let bootstrap = validate_bootstrap_crates(&crates_to_publish, args.bootstrap.as_deref())?;
     if !args.dry_run && !bootstrap.is_empty() && args.receipt.is_none() {
         bail!("--bootstrap requires --receipt so the no-verify decision is auditable");
     }
