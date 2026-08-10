@@ -49,6 +49,9 @@ branches:
         required_approving_review_count: 0
         dismiss_stale_reviews: false
         require_code_owner_reviews: false
+      # Bot review threads must be resolved before merge, even though bot
+      # review status is advisory rather than a required status context.
+      required_conversation_resolution: true
       required_status_checks:
         strict: true
         contexts:
