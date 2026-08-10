@@ -45,6 +45,21 @@ explicit merge-commit PRs in `tokmd`, followed by fast-forwarding
 See `docs/ci/swarm-routing.md` for the shared-history topology and routing
 rules.
 
+## Review and Conversation Resolution
+
+Conversation resolution is part of the merge process. Every actionable inline
+comment from a bot or agent reviewer must be addressed and its review thread
+resolved before merge. A general bot summary comment with no review thread is
+not an unresolved conversation.
+
+This is a single-maintainer repository: a separate human reviewer account,
+native approval, and CODEOWNERS approval are intentionally not merge
+requirements. Independent agentic review passes are part of the normal review
+process. Use separate agent lanes or reviewer identities for those passes when
+appropriate; they may leave inline findings, and the resulting conversations
+must be resolved. Do not manufacture a second approval identity or status
+check as a substitute for that process.
+
 ## Codex Commit / Push Policy
 
 For PR-bound work, Codex may create scoped branches, commit scoped changes, push

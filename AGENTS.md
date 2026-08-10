@@ -13,6 +13,21 @@ This file provides guidance to AI agents (Claude, Factory Droid, etc.) when work
 - See `.github/workflows/droid.yml` for manual `@droid` command handling
 - See `.github/workflows/droid-security-scan.yml` for scheduled security scanning
 
+## Review and Conversation Resolution
+
+Conversation resolution is part of the merge process. Every actionable inline
+comment from a bot or agent reviewer must be addressed and its review thread
+resolved before merge. A general bot summary comment with no review thread is
+not an unresolved conversation.
+
+This is a single-maintainer repository: a separate human reviewer account,
+native approval, and CODEOWNERS approval are intentionally not merge
+requirements. Independent agentic review passes are part of the normal review
+process. Use separate agent lanes or reviewer identities for those passes when
+appropriate; they may leave inline findings, and the resulting conversations
+must be resolved. Do not manufacture a second approval identity or status
+check as a substitute for that process.
+
 ## Project Overview
 
 **tokmd** is a Rust CLI tool and library that wraps the `tokei` library to generate "inventory receipts" and derived analytics of code repositories. It produces human-readable summaries (Markdown/TSV) and machine-friendly datasets (JSON/JSONL/CSV) for AI-native workflows, LLM context generation, and code analysis pipelines.
