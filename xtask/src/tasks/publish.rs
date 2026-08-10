@@ -185,7 +185,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if crates_to_publish.is_empty() {
-        validate_no_work_resume(&args, receipt.as_deref())?;
+        validate_no_work_resume(&args, receipt.as_ref())?;
         if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
             if receipt.state != PublishRunState::Complete {
                 receipt.state = PublishRunState::Complete;
