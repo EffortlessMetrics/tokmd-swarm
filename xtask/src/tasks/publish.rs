@@ -3293,13 +3293,19 @@ mod tests {
                 .first()
                 .ok_or_else(|| anyhow!("receipt test plan should contain a crate"))?,
         )?;
-        crate_value["state"] = Value::String("complete".to_string());
+        *crate_value
+            .get_mut("state")
+            .ok_or_else(|| anyhow!("crate receipt should serialize a state field"))? =
+            Value::String("complete".to_string());
         if serde_json::from_value::<PublishCrateReceipt>(crate_value).is_ok() {
             bail!("crate receipt must reject a run-level state");
         }
 
         let mut run_value = serde_json::to_value(&receipt)?;
-        run_value["state"] = Value::String("published".to_string());
+        *run_value
+            .get_mut("state")
+            .ok_or_else(|| anyhow!("run receipt should serialize a state field"))? =
+            Value::String("published".to_string());
         if serde_json::from_value::<PublishReceipt>(run_value).is_ok() {
             bail!("run receipt must reject a crate-level state");
         }
