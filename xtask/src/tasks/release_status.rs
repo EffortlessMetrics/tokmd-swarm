@@ -114,7 +114,7 @@ fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
         }
         (Some(_), Some(_)) => ReleaseState::Failed,
         (_, None) => ReleaseState::Missing,
-        (None, Some(_)) => ReleaseState::Failed,
+        (None, Some(_)) => ReleaseState::Unavailable,
     };
     let source_detail = match (&workspace_version, &tag_sha) {
         (Some(version), Some(tag_sha))
@@ -134,7 +134,9 @@ fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
             "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
         )),
         (_, None) => Some("tag does not exist in the local repository".to_string()),
-        (None, Some(_)) => Some("workspace version could not be read".to_string()),
+        (None, Some(_)) => Some(
+            "workspace version could not be read; local source status is unavailable".to_string(),
+        ),
     };
     let source = SourceFact {
         state: source_state,
@@ -243,6 +245,11 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
     {
         bail!("passed source evidence must include a non-empty evidence field");
     }
+    if receipt.source.state == ReleaseState::Passed
+        && receipt.source.detail.as_deref().is_none_or(str::is_empty)
+    {
+        bail!("passed source evidence must include a non-empty detail field");
+    }
     if receipt.publication.state == ReleaseState::Passed
         && receipt
             .publication
@@ -267,6 +274,15 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
             .is_none_or(str::is_empty)
     {
         bail!("passed publication evidence must include a non-empty evidence field");
+    }
+    if receipt.publication.state == ReleaseState::Passed
+        && receipt
+            .publication
+            .detail
+            .as_deref()
+            .is_none_or(str::is_empty)
+    {
+        bail!("passed publication evidence must include a non-empty detail field");
     }
     let computed = is_complete(receipt);
     if receipt.complete != computed {
@@ -571,6 +587,18 @@ mod tests {
         fixture.publication.parent_count = None;
         if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
             bail!("passed publication must carry graph evidence");
+        }
+
+        let mut fixture = complete_fixture();
+        fixture.source.detail = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed source must carry detail evidence");
+        }
+
+        let mut fixture = complete_fixture();
+        fixture.publication.detail = None;
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed publication must carry detail evidence");
         }
         Ok(())
     }

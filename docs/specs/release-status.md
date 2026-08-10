@@ -1,4 +1,4 @@
-# Release status receipt
+# Spec: Release status receipt
 
 - Status: active
 - Schema family: `tokmd.release_status.v1`
