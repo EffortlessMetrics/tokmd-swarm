@@ -1760,7 +1760,7 @@ pub struct PublishArgs {
     #[arg(long)]
     pub continue_on_error: bool,
 
-    /// Resume publishing from this crate (skips crates before this one)
+    /// Start publishing from this crate (skips crates before this one)
     #[arg(long)]
     pub from: Option<String>,
 
@@ -1796,7 +1796,8 @@ pub struct PublishArgs {
     #[arg(long, value_delimiter = ',')]
     pub exclude: Option<Vec<String>>,
 
-    /// Publish selected development-cycle bootstrap crates with Cargo verification disabled.
+    /// Publish selected development-cycle bootstrap crates with Cargo verification disabled;
+    /// requires --receipt so the no-verify decision is auditable.
     #[arg(
         long,
         value_delimiter = ',',
