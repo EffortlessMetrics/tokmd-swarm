@@ -160,8 +160,9 @@ tokmd cockpit \
   --review-packet-dir .tokmd/review
 ```
 
-Start with `.tokmd/review/review-map.md` for the review order and reproduction
-commands, then read `.tokmd/review/comment.md` for the PR summary.
+Start with `.tokmd/review/comment.md` for the required-evidence summary, then
+read `.tokmd/review/review-map.md` for the review order and reproduction
+commands.
 `.tokmd/review/evidence.json` and `.tokmd/review/manifest.json` carry the
 machine-readable evidence state and hash-indexed packet inventory.
 
