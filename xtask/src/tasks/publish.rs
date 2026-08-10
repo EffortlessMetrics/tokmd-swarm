@@ -179,6 +179,12 @@ pub fn run(args: PublishArgs) -> Result<()> {
 
     if crates_to_publish.is_empty() {
         validate_no_work_resume(&args, receipt.as_deref())?;
+        if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
+            if receipt.state != PublishReceiptState::Complete {
+                receipt.state = PublishReceiptState::Complete;
+                write_publish_receipt(path, receipt)?;
+            }
+        }
         println!("No crates require publication.");
         return Ok(());
     }
@@ -263,7 +269,13 @@ fn validate_no_work_resume(args: &PublishArgs, receipt: Option<&PublishReceipt>)
         return Ok(());
     }
     let receipt = receipt.ok_or_else(|| anyhow!("--resume requires a publication receipt"))?;
-    if receipt.state != PublishReceiptState::Complete {
+    if receipt.state != PublishReceiptState::Complete
+        && (receipt.crates.is_empty()
+            || receipt
+                .crates
+                .iter()
+                .any(|entry| !is_release_complete_entry(entry)))
+    {
         bail!(
             "publication receipt is incomplete; no publishable crates remain, so inspect the receipt before retrying"
         );
@@ -3302,6 +3314,12 @@ mod tests {
         if validate_no_work_resume(&args, Some(&receipt)).is_ok() {
             bail!("an incomplete no-work resume must fail closed");
         }
+        for entry in &mut receipt.crates {
+            entry.state = PublishReceiptState::Published;
+            entry.attempts = 1;
+            entry.registry_visible = Some(true);
+        }
+        validate_no_work_resume(&args, Some(&receipt))?;
         receipt.state = PublishReceiptState::Complete;
         validate_no_work_resume(&args, Some(&receipt))?;
         Ok(())
