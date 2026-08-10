@@ -1800,7 +1800,7 @@ pub struct PublishArgs {
         long,
         value_delimiter = ',',
         value_name = "CRATE",
-        conflicts_with = "dry_run"
+        conflicts_with_all = ["dry_run", "verify"]
     )]
     pub bootstrap: Option<Vec<String>>,
 
