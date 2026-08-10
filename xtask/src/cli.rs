@@ -1730,7 +1730,8 @@ pub struct PublishArgs {
     )]
     pub receipt: Option<std::path::PathBuf>,
 
-    /// Resume from a publication receipt, skipping confirmed terminal crates;
+    /// Resume from a publication receipt, skipping crates whose publication and
+    /// registry visibility are confirmed;
     /// yanked versions are terminal but keep the run incomplete.
     #[arg(long, requires = "receipt", conflicts_with_all = ["plan", "registry_inventory", "dry_run", "verify"])]
     pub resume: bool,
@@ -1800,6 +1801,7 @@ pub struct PublishArgs {
         long,
         value_delimiter = ',',
         value_name = "CRATE",
+        requires = "receipt",
         conflicts_with_all = ["dry_run", "verify"]
     )]
     pub bootstrap: Option<Vec<String>>,

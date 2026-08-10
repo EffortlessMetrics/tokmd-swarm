@@ -51,6 +51,12 @@ class AggregateContractTests(unittest.TestCase):
         result = aggregate_entries(receipts(statuses), {}, "rc", {"cargo-install"})
         self.assertEqual(result["overall"], "passed")
 
+    def test_rc_policy_can_explicitly_exclude_nix_surface(self):
+        statuses = all_passed()
+        statuses["nix"] = "not_supported"
+        result = aggregate_entries(receipts(statuses), {}, "rc", {"nix"})
+        self.assertEqual(result["overall"], "passed")
+
     def test_stable_cannot_exclude_not_supported_surface(self):
         statuses = all_passed()
         statuses["nix"] = "not_supported"

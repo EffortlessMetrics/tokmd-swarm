@@ -173,15 +173,16 @@ jobs:
           set -euo pipefail
           status=not_supported
           observed_version=""
+          reason=""
           mkdir -p receipt install-root
           write_receipt() {
-            python3 - "$status" "$observed_version" <<'PY'
+            python3 - "$status" "$observed_version" "$reason" <<'PY'
           import json
           import os
           import sys
           from pathlib import Path
 
-          status, observed = sys.argv[1:]
+          status, observed, reason = sys.argv[1:]
           Path("receipt/cargo-install.json").write_text(json.dumps({
               "schema": "tokmd.release_consumer_smoke.v1",
               "kind": "cargo-install",
@@ -190,6 +191,7 @@ jobs:
               "expected_version": os.environ["EXPECTED_VERSION"],
               "observed_version": observed,
               "status": status,
+              "reason": reason or None,
           }, indent=2) + "\n", encoding="utf-8")
           PY
           }
@@ -204,21 +206,34 @@ jobs:
           status=failed
 
           install_ok=false
+          last_stderr=""
           for attempt in 1 2 3; do
+            attempt_stderr="$(mktemp)"
             if cargo install tokmd \
               --version "$EXPECTED_VERSION" \
               --locked \
               --force \
-              --root "$PWD/install-root"; then
+              --root "$PWD/install-root" 2>"$attempt_stderr"; then
               install_ok=true
+              rm -f "$attempt_stderr"
               break
             fi
+            last_stderr="$(tail -c 4000 "$attempt_stderr" || true)"
+            rm -f "$attempt_stderr"
             if [[ "$attempt" -lt 3 ]]; then
               echo "Cargo install attempt ${attempt} failed; waiting for registry propagation before retry."
               sleep 30
             fi
           done
-          test "$install_ok" = true
+          if [[ "$install_ok" != true ]]; then
+            reason="cargo install failed after 3 attempts: ${last_stderr}"
+            {
+              echo "## Cargo install verification"
+              echo "- status: failed"
+              echo "- reason: ${reason}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           bin="$PWD/install-root/bin/tokmd"
           test -x "$bin"
           observed_version="$($bin --version | head -n 1)"

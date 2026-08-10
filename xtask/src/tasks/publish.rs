@@ -185,7 +185,12 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if crates_to_publish.is_empty() {
-        validate_no_work_resume(&args, receipt.as_ref())?;
+        if args.resume {
+            let receipt = receipt
+                .as_ref()
+                .ok_or_else(|| anyhow!("--resume requires a publication receipt"))?;
+            validate_no_work_resume(receipt)?;
+        }
         if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
             if receipt.state != PublishRunState::Complete {
                 receipt.state = PublishRunState::Complete;
@@ -268,14 +273,15 @@ fn validate_publish_mode(args: &PublishArgs) -> Result<()> {
     if args.dry_run && args.receipt.is_some() {
         bail!("--receipt cannot be combined with --dry-run or --verify");
     }
+    if args.from.is_some() && args.receipt.is_some() && !args.resume {
+        bail!(
+            "--from cannot be combined with a new --receipt; use --resume with an existing receipt or omit --receipt"
+        );
+    }
     Ok(())
 }
 
-fn validate_no_work_resume(args: &PublishArgs, receipt: Option<&PublishReceipt>) -> Result<()> {
-    if !args.resume {
-        return Ok(());
-    }
-    let receipt = receipt.ok_or_else(|| anyhow!("--resume requires a publication receipt"))?;
+fn validate_no_work_resume(receipt: &PublishReceipt) -> Result<()> {
     if receipt.state != PublishRunState::Complete
         && (receipt.crates.is_empty()
             || receipt
@@ -3339,14 +3345,23 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_resume_cannot_report_success_without_work() -> Result<()> {
+    fn from_rejects_new_publication_receipt() -> Result<()> {
         let args = PublishArgs {
-            resume: true,
+            from: Some("tokmd".to_string()),
+            receipt: Some(std::path::PathBuf::from("publish.json")),
             ..PublishArgs::default()
         };
+        if validate_publish_mode(&args).is_ok() {
+            bail!("--from must not create a receipt with skipped crates");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_resume_cannot_report_success_without_work() -> Result<()> {
         let mut receipt = new_publish_receipt(&receipt_test_plan());
         receipt.state = PublishRunState::Incomplete;
-        if validate_no_work_resume(&args, Some(&receipt)).is_ok() {
+        if validate_no_work_resume(&receipt).is_ok() {
             bail!("an incomplete no-work resume must fail closed");
         }
         for entry in &mut receipt.crates {
@@ -3354,9 +3369,9 @@ mod tests {
             entry.attempts = 1;
             entry.registry_visible = Some(true);
         }
-        validate_no_work_resume(&args, Some(&receipt))?;
+        validate_no_work_resume(&receipt)?;
         receipt.state = PublishRunState::Complete;
-        validate_no_work_resume(&args, Some(&receipt))?;
+        validate_no_work_resume(&receipt)?;
         Ok(())
     }
 }
