@@ -13,7 +13,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::{DependencyKind, Metadata, MetadataCommand, Package, PackageId};
@@ -77,6 +77,12 @@ const PUBLISH_RECEIPT_VERSION: u32 = 2;
 const LEGACY_PUBLISH_RECEIPT_SCHEMA: &str = "tokmd.publish_receipt.v1";
 const LEGACY_PUBLISH_RECEIPT_VERSION: u32 = 1;
 static RECEIPT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn receipt_nonce() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos())
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -354,8 +360,9 @@ fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
         .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
         .to_string_lossy();
     let temp_path = parent.join(format!(
-        ".{file_name}.tmp-{}-{}",
+        ".{file_name}.tmp-{}-{}-{}",
         std::process::id(),
+        receipt_nonce(),
         RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     let mut temp = fs::OpenOptions::new()
@@ -406,8 +413,9 @@ fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
         .ok_or_else(|| anyhow!("publication receipt path has no file name"))?
         .to_string_lossy();
     let backup_path = parent.join(format!(
-        ".{file_name}.backup-{}-{}",
+        ".{file_name}.backup-{}-{}-{}",
         std::process::id(),
+        receipt_nonce(),
         RECEIPT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     fs::rename(path, &backup_path)
