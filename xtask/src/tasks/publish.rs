@@ -112,6 +112,9 @@ struct PublishReceipt {
 
 /// Publish all workspace crates in dependency order.
 pub fn run(args: PublishArgs) -> Result<()> {
+    // Keep the historical hidden alias behavior identical to --dry-run.
+    let args = normalize_publish_args(args);
+
     // Load workspace metadata
     // Use no_deps() for faster metadata loading - we only need workspace members
     // and their manifest-declared dependencies, not the full resolved graph
@@ -213,6 +216,12 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn normalize_publish_args(mut args: PublishArgs) -> PublishArgs {
+    args.dry_run |= args.verify;
+    args.verify = false;
+    args
 }
 
 fn new_publish_receipt(plan: &PublishPlan) -> PublishReceipt {
@@ -2143,6 +2152,19 @@ mod tests {
         entry.state = PublishReceiptState::Published;
         if validate_publish_receipt_entry(entry).is_ok() {
             bail!("inconsistent published entry should be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn verify_alias_normalizes_to_dry_run() -> Result<()> {
+        let args = PublishArgs {
+            verify: true,
+            ..PublishArgs::default()
+        };
+        let normalized = normalize_publish_args(args);
+        if !normalized.dry_run || normalized.verify {
+            bail!("--verify should behave as a hidden --dry-run alias");
         }
         Ok(())
     }
