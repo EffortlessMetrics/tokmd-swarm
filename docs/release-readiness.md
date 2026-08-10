@@ -66,17 +66,20 @@ visibility carry those outcomes. Receipts written by the v1 publisher are
 accepted and upgraded to v2 on their next durable write, with the new field
 defaulting to `false`.
 
-`--resume` skips only crates recorded as `published` or `already_present` and
-rejects a receipt whose workspace version or dependency order no longer matches
-the current plan. On the normal path (without `--skip-checks`), before the first
+`--resume` skips crates recorded as `published` or `already_present` only after
+visibility is confirmed, and treats a recorded `yanked` version as terminal for
+resume purposes while keeping the run incomplete. It rejects a receipt whose
+workspace version or dependency order no longer matches the current plan. On
+the normal path (without `--skip-checks`), before the first
 upload and during dry-run, preflight checks the package file list for every
 planned crate and verifies that each normal, build, or otherwise
 publish-relevant workspace dependency is in the same plan with a version
 requirement matching the planned package version. A successful preflight records
 `dependency_closure: true` for every planned crate. After a non-dry-run upload,
 the publisher performs bounded crates.io visibility observations and records
-`registry_visible`; an unobserved result is retryable on resume rather than
-terminal. `dependency_closure` remains null until the package/closure proof
+`registry_visible`; an unobserved or missing result is retryable on resume rather
+than terminal. A yanked result is terminal but is not usable release proof.
+`dependency_closure` remains null until the package/closure proof
 records that fact. The receipt does not authorize publication or replace the
 registry inventory check.
 

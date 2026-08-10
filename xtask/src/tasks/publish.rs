@@ -85,6 +85,7 @@ enum PublishReceiptState {
     InProgress,
     Published,
     AlreadyPresent,
+    Yanked,
     Failed,
     Complete,
     Incomplete,
@@ -440,6 +441,11 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
         {
             true
         }
+        (PublishReceiptState::Yanked, attempts, Some(reason))
+            if attempts > 0 && !reason.trim().is_empty() =>
+        {
+            true
+        }
         (PublishReceiptState::Failed, attempts, Some(reason))
             if attempts > 0 && !reason.trim().is_empty() =>
         {
@@ -470,16 +476,23 @@ fn crates_to_publish(
                     .crates
                     .iter()
                     .find(|entry| entry.name == **name)
-                    .is_none_or(|entry| {
-                        !matches!(
-                            entry.state,
-                            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
-                        ) || entry.registry_visible != Some(true)
-                    })
+                    .is_none_or(|entry| !is_terminal_publish_entry(entry))
             })
         })
         .cloned()
         .collect()
+}
+
+fn is_terminal_publish_entry(entry: &PublishCrateReceipt) -> bool {
+    match &entry.state {
+        PublishReceiptState::Published | PublishReceiptState::AlreadyPresent => {
+            entry.registry_visible == Some(true)
+        }
+        // A yanked version is terminal for resume purposes, but it does not
+        // prove a usable release and therefore keeps the run incomplete.
+        PublishReceiptState::Yanked => true,
+        _ => false,
+    }
 }
 
 fn update_publish_receipt(
@@ -1362,11 +1375,16 @@ fn execute_publish_with_backend<B: PublishBackend>(
                     );
                     failed.push(crate_name.clone());
                     if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                        let state = if lookup.state == "yanked" {
+                            PublishReceiptState::Yanked
+                        } else {
+                            PublishReceiptState::Failed
+                        };
                         update_publish_receipt(
                             path,
                             receipt,
                             crate_name,
-                            PublishReceiptState::Failed,
+                            state,
                             Some(reason),
                             false,
                         )?;
@@ -1412,11 +1430,16 @@ fn execute_publish_with_backend<B: PublishBackend>(
                     );
                     failed.push(crate_name.clone());
                     if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
+                        let state = if lookup.state == "yanked" {
+                            PublishReceiptState::Yanked
+                        } else {
+                            PublishReceiptState::Failed
+                        };
                         update_publish_receipt(
                             path,
                             receipt,
                             crate_name,
-                            PublishReceiptState::Failed,
+                            state,
                             Some(reason),
                             false,
                         )?;
@@ -2631,15 +2654,15 @@ mod tests {
         }
 
         let resume = crates_to_publish(&plan, 0, Some(&receipt));
-        if resume != ["tokmd-core", "tokmd"].map(str::to_string) {
-            bail!("resume should skip only visible published and existing crates");
+        if resume != ["tokmd"].map(str::to_string) {
+            bail!("resume should skip visible published and yanked entries");
         }
 
         args.continue_on_error = false;
-        let mut second = FixtureBackend::new([
-            fixture_attempt(FixturePublish::Success, ["present"]),
-            fixture_attempt(FixturePublish::AlreadyPublished, ["present"]),
-        ]);
+        let mut second = FixtureBackend::new([fixture_attempt(
+            FixturePublish::AlreadyPublished,
+            ["present"],
+        )]);
         let (succeeded, failed) = execute_publish_with_backend(
             &resume,
             &args,
@@ -2649,15 +2672,10 @@ mod tests {
             Some(&mut receipt),
             &mut second,
         )?;
-        if succeeded != ["tokmd-core", "tokmd"] || !failed.is_empty() {
+        if succeeded != ["tokmd"] || !failed.is_empty() {
             bail!("resume fixture should complete the previously failed suffix");
         }
-        if second.publish_calls
-            != [
-                ("tokmd-core".to_string(), false),
-                ("tokmd".to_string(), false),
-            ]
-        {
+        if second.publish_calls != [("tokmd".to_string(), false)] {
             bail!("resume must not republish terminal entries or retain bootstrap intent");
         }
 
@@ -2969,6 +2987,25 @@ mod tests {
         let crates = crates_to_publish(&plan, 0, Some(&receipt));
         if crates != plan.publish_order {
             bail!("resume must retry a published entry without visibility proof");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_does_not_retry_yanked_entries() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Yanked;
+        entry.attempts = 1;
+        entry.registry_visible = Some(false);
+        entry.reason = Some("registry version is yanked".to_string());
+
+        let crates = crates_to_publish(&plan, 0, Some(&receipt));
+        if crates != ["tokmd"].map(str::to_string) {
+            bail!("resume must not retry a terminal yanked entry");
         }
         Ok(())
     }
