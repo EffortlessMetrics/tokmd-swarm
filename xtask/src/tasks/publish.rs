@@ -3076,6 +3076,7 @@ mod tests {
         for entry in &mut receipt.crates {
             entry.state = PublishReceiptState::Published;
             entry.attempts = 1;
+            entry.registry_visible = Some(true);
         }
 
         if !crates_to_publish(&plan, 0, Some(&receipt)).is_empty() {
