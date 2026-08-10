@@ -479,6 +479,28 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
             entry.name
         );
     }
+    if entry.dependency_closure == Some(false) {
+        bail!(
+            "publication receipt entry `{}` records a failed dependency-closure proof",
+            entry.name
+        );
+    }
+    let visibility_valid = match (&entry.state, entry.attempts, entry.registry_visible) {
+        (_, _, None) => true,
+        (
+            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
+            attempts,
+            Some(_),
+        ) if attempts > 0 => true,
+        (PublishReceiptState::Yanked, attempts, Some(false)) if attempts > 0 => true,
+        _ => false,
+    };
+    if !visibility_valid {
+        bail!(
+            "publication receipt entry `{}` has registry visibility evidence inconsistent with its state",
+            entry.name
+        );
+    }
     Ok(())
 }
 
@@ -3222,6 +3244,24 @@ mod tests {
         entry.state = PublishReceiptState::Published;
         if validate_publish_receipt_entry(entry).is_ok() {
             bail!("inconsistent published entry should be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_rejects_impossible_evidence_fields() -> Result<()> {
+        let mut receipt = new_publish_receipt(&receipt_test_plan());
+        let Some(entry) = receipt.crates.get_mut(0) else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.registry_visible = Some(true);
+        if validate_publish_receipt_entry(entry).is_ok() {
+            bail!("unattempted receipt entry must not claim registry visibility");
+        }
+        entry.registry_visible = None;
+        entry.dependency_closure = Some(false);
+        if validate_publish_receipt_entry(entry).is_ok() {
+            bail!("receipt must not accept a failed dependency-closure proof");
         }
         Ok(())
     }
