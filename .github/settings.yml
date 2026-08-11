@@ -51,7 +51,9 @@ branches:
         dismiss_stale_reviews: false
         require_code_owner_reviews: false
       # All review conversations must be resolved before merge; bot review
-      # status remains advisory rather than a required status context.
+      # status remains advisory rather than a required status context. GitHub
+      # enforces only the resolved-thread state here; the independent agentic
+      # review-pass requirement is repo process documented in agents/shared/repo.md.
       required_conversation_resolution: true
       required_status_checks:
         strict: true
