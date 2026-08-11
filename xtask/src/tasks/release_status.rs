@@ -27,6 +27,7 @@ enum ReleaseState {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct StateFact {
     state: ReleaseState,
     detail: Option<String>,
@@ -34,6 +35,7 @@ struct StateFact {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct SourceFact {
     state: ReleaseState,
     workspace_version: Option<String>,
@@ -44,6 +46,7 @@ struct SourceFact {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct PublicationFact {
     state: ReleaseState,
     merge_sha: Option<String>,
@@ -55,6 +58,7 @@ struct PublicationFact {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct ReleaseStatusReceipt {
     schema: String,
     schema_version: u32,
@@ -117,8 +121,8 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
         (Some(_), Some(_), Some(_)) if source_matches => ReleaseState::Passed,
         (Some(_), Some(_), Some(_)) => ReleaseState::Failed,
         (Some(_), Some(_), None) => ReleaseState::Missing,
-        (_, None, _) => ReleaseState::Missing,
-        (None, Some(_), _) => ReleaseState::Unavailable,
+        (Some(_), None, _) => ReleaseState::Missing,
+        (None, _, _) => ReleaseState::Unavailable,
     };
     let source_detail = match (&workspace_version, &tag_sha, &head_sha) {
         (Some(_), Some(_), Some(_)) if source_matches => Some(
@@ -131,8 +135,8 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
         (Some(version), Some(_), Some(_)) => Some(format!(
             "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
         )),
-        (_, None, _) => Some("tag does not exist in the local repository".to_string()),
-        (None, Some(_), _) => Some(
+        (Some(_), None, _) => Some("tag does not exist in the local repository".to_string()),
+        (None, _, _) => Some(
             "workspace version could not be read; local source status is unavailable".to_string(),
         ),
     };
@@ -637,6 +641,19 @@ mod tests {
     }
 
     #[test]
+    fn fixture_deserialization_rejects_unknown_fields() -> Result<()> {
+        let mut value = serde_json::to_value(complete_fixture())?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("complete fixture should serialize as an object"))?;
+        object.insert("source_sha_typo".to_string(), serde_json::json!("deadbeef"));
+        if serde_json::from_value::<ReleaseStatusReceipt>(value).is_ok() {
+            bail!("unknown release receipt fields must be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn fixture_validation_rejects_missing_passed_surface_evidence() -> Result<()> {
         let mut fixture = complete_fixture();
         fixture.github_release.evidence = None;
@@ -759,6 +776,32 @@ mod tests {
                 "missing tag and HEAD must produce missing source state, got {:?}",
                 receipt.source.state
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_local_reports_missing_workspace_version_as_unavailable() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(temp.path().join("Cargo.toml"), "[workspace]\n")?;
+        let crate_dir = temp.path().join("crates").join("fixture");
+        fs::create_dir_all(&crate_dir)?;
+        run_git(temp.path(), &["init"])?;
+
+        let receipt = inspect_local_from(&crate_dir, "v1.15.1")?;
+        if receipt.source.state != ReleaseState::Unavailable {
+            bail!(
+                "missing workspace version must produce unavailable source state, got {:?}",
+                receipt.source.state
+            );
+        }
+        if !receipt
+            .source
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("workspace version could not be read"))
+        {
+            bail!("unavailable source detail should explain the missing workspace version");
         }
         Ok(())
     }
