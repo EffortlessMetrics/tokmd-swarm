@@ -119,12 +119,11 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
     }
 
     let mut by_id = BTreeMap::new();
+    let mut unknown_ids = Vec::new();
     for command in input.commands {
         if !REQUIRED_COMMANDS.contains(&command.id.as_str()) {
-            bail!(
-                "release preflight contains unknown command `{}`",
-                command.id
-            );
+            unknown_ids.push(command.id);
+            continue;
         }
         if by_id.contains_key(&command.id) {
             bail!(
@@ -133,6 +132,17 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
             );
         }
         by_id.insert(command.id.clone(), command);
+    }
+    if !unknown_ids.is_empty() {
+        unknown_ids.sort();
+        bail!(
+            "release preflight contains unknown command(s): {}",
+            unknown_ids
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     let mut required_commands = Vec::with_capacity(REQUIRED_COMMANDS.len());
@@ -271,11 +281,14 @@ mod tests {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("fixture must be an array"))?;
         commands.push(json!({"id": "not-a-command", "status": "failed"}));
+        commands.push(json!({"id": "also-not-a-command", "status": "failed"}));
         let error = match aggregate(input(serde_json::Value::Array(commands))?) {
             Ok(_) => return Err(anyhow::anyhow!("unknown command was accepted")),
             Err(error) => error,
         };
         ensure!(error.to_string().contains("unknown command"));
+        ensure!(error.to_string().contains("not-a-command"));
+        ensure!(error.to_string().contains("also-not-a-command"));
 
         let commands = REQUIRED_COMMANDS
             .iter()
