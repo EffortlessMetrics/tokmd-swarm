@@ -4,6 +4,9 @@ use crate::cli::{ChangeArgs, HooksArgs, HooksCommand, PrecommitArgs};
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use serde_json::to_string;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -47,11 +50,7 @@ pub fn run_change(args: ChangeArgs) -> Result<()> {
         Some(output) => output,
         None => default_fragment_path(&component, &kind),
     };
-    let relative = normalize_relative(&output);
-    if !relative.starts_with(".changes/unreleased/") {
-        bail!("fragment output must be under .changes/unreleased/: {relative}");
-    }
-    let path = root.join(&output);
+    let (relative, path) = fragment_output_path(&root, &output)?;
     if path.exists() {
         bail!("refusing to overwrite existing fragment: {relative}");
     }
@@ -104,6 +103,23 @@ fn install_hooks(root: &Path) -> Result<()> {
             "repository pre-commit hook does not invoke `cargo xtask precommit --staged`; refusing to overwrite it"
         );
     }
+    #[cfg(unix)]
+    {
+        let metadata = std::fs::metadata(&hook).with_context(|| {
+            format!(
+                "read repository pre-commit hook metadata {}",
+                hook.display()
+            )
+        })?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(permissions.mode() | 0o111);
+        std::fs::set_permissions(&hook, permissions).with_context(|| {
+            format!(
+                "make repository pre-commit hook executable {}",
+                hook.display()
+            )
+        })?;
+    }
     println!("Git hooks are configured at .githooks (idempotent)");
     Ok(())
 }
@@ -116,12 +132,12 @@ fn validate_staged(root: &Path, paths: &[String]) -> Result<()> {
     let mut fragments = Vec::new();
     let mut deleted_fragment = false;
     for path in paths.iter().filter(|path| is_fragment(path)) {
-        match read_index_file(root, path) {
-            Ok(content) => {
+        match read_index_file(root, path)? {
+            Some(content) => {
                 validate_fragment(path, &content)?;
                 fragments.push(path);
             }
-            Err(_) => deleted_fragment = true,
+            None => deleted_fragment = true,
         }
     }
     if deleted_fragment && fragments.is_empty() {
@@ -171,6 +187,7 @@ fn classify_paths(paths: &[String]) -> ChangeClass {
 
 fn is_explicitly_exempt(path: &str) -> bool {
     path == "Cargo.lock"
+        || path == ".changes/unreleased/.gitkeep"
         || path.starts_with("tests/")
         || path.starts_with("xtask/tests/")
         || path.split('/').any(|component| component == "tests")
@@ -264,6 +281,30 @@ fn default_fragment_path(component: &str, kind: &str) -> PathBuf {
     ))
 }
 
+fn fragment_output_path(root: &Path, output: &Path) -> Result<(String, PathBuf)> {
+    let relative = normalize_relative(output);
+    let output_path = Path::new(&relative);
+    if output_path.is_absolute()
+        || output_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        bail!("fragment output must not be absolute or contain parent traversal: {relative}");
+    }
+    if !relative.starts_with(".changes/unreleased/") {
+        bail!("fragment output must be under .changes/unreleased/: {relative}");
+    }
+    let path = root.join(output_path);
+    let unreleased_root = root.join(".changes/unreleased");
+    if !path.starts_with(&unreleased_root) {
+        bail!("fragment output escapes .changes/unreleased/: {relative}");
+    }
+    Ok((relative, path))
+}
+
 fn normalize_relative(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -326,13 +367,42 @@ fn parse_name_status(bytes: &[u8]) -> Result<Vec<String>> {
     Ok(paths)
 }
 
-fn read_index_file(root: &Path, path: &str) -> Result<String> {
+fn read_index_file(root: &Path, path: &str) -> Result<Option<String>> {
     let spec = format!(":{path}");
     let output = run_git(root, ["show", &spec])?;
     if !output.status.success() {
-        bail!("staged fragment `{path}` is deleted or unreadable");
+        let deletion = run_git(
+            root,
+            [
+                "diff",
+                "--cached",
+                "--diff-filter=D",
+                "--name-only",
+                "--",
+                path,
+            ],
+        )?;
+        if !deletion.status.success() {
+            bail!(
+                "staged fragment `{path}` could not be inspected: {}",
+                String::from_utf8_lossy(&deletion.stderr).trim()
+            );
+        }
+        let deleted = String::from_utf8(deletion.stdout)
+            .context("staged deletion path is not UTF-8")?
+            .lines()
+            .any(|candidate| candidate == path);
+        if deleted {
+            return Ok(None);
+        }
+        bail!(
+            "staged fragment `{path}` could not be read: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
-    String::from_utf8(output.stdout).with_context(|| format!("fragment `{path}` is not UTF-8"))
+    Ok(Some(String::from_utf8(output.stdout).with_context(
+        || format!("fragment `{path}` is not UTF-8"),
+    )?))
 }
 
 fn git_config(root: &Path, first: &str, second: &str) -> Result<Option<String>> {
@@ -415,6 +485,32 @@ mod tests {
             if is_required != required {
                 bail!("{message}");
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fragment_output_rejects_absolute_and_parent_traversal_paths() -> Result<()> {
+        let root = Path::new("C:/repo");
+        for output in [
+            Path::new(".changes/unreleased/../escaped.yaml"),
+            Path::new("C:/repo/.changes/unreleased/escaped.yaml"),
+        ] {
+            if fragment_output_path(root, output).is_ok() {
+                bail!("unsafe fragment output was accepted: {}", output.display());
+            }
+        }
+        let (relative, path) = fragment_output_path(
+            root,
+            Path::new(".changes/unreleased/Release-fixed-20260808.yaml"),
+        )?;
+        if relative != ".changes/unreleased/Release-fixed-20260808.yaml"
+            || path != root.join(&relative)
+        {
+            bail!("safe fragment output was normalized incorrectly");
+        }
+        if !is_explicitly_exempt(".changes/unreleased/.gitkeep") {
+            bail!("the unreleased directory sentinel must be exempt");
         }
         Ok(())
     }
