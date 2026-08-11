@@ -116,11 +116,25 @@ jobs:
         with:
           tool: cargo-deny@0.19.0
 
-      - name: Cache Rust build artifacts
+      - name: Cache Rust build artifacts (best effort)
+        id: rust_cache
+        continue-on-error: true
+        timeout-minutes: 5
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: . -> target/release-preflight-cache
           cache-directories: target/release-preflight-cache
+
+      - name: Record cache outcome
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "${PREFLIGHT_ROOT}"
+          cache_outcome="${{ steps.rust_cache.outcome }}"
+          printf 'rust_cache=%s\n' "${cache_outcome}" > "${PREFLIGHT_ROOT}/cache.txt"
+          if [[ "${cache_outcome}" != "success" ]]; then
+            echo "Cache unavailable (${cache_outcome}); continuing without restored Rust artifacts." >> "${PREFLIGHT_ROOT}/cache.txt"
+          fi
 
       - name: Run required commands and record terminal observations
         if: always()
