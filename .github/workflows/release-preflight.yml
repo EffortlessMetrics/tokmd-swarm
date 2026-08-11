@@ -123,6 +123,7 @@ jobs:
           cache-directories: target/release-preflight-cache
 
       - name: Run required commands and record terminal observations
+        if: always()
         shell: bash
         run: |
           set -uo pipefail
