@@ -304,6 +304,12 @@ fn fragment_output_path(root: &Path, output: &Path) -> Result<(String, PathBuf)>
     if !relative.starts_with(".changes/unreleased/") {
         bail!("fragment output must be under .changes/unreleased/: {relative}");
     }
+    let fragment_name = relative
+        .strip_prefix(".changes/unreleased/")
+        .ok_or_else(|| anyhow::anyhow!("fragment output has no filename: {relative}"))?;
+    if fragment_name.is_empty() || fragment_name.contains('/') {
+        bail!("fragment output must be directly in .changes/unreleased/: {relative}");
+    }
     let path = root.join(output_path);
     let unreleased_root = root.join(".changes/unreleased");
     if !path.starts_with(&unreleased_root) {
@@ -383,6 +389,7 @@ fn read_index_file(root: &Path, path: &str) -> Result<Option<String>> {
             [
                 "diff",
                 "--cached",
+                "--no-renames",
                 "--diff-filter=D",
                 "--name-only",
                 "--",
@@ -502,6 +509,7 @@ mod tests {
         for output in [
             Path::new(".changes/unreleased/../escaped.yaml"),
             Path::new("C:/repo/.changes/unreleased/escaped.yaml"),
+            Path::new(".changes/unreleased/nested/escaped.yaml"),
         ] {
             if fragment_output_path(root, output).is_ok() {
                 bail!("unsafe fragment output was accepted: {}", output.display());
