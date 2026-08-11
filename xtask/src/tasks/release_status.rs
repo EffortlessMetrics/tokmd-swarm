@@ -111,12 +111,7 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
     let source_matches = matches!(
         (&workspace_version, &tag_sha, &head_sha),
         (Some(version), Some(tag_sha), Some(head_sha))
-            if source_matches_tag_commit(
-                Some(version.as_str()),
-                &expected_version,
-                tag_sha,
-                head_sha,
-            )
+            if source_matches_tag_commit(version, &expected_version, tag_sha, head_sha)
     );
     let source_state = match (&workspace_version, &tag_sha, &head_sha) {
         (Some(_), Some(_), Some(_)) if source_matches => ReleaseState::Passed,
@@ -227,6 +222,9 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
             "passed source evidence must contain the tag-derived workspace version and a non-empty SHA"
         );
     }
+    if receipt.source.state == ReleaseState::Passed {
+        validate_sha("source", receipt.source.sha.as_deref())?;
+    }
     for (name, fact) in [
         ("git_tag", &receipt.git_tag),
         ("github_release", &receipt.github_release),
@@ -261,6 +259,12 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
             .is_none_or(str::is_empty)
     {
         bail!("passed publication evidence must contain a non-empty merge SHA");
+    }
+    if receipt.publication.state == ReleaseState::Passed {
+        validate_sha(
+            "publication merge",
+            receipt.publication.merge_sha.as_deref(),
+        )?;
     }
     if receipt.publication.state == ReleaseState::Passed
         && !publication_graph_is_aligned(&receipt.publication)
@@ -373,12 +377,23 @@ fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
 }
 
 fn source_matches_tag_commit(
-    workspace_version: Option<&str>,
+    workspace_version: &str,
     expected_version: &str,
     tag_sha: &str,
     head_sha: &str,
 ) -> bool {
-    workspace_version == Some(expected_version) && tag_sha == head_sha
+    workspace_version == expected_version && tag_sha == head_sha
+}
+
+fn validate_sha(name: &str, value: Option<&str>) -> Result<()> {
+    let Some(value) = value else {
+        bail!("passed {name} evidence must contain a SHA");
+    };
+    let valid_length = matches!(value.len(), 40 | 64);
+    if !valid_length || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("passed {name} evidence has an invalid Git SHA `{value}`");
+    }
+    Ok(())
 }
 
 fn validate_passed_state_fact(name: &str, fact: &StateFact) -> Result<()> {
@@ -601,6 +616,22 @@ mod tests {
     }
 
     #[test]
+    fn fixture_validation_rejects_malformed_passed_shas() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.source.sha = Some("not-a-sha".to_string());
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed source evidence must contain a valid Git SHA");
+        }
+
+        let mut fixture = complete_fixture();
+        fixture.publication.merge_sha = Some("f".repeat(39));
+        if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+            bail!("passed publication evidence must contain a valid Git SHA");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn fixture_validation_rejects_missing_passed_surface_evidence() -> Result<()> {
         let mut fixture = complete_fixture();
         fixture.github_release.evidence = None;
@@ -632,7 +663,7 @@ mod tests {
     fn source_status_requires_current_head_to_match_tag() -> Result<()> {
         let tag_sha = "a".repeat(40);
         let head_sha = "b".repeat(40);
-        if source_matches_tag_commit(Some("1.15.1"), "1.15.1", &tag_sha, &head_sha) {
+        if source_matches_tag_commit("1.15.1", "1.15.1", &tag_sha, &head_sha) {
             bail!("a same-version post-tag checkout must not pass source validation");
         }
         Ok(())
