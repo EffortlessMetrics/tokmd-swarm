@@ -144,44 +144,6 @@ jobs:
           echo "$?" > target/ci-core/proof_policy_exit
           echo "completed serial core gate, tests, and proof-policy"
 
-      - name: UB Review (advisory)
-        id: ubreview
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
-        continue-on-error: true
-        uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
-        with:
-          preset: bun-ub
-          mode: review-direct
-          posting: review
-          setup-rust: false
-          tool-bundle: core
-          provider-policy: minimax-primary
-          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
-          minimax-model: MiniMax-M3
-          opencode-api-key: ${{ secrets.OPENCODE }}
-          opencode-model: deepseek-v4-flash
-          base: origin/${{ github.base_ref }}
-          pr-thread-context: target/ci-core/precontext.md
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          github-summary: true
-
-      - name: UB Review advisory status
-        if: ${{ always() }}
-        env:
-          UB_OUTCOME: ${{ steps.ubreview.outcome }}
-        run: |
-          case "${UB_OUTCOME}" in
-            success)
-              echo "ub-review advisory lane completed; see the grouped PR review." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            skipped|"")
-              echo "ub-review advisory lane skipped (fork PR or non-PR event); deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-            *)
-              echo "ub-review advisory lane failed (${UB_OUTCOME}): check provider secrets and model availability, then re-run. Deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
-              ;;
-          esac
-
       - name: Assert core gate verdict
         if: ${{ always() }}
         env:
@@ -259,6 +221,76 @@ jobs:
           test "${test_exit}" = "0"
           test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
+
+  # Agentic review is an independent process lane. It may post inline findings,
+  # but it must not hold the deterministic required gate open or manufacture a
+  # required status when the provider is slow or unavailable.
+  ub-review:
+    name: UB Review (Advisory)
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare review context
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-core
+          {
+            echo "# Deterministic precontext for ub-review"
+            echo
+            echo "- core gate (gates the merge; serial Cargo lane): cargo xtask gate --check"
+            echo "- core tests (serial Cargo lane): cargo test --all-features"
+            echo "- xtask tests (serial Cargo lane): cargo test -p xtask --all-features"
+            echo "- proof policy (serial Cargo lane): cargo xtask proof-policy --check"
+            echo "- review lane: advisory agentic review; not a required status"
+            echo "- event: ${GITHUB_EVENT_NAME}"
+          } > target/ci-core/precontext.md
+
+      - name: UB Review (advisory)
+        id: ubreview
+        continue-on-error: true
+        uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
+        with:
+          preset: bun-ub
+          mode: review-direct
+          posting: review
+          setup-rust: false
+          tool-bundle: core
+          provider-policy: minimax-primary
+          minimax-api-key: ${{ secrets.MINIMAX_API_KEY }}
+          minimax-model: MiniMax-M3
+          opencode-api-key: ${{ secrets.OPENCODE }}
+          opencode-model: deepseek-v4-flash
+          base: origin/${{ github.base_ref }}
+          pr-thread-context: target/ci-core/precontext.md
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-summary: true
+
+      - name: Record advisory review outcome
+        if: ${{ always() }}
+        env:
+          UB_OUTCOME: ${{ steps.ubreview.outcome }}
+        run: |
+          case "${UB_OUTCOME}" in
+            success)
+              echo "ub-review advisory lane completed; see the grouped PR review." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            skipped|"")
+              echo "ub-review advisory lane skipped; deterministic gate is independent." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "ub-review advisory lane unavailable (${UB_OUTCOME}); deterministic gate is independent." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
 
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
   # this output into their `if:` so the deep lanes also run when matching

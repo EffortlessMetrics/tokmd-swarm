@@ -2,7 +2,7 @@
 //!
 //! Validates that a workflow file encodes the family gate shape documented in
 //! `docs/specs/ub-review-ci-gate.md`: one required check, advisory route job,
-//! deterministic core floor, and non-blocking ub-review in the same gate job.
+//! deterministic core floor, and non-blocking ub-review in a separate job.
 
 use std::fs;
 
@@ -26,8 +26,9 @@ const REQUIRED_MARKERS: &[&str] = &[
     "cargo xtask gate --check",
     "core_exit",
     "Assert core gate verdict",
-    "UB Review (advisory)",
-    "UB Review advisory status",
+    "  ub-review:",
+    "name: UB Review (Advisory)",
+    "Record advisory review outcome",
     "EffortlessMetrics/ub-review@",
     "mode: review-direct",
     "posting: review",
@@ -78,6 +79,17 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
     for forbidden in FORBIDDEN_MARKERS {
         if text.contains(forbidden) {
             errors.push(format!("forbidden retired marker present: {forbidden}"));
+        }
+    }
+
+    if let Some(gate_start) = text.find("  tokmd-rust-result:") {
+        let gate = &text[gate_start..];
+        let gate = gate.split("\n  ub-review:").next().unwrap_or(gate);
+        if gate.contains("UB Review (advisory)") || gate.contains("EffortlessMetrics/ub-review@") {
+            errors.push(
+                "advisory ub-review must be a separate job, not a step in Tokmd Rust Result"
+                    .to_string(),
+            );
         }
     }
 

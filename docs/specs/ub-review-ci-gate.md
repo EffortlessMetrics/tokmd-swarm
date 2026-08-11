@@ -14,8 +14,9 @@
    deterministic core floor.
 2. **One gate job** on a runner chosen by a minimal **advisory** `route` job
    (self-hosted primary, GitHub-hosted overflow).
-3. **Advisory `ub-review`** in the **same** gate job (`review-direct`,
-   `posting: review`, `continue-on-error: true`).
+3. **Advisory `ub-review`** in a separate job (`review-direct`,
+   `posting: review`, `continue-on-error: true`) so slow or unavailable
+   provider execution cannot hold the deterministic required status open.
 4. **Fork PRs** skip only the advisory step; the core gate still runs on
    GitHub-hosted overflow.
 5. **Advisory failures** emit concise what/why/fix notes in the job summary;
@@ -72,7 +73,7 @@ It does **not** prove:
 | `EM_RUNNER_READ_TOKEN` | Org secret | Org runner discovery for self-hosted primary |
 | `MINIMAX_API_KEY`, `OPENCODE` | Org secrets | Advisory model lanes (same-repo PRs only) |
 | Base/head refs | Workflow | Diff scope, precontext, ub-review packet |
-| `target/ci-core/precontext.md` | Gate job | `pr-thread-context` for ub-review lanes |
+| `target/ci-core/precontext.md` | Advisory review job | `pr-thread-context` for ub-review |
 
 ## Outputs
 
@@ -95,9 +96,11 @@ jobs:
   tokmd-rust-result   # single required check
     setup once (checkout fetch-depth 0, toolchain, rust-cache)
     fast precontext + background core gate
-    ub-review (advisory, fork-skipped)
-    ub-review advisory status note
     assert core gate verdict (only hard failure)
+  ub-review             # separate advisory review process lane
+    checkout and prepare review context
+    ub-review (fork-skipped, continue-on-error)
+    advisory status note
 ```
 
 ### Advisory ub-review pins

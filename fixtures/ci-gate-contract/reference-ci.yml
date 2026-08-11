@@ -102,9 +102,58 @@ jobs:
           ) > target/ci-core/core.log 2>&1 &
           echo "launched background core gate"
 
+      - name: Assert core gate verdict
+        if: ${{ always() }}
+        run: |
+          set -uo pipefail
+          deadline=$((SECONDS + 3000))
+          while [ ! -f target/ci-core/core_exit ]; do
+            if [ "${SECONDS}" -ge "${deadline}" ]; then
+              echo "124" > target/ci-core/core_exit
+              break
+            fi
+            sleep 5
+          done
+          core_exit="$(cat target/ci-core/core_exit)"
+          {
+            echo "## Deterministic core gate"
+            if [ "${core_exit}" = "0" ]; then
+              echo "Result: PASS (cargo xtask gate --check exit 0)"
+            else
+              echo "Result: FAIL (exit ${core_exit})"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "${core_exit}" = "0"
+
+  ub-review:
+    name: UB Review (Advisory)
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare review context
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-core
+          {
+            echo "# Deterministic precontext for ub-review"
+            echo
+            echo "- core gate (gates the merge; deterministic required lane): cargo xtask gate --check"
+            echo "- review lane: advisory agentic review; not a required status"
+            echo "- event: ${GITHUB_EVENT_NAME}"
+          } > target/ci-core/precontext.md
+
       - name: UB Review (advisory)
         id: ubreview
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         continue-on-error: true
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
         with:
@@ -136,29 +185,6 @@ jobs:
               echo "ub-review advisory lane skipped (fork PR or non-PR event); deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
               ;;
             *)
-              echo "ub-review advisory lane failed (${UB_OUTCOME}): check provider secrets and model availability, then re-run. Deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
+              echo "ub-review advisory lane unavailable (${UB_OUTCOME}); deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
               ;;
           esac
-
-      - name: Assert core gate verdict
-        if: ${{ always() }}
-        run: |
-          set -uo pipefail
-          deadline=$((SECONDS + 3000))
-          while [ ! -f target/ci-core/core_exit ]; do
-            if [ "${SECONDS}" -ge "${deadline}" ]; then
-              echo "124" > target/ci-core/core_exit
-              break
-            fi
-            sleep 5
-          done
-          core_exit="$(cat target/ci-core/core_exit)"
-          {
-            echo "## Deterministic core gate"
-            if [ "${core_exit}" = "0" ]; then
-              echo "Result: PASS (cargo xtask gate --check exit 0)"
-            else
-              echo "Result: FAIL (exit ${core_exit})"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          test "${core_exit}" = "0"
