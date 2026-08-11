@@ -264,6 +264,9 @@ jobs:
           preset: bun-ub
           mode: review-direct
           posting: review
+          # The pinned action consumes the diff and explicit base/head inputs;
+          # keep deterministic precontext as a local review artifact.
+          install-mode: source
           setup-rust: false
           tool-bundle: core
           provider-policy: minimax-primary
@@ -272,7 +275,6 @@ jobs:
           opencode-api-key: ${{ secrets.OPENCODE }}
           opencode-model: deepseek-v4-flash
           base: origin/${{ github.base_ref }}
-          pr-thread-context: target/ci-core/precontext.md
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-summary: true
 

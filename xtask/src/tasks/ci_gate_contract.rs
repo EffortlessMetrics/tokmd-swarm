@@ -39,7 +39,7 @@ const ADVISORY_MARKERS: &[&str] = &[
     "provider-policy: minimax-primary",
     "minimax-model: MiniMax-M3",
     "opencode-model: deepseek-v4-flash",
-    "pr-thread-context: target/ci-core/precontext.md",
+    "install-mode: source",
     "continue-on-error: true",
 ];
 
@@ -57,6 +57,7 @@ const FORBIDDEN_MARKERS: &[&str] = &[
     "name: Tokmd Rust Small Result",
     "em-ci-rust:1.95",
     "docker run --rm",
+    "pr-thread-context: target/ci-core/precontext.md",
 ];
 
 pub fn run(args: CiGateContractArgs) -> Result<()> {

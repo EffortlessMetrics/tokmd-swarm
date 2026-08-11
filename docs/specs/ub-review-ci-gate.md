@@ -43,11 +43,14 @@ model availability, and lane opinions are advisory only.
 
 ### Relationship to evidence packets (#280)
 
-The advisory layer should consume deterministic precontext written before lanes
-start (`target/ci-core/precontext.md`) and may attach `sensors/tokmd/` evidence
-produced by `tokmd evidence-packet` / the evidence-packet Action path. Packet
-artifacts follow `docs/specs/evidence-packet-workflow.md`; they do not replace
-the deterministic floor or become merge blockers.
+The advisory layer may attach deterministic precontext written before lanes
+start (`target/ci-core/precontext.md`) and `sensors/tokmd/` evidence produced by
+`tokmd evidence-packet` / the evidence-packet Action path. The pinned
+`ub-review` Action consumes the diff and explicit base/head inputs; it does not
+expose a `pr-thread-context` input, so precontext remains a deterministic gate
+and review artifact rather than an Action parameter. Packet artifacts follow
+`docs/specs/evidence-packet-workflow.md`; they do not replace the deterministic
+floor or become merge blockers.
 
 ### Claim boundary
 
@@ -73,14 +76,14 @@ It does **not** prove:
 | `EM_RUNNER_READ_TOKEN` | Org secret | Org runner discovery for self-hosted primary |
 | `MINIMAX_API_KEY`, `OPENCODE` | Org secrets | Advisory model lanes (same-repo PRs only) |
 | Base/head refs | Workflow | Diff scope, precontext, ub-review packet |
-| `target/ci-core/precontext.md` | Advisory review job | `pr-thread-context` for ub-review |
+| `target/ci-core/precontext.md` | Gate/review artifacts | Deterministic context for the advisory review record |
 
 ## Outputs
 
 | Artifact | Consumer | Required |
 | --- | --- | --- |
 | Required check: `Tokmd Rust Result` | Branch protection | yes |
-| `target/ci-core/precontext.md` | ub-review `pr-thread-context` | yes on PRs |
+| `target/ci-core/precontext.md` | Gate/review artifacts | yes on PRs |
 | `target/ci-core/core_exit` / `core.log` | Final assert step | yes |
 | ub-review packet under `target/ub-review/` | Reviewers, ledger | advisory |
 | Grouped PR review | GitHub PR UI | advisory, same-repo only |
