@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -633,11 +634,18 @@ mod tests {
 
     #[test]
     fn inspect_local_rejects_same_version_checkout_after_tag() -> Result<()> {
+        static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+        let _current_dir_lock = CURRENT_DIR_LOCK
+            .lock()
+            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
         let temp = tempfile::tempdir()?;
         fs::write(
             temp.path().join("Cargo.toml"),
             "[workspace]\n[workspace.package]\nversion = \"1.15.1\"\n",
         )?;
+        let crate_dir = temp.path().join("crates").join("fixture");
+        fs::create_dir_all(&crate_dir)?;
         let marker = temp.path().join("marker.txt");
         fs::write(&marker, "tagged\n")?;
         run_git(temp.path(), &["init"])?;
@@ -650,7 +658,11 @@ mod tests {
         run_git(temp.path(), &["add", "."])?;
         run_git(temp.path(), &["commit", "-m", "post-tag source"])?;
 
-        let receipt = inspect_local_at(temp.path(), "v1.15.1")?;
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(&crate_dir)?;
+        let inspection = inspect_local("v1.15.1");
+        std::env::set_current_dir(original_dir)?;
+        let receipt = inspection?;
         if receipt.source.state != ReleaseState::Failed {
             bail!(
                 "same-version checkout after the tag must fail source validation, got {:?}",
