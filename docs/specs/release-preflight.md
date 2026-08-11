@@ -1,7 +1,7 @@
 # Spec: Terminal release preflight receipt
 
 - Status: active
-- Schema family: `tokmd.release_preflight.v2`
+- Schema family: `tokmd.release_preflight.v2` (schema version `2`)
 - Related ADRs: none
 - Related proof scopes: `release_metadata`
 - Tracking: issue #527
