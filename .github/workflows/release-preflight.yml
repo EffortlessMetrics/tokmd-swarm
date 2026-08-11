@@ -170,6 +170,8 @@ jobs:
 
           run_command affected_plan \
             'cargo xtask affected --base "${AFFECTED_BASE_SHA}" --head "${SOURCE_SHA}" --json-output "${PREFLIGHT_ROOT}/affected.json" && jq -e ".unknown_files | length == 0" "${PREFLIGHT_ROOT}/affected.json"'
+          run_command proof_plan \
+            'cargo xtask proof --profile affected --base "${AFFECTED_BASE_SHA}" --head "${SOURCE_SHA}" --plan --plan-json "${PREFLIGHT_ROOT}/proof-plan.json" --evidence-json "${PREFLIGHT_ROOT}/proof-evidence.json"'
           run_command fmt_check 'cargo fmt-check'
           run_command gate_check 'cargo gate-check'
           run_command version_consistency \
@@ -187,7 +189,7 @@ jobs:
           run_command browser_tests 'npm --prefix web/runner test'
           run_command browser_wasm_archive 'npm --prefix web/runner run build:wasm:archive-zip'
 
-          jq -s '{schema:"tokmd.release_preflight_input.v1",schema_version:1,source_sha:env.SOURCE_SHA,affected_base_sha:env.AFFECTED_BASE_SHA,expected_version:env.EXPECTED_VERSION,release_kind:env.RELEASE_KIND,commands:.}' \
+          jq -s '{schema:"tokmd.release_preflight_input.v2",schema_version:1,source_sha:env.SOURCE_SHA,affected_base_sha:env.AFFECTED_BASE_SHA,expected_version:env.EXPECTED_VERSION,release_kind:env.RELEASE_KIND,commands:.}' \
             "${root}/commands.jsonl" > "${root}/input.json"
 
       - name: Aggregate terminal release-preflight receipt
