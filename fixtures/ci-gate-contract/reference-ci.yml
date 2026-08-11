@@ -172,7 +172,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-summary: true
 
-      - name: UB Review advisory status
+      - name: Record advisory review outcome
         if: ${{ always() }}
         env:
           UB_OUTCOME: ${{ steps.ubreview.outcome }}

@@ -78,7 +78,7 @@ blocking         = true
 runner           = "mixed"
 base_lem         = 16
 owner            = "release/ci"
-intent           = "Single required check: serial gate, workspace tests, xtask tests, proof-policy, and advisory ub-review."
+intent           = "Single required check: serial gate, workspace tests, xtask tests, and proof-policy; independent ub-review is advisory."
 failure_mode     = "Deterministic static floor, core tests, or xtask tests reach main without the required gate passing."
 proof_obligation = "Run cargo xtask gate --check, cargo test --all-features, cargo test -p xtask --all-features, and cargo xtask proof-policy --check serially; assert every exit code before job exit."
 evidence         = ["target/ci-core/core.log", "target/ci-core/test.log", "target/ci-core/xtask_test.log", "target/ci-core/proof_policy.log", "job logs"]
@@ -86,6 +86,26 @@ allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
 review_after     = "2026-07-07"
 expires          = "2026-12-07"
+
+[[lane]]
+id               = "ub_review_advisory"
+workflow         = ".github/workflows/ci.yml"
+job              = "UB Review (Advisory)"
+kind             = "review"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 5
+owner            = "review/agentic"
+intent           = "Run an independent agentic review pass with inline findings without holding the deterministic required gate open."
+failure_mode     = "Reviewers lose independent inline review signal when the advisory provider is unavailable or slow."
+proof_obligation = "Run ub-review in review-direct mode with posting: review, skip fork pull requests, and record an advisory outcome without failing the merge gate."
+evidence         = ["Grouped PR review", "job summary"]
+allowed_triggers = ["pull_request"]
+duplicate_of     = []
+review_after     = "2026-08-11"
+expires          = "2026-11-09"
 
 [[lane]]
 id               = "affected_proof_plan"

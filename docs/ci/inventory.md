@@ -25,6 +25,7 @@ These lanes run on ordinary pull requests.
 | Lane ID | Job | Workflow | Runner | Base LEM | Blocking | Notes |
 |---------|-----|----------|--------|----------|----------|-------|
 | `route_ci_runner` | Route CI runner | `ci.yml` | ubuntu | 1 | no | Self-hosted primary vs GitHub-hosted overflow selector. |
+| `ub_review_advisory` | UB Review (Advisory) | `ci.yml` | ubuntu | 5 | no | Independent agentic inline review pass; never holds the deterministic required gate. |
 | `tokmd_rust_result` | Tokmd Rust Result | `ci.yml` | mixed | 25 | yes | **Only required context.** Concurrent `gate --check`, `test --all-features`, `proof-policy --check`, advisory ub-review. |
 | `msrv_check` | MSRV Check | `ci.yml` | ubuntu | 5 | yes | `cargo check` on the MSRV toolchain (1.95.0). |
 | `ci_detect_risk_packs` | Detect risk packs | `ci.yml` | ubuntu | 1 | yes | Classifies changed paths into risk packs for conditional routing. |
