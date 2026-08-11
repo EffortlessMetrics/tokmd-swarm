@@ -30,6 +30,8 @@ const GATE_MARKERS: &[&str] = &[
     "cargo xtask gate --check",
     "core_exit",
     "Assert core gate verdict",
+    "Upload deterministic core receipts",
+    "name: ci-core",
 ];
 
 const ADVISORY_MARKERS: &[&str] = &[

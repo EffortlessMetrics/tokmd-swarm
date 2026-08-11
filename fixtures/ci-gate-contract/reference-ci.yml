@@ -124,6 +124,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           test "${core_exit}" = "0"
 
+      - name: Upload deterministic core receipts
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-core
+          path: target/ci-core/
+          if-no-files-found: warn
+
   ub-review:
     name: UB Review (Advisory)
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
