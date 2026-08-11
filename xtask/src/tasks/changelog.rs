@@ -202,11 +202,18 @@ fn is_fragment(path: &str) -> bool {
 }
 
 fn validate_fragment(path: &str, content: &str) -> Result<()> {
-    let file_name = Path::new(path)
+    let normalized_path = path.replace('\\', "/");
+    let fragment_name = normalized_path
+        .strip_prefix(".changes/unreleased/")
+        .ok_or_else(|| anyhow::anyhow!("fragment is outside .changes/unreleased/: {path}"))?;
+    if fragment_name.contains('/') {
+        bail!("fragment must be directly in .changes/unreleased/: {path}");
+    }
+    let file_name = Path::new(fragment_name)
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow::anyhow!("fragment path has no valid filename: {path}"))?;
-    if file_name == ".gitkeep" || file_name.contains('/') || file_name.contains('\\') {
+    if file_name == ".gitkeep" {
         bail!("invalid unreleased fragment filename: {path}");
     }
     let component = yaml_field(content, "component")?;
@@ -539,6 +546,14 @@ mod tests {
         }
         if canonical_component("release")? != "Release" {
             bail!("component aliases should normalize to their canonical spelling");
+        }
+        if validate_fragment(
+            ".changes/unreleased/nested/CLI-fixed-20260808.yaml",
+            "component: CLI\nkind: fixed\nbody: \"Make the error actionable\"\n",
+        )
+        .is_ok()
+        {
+            bail!("nested fragment paths should be rejected");
         }
         Ok(())
     }
