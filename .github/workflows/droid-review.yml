@@ -60,7 +60,10 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           upload_debug_artifacts: false
-          allowed_bots: factory-droid
+          # Dependency-update PRs must receive the same independent agentic
+          # review pass as human-authored PRs. Keep the allowlist explicit;
+          # do not broaden the action to every bot.
+          allowed_bots: factory-droid,dependabot
 
           automatic_review: true
           automatic_security_review: true
