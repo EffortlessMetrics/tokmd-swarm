@@ -11,12 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::ReleasePreflightArgs;
 
-pub const INPUT_SCHEMA: &str = "tokmd.release_preflight_input.v1";
-pub const RECEIPT_SCHEMA: &str = "tokmd.release_preflight.v1";
+pub const INPUT_SCHEMA: &str = "tokmd.release_preflight_input.v2";
+pub const RECEIPT_SCHEMA: &str = "tokmd.release_preflight.v2";
 const SCHEMA_VERSION: u32 = 1;
 
 const REQUIRED_COMMANDS: &[&str] = &[
     "affected_plan",
+    "proof_plan",
     "fmt_check",
     "gate_check",
     "version_consistency",

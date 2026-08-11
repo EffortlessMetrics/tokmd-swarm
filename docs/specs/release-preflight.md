@@ -1,7 +1,7 @@
 # Spec: Terminal release preflight receipt
 
 - Status: active
-- Schema family: `tokmd.release_preflight.v1`
+- Schema family: `tokmd.release_preflight.v2`
 - Related ADRs: none
 - Related proof scopes: `release_metadata`
 - Tracking: issue #527
@@ -21,14 +21,14 @@ complete repair list.
 ## Inputs
 
 `cargo xtask release-preflight` consumes JSON with schema
-`tokmd.release_preflight_input.v1`. The input records:
+`tokmd.release_preflight_input.v2`. The input records:
 
 - an immutable 40- or 64-character `source_sha`;
 - an immutable 40- or 64-character `affected_base_sha`;
 - a non-empty expected version;
 - `release_kind` (`rc` or `stable`); and
 - command results for the required IDs:
-  `affected_plan`, `fmt_check`, `gate_check`, `version_consistency`,
+  `affected_plan`, `proof_plan`, `fmt_check`, `gate_check`, `version_consistency`,
   `publish_surface`, `doc_artifacts`, `docs_check`, `proof_policy`,
   `no_panic`, `workspace_tests`, `clippy`, `cargo_deny`, `publish_dry_run`,
   `browser_tests`, and `browser_wasm_archive`.
@@ -56,6 +56,9 @@ released-artifact consumer proof.
 
 - fixture tests cover complete pass, missing required command, failed versus
   unavailable precedence, mixed input validation, and invalid identity;
+- `affected_plan` runs `cargo xtask affected` against the immutable base/head
+  and requires zero unknown files, while `proof_plan` separately runs
+  `cargo xtask proof --profile affected --plan` for that same identity;
 - `cargo fmt-check` and `cargo test -p xtask release_preflight` run against the
   exact committed source when Cargo is available;
 - `.github/workflows/release-preflight.yml` passes actionlint and records a
