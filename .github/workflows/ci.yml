@@ -127,9 +127,10 @@ jobs:
             echo "- runner: ${RUNNER_KIND:-github} event: ${GITHUB_EVENT_NAME}"
           } > target/ci-core/precontext.md
           # Keep Cargo proof lanes serial on the selected runner. Running the
-          # gate, full tests, and advisory review concurrently can starve the
-          # gate long enough to produce a false timeout marker (124) even when
-          # the same commands pass with the available resources.
+          # gate and full tests concurrently can starve the gate long enough to
+          # produce a false timeout marker (124) even when the same commands
+          # pass with the available resources. The advisory review is isolated
+          # in its own job below.
           cargo xtask gate --check > target/ci-core/core.log 2>&1
           echo "$?" > target/ci-core/core_exit
           cargo test --all-features > target/ci-core/test.log 2>&1

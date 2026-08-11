@@ -141,6 +141,12 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          # jq is part of the explicit release-preflight runner contract; fail
+          # clearly if a future runner image does not provide it.
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "::error::jq is required by release-preflight receipt assembly"
+            exit 1
+          fi
           root="${PREFLIGHT_ROOT}"
           logs="${root}/logs"
           mkdir -p "${logs}"
