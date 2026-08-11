@@ -299,7 +299,9 @@ mod tests {
             .as_array()
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("fixture must be an array"))?;
-        commands.retain(|command| command["id"] != "clippy");
+        commands.retain(|command| {
+            command.get("id").and_then(serde_json::Value::as_str) != Some("clippy")
+        });
         let receipt = aggregate(input(serde_json::Value::Array(commands))?)?;
         let clippy = receipt
             .required_commands
@@ -345,7 +347,10 @@ mod tests {
     #[test]
     fn invalid_identity_is_rejected() -> Result<()> {
         let mut value = serde_json::to_value(input(passed_commands())?)?;
-        value["source_sha"] = json!("moving-main");
+        value
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?
+            .insert("source_sha".to_owned(), json!("moving-main"));
         let invalid: PreflightInput = serde_json::from_value(value)?;
         let error = match aggregate(invalid) {
             Ok(_) => return Err(anyhow::anyhow!("moving source was accepted")),
