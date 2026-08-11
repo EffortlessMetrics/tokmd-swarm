@@ -188,7 +188,7 @@ cargo xtask repo-graph \
 1. Record the exact swarm and publication SHAs.
 2. Push the exact swarm head to a publication branch.
 3. Open a PR against `EffortlessMetrics/tokmd:main`.
-4. Run publication CI and a fresh exact-head Codex review.
+4. Run publication CI and a fresh exact-head independent agentic review.
 5. Re-read `tokmd-swarm/main` immediately before merge; abort if it moved.
 6. Merge with an explicit **merge commit**. Never squash or rebase the import.
 7. Assert that the resulting publication commit has exactly two parents.

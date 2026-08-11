@@ -53,7 +53,7 @@ Keep the release states separate:
 | State | Evidence |
 | --- | --- |
 | Source prepared | Version and release metadata are aligned on committed source. |
-| Source reviewed | Fresh exact-head Codex review has no blocking findings and required CI is green. |
+| Source reviewed | Fresh exact-head independent agentic review has no unresolved actionable findings and required CI is green. |
 | Publication imported | The two-parent publication merge exists and the repositories are graph-aligned. |
 | Candidate verified | The unchanged aligned source passed pre-tag candidate proof. |
 | Tag only | A Git tag exists; no GitHub Release object is proven. |
@@ -154,7 +154,7 @@ hosted or adequately budgeted result before release acceptance.
 5. `target/proof/affected-release.json`.
 6. `target/proof/proof-plan-release.json`.
 7. `target/proof/proof-evidence-release.json`.
-8. The exact-head Codex review receipt.
+8. The exact-head independent agentic review evidence.
 9. The final required-CI aggregate for that same SHA.
 
 If CI or a maintainer script saves the first two outputs, use:
@@ -177,7 +177,7 @@ target/publishing/version-consistency.txt
 | `affected` | Changed files route to proof scopes and unknown files are explicit. | Proof commands ran. |
 | `proof --profile affected --plan` | Required and advisory proof commands were selected for the changed surface. | Planned proof passed. |
 | `check-no-panic-family --strict` | Current panic-family findings match the governed policy. | Runtime behavior or release artifacts are consumer-proven. |
-| Exact-head Codex review | The final SHA received a fresh adversarial review with no blocking findings. | A prior SHA remains valid after another push. |
+| Exact-head independent agentic review | The final SHA received a fresh review pass with actionable findings independently verified and conversations resolved. | A prior SHA remains valid after another push. |
 | `Tokmd Rust Result` | The required repository aggregate passed for the exact head. | Release assets exist or work when downloaded. |
 
 ## Stop conditions
@@ -191,7 +191,7 @@ Stop before release mutation when:
 - required proof selected by the affected plan has not run or is failing;
 - full workspace tests, Clippy, cargo-deny, or publish dry-run lack a terminal
   required result;
-- the final exact-head Codex review is missing or has blocking findings;
+- the final exact-head independent agentic review is missing or has unresolved actionable findings;
 - the required CI aggregate is queued, in progress, cancelled, or failing;
 - the publication import has not produced a two-parent merge commit;
 - repository graph alignment is not `publication_ahead=0` and
@@ -207,7 +207,7 @@ For an ordinary release-prep PR:
 
 1. Change version and release metadata in `tokmd-swarm`.
 2. Run the checks above against committed source.
-3. Run a fresh exact-head Codex review and required CI.
+3. Run a fresh exact-head independent agentic review and required CI.
 4. Freeze unrelated swarm merges.
 5. Squash-merge the swarm PR.
 6. Import the exact swarm tip into `tokmd` with a merge commit.
@@ -218,9 +218,11 @@ For an ordinary release-prep PR:
 11. Run the exact-artifact consumer-smoke workflow.
 12. Let consumer evidence decide whether another RC is required.
 
-The repository has one human maintainer. The review control is the fresh
-exact-head Codex receipt plus required checks, not a second-human approval
-object.
+The repository has one human maintainer. The review control is a fresh
+exact-head independent agentic review pass plus required checks, with
+actionable conversations resolved. A separate reviewer account, native
+approval, CODEOWNERS approval, or review-status check is not a merge
+requirement.
 
 ## Release-object and consumer proof
 
