@@ -159,6 +159,7 @@ paths = [
   "xtask/src/tasks/bump.rs",
   "xtask/src/tasks/ci_actuals.rs",
   "xtask/src/tasks/ci_gate_contract.rs",
+  "xtask/src/tasks/release_preflight.rs",
   "xtask/src/tasks/ci_lane_whitelist.rs",
   "xtask/src/tasks/ci_plan.rs",
   "xtask/src/tasks/ci_route.rs",

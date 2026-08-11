@@ -1030,6 +1030,8 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-latest
+    # Always summarize the independent advisory lane, including when the
+    # fork-guarded ub-review job is skipped or its provider is unavailable.
     if: always()
     continue-on-error: true
     needs:

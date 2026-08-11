@@ -145,6 +145,9 @@ jobs:
           logs="${root}/logs"
           mkdir -p "${logs}"
           : > "${root}/commands.jsonl"
+          # Reserve time for receipt aggregation, upload, and terminal
+          # enforcement after the sequential command lane completes.
+          deadline=$((SECONDS + 9900))
 
           run_command() {
             local id="$1"
@@ -153,8 +156,15 @@ jobs:
             local started ended duration exit_code status detail
             started="$(date +%s%3N)"
             set +e
-            timeout --signal=TERM --kill-after=30s 45m bash -o pipefail -c "${command}" >"${log_path}" 2>&1
-            exit_code=$?
+            remaining=$((deadline - SECONDS))
+            if (( remaining <= 0 )); then
+              printf 'total command budget exhausted before execution\n' >"${log_path}"
+              exit_code=124
+            else
+              timeout_seconds=$(( remaining < 2700 ? remaining : 2700 ))
+              timeout --signal=TERM --kill-after=30s "${timeout_seconds}s" bash -o pipefail -c "${command}" >"${log_path}" 2>&1
+              exit_code=$?
+            fi
             set -e
             ended="$(date +%s%3N)"
             duration=$((ended - started))
@@ -163,7 +173,7 @@ jobs:
               detail="command completed successfully"
             elif [[ "${exit_code}" -eq 124 || "${exit_code}" -eq 137 ]]; then
               status=unavailable
-              detail="command exceeded the 45 minute bounded timeout"
+              detail="command exceeded its bounded timeout or the total command budget"
             elif [[ "${exit_code}" -eq 130 || "${exit_code}" -eq 143 ]]; then
               status=cancelled
               detail="command was interrupted or cancelled"

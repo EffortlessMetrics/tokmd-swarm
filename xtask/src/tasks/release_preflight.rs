@@ -156,7 +156,7 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
                 missing.join(" and ")
             ));
         }
-        command.log = command.log.map(|path| path.replace('\\', "/"));
+        command.log = command.log.map(|path| normalize_path(&path));
         by_id.insert(command.id.clone(), command);
     }
     empty_ids.sort();
@@ -264,6 +264,24 @@ fn aggregate_status(commands: &[CommandResult]) -> CommandStatus {
     CommandStatus::NotRun
 }
 
+fn normalize_path(path: &str) -> String {
+    let mut components = Vec::new();
+    for component in path.replace('\\', "/").split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if components.last().is_some_and(|last| *last != "..") {
+                    components.pop();
+                } else {
+                    components.push(component);
+                }
+            }
+            component => components.push(component),
+        }
+    }
+    components.join("/")
+}
+
 fn status_name(status: &CommandStatus) -> &'static str {
     match status {
         CommandStatus::Passed => "passed",
@@ -366,6 +384,29 @@ mod tests {
         ensure!(error.to_string().contains("duration_ms"));
 
         let receipt = aggregate(input(passed_commands())?)?;
+        let first = receipt
+            .required_commands
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("receipt is empty"))?;
+        ensure!(first.log.as_deref() == Some("logs/affected_plan.log"));
+        Ok(())
+    }
+
+    #[test]
+    fn log_paths_normalize_components_and_separators() -> Result<()> {
+        let mut commands = passed_commands();
+        commands
+            .as_array_mut()
+            .ok_or_else(|| anyhow::anyhow!("passed fixture is not an array"))?
+            .first_mut()
+            .ok_or_else(|| anyhow::anyhow!("passed fixture is empty"))?
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("command fixture must be an object"))?
+            .insert(
+                "log".to_owned(),
+                json!(".\\logs//nested/../affected_plan.log"),
+            );
+        let receipt = aggregate(input(commands)?)?;
         let first = receipt
             .required_commands
             .first()
