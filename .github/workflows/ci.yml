@@ -105,13 +105,14 @@ jobs:
         id: rust_cache
         continue-on-error: true
         timeout-minutes: 5
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           cache-directories: ${{ runner.temp }}/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Record cache outcome
         if: always()
+        timeout-minutes: 1
         run: |
           echo "Rust cache outcome: ${{ steps.rust_cache.outcome }}" >> "$GITHUB_STEP_SUMMARY"
 
