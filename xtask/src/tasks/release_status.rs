@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(test)]
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
@@ -108,13 +109,13 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
     let tag_sha = local_tag_sha(workspace_root, tag)?;
     let head_sha = local_head_sha(workspace_root)?;
     let source_matches = matches!(
-        (&workspace_version, &tag_sha),
-        (Some(version), Some(tag_sha))
+        (&workspace_version, &tag_sha, &head_sha),
+        (Some(version), Some(tag_sha), Some(head_sha))
             if source_matches_tag_commit(
                 Some(version.as_str()),
                 &expected_version,
                 tag_sha,
-                &head_sha,
+                head_sha,
             )
     );
     let source_state = match (&workspace_version, &tag_sha) {
@@ -343,23 +344,28 @@ fn find_workspace_root() -> Result<PathBuf> {
     }
 }
 
-fn local_head_sha(workspace_root: &Path) -> Result<String> {
+fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
     let output = Command::new("git")
         .args(["rev-parse", "--verify", "HEAD^{commit}"])
         .current_dir(workspace_root)
         .output()
         .context("resolve current Git HEAD")?;
     if !output.status.success() {
+        if output.status.code() == Some(128) {
+            return Ok(None);
+        }
         bail!(
             "resolve current Git HEAD failed with status {}: {}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    Ok(String::from_utf8(output.stdout)
-        .context("current Git HEAD is not UTF-8")?
-        .trim()
-        .to_string())
+    Ok(Some(
+        String::from_utf8(output.stdout)
+            .context("current Git HEAD is not UTF-8")?
+            .trim()
+            .to_string(),
+    ))
 }
 
 fn source_matches_tag_commit(
@@ -484,6 +490,19 @@ fn write_json(path: &Path, receipt: &ReleaseStatusReceipt) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+    fn inspect_local_from(directory: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
+        let _current_dir_lock = CURRENT_DIR_LOCK
+            .lock()
+            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
+        let original_dir = std::env::current_dir()?;
+        std::env::set_current_dir(directory)?;
+        let inspection = inspect_local(tag);
+        std::env::set_current_dir(original_dir)?;
+        inspection
+    }
 
     fn passed(detail: &str) -> StateFact {
         state_fact(ReleaseState::Passed, detail, Some("fixture".to_string()))
@@ -634,11 +653,6 @@ mod tests {
 
     #[test]
     fn inspect_local_rejects_same_version_checkout_after_tag() -> Result<()> {
-        static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
-
-        let _current_dir_lock = CURRENT_DIR_LOCK
-            .lock()
-            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
         let temp = tempfile::tempdir()?;
         fs::write(
             temp.path().join("Cargo.toml"),
@@ -658,14 +672,31 @@ mod tests {
         run_git(temp.path(), &["add", "."])?;
         run_git(temp.path(), &["commit", "-m", "post-tag source"])?;
 
-        let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(&crate_dir)?;
-        let inspection = inspect_local("v1.15.1");
-        std::env::set_current_dir(original_dir)?;
-        let receipt = inspection?;
+        let receipt = inspect_local_from(&crate_dir, "v1.15.1")?;
         if receipt.source.state != ReleaseState::Failed {
             bail!(
                 "same-version checkout after the tag must fail source validation, got {:?}",
+                receipt.source.state
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_local_reports_missing_tag_without_head() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\n[workspace.package]\nversion = \"1.15.1\"\n",
+        )?;
+        let crate_dir = temp.path().join("crates").join("fixture");
+        fs::create_dir_all(&crate_dir)?;
+        run_git(temp.path(), &["init"])?;
+
+        let receipt = inspect_local_from(&crate_dir, "v1.15.1")?;
+        if receipt.source.state != ReleaseState::Missing {
+            bail!(
+                "missing tag and HEAD must produce missing source state, got {:?}",
                 receipt.source.state
             );
         }
