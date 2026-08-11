@@ -261,11 +261,18 @@ jobs:
               echo "Proof policy: FAIL (exit ${proof_policy_exit})"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          receipt_status=0
           for receipt in \
             core.log test.log xtask_test.log proof_policy.log \
             core_exit test_exit xtask_test_exit proof_policy_exit; do
-            test -s "target/ci-core/${receipt}"
+            if [ ! -s "target/ci-core/${receipt}" ]; then
+              echo "::error::Missing or empty core receipt: ${receipt}"
+              receipt_status=1
+            fi
           done
+          if [ "${receipt_status}" -ne 0 ]; then
+            exit "${receipt_status}"
+          fi
           test "${core_exit}" = "0"
           test "${test_exit}" = "0"
           test "${xtask_test_exit}" = "0"
