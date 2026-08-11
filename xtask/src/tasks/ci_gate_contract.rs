@@ -41,6 +41,7 @@ const REQUIRED_MARKERS: &[&str] = &[
 ];
 
 const FORBIDDEN_MARKERS: &[&str] = &[
+    "pr-thread-context:",
     "name: CI (Required)",
     "route-rust-small",
     "router_target=",

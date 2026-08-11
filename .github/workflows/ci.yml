@@ -263,6 +263,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           receipt_status=0
           for receipt in \
+            precontext.md \
             core.log test.log xtask_test.log proof_policy.log \
             core_exit test_exit xtask_test_exit proof_policy_exit; do
             if [ ! -s "target/ci-core/${receipt}" ]; then
