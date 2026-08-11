@@ -6,7 +6,7 @@ use std::process::Command;
 #[cfg(test)]
 use std::sync::Mutex;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::ReleaseStatusArgs;
