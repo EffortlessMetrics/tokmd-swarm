@@ -1,7 +1,7 @@
 # Spec: Terminal release preflight receipt
 
 - Status: active
-- Schema family: `tokmd.release_preflight.v2`
+- Schema family: `tokmd.release_preflight.v2` (schema version `2`)
 - Related ADRs: none
 - Related proof scopes: `release_metadata`
 - Tracking: issue #527
@@ -46,11 +46,17 @@ promoted.
 
 ## Compatibility
 
-The workflow boundary owns command execution, log/artifact collection,
-timeouts, and input assembly. The reusable/manual workflow must invoke this
-aggregator and consume its receipt for go/no-go instead of reinterpreting raw
-logs. Existing consumer-smoke receipts remain authoritative for
-released-artifact consumer proof.
+`.github/workflows/release-preflight.yml` owns command execution, log/artifact
+collection, 45-minute per-command bounds, exact-SHA checkout, and input
+assembly. It invokes this aggregator and consumes its receipt for go/no-go
+instead of reinterpreting raw logs. The workflow is reusable and manually
+dispatchable, but is not a default PR lane. Existing consumer smoke receipts
+remain authoritative for released-artifact consumer proof.
+
+The workflow records one terminal result for every required command and uploads
+the input, logs, affected-plan output, and decision receipt with `always()`. A
+missing input or receipt is itself a failed workflow outcome; it is never
+treated as a successful release preflight.
 
 ## Proof Requirements
 
