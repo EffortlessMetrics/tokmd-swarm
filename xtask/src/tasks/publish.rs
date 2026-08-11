@@ -256,7 +256,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-        receipt.state = PublishRunState::Complete;
+        receipt.state = completed_publish_run_state(receipt);
         write_publish_receipt(path, receipt)?;
     }
 
@@ -566,6 +566,14 @@ fn is_release_complete_entry(entry: &PublishCrateReceipt) -> bool {
         &entry.state,
         PublishReceiptState::Published | PublishReceiptState::AlreadyPresent
     ) && entry.registry_visible == Some(true)
+}
+
+fn completed_publish_run_state(receipt: &PublishReceipt) -> PublishRunState {
+    if receipt.crates.iter().all(is_release_complete_entry) {
+        PublishRunState::Complete
+    } else {
+        PublishRunState::Incomplete
+    }
 }
 
 fn pending_visibility_state(
@@ -2994,6 +3002,34 @@ mod tests {
             .any(|entry| entry.dependency_closure != Some(true))
         {
             bail!("preflight must mark every planned crate as verified");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_completion_requires_every_release_entry() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        if completed_publish_run_state(&receipt) != PublishRunState::Incomplete {
+            bail!("a planned receipt must remain incomplete");
+        }
+
+        for entry in &mut receipt.crates {
+            entry.state = PublishReceiptState::Published;
+            entry.attempts = 1;
+            entry.registry_visible = Some(true);
+        }
+        if completed_publish_run_state(&receipt) != PublishRunState::Complete {
+            bail!("visible published entries should complete the receipt");
+        }
+
+        let Some(entry) = receipt.crates.first_mut() else {
+            bail!("receipt test plan should contain a first crate");
+        };
+        entry.state = PublishReceiptState::Yanked;
+        entry.registry_visible = Some(false);
+        if completed_publish_run_state(&receipt) != PublishRunState::Incomplete {
+            bail!("a yanked entry must keep the receipt incomplete");
         }
         Ok(())
     }

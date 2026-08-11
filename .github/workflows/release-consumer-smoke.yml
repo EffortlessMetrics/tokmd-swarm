@@ -210,7 +210,7 @@ jobs:
           for attempt in 1 2 3; do
             attempt_stderr="$(mktemp)"
             if cargo install tokmd \
-              --version "$EXPECTED_VERSION" \
+              --version "=$EXPECTED_VERSION" \
               --locked \
               --force \
               --root "$PWD/install-root" 2>"$attempt_stderr"; then
