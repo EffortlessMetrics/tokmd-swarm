@@ -719,6 +719,15 @@ mod tests {
         run_git(temp.path(), &["add", "."])?;
         run_git(temp.path(), &["commit", "-m", "tagged source"])?;
         run_git(temp.path(), &["tag", "v1.15.1"])?;
+
+        let tagged_receipt = inspect_local_from(&crate_dir, "v1.15.1")?;
+        if tagged_receipt.source.state != ReleaseState::Passed {
+            bail!(
+                "tagged checkout must pass source validation, got {:?}",
+                tagged_receipt.source.state
+            );
+        }
+
         fs::write(marker, "post-tag\n")?;
         run_git(temp.path(), &["add", "."])?;
         run_git(temp.path(), &["commit", "-m", "post-tag source"])?;
