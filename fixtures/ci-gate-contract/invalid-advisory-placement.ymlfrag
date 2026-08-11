@@ -1,0 +1,10 @@
+# Negative fixture fragment: the ub-review job is empty while the action is
+# placed in a different top-level job. The contract must reject this shape.
+  ub-review:
+    name: UB Review (Advisory)
+
+  later-job:
+    steps:
+      - uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
+
+  unused-advisory:

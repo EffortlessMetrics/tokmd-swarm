@@ -26,7 +26,10 @@ const REQUIRED_MARKERS: &[&str] = &[
     "cargo xtask gate --check",
     "core_exit",
     "Assert core gate verdict",
-    "  ub-review:",
+    "github.event.pull_request.head.repo.fork == false",
+];
+
+const ADVISORY_MARKERS: &[&str] = &[
     "name: UB Review (Advisory)",
     "Record advisory review outcome",
     "EffortlessMetrics/ub-review@",
@@ -38,7 +41,6 @@ const REQUIRED_MARKERS: &[&str] = &[
     "opencode-model: deepseek-v4-flash",
     "pr-thread-context: target/ci-core/precontext.md",
     "continue-on-error: true",
-    "github.event.pull_request.head.repo.fork == false",
 ];
 
 const FORBIDDEN_MARKERS: &[&str] = &[
@@ -82,18 +84,30 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
         }
     }
 
-    if let Some(gate_start) = text.find("  tokmd-rust-result:") {
-        let gate = &text[gate_start..];
-        let gate = match gate.split_once("\n  ub-review:") {
-            Some((gate, _)) => gate,
-            None => gate,
-        };
-        if gate.contains("UB Review (advisory)") || gate.contains("EffortlessMetrics/ub-review@") {
-            errors.push(
-                "advisory ub-review must be a separate job, not a step in Tokmd Rust Result"
-                    .to_string(),
-            );
+    let gate = top_level_job_block(&text, "tokmd-rust-result");
+    let advisory = top_level_job_block(&text, "ub-review");
+    match gate {
+        Some(gate) => {
+            if gate.contains("EffortlessMetrics/ub-review@") {
+                errors.push(
+                    "advisory ub-review must be a separate job, not a step in Tokmd Rust Result"
+                        .to_string(),
+                );
+            }
         }
+        None => errors.push("missing top-level job: tokmd-rust-result".to_string()),
+    }
+    match advisory {
+        Some(advisory) => {
+            for marker in ADVISORY_MARKERS {
+                if !advisory.contains(marker) {
+                    errors.push(format!(
+                        "advisory ub-review job missing required marker: {marker}"
+                    ));
+                }
+            }
+        }
+        None => errors.push("missing top-level job: ub-review".to_string()),
     }
 
     if errors.is_empty() {
@@ -119,4 +133,22 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
         args.workflow.display()
     );
     Ok(())
+}
+
+fn top_level_job_block(text: &str, job: &str) -> Option<String> {
+    let marker = format!("  {job}:");
+    let mut in_job = false;
+    let mut block = String::new();
+    for line in text.lines() {
+        if line == marker {
+            in_job = true;
+        } else if in_job && line.starts_with("  ") && !line.starts_with("    ") {
+            break;
+        }
+        if in_job {
+            block.push_str(line);
+            block.push('\n');
+        }
+    }
+    in_job.then_some(block)
 }

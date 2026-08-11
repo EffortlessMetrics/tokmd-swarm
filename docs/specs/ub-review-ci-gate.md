@@ -86,6 +86,13 @@ It does **not** prove:
 | Grouped PR review | GitHub PR UI | advisory, same-repo only |
 | Route job outputs (`runner`, `runner_kind`) | Gate `runs-on` | yes |
 
+## Permissions
+
+The deterministic `Tokmd Rust Result` job uses read-only repository access.
+Only the separate `ub-review` job receives `pull-requests: write`, because its
+`posting: review` mode creates inline review comments. Neither job requires
+native approval, CODEOWNERS approval, or a separate reviewer account.
+
 ## Target workflow shape
 
 Reference fixture: `fixtures/ci-gate-contract/reference-ci.yml`.

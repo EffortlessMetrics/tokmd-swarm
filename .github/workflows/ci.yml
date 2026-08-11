@@ -79,7 +79,6 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -233,6 +232,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      # ub-review posts inline GitHub review comments; the deterministic gate
+      # above does not need pull-request write access.
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
