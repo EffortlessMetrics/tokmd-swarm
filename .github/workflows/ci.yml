@@ -102,10 +102,19 @@ jobs:
           # Best-effort reclaim of legacy /tmp orphans from pre-fix disposable gate runs (#309).
           find /tmp -maxdepth 1 -type d -name 'tokmd-gate-target-*' -mmin +30 -exec rm -rf {} + 2>/dev/null || true
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Rust build cache (best effort)
+        id: rust_cache
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: Swatinem/rust-cache@v2
         with:
           cache-directories: ${{ runner.temp }}/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Record cache outcome
+        if: always()
+        run: |
+          echo "Rust cache outcome: ${{ steps.rust_cache.outcome }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fast precontext and launch core gate
         env:
