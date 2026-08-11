@@ -641,14 +641,6 @@ fn update_publish_receipt_visibility_entry(
         "missing" | "yanked" => Some(false),
         _ => None,
     };
-    if lookup.state != "present" {
-        entry.reason = lookup.error.clone().or_else(|| {
-            Some(format!(
-                "registry visibility check ended in `{}`",
-                lookup.state
-            ))
-        });
-    }
     entry.updated_at = Utc::now().to_rfc3339();
     Ok(())
 }
