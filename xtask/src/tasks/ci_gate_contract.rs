@@ -84,7 +84,10 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
 
     if let Some(gate_start) = text.find("  tokmd-rust-result:") {
         let gate = &text[gate_start..];
-        let gate = gate.split("\n  ub-review:").next().unwrap_or(gate);
+        let gate = match gate.split_once("\n  ub-review:") {
+            Some((gate, _)) => gate,
+            None => gate,
+        };
         if gate.contains("UB Review (advisory)") || gate.contains("EffortlessMetrics/ub-review@") {
             errors.push(
                 "advisory ub-review must be a separate job, not a step in Tokmd Rust Result"
