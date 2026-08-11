@@ -266,7 +266,8 @@ fn aggregate_status(commands: &[CommandResult]) -> CommandStatus {
 
 fn normalize_path(path: &str) -> String {
     let mut components = Vec::new();
-    for component in path.replace('\\', "/").split('/') {
+    let normalized = path.replace('\\', "/");
+    for component in normalized.split('/') {
         match component {
             "" | "." => {}
             ".." => {
