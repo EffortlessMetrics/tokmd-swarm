@@ -476,10 +476,12 @@ mod tests {
     #[test]
     fn invalid_release_kind_and_blank_version_are_rejected() -> Result<()> {
         let mut value = serde_json::to_value(input(passed_commands())?)?;
-        let object = value
-            .as_object_mut()
-            .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?;
-        object.insert("release_kind".to_owned(), json!("release"));
+        {
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?;
+            object.insert("release_kind".to_owned(), json!("release"));
+        }
         let invalid_kind: PreflightInput = serde_json::from_value(value.clone())?;
         let kind_error = match aggregate(invalid_kind) {
             Ok(_) => return Err(anyhow::anyhow!("invalid release kind was accepted")),
@@ -487,8 +489,13 @@ mod tests {
         };
         ensure!(kind_error.to_string().contains("release_kind"));
 
-        object.insert("release_kind".to_owned(), json!("stable"));
-        object.insert("expected_version".to_owned(), json!("   "));
+        {
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?;
+            object.insert("release_kind".to_owned(), json!("stable"));
+            object.insert("expected_version".to_owned(), json!("   "));
+        }
         let blank_version: PreflightInput = serde_json::from_value(value)?;
         let version_error = match aggregate(blank_version) {
             Ok(_) => return Err(anyhow::anyhow!("blank version was accepted")),
