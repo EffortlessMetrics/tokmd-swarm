@@ -359,13 +359,14 @@ fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
         .output()
         .context("resolve current Git HEAD")?;
     if !output.status.success() {
-        if output.status.code() == Some(128) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(128) && is_unresolved_head_error(&stderr) {
             return Ok(None);
         }
         bail!(
             "resolve current Git HEAD failed with status {}: {}",
             output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
+            stderr.trim()
         );
     }
     Ok(Some(
@@ -374,6 +375,10 @@ fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
             .trim()
             .to_string(),
     ))
+}
+
+fn is_unresolved_head_error(stderr: &str) -> bool {
+    stderr.contains("Needed a single revision")
 }
 
 fn source_matches_tag_commit(
@@ -665,6 +670,17 @@ mod tests {
         let head_sha = "b".repeat(40);
         if source_matches_tag_commit("1.15.1", "1.15.1", &tag_sha, &head_sha) {
             bail!("a same-version post-tag checkout must not pass source validation");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn only_git_unresolved_head_diagnostic_maps_to_missing() -> Result<()> {
+        if !is_unresolved_head_error("fatal: Needed a single revision\n") {
+            bail!("the supported unresolved HEAD diagnostic should be recognized");
+        }
+        if is_unresolved_head_error("fatal: bad object HEAD\n") {
+            bail!("other Git failures must not be classified as an unresolved HEAD");
         }
         Ok(())
     }
