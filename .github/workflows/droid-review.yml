@@ -3,6 +3,11 @@ name: Droid Auto Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+  # Dependabot pull_request events do not receive repository secrets. The
+  # target event supplies them only to the narrowly guarded Dependabot path
+  # below, while the job checks out the trusted base by default.
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review, reopened]
 
 concurrency:
   group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
@@ -12,7 +17,11 @@ jobs:
   droid-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !contains(github.event.pull_request.title, '[skip-review]')
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      (
+        (github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]') ||
+        (github.event_name == 'pull_request_target' && github.event.pull_request.user.login == 'dependabot[bot]')
+      )
 
     runs-on: ubuntu-latest
 
@@ -31,6 +40,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          # pull_request_target intentionally checks out the trusted base;
+          # the reviewer receives PR metadata/diff without running PR code.
 
       - name: Configure MiniMax BYOK for Factory Droid
         shell: bash
