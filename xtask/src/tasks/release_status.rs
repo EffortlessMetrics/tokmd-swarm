@@ -96,40 +96,37 @@ pub fn run(args: ReleaseStatusArgs) -> Result<()> {
 }
 
 fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
+    let workspace_root = find_workspace_root()?;
+    inspect_local_at(&workspace_root, tag)
+}
+
+fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
     validate_tag(tag)?;
     let expected_version = tag.strip_prefix('v').unwrap_or(tag).to_string();
-    let workspace_version = workspace_version()?;
-    let tag_sha = local_tag_sha(tag)?;
-    let head_sha = local_head_sha()?;
-    let source_state = match (&workspace_version, &tag_sha) {
+    let workspace_version = workspace_version(workspace_root)?;
+    let tag_sha = local_tag_sha(workspace_root, tag)?;
+    let head_sha = local_head_sha(workspace_root)?;
+    let source_matches = matches!(
+        (&workspace_version, &tag_sha),
         (Some(version), Some(tag_sha))
             if source_matches_tag_commit(
                 Some(version.as_str()),
                 &expected_version,
                 Some(tag_sha.as_str()),
                 Some(head_sha.as_str()),
-            ) =>
-        {
-            ReleaseState::Passed
-        }
+            )
+    );
+    let source_state = match (&workspace_version, &tag_sha) {
+        (Some(_), Some(_)) if source_matches => ReleaseState::Passed,
         (Some(_), Some(_)) => ReleaseState::Failed,
         (_, None) => ReleaseState::Missing,
         (None, Some(_)) => ReleaseState::Unavailable,
     };
     let source_detail = match (&workspace_version, &tag_sha) {
-        (Some(version), Some(tag_sha))
-            if source_matches_tag_commit(
-                Some(version.as_str()),
-                &expected_version,
-                Some(tag_sha.as_str()),
-                Some(head_sha.as_str()),
-            ) =>
-        {
-            Some(
-                "workspace version matches the inspected tag and HEAD resolves to its commit"
-                    .to_string(),
-            )
-        }
+        (Some(_), Some(_)) if source_matches => Some(
+            "workspace version matches the inspected tag and HEAD resolves to its commit"
+                .to_string(),
+        ),
         (Some(version), Some(_)) => Some(format!(
             "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
         )),
@@ -260,9 +257,7 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
         bail!("passed publication evidence must contain a non-empty merge SHA");
     }
     if receipt.publication.state == ReleaseState::Passed
-        && (receipt.publication.parent_count != Some(2)
-            || receipt.publication.publication_ahead != Some(0)
-            || receipt.publication.swarm_ahead != Some(0))
+        && !publication_graph_is_aligned(&receipt.publication)
     {
         bail!("passed publication evidence must include parent_count=2 and graph counters of 0/0");
     }
@@ -297,9 +292,7 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
 fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
     receipt.source.state == ReleaseState::Passed
         && receipt.publication.state == ReleaseState::Passed
-        && receipt.publication.parent_count == Some(2)
-        && receipt.publication.publication_ahead == Some(0)
-        && receipt.publication.swarm_ahead == Some(0)
+        && publication_graph_is_aligned(&receipt.publication)
         && receipt.git_tag.state == ReleaseState::Passed
         && receipt.github_release.state == ReleaseState::Passed
         && receipt.assets.state == ReleaseState::Passed
@@ -314,8 +307,13 @@ fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
         && receipt.finalization.state == ReleaseState::Passed
 }
 
-fn workspace_version() -> Result<Option<String>> {
-    let workspace_root = find_workspace_root()?;
+fn publication_graph_is_aligned(publication: &PublicationFact) -> bool {
+    publication.parent_count == Some(2)
+        && publication.publication_ahead == Some(0)
+        && publication.swarm_ahead == Some(0)
+}
+
+fn workspace_version(workspace_root: &Path) -> Result<Option<String>> {
     let content = fs::read_to_string(workspace_root.join("Cargo.toml"))
         .context("read workspace Cargo.toml")?;
     let manifest: toml::Value = toml::from_str(&content).context("parse workspace Cargo.toml")?;
@@ -344,9 +342,10 @@ fn find_workspace_root() -> Result<PathBuf> {
     }
 }
 
-fn local_head_sha() -> Result<String> {
+fn local_head_sha(workspace_root: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "--verify", "HEAD^{commit}"])
+        .current_dir(workspace_root)
         .output()
         .context("resolve current Git HEAD")?;
     if !output.status.success() {
@@ -381,10 +380,11 @@ fn validate_passed_state_fact(name: &str, fact: &StateFact) -> Result<()> {
     Ok(())
 }
 
-fn local_tag_sha(tag: &str) -> Result<Option<String>> {
+fn local_tag_sha(workspace_root: &Path, tag: &str) -> Result<Option<String>> {
     let reference = format!("refs/tags/{tag}");
     let output = Command::new("git")
         .args(["show-ref", "--verify", "--quiet", &reference])
+        .current_dir(workspace_root)
         .output()
         .context("inspect local Git tag")?;
     if !output.status.success() {
@@ -400,6 +400,7 @@ fn local_tag_sha(tag: &str) -> Result<Option<String>> {
     let commit_reference = format!("{reference}^{{commit}}");
     let output = Command::new("git")
         .args(["rev-parse", "--verify", &commit_reference])
+        .current_dir(workspace_root)
         .output()
         .context("resolve local Git tag commit")?;
     if !output.status.success() {
@@ -614,6 +615,52 @@ mod tests {
             Some(head_sha.as_str()),
         ) {
             bail!("a same-version post-tag checkout must not pass source validation");
+        }
+        Ok(())
+    }
+
+    fn run_git(root: &Path, args: &[&str]) -> Result<String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .with_context(|| format!("run git {:?}", args))?;
+        if !output.status.success() {
+            bail!(
+                "git {:?} failed with status {}: {}",
+                args,
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        String::from_utf8(output.stdout).with_context(|| format!("decode git {:?} output", args))
+    }
+
+    #[test]
+    fn inspect_local_rejects_same_version_checkout_after_tag() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\n[workspace.package]\nversion = \"1.15.1\"\n",
+        )?;
+        let marker = temp.path().join("marker.txt");
+        fs::write(&marker, "tagged\n")?;
+        run_git(temp.path(), &["init"])?;
+        run_git(temp.path(), &["config", "user.email", "test@example.com"])?;
+        run_git(temp.path(), &["config", "user.name", "Release Test"])?;
+        run_git(temp.path(), &["add", "."])?;
+        run_git(temp.path(), &["commit", "-m", "tagged source"])?;
+        run_git(temp.path(), &["tag", "v1.15.1"])?;
+        fs::write(marker, "post-tag\n")?;
+        run_git(temp.path(), &["add", "."])?;
+        run_git(temp.path(), &["commit", "-m", "post-tag source"])?;
+
+        let receipt = inspect_local_at(temp.path(), "v1.15.1")?;
+        if receipt.source.state != ReleaseState::Failed {
+            bail!(
+                "same-version checkout after the tag must fail source validation, got {:?}",
+                receipt.source.state
+            );
         }
         Ok(())
     }
