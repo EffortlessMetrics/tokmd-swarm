@@ -118,22 +118,26 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
                 head_sha,
             )
     );
-    let source_state = match (&workspace_version, &tag_sha) {
-        (Some(_), Some(_)) if source_matches => ReleaseState::Passed,
-        (Some(_), Some(_)) => ReleaseState::Failed,
-        (_, None) => ReleaseState::Missing,
-        (None, Some(_)) => ReleaseState::Unavailable,
+    let source_state = match (&workspace_version, &tag_sha, &head_sha) {
+        (Some(_), Some(_), Some(_)) if source_matches => ReleaseState::Passed,
+        (Some(_), Some(_), Some(_)) => ReleaseState::Failed,
+        (Some(_), Some(_), None) => ReleaseState::Missing,
+        (_, None, _) => ReleaseState::Missing,
+        (None, Some(_), _) => ReleaseState::Unavailable,
     };
-    let source_detail = match (&workspace_version, &tag_sha) {
-        (Some(_), Some(_)) if source_matches => Some(
+    let source_detail = match (&workspace_version, &tag_sha, &head_sha) {
+        (Some(_), Some(_), Some(_)) if source_matches => Some(
             "workspace version matches the inspected tag and HEAD resolves to its commit"
                 .to_string(),
         ),
-        (Some(version), Some(_)) => Some(format!(
+        (Some(_), Some(_), None) => {
+            Some("tag exists but HEAD cannot be resolved; source cannot be verified".to_string())
+        }
+        (Some(version), Some(_), Some(_)) => Some(format!(
             "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
         )),
-        (_, None) => Some("tag does not exist in the local repository".to_string()),
-        (None, Some(_)) => Some(
+        (_, None, _) => Some("tag does not exist in the local repository".to_string()),
+        (None, Some(_), _) => Some(
             "workspace version could not be read; local source status is unavailable".to_string(),
         ),
     };
@@ -699,6 +703,45 @@ mod tests {
                 "missing tag and HEAD must produce missing source state, got {:?}",
                 receipt.source.state
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_local_reports_existing_tag_without_head_as_missing() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace]\n[workspace.package]\nversion = \"1.15.1\"\n",
+        )?;
+        let crate_dir = temp.path().join("crates").join("fixture");
+        fs::create_dir_all(&crate_dir)?;
+        fs::write(temp.path().join("marker.txt"), "tagged\n")?;
+        run_git(temp.path(), &["init"])?;
+        run_git(temp.path(), &["config", "user.email", "test@example.com"])?;
+        run_git(temp.path(), &["config", "user.name", "Release Test"])?;
+        run_git(temp.path(), &["add", "."])?;
+        run_git(temp.path(), &["commit", "-m", "tagged source"])?;
+        run_git(temp.path(), &["tag", "v1.15.1"])?;
+        run_git(
+            temp.path(),
+            &["symbolic-ref", "HEAD", "refs/heads/unborn-fixture"],
+        )?;
+
+        let receipt = inspect_local_from(&crate_dir, "v1.15.1")?;
+        if receipt.source.state != ReleaseState::Missing {
+            bail!(
+                "existing tag without HEAD must produce missing source state, got {:?}",
+                receipt.source.state
+            );
+        }
+        if !receipt
+            .source
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("HEAD cannot be resolved"))
+        {
+            bail!("missing HEAD source detail should explain the unavailable evidence");
         }
         Ok(())
     }
