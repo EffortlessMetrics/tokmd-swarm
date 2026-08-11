@@ -31,8 +31,11 @@ Do not create release tags, GitHub Releases, crates.io publishes, GHCR release
 tags, or `v1` alias moves from `tokmd-swarm`.
 
 The repository has one human maintainer. The review control is a fresh
-exact-head Codex review receipt plus required repository checks, not a second
-human approval object. Any material push invalidates the prior review receipt.
+exact-head independent agentic review pass plus required repository checks,
+with actionable inline findings independently verified and conversations
+resolved. A separate reviewer account, native approval, CODEOWNERS approval,
+or review-status check is not a merge requirement. Any material push
+invalidates the prior review evidence.
 
 ## Release state model
 
@@ -41,7 +44,7 @@ Do not collapse these states into a single word such as "released":
 | State | Required evidence |
 | --- | --- |
 | `source_prepared` | Version and release metadata are aligned on a committed swarm PR head. |
-| `source_reviewed` | Fresh exact-head Codex review reports `blocking_findings=0`; required CI is terminal and green. |
+| `source_reviewed` | Fresh exact-head independent agentic review has no unresolved actionable findings; required CI is terminal and green. |
 | `publication_imported` | A two-parent merge commit exists in `tokmd`; swarm fast-forwards to it; graph proof is `0/0`. |
 | `candidate_verified` | Candidate image/artifact proof passed against the unchanged aligned source commit. |
 | `tag_only` | The Git tag exists, but no published GitHub Release object is proven. |
@@ -150,10 +153,10 @@ before release acceptance.
 
 After the final push:
 
-1. run a fresh adversarial Codex review against the exact PR head;
+1. run a fresh independent agentic review against the exact PR head;
 2. classify findings as blocking, non-blocking, stale, or follow-up;
-3. fix blocking findings and invalidate the old receipt;
-4. require the final exact-head receipt to report `blocking_findings=0`;
+3. fix actionable findings, resolve their conversations, and invalidate old evidence;
+4. require the final exact-head review evidence to have no unresolved actionable findings;
 5. require `Tokmd Rust Result` and other selected required checks to be terminal
    and green;
 6. squash-merge the preparation PR.
