@@ -23,12 +23,13 @@ comment with no review thread is not an unresolved conversation.
 
 This is a single-maintainer repository: a separate human reviewer account,
 native approval, and CODEOWNERS approval are intentionally not merge
-requirements. Independent agentic review passes are part of the normal review
-process. Use separate agent lanes for those passes when appropriate; they may
-leave inline findings, and the resulting conversations must be independently
-checked and resolved. This is an agent workflow requirement, not a native
-approval or required-review status gate. Do not manufacture a second GitHub
-reviewer account, approval identity, or status check merely to satisfy one.
+requirements. Substantive PRs should receive independent agentic review passes
+as part of the normal review process. Use separate agent lanes for those passes;
+they may leave inline findings, and the resulting conversations must be
+independently checked and resolved. This is an agent workflow requirement, not
+a native approval or required-review status gate. Do not manufacture a second
+GitHub reviewer account, approval identity, or status check merely to satisfy
+one.
 
 ## Project Overview
 

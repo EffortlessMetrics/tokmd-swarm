@@ -43,9 +43,9 @@ repository:
 branches:
   - name: main
     protection:
-      # This is a single-maintainer workflow: independent agentic review passes
-      # use separate lanes and inline conversations, not reviewer accounts,
-      # native approval, or CODEOWNERS review.
+      # This is a single-maintainer workflow: substantive PRs use independent
+      # agentic review passes in separate lanes and inline conversations, not
+      # reviewer accounts, native approval, or CODEOWNERS review.
       required_pull_request_reviews:
         required_approving_review_count: 0
         dismiss_stale_reviews: false
