@@ -51,7 +51,11 @@ Conversation resolution is part of the merge process. Every actionable inline
 comment from a bot or agent reviewer must be addressed, independently checked,
 and its review thread resolved before merge. Resolution is necessary process
 evidence, not proof by itself that the finding was fixed. A general bot summary
-comment with no review thread is not an unresolved conversation.
+comment with no review thread is not an unresolved conversation. The
+independent check is a workflow record made in the review reply, PR discussion,
+or handoff; GitHub's conversation setting only enforces the final resolved state
+and does not prove that the finding was fixed or that a separate identity
+performed the check.
 
 This is a single-maintainer repository: a separate human reviewer account,
 native approval, and CODEOWNERS approval are intentionally not merge
