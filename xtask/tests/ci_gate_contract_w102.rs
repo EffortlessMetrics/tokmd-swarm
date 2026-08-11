@@ -82,30 +82,31 @@ fn checker_rejects_retired_multi_lane_marker() {
 }
 
 #[test]
-fn checker_rejects_advisory_action_outside_advisory_job() {
-    let dir = tempfile::tempdir().expect("tempdir");
+fn checker_rejects_advisory_action_outside_advisory_job() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = tempfile::tempdir()?;
     let workflow = dir.path().join("bad-advisory-placement.yml");
     let mut text =
-        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))
-            .expect("read reference fixture");
+        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))?;
     let invalid_fragment = fs::read_to_string(
         workspace_root().join("fixtures/ci-gate-contract/invalid-advisory-placement.ymlfrag"),
-    )
-    .expect("read invalid advisory fixture");
+    )?;
     text = text.replace(
         "  ub-review:\n    name: UB Review (Advisory)",
         invalid_fragment.trim_end(),
     );
-    fs::write(&workflow, text).expect("write invalid advisory fixture");
+    fs::write(&workflow, text)?;
 
     let workflow_arg = workflow.to_string_lossy();
     let (_, stderr, success) =
         run_xtask(&["ci-gate-contract", "--check", "--workflow", &workflow_arg]);
-    assert!(!success, "action outside ub-review job must fail: {stderr}");
-    assert!(
-        stderr.contains(
-            "advisory ub-review job missing required marker: EffortlessMetrics/ub-review@"
-        ),
-        "stderr: {stderr}"
-    );
+    if success {
+        return Err(format!("action outside ub-review job unexpectedly passed: {stderr}").into());
+    }
+    if !stderr
+        .contains("advisory ub-review job missing required marker: EffortlessMetrics/ub-review@")
+    {
+        return Err(format!("unexpected checker diagnostics: {stderr}").into());
+    }
+    Ok(())
 }
