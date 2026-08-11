@@ -111,6 +111,7 @@ jobs:
           preset: bun-ub
           mode: review-direct
           posting: review
+          install-mode: source
           setup-rust: false
           tool-bundle: core
           provider-policy: minimax-primary
