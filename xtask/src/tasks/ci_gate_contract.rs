@@ -158,7 +158,6 @@ fn top_level_job_block(text: &str, job: &str) -> Option<String> {
     let mut in_job = false;
     let mut block = String::new();
     for line in text.lines() {
-        let trimmed = line.trim_start();
         if line == marker {
             in_job = true;
         } else if in_job && line.starts_with("  ") && !line.starts_with("    ") {
