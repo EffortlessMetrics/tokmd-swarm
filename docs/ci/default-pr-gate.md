@@ -1,8 +1,10 @@
 # Default PR gate (phase 2, #226)
 
 The required merge check is **`Tokmd Rust Result`** — a single tight gate with
-advisory `route`, concurrent `cargo xtask gate --check`, `cargo test
---all-features`, `cargo xtask proof-policy --check`, and advisory `ub-review`.
+advisory `route`, serial `cargo xtask gate --check`, `cargo test --all-features`,
+`cargo test -p xtask --all-features`, and `cargo xtask proof-policy --check`.
+The separate `UB Review (Advisory)` job performs the independent agentic review
+pass and does not hold the required gate open.
 
 Parallel satellite lanes still run for MSRV, docs, deny, typos, risk-gated
 builds, and proof planning. They are visible on the PR but are **not** aggregated
@@ -13,6 +15,7 @@ Result` after the admin step in issue #226.
 |-----|----------------------------|
 | `Tokmd Rust Result` | always (required) |
 | `Route CI runner` | always (advisory) |
+| `UB Review (Advisory)` | pull_request on same-repository branches (advisory) |
 | `MSRV Check` | always (satellite) |
 | `Cargo Deny` | always (satellite) |
 | `Typos` | always (satellite) |
@@ -78,8 +81,9 @@ scoped_coverage_executor_non_required 12
 ci_gate_contract (×2)        4
 no_bare_self_hosted          1
 ci_actuals_advisory          1
+ub_review_advisory            5
                           ----
-                            78   tokmd-swarm default PR static estimate
+                            83   tokmd-swarm default PR static estimate
 ```
 
 Measured core CI jobs on an ordinary PR are ~16 LEM; the static total includes

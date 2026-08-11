@@ -110,6 +110,34 @@ fn checker_rejects_advisory_action_outside_advisory_job() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn checker_rejects_fork_guard_outside_advisory_job() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let workflow = dir.path().join("bad-fork-guard.yml");
+    let mut text =
+        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))?;
+    let fork_guard = "github.event.pull_request.head.repo.fork == false";
+    text = text.replace(fork_guard, "");
+    text = text.replace(
+        "  tokmd-rust-result:\n",
+        &format!("# misplaced fork guard: {fork_guard}\n  tokmd-rust-result:\n"),
+    );
+    fs::write(&workflow, text)?;
+
+    let workflow_arg = workflow.to_string_lossy();
+    let (_, stderr, success) =
+        run_xtask(&["ci-gate-contract", "--check", "--workflow", &workflow_arg]);
+    if success {
+        return Err("fork guard outside ub-review unexpectedly passed".into());
+    }
+    if !stderr.contains(
+        "advisory ub-review job missing required marker: github.event.pull_request.head.repo.fork == false",
+    ) {
+        return Err(format!("unexpected checker diagnostics: {stderr}").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn checker_rejects_gate_markers_outside_required_job() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let workflow = dir.path().join("bad-gate-placement.yml");
