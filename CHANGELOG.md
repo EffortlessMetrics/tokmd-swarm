@@ -24,6 +24,8 @@ recorded as consumer-proven in the [1.15 release ledger](docs/releases/1.15-ledg
   fail-closed ZIP admission across native and browser/WASM paths.
 - `--show-config`, richer progress events, and packet-consumption contracts for
   review workflows.
+- Opt-in syntax and shadow evidence improvements, with explicit advisory
+  evidence boundaries for downstream consumers.
 
 ### Changed
 
@@ -69,6 +71,10 @@ recorded as consumer-proven in the [1.15 release ledger](docs/releases/1.15-ledg
 - Stable publication required recovery from the immutable `v1.15.0` tag. The
   incident receipt records per-crate recovery and the ledger records final
   consumer proof; the tag itself was not rewritten.
+- The `docs_schema_w72` changelog guard records the current schema constants:
+  `COCKPIT_SCHEMA_VERSION = 3`, `CONTEXT_SCHEMA_VERSION = 4`,
+  `CONTEXT_BUNDLE_SCHEMA_VERSION = 2`, `HANDOFF_SCHEMA_VERSION = 5`, and
+  `TOOL_SCHEMA_VERSION = 1`.
 
 ### Non-claims
 
