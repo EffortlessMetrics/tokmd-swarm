@@ -204,6 +204,10 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
         );
     }
 
+    let source_sha = input.source_sha.to_ascii_lowercase();
+    let affected_base_sha = input.affected_base_sha.to_ascii_lowercase();
+    let expected_version = input.expected_version.trim().to_owned();
+
     let mut required_commands = Vec::with_capacity(REQUIRED_COMMANDS.len());
     for id in REQUIRED_COMMANDS {
         let command = match by_id.remove(*id) {
@@ -223,9 +227,9 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
     Ok(ReleasePreflightReceipt {
         schema: RECEIPT_SCHEMA.to_string(),
         schema_version: SCHEMA_VERSION,
-        source_sha: input.source_sha,
-        affected_base_sha: input.affected_base_sha,
-        expected_version: input.expected_version,
+        source_sha,
+        affected_base_sha,
+        expected_version,
         release_kind: input.release_kind,
         overall,
         required_commands,
@@ -371,6 +375,29 @@ mod tests {
     }
 
     #[test]
+    fn identity_fields_are_canonicalized() -> Result<()> {
+        let mut value = serde_json::to_value(input(passed_commands())?)?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?;
+        object.insert(
+            "source_sha".to_owned(),
+            json!("ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"),
+        );
+        object.insert(
+            "affected_base_sha".to_owned(),
+            json!("ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"),
+        );
+        object.insert("expected_version".to_owned(), json!("  1.15.1  "));
+        let receipt = aggregate(serde_json::from_value(value)?)?;
+        ensure!(receipt.source_sha == "abcdefabcdefabcdefabcdefabcdefabcdefabcd");
+        ensure!(receipt.affected_base_sha == "abcdefabcdefabcdefabcdefabcdefabcdefabcd");
+        ensure!(receipt.expected_version == "1.15.1");
+        ensure!(receipt.schema_version == SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
     fn failure_precedes_unavailable_and_is_not_green() -> Result<()> {
         let mut commands = passed_commands()
             .as_array()
@@ -419,6 +446,55 @@ mod tests {
             Err(error) => error,
         };
         ensure!(error.to_string().contains("source_sha"));
+        Ok(())
+    }
+
+    #[test]
+    fn cancelled_precedes_unavailable() -> Result<()> {
+        let command = |status| CommandResult {
+            id: "fixture".to_owned(),
+            status,
+            duration_ms: Some(1),
+            log: Some("logs/fixture.log".to_owned()),
+            detail: None,
+        };
+        ensure!(
+            aggregate_status(&[
+                command(CommandStatus::Cancelled),
+                command(CommandStatus::Unavailable),
+            ]) == CommandStatus::Cancelled
+        );
+        ensure!(
+            aggregate_status(&[
+                command(CommandStatus::Failed),
+                command(CommandStatus::Cancelled),
+            ]) == CommandStatus::Failed
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_release_kind_and_blank_version_are_rejected() -> Result<()> {
+        let mut value = serde_json::to_value(input(passed_commands())?)?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("preflight fixture must be an object"))?;
+        object.insert("release_kind".to_owned(), json!("release"));
+        let invalid_kind: PreflightInput = serde_json::from_value(value.clone())?;
+        let kind_error = match aggregate(invalid_kind) {
+            Ok(_) => return Err(anyhow::anyhow!("invalid release kind was accepted")),
+            Err(error) => error,
+        };
+        ensure!(kind_error.to_string().contains("release_kind"));
+
+        object.insert("release_kind".to_owned(), json!("stable"));
+        object.insert("expected_version".to_owned(), json!("   "));
+        let blank_version: PreflightInput = serde_json::from_value(value)?;
+        let version_error = match aggregate(blank_version) {
+            Ok(_) => return Err(anyhow::anyhow!("blank version was accepted")),
+            Err(error) => error,
+        };
+        ensure!(version_error.to_string().contains("expected_version"));
         Ok(())
     }
 }
