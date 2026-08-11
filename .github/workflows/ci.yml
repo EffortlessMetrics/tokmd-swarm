@@ -153,6 +153,9 @@ jobs:
           preset: bun-ub
           mode: review-direct
           posting: review
+          # The pinned action has no pr-thread-context input; retain precontext
+          # as a deterministic gate artifact and use the supported source mode.
+          install-mode: source
           setup-rust: false
           tool-bundle: core
           provider-policy: minimax-primary
@@ -161,7 +164,6 @@ jobs:
           opencode-api-key: ${{ secrets.OPENCODE }}
           opencode-model: deepseek-v4-flash
           base: origin/${{ github.base_ref }}
-          pr-thread-context: target/ci-core/precontext.md
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-summary: true
 
@@ -259,6 +261,16 @@ jobs:
           test "${test_exit}" = "0"
           test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
+
+      - name: Upload deterministic core receipt
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: tokmd-rust-result-core
+          path: target/ci-core/
+          if-no-files-found: error
+          retention-days: 14
 
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
   # this output into their `if:` so the deep lanes also run when matching
