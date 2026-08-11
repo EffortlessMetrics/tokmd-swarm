@@ -6,7 +6,7 @@
 
 use std::{collections::BTreeMap, fs};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::ReleasePreflightArgs;
@@ -260,7 +260,7 @@ fn validate_sha(label: &str, value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{Result, ensure};
+    use anyhow::{ensure, Result};
     use serde_json::json;
 
     fn input(commands: serde_json::Value) -> Result<PreflightInput> {
