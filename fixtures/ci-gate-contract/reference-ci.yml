@@ -119,7 +119,6 @@ jobs:
           opencode-api-key: ${{ secrets.OPENCODE }}
           opencode-model: deepseek-v4-flash
           base: origin/${{ github.base_ref }}
-          pr-thread-context: target/ci-core/precontext.md
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-summary: true
 

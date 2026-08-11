@@ -153,6 +153,8 @@ jobs:
           preset: bun-ub
           mode: review-direct
           posting: review
+          # The pinned action has no pr-thread-context input; retain precontext
+          # as a deterministic gate artifact and use the supported source mode.
           install-mode: source
           setup-rust: false
           tool-bundle: core
