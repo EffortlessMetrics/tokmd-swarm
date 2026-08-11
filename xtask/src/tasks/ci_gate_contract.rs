@@ -19,7 +19,6 @@ const REQUIRED_MARKERS: &[&str] = &[
     "em-ci",
     "trusted-pr",
     "fromJSON(needs.route.outputs.runner)",
-    "github.event.pull_request.head.repo.fork == false",
 ];
 
 const GATE_MARKERS: &[&str] = &[
@@ -40,6 +39,7 @@ const ADVISORY_MARKERS: &[&str] = &[
     "EffortlessMetrics/ub-review@",
     "mode: review-direct",
     "posting: review",
+    "github.event.pull_request.head.repo.fork == false",
     "setup-rust: false",
     "provider-policy: minimax-primary",
     "minimax-model: MiniMax-M3",
