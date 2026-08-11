@@ -11,12 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::ReleasePreflightArgs;
 
-pub const INPUT_SCHEMA: &str = "tokmd.release_preflight_input.v1";
-pub const RECEIPT_SCHEMA: &str = "tokmd.release_preflight.v1";
+pub const INPUT_SCHEMA: &str = "tokmd.release_preflight_input.v2";
+pub const RECEIPT_SCHEMA: &str = "tokmd.release_preflight.v2";
 const SCHEMA_VERSION: u32 = 1;
 
 const REQUIRED_COMMANDS: &[&str] = &[
     "affected_plan",
+    "proof_plan",
     "fmt_check",
     "gate_check",
     "version_consistency",
@@ -119,20 +120,66 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
     }
 
     let mut by_id = BTreeMap::new();
+    let mut empty_ids = Vec::new();
+    let mut unknown_ids = Vec::new();
+    let mut duplicate_ids = Vec::new();
     for command in input.commands {
+        if command.id.trim().is_empty() {
+            empty_ids.push(command.id);
+            continue;
+        }
         if !REQUIRED_COMMANDS.contains(&command.id.as_str()) {
-            bail!(
-                "release preflight contains unknown command `{}`",
-                command.id
-            );
+            unknown_ids.push(command.id);
+            continue;
         }
         if by_id.contains_key(&command.id) {
-            bail!(
-                "release preflight contains duplicate command `{}`",
-                command.id
-            );
+            duplicate_ids.push(command.id);
+            continue;
         }
         by_id.insert(command.id.clone(), command);
+    }
+    empty_ids.sort();
+    empty_ids.dedup();
+    unknown_ids.sort();
+    unknown_ids.dedup();
+    duplicate_ids.sort();
+    duplicate_ids.dedup();
+    let mut validation_errors = Vec::new();
+    if !empty_ids.is_empty() {
+        validation_errors.push(format!(
+            "empty command id(s): {}",
+            empty_ids
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !unknown_ids.is_empty() {
+        validation_errors.push(format!(
+            "unknown command(s): {}",
+            unknown_ids
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !duplicate_ids.is_empty() {
+        validation_errors.push(format!(
+            "duplicate command(s): {}",
+            duplicate_ids
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if !validation_errors.is_empty() {
+        bail!(
+            "release preflight input validation failed: {}",
+            validation_errors.join("; ")
+        );
     }
 
     let mut required_commands = Vec::with_capacity(REQUIRED_COMMANDS.len());
@@ -271,11 +318,18 @@ mod tests {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("fixture must be an array"))?;
         commands.push(json!({"id": "not-a-command", "status": "failed"}));
+        commands.push(json!({"id": "also-not-a-command", "status": "failed"}));
+        commands.push(json!({"id": "clippy", "status": "passed"}));
+        commands.push(json!({"id": "", "status": "failed"}));
         let error = match aggregate(input(serde_json::Value::Array(commands))?) {
             Ok(_) => return Err(anyhow::anyhow!("unknown command was accepted")),
             Err(error) => error,
         };
         ensure!(error.to_string().contains("unknown command"));
+        ensure!(error.to_string().contains("not-a-command"));
+        ensure!(error.to_string().contains("also-not-a-command"));
+        ensure!(error.to_string().contains("duplicate command"));
+        ensure!(error.to_string().contains("empty command id"));
 
         let commands = REQUIRED_COMMANDS
             .iter()
