@@ -1,0 +1,11 @@
+# Negative fixture fragment: the required gate markers are moved outside the
+# Tokmd Rust Result job. The checker must reject the missing gate markers.
+  tokmd-rust-result:
+    name: Tokmd Rust Result
+
+  later-gate-job:
+    steps:
+      - name: Fast precontext and launch core gate
+        run: cargo xtask gate --check
+      - name: Assert core gate verdict
+        run: echo core_exit

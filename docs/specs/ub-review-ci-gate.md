@@ -46,7 +46,7 @@ model availability, and lane opinions are advisory only.
 The advisory layer may attach deterministic precontext written before lanes
 start (`target/ci-core/precontext.md`) and `sensors/tokmd/` evidence produced by
 `tokmd evidence-packet` / the evidence-packet Action path. The pinned
-`ub-review` Action consumes the diff and explicit base/head inputs; it does not
+`ub-review` Action consumes the diff and explicit base input; it does not
 expose a `pr-thread-context` input, so precontext remains a deterministic gate
 and review artifact rather than an Action parameter. Packet artifacts follow
 `docs/specs/evidence-packet-workflow.md`; they do not replace the deterministic
@@ -122,16 +122,6 @@ jobs:
   `opencode-model: deepseek-v4-flash`.
 - Repo-local `ub-review` config TOML is preferred once available; until then
   document the preset/config choice in the workflow comment block.
-
-### Permissions
-
-```yaml
-permissions:
-  contents: read
-```
-
-The gate job adds `pull-requests: write` only so ub-review can post its grouped
-advisory review.
 
 ## Compatibility
 

@@ -127,8 +127,9 @@ typos                                    1
 ci_actuals_advisory                      1
 no_bare_self_hosted                      1
 pr_plan_advisory                         1
+ub_review_advisory                        5
                                        ----
-                                        103  (high-cost band; below the 125 hard ceiling)
+                                        108  (high-cost band; below the 125 hard ceiling)
 ```
 
 Expensive Windows, WASM, Nix, mutation, proptest, coverage, fuzz, macOS, and

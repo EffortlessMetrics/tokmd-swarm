@@ -103,10 +103,49 @@ fn checker_rejects_advisory_action_outside_advisory_job() -> Result<(), Box<dyn 
     if success {
         return Err(format!("action outside ub-review job unexpectedly passed: {stderr}").into());
     }
-    if !stderr
-        .contains("advisory ub-review job missing required marker: EffortlessMetrics/ub-review@")
-    {
+    if !stderr.contains("ub-review action must be inside the top-level ub-review job") {
         return Err(format!("unexpected checker diagnostics: {stderr}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn checker_rejects_gate_markers_outside_required_job() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let workflow = dir.path().join("bad-gate-placement.yml");
+    let mut text =
+        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))?;
+    let invalid_fragment = fs::read_to_string(
+        workspace_root().join("fixtures/ci-gate-contract/invalid-gate-placement.ymlfrag"),
+    )?;
+    text = text.replace(
+        "  tokmd-rust-result:\n    name: Tokmd Rust Result",
+        invalid_fragment.trim_end(),
+    );
+    fs::write(&workflow, text)?;
+
+    let workflow_arg = workflow.to_string_lossy();
+    let (_, stderr, success) =
+        run_xtask(&["ci-gate-contract", "--check", "--workflow", &workflow_arg]);
+    if success {
+        return Err(
+            format!("gate markers outside required job unexpectedly passed: {stderr}").into(),
+        );
+    }
+    if !stderr.contains("Tokmd Rust Result job missing required marker: cargo xtask gate --check") {
+        return Err(format!("unexpected checker diagnostics: {stderr}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn reference_fixture_contains_scoped_advisory_markers() -> Result<(), Box<dyn std::error::Error>> {
+    let text =
+        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))?;
+    for marker in ["Record advisory review outcome", "install-mode: source"] {
+        if !text.contains(marker) {
+            return Err(format!("reference fixture missing marker: {marker}").into());
+        }
     }
     Ok(())
 }

@@ -11,7 +11,6 @@ use anyhow::{Context, Result, bail};
 use crate::cli::CiGateContractArgs;
 
 const REQUIRED_MARKERS: &[&str] = &[
-    "name: Tokmd Rust Result",
     "Route CI runner",
     "EM_RUNNER_READ_TOKEN",
     "gh api \"orgs/EffortlessMetrics/actions/runners",
@@ -20,13 +19,17 @@ const REQUIRED_MARKERS: &[&str] = &[
     "em-ci",
     "trusted-pr",
     "fromJSON(needs.route.outputs.runner)",
+    "github.event.pull_request.head.repo.fork == false",
+];
+
+const GATE_MARKERS: &[&str] = &[
+    "name: Tokmd Rust Result",
     "dtolnay/rust-toolchain",
     "Swatinem/rust-cache@v2",
     "Fast precontext and launch core gate",
     "cargo xtask gate --check",
     "core_exit",
     "Assert core gate verdict",
-    "github.event.pull_request.head.repo.fork == false",
 ];
 
 const ADVISORY_MARKERS: &[&str] = &[
@@ -89,6 +92,13 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
     let advisory = top_level_job_block(&text, "ub-review");
     match gate {
         Some(gate) => {
+            for marker in GATE_MARKERS {
+                if !gate.contains(marker) {
+                    errors.push(format!(
+                        "Tokmd Rust Result job missing required marker: {marker}"
+                    ));
+                }
+            }
             if gate.contains("EffortlessMetrics/ub-review@") {
                 errors.push(
                     "advisory ub-review must be a separate job, not a step in Tokmd Rust Result"
@@ -100,6 +110,13 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
     }
     match advisory {
         Some(advisory) => {
+            if !advisory.contains("EffortlessMetrics/ub-review@")
+                && text.contains("EffortlessMetrics/ub-review@")
+            {
+                errors.push(
+                    "ub-review action must be inside the top-level ub-review job".to_string(),
+                );
+            }
             for marker in ADVISORY_MARKERS {
                 if !advisory.contains(marker) {
                     errors.push(format!(
@@ -141,9 +158,16 @@ fn top_level_job_block(text: &str, job: &str) -> Option<String> {
     let mut in_job = false;
     let mut block = String::new();
     for line in text.lines() {
-        if line == marker {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if line == marker || (indent <= 2 && trimmed == format!("{job}:")) {
             in_job = true;
-        } else if in_job && line.starts_with("  ") && !line.starts_with("    ") {
+        } else if in_job
+            && indent <= 2
+            && !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && trimmed.ends_with(':')
+        {
             break;
         }
         if in_job {

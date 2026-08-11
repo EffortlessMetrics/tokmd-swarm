@@ -264,7 +264,7 @@ jobs:
           preset: bun-ub
           mode: review-direct
           posting: review
-          # The pinned action consumes the diff and explicit base/head inputs;
+          # The pinned action consumes the diff and explicit base input;
           # keep deterministic precontext as a local review artifact.
           install-mode: source
           setup-rust: false
@@ -1018,6 +1018,7 @@ jobs:
     needs:
       - route
       - tokmd-rust-result
+      - ub-review
       - detect
       - msrv
       - build-windows
@@ -1074,6 +1075,7 @@ jobs:
           job_name_to_need_key = {
               "Route CI runner": "route",
               "Tokmd Rust Result": "tokmd-rust-result",
+              "UB Review (Advisory)": "ub-review",
               "Detect risk packs": "detect",
               "MSRV Check": "msrv",
               "Build & Test (Windows)": "build-windows",
