@@ -67,8 +67,8 @@ treated as a successful release preflight.
   `cargo xtask proof --profile affected --plan` for that same identity;
 - `cargo fmt-check` and `cargo test -p xtask release_preflight` run against the
   exact committed source when Cargo is available;
-- `.github/workflows/release-preflight.yml` passes actionlint and records a
-  terminal result, duration, and log path for every required command;
+- the hosted preflight workflow passes actionlint and records a terminal
+  result, duration, and log path for every required command;
 - the workflow checks out exact source/base SHAs, uploads evidence under
   `always()`, and fails closed when the receipt is missing or non-passing; and
 - no release publication, tagging, alias promotion, or consumer-smoke
