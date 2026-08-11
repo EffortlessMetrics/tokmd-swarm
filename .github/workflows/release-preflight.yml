@@ -200,8 +200,8 @@ jobs:
           run_command clippy 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
           run_command cargo_deny 'cargo deny --all-features check'
           run_command publish_dry_run 'cargo xtask publish --dry-run'
-          run_command browser_tests 'npm --prefix web/runner test'
           run_command browser_wasm_archive 'npm --prefix web/runner run build:wasm:archive-zip'
+          run_command browser_tests 'npm --prefix web/runner test'
 
           jq -s '{schema:"tokmd.release_preflight_input.v2",schema_version:2,source_sha:env.SOURCE_SHA,affected_base_sha:env.AFFECTED_BASE_SHA,expected_version:env.EXPECTED_VERSION,release_kind:env.RELEASE_KIND,commands:.}' \
             "${root}/commands.jsonl" > "${root}/input.json"
