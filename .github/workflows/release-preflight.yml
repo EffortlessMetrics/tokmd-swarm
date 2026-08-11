@@ -254,8 +254,13 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           if [[ ! -f "${PREFLIGHT_ROOT}/receipt.json" ]]; then
             echo "::error::terminal release-preflight receipt is missing"
             exit 1
           fi
-          test "$(jq -r '.overall' "${PREFLIGHT_ROOT}/receipt.json")" = passed
+          overall="$(jq -r '.overall' "${PREFLIGHT_ROOT}/receipt.json")"
+          if [[ "${overall}" != "passed" ]]; then
+            echo "::error::terminal release-preflight decision is ${overall}"
+            exit 1
+          fi
