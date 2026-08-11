@@ -13,7 +13,7 @@ use crate::cli::ReleasePreflightArgs;
 
 pub const INPUT_SCHEMA: &str = "tokmd.release_preflight_input.v2";
 pub const RECEIPT_SCHEMA: &str = "tokmd.release_preflight.v2";
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 const REQUIRED_COMMANDS: &[&str] = &[
     "affected_plan",
@@ -123,7 +123,8 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
     let mut empty_ids = Vec::new();
     let mut unknown_ids = Vec::new();
     let mut duplicate_ids = Vec::new();
-    for command in input.commands {
+    let mut missing_evidence = Vec::new();
+    for mut command in input.commands {
         if command.id.trim().is_empty() {
             empty_ids.push(command.id);
             continue;
@@ -136,6 +137,26 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
             duplicate_ids.push(command.id);
             continue;
         }
+        let mut missing = Vec::new();
+        if command.duration_ms.is_none() {
+            missing.push("duration_ms");
+        }
+        if command
+            .log
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+        {
+            missing.push("log");
+        }
+        if !missing.is_empty() {
+            missing_evidence.push(format!(
+                "command `{}` is missing {}",
+                command.id,
+                missing.join(" and ")
+            ));
+        }
+        command.log = command.log.map(|path| path.replace('\\', "/"));
         by_id.insert(command.id.clone(), command);
     }
     empty_ids.sort();
@@ -175,6 +196,7 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
                 .join(", ")
         ));
     }
+    validation_errors.extend(missing_evidence);
     if !validation_errors.is_empty() {
         bail!(
             "release preflight input validation failed: {}",
@@ -279,7 +301,14 @@ mod tests {
         serde_json::Value::Array(
             REQUIRED_COMMANDS
                 .iter()
-                .map(|id| json!({"id": id, "status": "passed"}))
+                .map(|id| {
+                    json!({
+                        "id": id,
+                        "status": "passed",
+                        "duration_ms": 1,
+                        "log": format!("logs\\{id}.log")
+                    })
+                })
                 .collect(),
         )
     }
@@ -314,6 +343,34 @@ mod tests {
     }
 
     #[test]
+    fn missing_evidence_is_rejected_and_paths_are_normalized() -> Result<()> {
+        let mut commands = passed_commands()
+            .as_array()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("fixture must be an array"))?;
+        let first = commands
+            .get_mut(0)
+            .ok_or_else(|| anyhow::anyhow!("passed fixture is empty"))?;
+        first
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("command fixture must be an object"))?
+            .remove("duration_ms");
+        let error = match aggregate(input(serde_json::Value::Array(commands))?) {
+            Ok(_) => return Err(anyhow::anyhow!("missing evidence was accepted")),
+            Err(error) => error,
+        };
+        ensure!(error.to_string().contains("duration_ms"));
+
+        let receipt = aggregate(input(passed_commands())?)?;
+        let first = receipt
+            .required_commands
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("receipt is empty"))?;
+        ensure!(first.log.as_deref() == Some("logs/affected_plan.log"));
+        Ok(())
+    }
+
+    #[test]
     fn failure_precedes_unavailable_and_is_not_green() -> Result<()> {
         let mut commands = passed_commands()
             .as_array()
@@ -336,7 +393,12 @@ mod tests {
         let commands = REQUIRED_COMMANDS
             .iter()
             .map(|id| {
-                json!({"id": id, "status": if *id == "gate_check" { "failed" } else { "unavailable" }})
+                json!({
+                    "id": id,
+                    "status": if *id == "gate_check" { "failed" } else { "unavailable" },
+                    "duration_ms": 1,
+                    "log": format!("logs\\{id}.log")
+                })
             })
             .collect();
         let receipt = aggregate(input(serde_json::Value::Array(commands))?)?;
