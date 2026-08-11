@@ -112,8 +112,8 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
             if source_matches_tag_commit(
                 Some(version.as_str()),
                 &expected_version,
-                Some(tag_sha.as_str()),
-                Some(head_sha.as_str()),
+                tag_sha,
+                &head_sha,
             )
     );
     let source_state = match (&workspace_version, &tag_sha) {
@@ -364,8 +364,8 @@ fn local_head_sha(workspace_root: &Path) -> Result<String> {
 fn source_matches_tag_commit(
     workspace_version: Option<&str>,
     expected_version: &str,
-    tag_sha: Option<&str>,
-    head_sha: Option<&str>,
+    tag_sha: &str,
+    head_sha: &str,
 ) -> bool {
     workspace_version == Some(expected_version) && tag_sha == head_sha
 }
@@ -608,12 +608,7 @@ mod tests {
     fn source_status_requires_current_head_to_match_tag() -> Result<()> {
         let tag_sha = "a".repeat(40);
         let head_sha = "b".repeat(40);
-        if source_matches_tag_commit(
-            Some("1.15.1"),
-            "1.15.1",
-            Some(tag_sha.as_str()),
-            Some(head_sha.as_str()),
-        ) {
+        if source_matches_tag_commit(Some("1.15.1"), "1.15.1", &tag_sha, &head_sha) {
             bail!("a same-version post-tag checkout must not pass source validation");
         }
         Ok(())
@@ -682,9 +677,20 @@ mod tests {
 
     #[test]
     fn state_serialization_is_stable_and_explicit() -> Result<()> {
-        let json = serde_json::to_string(&ReleaseState::NotRun).context("serialize state")?;
-        if json != "\"not_run\"" {
-            bail!("unexpected state JSON: {json}");
+        let cases = [
+            (ReleaseState::Missing, "\"missing\""),
+            (ReleaseState::Pending, "\"pending\""),
+            (ReleaseState::Passed, "\"passed\""),
+            (ReleaseState::Failed, "\"failed\""),
+            (ReleaseState::Unavailable, "\"unavailable\""),
+            (ReleaseState::NotSupported, "\"not_supported\""),
+            (ReleaseState::NotRun, "\"not_run\""),
+        ];
+        for (state, expected) in cases {
+            let json = serde_json::to_string(&state).context("serialize state")?;
+            if json != expected {
+                bail!("unexpected state JSON for {state:?}: got {json}, expected {expected}");
+            }
         }
         Ok(())
     }
