@@ -159,15 +159,9 @@ fn top_level_job_block(text: &str, job: &str) -> Option<String> {
     let mut block = String::new();
     for line in text.lines() {
         let trimmed = line.trim_start();
-        let indent = line.len() - trimmed.len();
-        if line == marker || (indent <= 2 && trimmed == format!("{job}:")) {
+        if line == marker {
             in_job = true;
-        } else if in_job
-            && indent <= 2
-            && !trimmed.is_empty()
-            && !trimmed.starts_with('#')
-            && trimmed.ends_with(':')
-        {
+        } else if in_job && line.starts_with("  ") && !line.starts_with("    ") {
             break;
         }
         if in_job {
