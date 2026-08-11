@@ -191,11 +191,11 @@ pub fn run(args: PublishArgs) -> Result<()> {
                 .ok_or_else(|| anyhow!("--resume requires a publication receipt"))?;
             validate_no_work_resume(receipt)?;
         }
-        if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut()) {
-            if receipt.state != PublishRunState::Complete {
-                receipt.state = PublishRunState::Complete;
-                write_publish_receipt(path, receipt)?;
-            }
+        if let (Some(path), Some(receipt)) = (args.receipt.as_deref(), receipt.as_mut())
+            && receipt.state != PublishRunState::Complete
+        {
+            receipt.state = PublishRunState::Complete;
+            write_publish_receipt(path, receipt)?;
         }
         println!("No crates require publication.");
         return Ok(());
@@ -2846,13 +2846,8 @@ mod tests {
 
         receipt.state = PublishRunState::Complete;
         write_publish_receipt(&path, &receipt)?;
-        let loaded = load_publish_receipt(&path, &plan)?;
-        if loaded
-            .crates
-            .iter()
-            .any(|entry| entry.registry_visible != Some(true))
-        {
-            bail!("completed fixture receipt must prove visibility for every crate");
+        if load_publish_receipt(&path, &plan).is_ok() {
+            bail!("a yanked crate must prevent a complete publication receipt");
         }
         Ok(())
     }
@@ -3071,7 +3066,7 @@ mod tests {
                 package
                     .publish
                     .as_ref()
-                    .map_or(true, |targets| !targets.is_empty())
+                    .is_none_or(|targets| !targets.is_empty())
             })
             .map(|package| package.name.to_string())
             .collect();
@@ -3110,23 +3105,22 @@ mod tests {
                 package
                     .publish
                     .as_ref()
-                    .map_or(true, |targets| !targets.is_empty())
+                    .is_none_or(|targets| !targets.is_empty())
             })
             .collect();
-        let Some((dependent, dependency)) = packages.iter().find_map(|package| {
-            package
-                .dependencies
-                .iter()
-                .find(|candidate| is_publish_dependency(&candidate.kind))
-                .and_then(|candidate| {
-                    packages
-                        .iter()
-                        .any(|target| target.name == candidate.name)
-                        .then(|| (package.name.as_str(), candidate.name.as_str()))
-                })
-        }) else {
-            bail!("workspace fixture must contain a publish-relevant workspace dependency");
-        };
+        let dependent = packages
+            .iter()
+            .find(|package| package.name == "tokmd")
+            .ok_or_else(|| anyhow!("workspace fixture must contain the tokmd package"))?;
+        let dependency = dependent
+            .dependencies
+            .iter()
+            .find(|candidate| {
+                candidate.name == "tokmd-core" && is_publish_dependency(&candidate.kind)
+            })
+            .map(|candidate| candidate.name.as_str())
+            .ok_or_else(|| anyhow!("workspace fixture must contain tokmd -> tokmd-core"))?;
+        let dependent = dependent.name.as_str();
         let publish_order = packages
             .iter()
             .filter(|package| package.name != dependency || package.name == dependent)
