@@ -84,7 +84,7 @@ It does **not** prove:
 | --- | --- | --- |
 | Required check: `Tokmd Rust Result` | Branch protection | yes |
 | `target/ci-core/precontext.md` | Gate/review artifacts | yes on PRs |
-| `target/ci-core/core_exit` / `core.log` | Final assert step | yes |
+| `ci-core` artifact (`target/ci-core/`) | Required gate diagnostics, partial-failure review, and release evidence | yes, uploaded with `if: always()` |
 | ub-review packet under `target/ub-review/` | Reviewers, ledger | advisory |
 | Grouped PR review | GitHub PR UI | advisory, same-repo only |
 | Route job outputs (`runner`, `runner_kind`) | Gate `runs-on` | yes |

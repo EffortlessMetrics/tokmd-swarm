@@ -221,6 +221,15 @@ jobs:
           test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
 
+      - name: Upload deterministic core receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-core
+          path: target/ci-core/
+          if-no-files-found: warn
+          retention-days: 14
+
   # Agentic review is an independent process lane. It may post inline findings,
   # but it must not hold the deterministic required gate open or manufacture a
   # required status when the provider is slow or unavailable.
