@@ -193,6 +193,13 @@ jobs:
             fi
           fi
 
+          # Retries above replace the in-memory verdicts. Persist those final
+          # values so the uploaded receipt cannot contradict a green gate.
+          printf '%s\n' "${core_exit}" > target/ci-core/core_exit
+          printf '%s\n' "${test_exit}" > target/ci-core/test_exit
+          printf '%s\n' "${xtask_test_exit}" > target/ci-core/xtask_test_exit
+          printf '%s\n' "${proof_policy_exit}" > target/ci-core/proof_policy_exit
+
           {
             echo "## Deterministic core gate"
             if [ "${core_exit}" = "0" ]; then
@@ -223,6 +230,7 @@ jobs:
 
       - name: Upload deterministic core receipts
         if: ${{ always() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ci-core
