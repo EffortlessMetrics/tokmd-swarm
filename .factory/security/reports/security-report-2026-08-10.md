@@ -4,7 +4,9 @@
 **Scan Type:** Weekly Scheduled
 **Repository:** EffortlessMetrics/tokmd-swarm
 **Severity Threshold:** medium
-**Scope:** Last 7 days of commits (2026-08-03 → 2026-08-10)
+**Intended Window:** 2026-08-03 → 2026-08-10
+**Observed Scope:** Checked-out commit `8213155` plus an in-place re-read of
+standing defenses; window completeness was not proven from the shallow clone
 
 ## Executive Summary
 
@@ -16,14 +18,19 @@
 | LOW      | 0     | 0          | 0               |
 
 **Total Findings:** 0
+**Evidence limitation:** No automated vulnerability scanners or heavyweight
+build/test witnesses ran. This is an advisory zero-finding tally from manual
+review, not a security pass or evidence that the repository has no
+vulnerabilities.
 **Auto-fixed:** 0
 **Manual Review Required:** 0
 
-**Summary:** No vulnerabilities at or above the `medium` severity threshold were
-identified during this scan. The 7-day window (2026-08-03 → 2026-08-10) contains
-**1 commit** on `main`: `8213155 ci: run xtask tests in the required gate
-(#543)` from 2026-08-08. The change is a tightly scoped CI workflow hardening
-that lands three things:
+**Summary:** The manual review reported no findings at or above the `medium`
+severity threshold for the known checked-out commit, `8213155 ci: run xtask
+tests in the required gate (#543)` from 2026-08-08. Because the scan had only
+a depth-1 checkout and no separate revision-list/API receipt, it did not prove
+that this was the only commit in the intended 7-day window. The known change is
+a tightly scoped CI workflow hardening that lands three things:
 
 1. Adds `cargo test -p xtask --all-features` to the existing serial core lane
    in `.github/workflows/ci.yml::tokmd-rust-result`, wired like the other
@@ -130,9 +137,9 @@ regressions. Treat the zero-finding tally as advisory for this scan.
 These items were considered during the scan but do not meet the `medium` severity
 threshold. They are recorded here for traceability and the next scheduled scan.
 
-Carried observations are unchanged from the `2026-08-03` baseline; the
-`#543` xtask-lane addition introduces **no new** low-severity observations
-this week.
+The manual comparison recorded no new low-severity observations for the known
+`#543` xtask-lane change relative to the carried `2026-08-03` observations.
+This is not a complete-window claim.
 
 ### OBS-001 (carried): FFI JSON payload size not bounded
 
@@ -370,8 +377,10 @@ proof when the scan clone is shallow.
 
 ### Scan Metadata
 
-- **Commits Scanned:** 1 (`8213155 ci: run xtask tests in the required gate
-  (#543)`, 2026-08-08, GPG-signed)
+- **Known commit reviewed:** `8213155 ci: run xtask tests in the required gate
+  (#543)`, 2026-08-08, GPG-signed
+- **Window completeness:** Not proven. The depth-1 checkout did not contain the
+  parent history, and the scan recorded no separate revision-list/API receipt.
 - **Files in scope:** 2,590 (shallow-clone surface; the local clone is
   fetched with depth 1 so the diff against the missing parent appears as
   the full workspace root). The full surface was previously reviewed under
@@ -406,7 +415,8 @@ standing defenses.
 
 ### Commit-level Analysis
 
-The 7-day window (2026-08-03 → 2026-08-10) contains **1 commit** on `main`:
+The checked-out commit reviewed for the intended 2026-08-03 → 2026-08-10
+window was:
 
 ```
 821315597954e4a88d11b99bd1d741533d6cd551
@@ -473,7 +483,9 @@ Subject: ci: run xtask tests in the required gate (#543)
   - `deny.toml` — `RUSTSEC-2020-0163` ignore for transitive `term_size`
     unchanged; license allowlist unchanged.
 
-**No security findings in this scan window.**
+**The manual review recorded no security findings for the known checked-out
+commit. It did not prove complete coverage of the intended scan window or the
+absence of vulnerabilities.**
 
 ### Patches Generated
 
