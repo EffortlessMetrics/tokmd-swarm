@@ -9,11 +9,13 @@ the prompt vocabulary in `.changie.yaml`.
 Run this while the change is fresh:
 
 ```bash
-changie new --kind fixed --component CLI \
+cargo change --kind fixed --component CLI \
   --body "Describe the user-visible correction"
 ```
 
-Use one of the configured components and kinds. `Documentation` and `Internal`
+`cargo change` is the repository's xtask shortcut for creating a Changie
+fragment, so contributors do not need a separate global `changie` install for
+this step. Use one of the configured components and kinds. `Documentation` and `Internal`
 are intentionally `auto: none`: a batch containing only those kinds must use an
 explicit version, never `batch auto`.
 
