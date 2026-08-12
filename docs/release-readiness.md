@@ -221,8 +221,10 @@ For an ordinary release-prep PR:
 The repository has one human maintainer. The review control is a fresh
 exact-head independent agentic review pass plus required checks, with
 actionable conversations resolved. A separate reviewer account, native
-approval, CODEOWNERS approval, or review-status check is not a merge
-requirement.
+approval, CODEOWNERS approval, or review-status check is not a checked-in
+repository-policy requirement. Until the Settings app reconciles live branch
+protection, any stale live review-status context remains an external merge
+blocker and must not be reported as satisfied by this source change.
 
 ## Release-object and consumer proof
 

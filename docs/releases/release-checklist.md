@@ -34,7 +34,9 @@ The repository has one human maintainer. The review control is a fresh
 exact-head independent agentic review pass plus required repository checks,
 with actionable inline findings independently verified and conversations
 resolved. A separate reviewer account, native approval, CODEOWNERS approval,
-or review-status check is not a merge requirement. Any material push
+or review-status check is not a checked-in repository-policy requirement. Until
+the Settings app reconciles live branch protection, any stale live
+review-status context remains an external merge blocker. Any material push
 invalidates the prior review evidence.
 
 ## Release state model
