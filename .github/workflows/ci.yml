@@ -102,12 +102,23 @@ jobs:
           # Best-effort reclaim of legacy /tmp orphans from pre-fix disposable gate runs (#309).
           find /tmp -maxdepth 1 -type d -name 'tokmd-gate-target-*' -mmin +30 -exec rm -rf {} + 2>/dev/null || true
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Rust build cache (best effort)
+        id: rust_cache
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           cache-directories: ${{ runner.temp }}/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Record cache outcome
+        if: always()
+        timeout-minutes: 1
+        run: |
+          echo "Rust cache outcome: ${{ steps.rust_cache.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Fast precontext and launch core gate
+        timeout-minutes: 70
         env:
           RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
         run: |
@@ -131,17 +142,32 @@ jobs:
           # gate, full tests, and advisory review concurrently can starve the
           # gate long enough to produce a false timeout marker (124) even when
           # the same commands pass with the available resources.
-          cargo xtask gate --check > target/ci-core/core.log 2>&1
-          echo "$?" > target/ci-core/core_exit
-          cargo test --all-features > target/ci-core/test.log 2>&1
-          echo "$?" > target/ci-core/test_exit
+          # Bound each command separately so the receipts distinguish a
+          # command timeout (124) from a source failure, while tee keeps live
+          # progress visible in the hosted log and preserves the full log.
+          run_bounded() {
+            label="$1"
+            marker="$2"
+            log="$3"
+            shift 3
+            echo "::group::${label} (bounded 15m)"
+            echo "started $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$log"
+            # Do not use --foreground: the timeout wrapper must terminate the
+            # full Cargo process group, including spawned rustc/linker/tests.
+            timeout --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
+            status="${PIPESTATUS[0]}"
+            echo "$status" > "$marker"
+            echo "finished $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=${status}" | tee -a "$log"
+            echo "::endgroup::"
+          }
+
+          run_bounded "cargo xtask gate --check" target/ci-core/core_exit target/ci-core/core.log cargo xtask gate --check
+          run_bounded "cargo test --all-features" target/ci-core/test_exit target/ci-core/test.log cargo test --all-features
           # `xtask` is not a default-member, so the lane above never builds it.
           # Test it explicitly: it owns the publish plan, the policy linters,
           # and the no-panic checker, and breakage there is invisible otherwise.
-          cargo test -p xtask --all-features > target/ci-core/xtask_test.log 2>&1
-          echo "$?" > target/ci-core/xtask_test_exit
-          cargo xtask proof-policy --check > target/ci-core/proof_policy.log 2>&1
-          echo "$?" > target/ci-core/proof_policy_exit
+          run_bounded "cargo test -p xtask --all-features" target/ci-core/xtask_test_exit target/ci-core/xtask_test.log cargo test -p xtask --all-features
+          run_bounded "cargo xtask proof-policy --check" target/ci-core/proof_policy_exit target/ci-core/proof_policy.log cargo xtask proof-policy --check
           echo "completed serial core gate, tests, and proof-policy"
 
       - name: UB Review (advisory)
@@ -188,11 +214,15 @@ jobs:
           RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
         run: |
           set -uo pipefail
-          deadline=$((SECONDS + 3000))
+          # The producer step is bounded at 70 minutes. Give post-timeout
+          # cleanup a short window to publish any markers it managed to write;
+          # do not turn a bounded proof timeout into another 50-minute wait.
+          deadline=$((SECONDS + 120))
           for marker in core_exit test_exit xtask_test_exit proof_policy_exit; do
             while [ ! -f "target/ci-core/${marker}" ]; do
               if [ "${SECONDS}" -ge "${deadline}" ]; then
                 echo "124" > "target/ci-core/${marker}"
+                echo "${marker}: unavailable after bounded core-proof step" >> "$GITHUB_STEP_SUMMARY"
                 break
               fi
               sleep 5
