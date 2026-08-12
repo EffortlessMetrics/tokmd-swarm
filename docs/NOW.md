@@ -346,7 +346,7 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
-Evidence snapshot: `2026-08-12T05:25:22Z` UTC. Exact heads and the linked PR
+Evidence snapshot: `2026-08-12T05:32:24Z` UTC. Exact heads and the linked PR
 checks are the authoritative proof for each row; refresh this snapshot when a
 listed head or hosted verdict changes.
 
@@ -355,6 +355,7 @@ listed head or hosted verdict changes.
 | [#545](https://github.com/EffortlessMetrics/tokmd-swarm/pull/545) | `73f1602aef5df5f8fd310fec02139aec0d044037` | First-hour inspect → review → evidence → handoff UX; hosted Rust, agent review, cockpit, docs, affected proof, and ripr pass; 0 unresolved threads | Merge-ready by source and proof; not merge-complete |
 | [#551](https://github.com/EffortlessMetrics/tokmd-swarm/pull/551) | `ede7fe081b67499e0dac6f398b8b589247c07b92` | Resumable publication receipts; hosted Rust and release proof pass; local consumer smoke 8/8; 0 unresolved threads | Opt-in release tooling; no publication performed |
 | [#552](https://github.com/EffortlessMetrics/tokmd-swarm/pull/552) | `618bd63bf9e9e5161b51a4a950bea47837a07399` | In-repo single-maintainer review policy, conversation resolution, and one required status context | Does not mutate external GitHub protection |
+| [#560](https://github.com/EffortlessMetrics/tokmd-swarm/pull/560) | `7361427d0d343997604efe1a56dc920022f6b9f9` | Security report claim boundary repaired: shallow-parent limitation and mixed SHA/tag threat-model status are explicit; 0 unresolved threads | Report-only; no security-control or external-service mutation |
 | [#562](https://github.com/EffortlessMetrics/tokmd-swarm/pull/562) | `a25901663b146b90cbe84ebe11b3fd88868e8fa5` | Advisory agentic UB review decoupled from the deterministic required gate; Rust, contract, and UB advisory checks pass; bounded Droid retry ended unavailable with no diagnostic | Provider review is unavailable, not source-red; no merge claim |
 | [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `3015104e28a8653bf26ad5b6e4c06e92305fa9cc` | 1.15.0 packet/container narrative anchored to the release ledger, exact digest, and consumer run `30965258655`; 0 unresolved threads | Documentation only; full release readiness is not claimed |
 | [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `38135b508923bfd117c9631d12f1de5eaf392448` | Bounded core-proof diagnostics promoted onto the main base; required Rust, Droid, CI Actuals, and supporting checks pass | Exact-head hosted-green; external stale `Codex Review Gate` still blocks merge |
