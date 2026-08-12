@@ -101,6 +101,7 @@ fn proof_policy_includes_current_product_scopes() {
         "analysis_types_effort",
         "analysis_types_source",
         "analysis_types_topics",
+        "agent_guidance_docs",
         "doc_artifacts_policy",
         "format_analysis_rendering",
         "format_core_outputs",
@@ -170,6 +171,8 @@ fn proof_policy_includes_current_product_scopes() {
     assert!(proof_control_paths.contains(".github/workflows/nix-macos.yml"));
     assert!(proof_control_paths.contains("xtask/src/tasks/workspace.rs"));
     assert!(proof_control_proof.contains("cargo xtask ci-lane-whitelist"));
+    assert!(!proof_control_paths.contains("AGENTS.md"));
+    assert!(!proof_control_paths.contains("agents/shared/**"));
 
     let user_guides = scopes
         .iter()
@@ -360,6 +363,43 @@ fn proof_policy_includes_current_product_scopes() {
     assert!(release_proof.contains("cargo xtask version-consistency"));
     assert!(release_proof.contains("cargo xtask publish-surface --json --verify-publish"));
     assert!(release_proof.contains("cargo xtask docs --check"));
+
+    // Keep this block after the legacy scope checks. The no-panic ledger owns
+    // closure selectors in those checks, so inserting new closures above them
+    // would create false stale/unallowlisted churn.
+    let agent_guidance = scopes.iter().find(|scope| {
+        scope.get("name").and_then(toml::Value::as_str) == Some("agent_guidance_docs")
+    });
+    let Some(agent_guidance) = agent_guidance else {
+        assert!(false, "agent_guidance_docs scope should exist");
+        return;
+    };
+    let agent_guidance_paths = agent_guidance
+        .get("paths")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_str)
+        .collect::<BTreeSet<_>>();
+    let agent_guidance_proof = agent_guidance
+        .get("proof")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_str)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        agent_guidance_paths,
+        BTreeSet::from(["AGENTS.md", "agents/shared/**"])
+    );
+    assert_eq!(
+        agent_guidance_proof,
+        BTreeSet::from([
+            "cargo xtask docs --check",
+            "cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json",
+        ])
+    );
 }
 
 #[test]
