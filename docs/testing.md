@@ -11,7 +11,7 @@ This document describes the testing infrastructure and strategy for tokmd.
                     └──────────────┘
                ┌────────────────────────┐
                │    Fuzz Testing        │  libfuzzer
-               │    (crash detection)   │  15 targets
+               │    (crash detection)   │  19 targets
                └────────────────────────┘
           ┌──────────────────────────────────┐
           │    Property-Based Testing        │  proptest
@@ -195,7 +195,12 @@ Stored in `<crate>/tests/properties.proptest-regressions` for reproducing failur
 
 Using `cargo-fuzz` with `libfuzzer-sys`:
 
-### 15 Fuzz Targets
+### 19 Fuzz Targets
+
+`fuzz/Cargo.toml` declares all 19 available targets. The nightly workflow runs
+a bounded nine-target subset; use the **Nightly** column in
+[`fuzz/README.md`](../fuzz/README.md#fuzz-targets) to distinguish scheduled
+coverage from targets available for manual or risk-selected runs.
 
 | Target | Feature | Purpose |
 |--------|---------|---------|
@@ -214,6 +219,10 @@ Using `cargo-fuzz` with `libfuzzer-sys`:
 | `fuzz_redact` | `redact` | Path redaction determinism |
 | `fuzz_scan_args` | `scan_args` | Scan metadata shaping invariants |
 | `fuzz_import_parser` | `analysis_imports` | Import parsing + target normalization |
+| `fuzz_context_policy` | `context_policy` | Context inclusion and budget invariants |
+| `fuzz_run_json` | `core` | FFI `run_json` no-panic and envelope invariants |
+| `fuzz_gate_ratchet` | `gate_ratchet` | Ratchet policy evaluation invariants |
+| `fuzz_badge_svg` | `badge` | SVG badge rendering determinism and totality |
 
 ### Running Fuzz Tests
 
