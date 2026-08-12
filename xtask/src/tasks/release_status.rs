@@ -360,6 +360,8 @@ fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
     let output = Command::new("git")
         .args(["rev-parse", "--verify", "HEAD^{commit}"])
         .current_dir(workspace_root)
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
         .output()
         .context("resolve current Git HEAD")?;
     if !output.status.success() {

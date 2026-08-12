@@ -12,7 +12,9 @@ change GHCR aliases, or move the Action `v1` ref.
 ## Inputs
 
 The command requires a Git tag. It optionally accepts a JSON output path and an
-offline receipt fixture assembled from authoritative release-system evidence.
+offline receipt fixture assembled from release-system evidence. Fixture mode
+performs structural and cross-field validation; it does not authenticate the
+fixture's provenance or independently re-run remote release checks.
 
 ## Outputs
 
@@ -75,9 +77,11 @@ for diagnosing an incomplete release without claiming that the release is
 complete.
 
 The fixture validator rejects schema/version mismatches, tag mismatches, and
-stale `complete` claims. It is intended to become the input seam for the
-registry, hosted Release, alias, and consumer receipt adapters in follow-up
-slices.
+stale `complete` claims. A structurally complete fixture therefore means that
+all supplied facts satisfy this receipt contract, not that the fixture itself
+proves its evidence came from a trusted release system. The registry, hosted
+Release, publication graph, alias, and consumer receipt adapters remain the
+authoritative follow-up seams.
 
 ## Compatibility
 
