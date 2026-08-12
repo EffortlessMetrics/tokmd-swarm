@@ -346,6 +346,10 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
+Evidence snapshot: `2026-08-12T05:12:56Z` UTC. Exact heads and the linked PR
+checks are the authoritative proof for each row; refresh this snapshot when a
+listed head or hosted verdict changes.
+
 | PR | Exact head | Current evidence | Boundary |
 | --- | --- | --- | --- |
 | [#545](https://github.com/EffortlessMetrics/tokmd-swarm/pull/545) | `73f1602aef5df5f8fd310fec02139aec0d044037` | First-hour inspect → review → evidence → handoff UX; hosted Rust, agent review, cockpit, docs, affected proof, and ripr pass; 0 unresolved threads | Merge-ready by source and proof; not merge-complete |
@@ -355,7 +359,7 @@ separate from merge and release authority:
 | [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `e21db4d06abcd61b183b688c5a02a75346ce95ec` | 1.15.0 packet/container narrative reconciled to the release ledger; 0 unresolved threads | Documentation only; full release readiness is not claimed |
 | [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `38135b508923bfd117c9631d12f1de5eaf392448` | Bounded core-proof diagnostics promoted onto the main base; required Rust, Droid, CI Actuals, and supporting checks pass | Exact-head hosted-green; external stale `Codex Review Gate` still blocks merge |
 
-The release-preflight implementation in merged stacked PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but is not in `main`.
+The release-preflight implementation in stack-merged feature-branch PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but that commit is not reachable from `main`.
 The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) remains unavailable where its core/provider lanes have no terminal diagnostic proof.
 
 Live external protection still reports the required contexts `Tokmd Rust
