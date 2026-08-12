@@ -130,6 +130,8 @@ fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json:
     run_git(repo, &["init", "-q"])?;
     run_git(repo, &["config", "user.email", "fixture@example.invalid"])?;
     run_git(repo, &["config", "user.name", "Affected Fixture"])?;
+    run_git(repo, &["config", "commit.gpgsign", "false"])?;
+    run_git(repo, &["config", "tag.gpgsign", "false"])?;
 
     for path in [
         "AGENTS.md",
