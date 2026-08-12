@@ -126,6 +126,29 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
     Ok(steps)
 }
 
+fn mutate_typos_job(workflow: &str, mutate: impl FnOnce(&str) -> String) -> Result<String> {
+    let start = workflow
+        .find("  typos:")
+        .context("CI workflow should define typos")?;
+    let tail = workflow
+        .get(start..)
+        .context("Typos job boundary should be valid UTF-8")?;
+    let end_offset = tail
+        .find("  proptest-smoke:")
+        .context("CI workflow should define proptest-smoke after typos")?;
+    let end = start + end_offset;
+    let prefix = workflow
+        .get(..start)
+        .context("Typos job prefix should be valid UTF-8")?;
+    let section = workflow
+        .get(start..end)
+        .context("Typos job section should be valid UTF-8")?;
+    let suffix = workflow
+        .get(end..)
+        .context("Typos job suffix should be valid UTF-8")?;
+    Ok(format!("{}{}{}", prefix, mutate(section), suffix))
+}
+
 fn typos_job_contract(workflow: &str) -> Result<()> {
     let section = workflow
         .split("  typos:")
@@ -192,7 +215,9 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         ("tool: typos@1.49.0", "tool: ${{ github.token }}"),
         ("fallback: none", "fallback: ${{ secrets.FALLBACK }}"),
     ] {
-        let drifted = workflow.replacen(original, replacement, 1);
+        let drifted = mutate_typos_job(&workflow, |section| {
+            section.replacen(original, replacement, 1)
+        })?;
         ensure!(
             typos_job_contract(&drifted).is_err(),
             "Typos contract accepted drift from {original} to {replacement}"
@@ -200,27 +225,33 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
     }
 
     for required_line in ["          checksum: true\n", "          fallback: none\n"] {
-        let omitted = workflow.replacen(required_line, "", 1);
+        let omitted =
+            mutate_typos_job(&workflow, |section| section.replacen(required_line, "", 1))?;
         ensure!(
             typos_job_contract(&omitted).is_err(),
             "Typos contract accepted omitted {required_line:?}"
         );
     }
 
-    let commented = workflow.replacen("          checksum: true", "          # checksum: true", 1);
+    let commented = mutate_typos_job(&workflow, |section| {
+        section.replacen("          checksum: true", "          # checksum: true", 1)
+    })?;
     ensure!(typos_job_contract(&commented).is_err());
 
     let install_block = "      - name: Install typos with bounded retries\n        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        with:\n          tool: typos@1.49.0\n          checksum: true\n          fallback: none\n";
-    let duplicated =
-        workflow.replacen(install_block, &format!("{install_block}{install_block}"), 1);
+    let duplicated = mutate_typos_job(&workflow, |section| {
+        section.replacen(install_block, &format!("{install_block}{install_block}"), 1)
+    })?;
     ensure!(typos_job_contract(&duplicated).is_err());
 
     let run_block = "      - name: Check spelling\n        run: typos\n";
-    let reordered = workflow.replacen(install_block, "", 1).replacen(
-        run_block,
-        &format!("{run_block}{install_block}"),
-        1,
-    );
+    let reordered = mutate_typos_job(&workflow, |section| {
+        section.replacen(install_block, "", 1).replacen(
+            run_block,
+            &format!("{run_block}{install_block}"),
+            1,
+        )
+    })?;
     ensure!(typos_job_contract(&reordered).is_err());
     Ok(())
 }
