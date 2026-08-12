@@ -346,7 +346,7 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
-Evidence snapshot: `2026-08-12T06:16:00Z` UTC. Exact heads and the linked PR
+Evidence snapshot: `2026-08-12T06:46:00Z` UTC. Exact heads and the linked PR
 checks are the authoritative proof for each row; refresh this snapshot when a
 listed head or hosted verdict changes.
 
@@ -358,6 +358,7 @@ listed head or hosted verdict changes.
 | [#560](https://github.com/EffortlessMetrics/tokmd-swarm/pull/560) | `c1fc5d1f9364420ff1d756485628d08563723aab` | Security report source attribution and action-pinning examples corrected; shallow-parent limitation and stale threat-model status remain explicit; 0 unresolved threads | Report-only; no security-control or external-service mutation |
 | [#546](https://github.com/EffortlessMetrics/tokmd-swarm/pull/546) | `6f7f93207ed161e61245272d51fc6846d954dcb6` | Changelog contributor workflow aligned with the repository-canonical `cargo change` shortcut; 0 unresolved threads | Documentation/tooling guidance only; no release mutation |
 | [#562](https://github.com/EffortlessMetrics/tokmd-swarm/pull/562) | `a25901663b146b90cbe84ebe11b3fd88868e8fa5` | Advisory agentic UB review decoupled from the deterministic required gate; Rust, contract, and UB advisory checks pass; bounded Droid retry ended unavailable with no diagnostic | Provider review is unavailable, not source-red; no merge claim |
+| [#568](https://github.com/EffortlessMetrics/tokmd-swarm/pull/568) | `ebff74af5a797fd0c34b8e26e25ebdcc736f409d` | Exact-head rerun `31520250944` passed cache restoration, serial core proof, advisory UB review, final gate assertion, and supporting checks; 0 unresolved threads | External protection still reports stale `Codex Review Gate`; no merge claim |
 | [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `3015104e28a8653bf26ad5b6e4c06e92305fa9cc` | 1.15.0 packet/container narrative anchored to the release ledger, exact digest, and consumer run `30965258655`; 0 unresolved threads | Documentation only; full release readiness is not claimed |
 | [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `00626a648a634eb8f0d7a28631861e4bf5828eb7` | Bounded core-proof diagnostics normalize timeout 137→124 and isolate the Cargo process group; local actionlint/contract checks pass; exact-head hosted required Rust, Droid, Cockpit, ripr, and supporting checks pass; 0 unresolved threads | Linux end-to-end process-group proof unavailable on Windows; external protection still requires stale `Codex Review Gate`, so no merge claim |
 
