@@ -29,7 +29,8 @@ process evidence, not a native approval or reviewer-identity gate.
 ```bash
 cargo build                          # Debug build
 cargo build --release                # Release build with LTO
-cargo test --verbose                 # Run all tests
+cargo test --all-features            # Test workspace default-members
+cargo test -p xtask --all-features   # Test the repo control plane
 cargo fmt-fix                        # Format code across the workspace
 cargo fmt-check                      # Verify workspace formatting
 cargo trim-target --check            # Report reclaimable target/debug space
@@ -37,6 +38,13 @@ cargo sccache-check                  # Verify local sccache setup
 cargo clippy -- -D warnings          # Lint with strict warnings
 cargo install --path crates/tokmd    # Local install
 ```
+
+The required `Tokmd Rust Result` runs, serially, `cargo xtask gate --check`,
+the default-member test command above, the separate `xtask` test command, and
+`cargo xtask proof-policy --check`. `cargo test --workspace --all-features`
+uses Cargo's broader workspace package selection, but it is not the required
+CI sequence and does not execute libFuzzer campaigns. Scheduled fuzz and
+platform lanes provide separate, deeper proof.
 
 On Windows, prefer `cargo fmt-fix` / `cargo fmt-check` over `cargo fmt --all`; the full workspace can exceed Cargo's formatter argv budget even when long paths are enabled.
 Windows MSVC builds in this repo also default to line-table debuginfo to keep `target/debug` from being dominated by full PDBs.
@@ -189,7 +197,7 @@ When invoking `git diff` or `git log` with range syntax:
 - **Crate-level tests**: Each crate has its own `tests/` directory
 - **Unit tests**: In-module tests
 - **Property-based tests**: Using `proptest` across 14 crates for invariant verification
-- **Fuzz targets**: 9 targets using `libfuzzer` (see `fuzz/` directory) with seed corpus and dictionaries
+- **Fuzz targets**: 19 targets using `libfuzzer` (see `fuzz/` directory) with seed corpus and dictionaries; nine run in the nightly scheduled subset
 - **Mutation testing**: Using `cargo-mutants` for test quality verification (configured in `.cargo/mutants.toml`)
 
 Run a single test:
