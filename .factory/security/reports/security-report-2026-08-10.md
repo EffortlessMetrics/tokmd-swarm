@@ -191,16 +191,18 @@ Other workflows (`.github/workflows/ci.yml`, `release.yml`, `cockpit.yml`,
 `badge-endpoints.yml`, `coverage.yml`, `test-action.yml`, `fuzz.yml`,
 `ripr.yml`, `ci-policy.yml`, `no-panic-policy.yml`,
 `clippy-exceptions-policy.yml`, `sync-labels.yml`, `nix-macos.yml`) pin by
-tag (e.g., `actions/checkout@v7.0.1`, `Swatinem/rust-cache@v2`,
-`dtolnay/rust-toolchain@stable`). The threat model claims SHA pinning
-workspace-wide, which is no longer strictly accurate for non-Droid workflows.
+tag (e.g., `Swatinem/rust-cache@v2`, `dtolnay/rust-toolchain@stable`,
+`actions/upload-artifact@v7`, and `actions/setup-node@v7`). `actions/checkout`
+is SHA-pinned at `3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1` across
+the workflows that use it. The threat model claims SHA pinning workspace-wide,
+which is no longer strictly accurate for the remaining non-Droid workflows.
 
 **Why not a finding:**
 - Tag-pinned first-party actions (`actions/*`) are a well-accepted practice
   with low residual risk; GitHub's own recommended baseline.
-- All release/CI/cockpit workflows that take privileged actions are pinned
-  at the workflow level via `actions/checkout@v7.0.1` consistently across
-  the workspace, providing a uniform policy.
+- All release/CI/cockpit workflows that use checkout pin it at the workflow
+  level via the exact SHA above; the remaining mixed-pinning examples are
+  separate action dependencies.
 - The custom Droid action — the highest-privilege third-party surface — IS
   SHA-pinned.
 - Below the `medium` severity threshold for this scan; flagged for the next
@@ -303,9 +305,10 @@ absent.").
   effective gate narrow but explicit.
 - The two required status checks are deterministic and run on every PR.
 - `allow_deletions: false` prevents destructive reflog manipulation.
-- The threat model documents this as a deliberate operational choice
-  ("Codex is the exact-head reviewer for this single-maintainer
-  workflow"), not a missed defense.
+- The checked-in `.github/settings.yml` comment records this as a deliberate
+  operational choice ("Codex is the exact-head reviewer for this single-
+  maintainer workflow"); the threat model is stale on this point and its
+  contradictory approval text is explicitly pending refresh.
 - Below the `medium` severity threshold; informational only.
 
 **Recommended action (optional, future):** When the maintainer count
