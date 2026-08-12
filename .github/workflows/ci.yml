@@ -212,11 +212,15 @@ jobs:
           RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
         run: |
           set -uo pipefail
-          deadline=$((SECONDS + 3000))
+          # The producer step is bounded at 70 minutes. Give post-timeout
+          # cleanup a short window to publish any markers it managed to write;
+          # do not turn a bounded proof timeout into another 50-minute wait.
+          deadline=$((SECONDS + 120))
           for marker in core_exit test_exit xtask_test_exit proof_policy_exit; do
             while [ ! -f "target/ci-core/${marker}" ]; do
               if [ "${SECONDS}" -ge "${deadline}" ]; then
                 echo "124" > "target/ci-core/${marker}"
+                echo "${marker}: unavailable after bounded core-proof step" >> "$GITHUB_STEP_SUMMARY"
                 break
               fi
               sleep 5
