@@ -1576,14 +1576,18 @@ paths = [
   "Dockerfile",
   "Dockerfile.release",
   "winget/manifests/e/EffortlessMetrics/tokmd/1.3.1/**",
+  "xtask/src/tasks/publish.rs",
+  "xtask/src/tasks/publish_surface.rs",
   "xtask/src/tasks/version_consistency.rs",
+  "xtask/tests/publish_w71.rs",
 ]
 proof = [
+  "cargo test -p xtask --test publish_w71 --all-features",
   "cargo xtask version-consistency",
   "cargo xtask publish-surface --json --verify-publish",
   "cargo xtask docs --check",
 ]
-reason = "CHANGELOG, citation metadata, release workflow, release runtime Dockerfile, Dockerfile toolchain pin, and the version-consistency task itself are release artifacts; proof routes to version consistency, publish-surface verification, and docs checks."
+reason = "CHANGELOG, citation metadata, release workflow, release runtime Dockerfile, Dockerfile toolchain pin, and the release xtask owner code/tests are release artifacts; proof routes to version consistency, publish-surface verification, and docs checks."
 mutation = false
 coverage = false
 
