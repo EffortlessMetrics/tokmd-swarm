@@ -93,6 +93,7 @@ workflow must fetch full history so `origin/main` and `HEAD` resolve:
 
 - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
   with:
+    version: '1.15.0'
     mode: packet
     base: origin/main
     head: HEAD
@@ -101,10 +102,10 @@ workflow must fetch full history so `origin/main` and `HEAD` resolve:
     artifact: 'true'
 ```
 
-Use the released `@v1` Action contract for stable adoption. For immutable
-Action execution, pin the `uses:` reference to a full-length commit SHA and
-use the Action's `version` input separately to pin the downloaded `tokmd`
-release.
+The example pins the Action implementation to a full-length commit SHA; the
+`# v1` comment identifies the release line represented by that commit. Keep
+that immutable `uses:` pin separate from the Action's `version` input, which
+selects the downloaded `tokmd` release (`1.15.0` above).
 
 For complete Action inputs and modes, see the [GitHub Action quickstart](docs/action-quickstart.md)
 and [reference](docs/github-action.md).
