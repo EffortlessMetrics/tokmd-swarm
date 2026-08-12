@@ -104,8 +104,10 @@ the weekly window introduced no defense regressions:
   shell interpolation, `secrets.*` access, network egress, or trust
   boundary.
 
-The codebase continues to demonstrate a security-first design with no
-regressions introduced by the xtask CI lane addition.
+The inspected tree retains the listed security controls. Because the scan was
+performed from a shallow clone and skipped the heavyweight falsification
+witnesses, it does not establish that the xtask CI lane addition introduced no
+regressions. Treat the zero-finding tally as advisory for this scan.
 
 ## Critical Findings
 
@@ -316,9 +318,11 @@ grows, increase `required_approving_review_count` and re-enable
 `require_code_owner_reviews`.
 
 
-## Standing Defenses Verified (No Regression)
+## Standing Defenses Re-read in the Inspected Tree
 
-The following defenses were re-verified during this scan. All remain intact.
+The following defenses were re-read during this scan. Presence in the
+inspected tree is recorded here; this table is not a parent-diff regression
+proof when the scan clone is shallow.
 
 | ID | Defense | Location | Verified |
 |----|---------|----------|----------|
@@ -344,7 +348,7 @@ The following defenses were re-verified during this scan. All remain intact.
 | D-20 | Custom Droid action SHA-pinned across all Droid workflows; explicit `ANTHROPIC_AUTH_TOKEN: ""` / `ANTHROPIC_BASE_URL: ""` to block ambient fallback | `.github/workflows/droid*.yml` | ✓ |
 | D-21 | `cargo audit` invoked with structured `--json` output, malformed JSON treated as Pending | `crates/tokmd-cockpit/src/supply_chain.rs` | ✓ |
 | D-22 | `run_json` top-level JSON must be an object (strict shape check) | `crates/tokmd-core/src/ffi/mod.rs::run_json_inner` | ✓ |
-| D-23 | Author DAG import via true-merge commits (no force-push of publication history) | repository topology | ✓ |
+| D-23 | Author DAG import via true-merge commits (no force-push of publication history) | repository topology | not verifiable from this shallow clone |
 | D-24 | `supply_chain` gate explicitly tolerates missing `cargo audit` binary by returning `Pending`, never `Pass` (per `pending_supply_chain_gate` constructor) | `crates/tokmd-cockpit/src/supply_chain.rs` | ✓ |
 | D-25 | `Command::new("cargo")` and `Command::new("git")` invocations use `arg()` (not shell) and `current_dir` for path control, no `sh -c` / `bash -c` | `crates/tokmd-cockpit/src/supply_chain.rs`, `crates/tokmd-cockpit/src/gates/contracts.rs`, `crates/tokmd-git/src/command.rs`, `crates/tokmd-scan/src/walk/git.rs` | ✓ |
 
