@@ -1,4 +1,6 @@
-use std::path::PathBuf;
+use anyhow::{Context, Result, ensure};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn workspace_root() -> PathBuf {
@@ -105,4 +107,121 @@ fn affected_bad_base_reports_git_error() {
         stderr.contains("git diff") || stderr.contains("bad revision"),
         "stderr: {stderr}"
     );
+}
+
+fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .with_context(|| format!("failed to run git {}", args.join(" ")))?;
+    ensure!(
+        output.status.success(),
+        "git {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json::Value> {
+    let temp = tempfile::tempdir().context("create affected fixture repo")?;
+    let repo = temp.path();
+    run_git(repo, &["init", "-q"])?;
+    run_git(repo, &["config", "user.email", "fixture@example.invalid"])?;
+    run_git(repo, &["config", "user.name", "Affected Fixture"])?;
+    run_git(repo, &["config", "commit.gpgsign", "false"])?;
+    run_git(repo, &["config", "tag.gpgsign", "false"])?;
+
+    for path in [
+        "AGENTS.md",
+        "agents/shared/repo.md",
+        "agents/shared/future-guidance.md",
+        ".github/workflows/ci.yml",
+    ] {
+        let target = repo.join(path);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create fixture directory {}", parent.display()))?;
+        }
+        fs::write(&target, "before\n")
+            .with_context(|| format!("write fixture file {}", target.display()))?;
+    }
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-q", "-m", "fixture base"])?;
+
+    for path in changed_files {
+        let target = repo.join(path);
+        fs::write(&target, "after\n")
+            .with_context(|| format!("update fixture file {}", target.display()))?;
+    }
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-q", "-m", "fixture head"])?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
+        .arg(policy)
+        .arg("--json")
+        .current_dir(repo)
+        .output()
+        .context("run affected fixture")?;
+    ensure!(
+        output.status.success(),
+        "affected fixture failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).context("parse affected fixture JSON")
+}
+
+fn scope<'a>(report: &'a serde_json::Value, name: &str) -> Result<&'a serde_json::Value> {
+    report
+        .get("scopes")
+        .and_then(serde_json::Value::as_array)
+        .context("affected report scopes should be an array")?
+        .iter()
+        .find(|candidate| candidate.get("name").and_then(serde_json::Value::as_str) == Some(name))
+        .with_context(|| format!("affected report should include {name}"))
+}
+
+fn array_len(value: &serde_json::Value, key: &str) -> Result<usize> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::len)
+        .with_context(|| format!("affected report {key} should be an array"))
+}
+
+#[test]
+fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
+    let root = workspace_root();
+    let before_policy = root
+        .join("fixtures")
+        .join("proof-policy")
+        .join("agent-guidance-before.toml");
+    let after_policy = root.join("ci").join("proof.toml");
+
+    for changed in [
+        vec!["AGENTS.md"],
+        vec!["agents/shared/repo.md"],
+        vec!["agents/shared/future-guidance.md"],
+    ] {
+        let before = affected_fixture(&changed, &before_policy)?;
+        let after = affected_fixture(&changed, &after_policy)?;
+        ensure!(array_len(&before, "unknown_files")? == 0);
+        ensure!(array_len(&after, "unknown_files")? == 0);
+        ensure!(array_len(scope(&before, "proof_control_plane")?, "proof")? == 29);
+        ensure!(array_len(scope(&after, "agent_guidance_docs")?, "proof")? == 2);
+    }
+
+    let paired = affected_fixture(&["AGENTS.md", "agents/shared/repo.md"], &after_policy)?;
+    let guidance = scope(&paired, "agent_guidance_docs")?;
+    ensure!(array_len(guidance, "matched_files")? == 2);
+    ensure!(array_len(guidance, "proof")? == 2);
+    ensure!(array_len(&paired, "scopes")? == 1);
+    ensure!(array_len(&paired, "unknown_files")? == 0);
+
+    let workflow = affected_fixture(&[".github/workflows/ci.yml"], &after_policy)?;
+    ensure!(array_len(scope(&workflow, "proof_control_plane")?, "proof")? == 29);
+    ensure!(array_len(&workflow, "unknown_files")? == 0);
+    Ok(())
 }

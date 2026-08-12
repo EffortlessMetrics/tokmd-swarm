@@ -1,0 +1,55 @@
+schema = "tokmd.proof_policy.v1"
+
+[defaults]
+fail_on_unknown_non_rust = true
+
+[proof_run.pr]
+default_enabled = true
+profile = "fast"
+required = false
+artifact_name = "fast-proof-run"
+
+[[scope]]
+name = "proof_control_plane"
+kind = "rust"
+paths = ["AGENTS.md", "agents/shared/**", ".github/workflows/ci.yml"]
+packages = ["xtask"]
+proof = [
+  "cargo xtask proof-policy --check",
+  "cargo xtask ci-gate-contract --check --workflow fixtures/ci-gate-contract/reference-ci.yml",
+  "cargo xtask ci-lane-whitelist",
+  "cargo test -p xtask ci_gate_contract --verbose",
+  "cargo test -p xtask bump --verbose",
+  "cargo test -p xtask --test deep_w71 --verbose",
+  "cargo test -p xtask --test xtask_contract_w65 --verbose",
+  "cargo test -p xtask proof_policy --verbose",
+  "cargo test -p xtask affected --verbose",
+  "cargo test -p xtask ci_actuals --verbose",
+  "cargo test -p xtask ci_route --verbose",
+  "cargo test -p xtask ci_runner_health --verbose",
+  "cargo test -p xtask --test docs_schema_w72 --verbose",
+  "cargo test -p xtask --test docs_w43 --verbose",
+  "cargo test -p xtask fixture_blob --verbose",
+  "cargo test -p xtask jules_index --verbose",
+  "cargo test -p xtask mutation_scope --verbose",
+  "cargo test -p xtask mutation_summary --verbose",
+  "cargo test -p xtask perf_smoke --verbose",
+  "cargo test -p xtask proof_artifacts --verbose",
+  "cargo test -p xtask proof_executor_pr_policy --verbose",
+  "cargo test -p xtask proof_observation_run_ids --verbose",
+  "cargo test -p xtask proof_observation_status --verbose",
+  "cargo test -p xtask proof_observation_thresholds --verbose",
+  "cargo test -p xtask proof_plan --verbose",
+  "cargo test -p xtask proof_run_pr_policy --verbose",
+  "cargo test -p xtask proof_workflow_status --verbose",
+  "cargo test -p xtask publish --verbose",
+  "cargo test -p xtask repo_graph --verbose -- --test-threads=1",
+]
+mutation = false
+coverage = false
+
+[[dependency_boundary]]
+name = "retired_tokmd_config_must_not_return"
+packages = ["*"]
+forbid = ["tokmd-config"]
+reason = "tokmd-config is retired."

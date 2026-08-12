@@ -135,7 +135,6 @@ paths = [
   ".factory/rules/droid-review.md",
   ".factory/skills/review-guidelines/SKILL.md",
   ".github/agents/ci-fix-forward.agent.md",
-  "AGENTS.md",
   "ci/proof.toml",
   "codecov.yml",
   "fixtures/ci-gate-contract/**",
@@ -146,7 +145,7 @@ paths = [
   "docs/ci/coverage.md",
   "docs/agent-context/review-invariants.md",
   "docs/agent-context/droid-smoke-tests.md",
-  "agents/shared/**",
+  "fixtures/proof-policy/**",
   "_typos.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -233,6 +232,21 @@ proof = [
   "cargo test -p xtask publish --verbose",
   "cargo test -p xtask repo_graph --verbose -- --test-threads=1",
 ]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "agent_guidance_docs"
+kind = "non_rust"
+paths = [
+  "AGENTS.md",
+  "agents/shared/**",
+]
+proof = [
+  "cargo xtask docs --check",
+  "cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json",
+]
+reason = "agents/shared/** is canonical shared guidance and AGENTS.md is its repo-local mirror; route either side and future shared guidance through both repo docs guards without selecting Rust control-plane tests."
 mutation = false
 coverage = false
 
