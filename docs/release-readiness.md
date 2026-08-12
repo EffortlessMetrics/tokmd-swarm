@@ -42,6 +42,56 @@ The next patch release exists to make the successful 1.15.0 path repeatable:
 - keep recovery overlays explicit and fixture-tested rather than rewriting
   package manifests with broad regexes.
 
+### Receipt-backed publication resume
+
+The publisher can persist a local, identity-bound `tokmd.publish_receipt.v3` receipt
+after each crate attempt:
+
+```bash
+cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
+cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
+```
+
+Inside the worktree, the receipt must remain under ignored `target/` so its
+receipt, lock, and recovery snapshots cannot make the committed-source check
+dirty. A path outside the worktree is also accepted. The exclusive `.lock` is
+held for the live run; never remove it until the owning publisher is proven
+stopped. Parent directories are created automatically.
+
+Development-only bootstrap cycles are opt-in and plan-bound. For the two
+known bootstrap crates, an intentional release may pass
+`--bootstrap tokmd-types,tokmd-envelope`; this maps only those selected crates
+to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
+verification, and an unknown or out-of-plan bootstrap name is rejected.
+
+The per-crate `bootstrap` field records whether the current publisher
+invocation requested Cargo's `--no-verify`, including when Cargo reports
+`already_present` or the attempt fails. It is an audit of the invocation
+decision, not proof that an upload succeeded; receipt state and registry
+visibility carry those outcomes. Earlier unmerged receipt schemas are rejected
+because they do not bind immutable source identity.
+
+`--resume` repeats live inventory for every planned crate; persisted visibility
+is never skip authority by itself. Present non-yanked versions are reconciled
+without upload. Yanked, unavailable, changed-source, changed-tree, changed-plan,
+changed-manifest, changed-registry, and changed-bootstrap evidence fails closed.
+Receipt-backed publication rejects `--skip-checks`, `--skip-git-check`, `--from`,
+and `--tag`. Before the first upload, preflight checks the package file list for every
+planned crate and verifies that each normal, build, or otherwise
+publish-relevant workspace dependency is in the same plan with a version
+requirement matching the planned package version. A successful preflight records
+`dependency_closure: true` for every planned crate. After a non-dry-run upload,
+the publisher performs bounded crates.io visibility observations and records
+`registry_visible`; an unobserved or missing result is retryable on resume rather
+than terminal. A yanked result is terminal but is not usable release proof.
+`dependency_closure` remains null until the package/closure proof records that
+fact. The receipt is local recovery state, not a hosted durable upload. It does
+not consume or authenticate the hosted terminal preflight receipt from
+`.github/workflows/release-preflight.yml`; that distinct passed exact-source
+evidence remains a prerequisite operator gate, not publication authorization.
+Receipt completion does not prove a tag, GitHub Release, assets, latest state,
+consumer installation, Action alias, or GHCR alias.
+
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
 themselves.

@@ -1728,8 +1728,34 @@ pub struct PublishArgs {
     pub plan: bool,
 
     /// Query exact publish-plan versions on crates.io and write a fail-closed receipt.
-    #[arg(long, value_name = "PATH", conflicts_with_all = ["plan", "dry_run", "verify"])]
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with_all = ["plan", "dry_run", "verify", "bootstrap"]
+    )]
     pub registry_inventory: Option<std::path::PathBuf>,
+
+    /// Write a durable per-crate publication receipt while publishing.
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with_all = [
+            "plan",
+            "registry_inventory",
+            "dry_run",
+            "verify",
+            "skip_checks",
+            "skip_git_check",
+            "from",
+            "tag"
+        ]
+    )]
+    pub receipt: Option<std::path::PathBuf>,
+
+    /// Resume from a publication receipt, skipping confirmed terminal crates;
+    /// yanked versions are terminal but keep the run incomplete.
+    #[arg(long, requires = "receipt", conflicts_with_all = ["plan", "registry_inventory", "dry_run", "verify"])]
+    pub resume: bool,
 
     /// Run in dry-run mode (runs `cargo package --list` per crate for local packaging validation)
     #[arg(long, short = 'n')]
@@ -1755,7 +1781,7 @@ pub struct PublishArgs {
     #[arg(long)]
     pub continue_on_error: bool,
 
-    /// Resume publishing from this crate (skips crates before this one)
+    /// Start publishing from this crate (skips crates before this one)
     #[arg(long)]
     pub from: Option<String>,
 
@@ -1790,6 +1816,17 @@ pub struct PublishArgs {
     /// Exclude specific crates from publishing (comma-separated). Fails if exclusion would break dependencies.
     #[arg(long, value_delimiter = ',')]
     pub exclude: Option<Vec<String>>,
+
+    /// Publish selected development-cycle bootstrap crates with Cargo verification disabled;
+    /// requires --receipt so the no-verify decision is auditable.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "CRATE",
+        requires = "receipt",
+        conflicts_with_all = ["dry_run", "verify"]
+    )]
+    pub bootstrap: Option<Vec<String>>,
 
     /// Create and push git tag after successful publish (e.g., v1.3.0)
     #[arg(long)]
