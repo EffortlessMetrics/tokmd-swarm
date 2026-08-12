@@ -7,10 +7,10 @@ into one `sensors/tokmd/` packet from a single command. The root
 `EffortlessMetrics/tokmd` Action exposes that orchestration through
 `mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
 defines the one-command CLI path and the `mode: packet` Action path. The
-`1.15.0` is published and its GHCR container runtime is verified: the release
-ledger records the exact image digest and the stable release/consumer workflows
-pass the mounted-packet checks. Downstream `ub-review` consumption remains
-planned.
+The `1.15.0` binary release is published and its GHCR container runtime is
+verified: the [release ledger](releases/1.15-ledger.md) records the exact image
+digest, and stable release/consumer run `30965258655` passes the mounted-packet
+checks. Downstream `ub-review` consumption remains planned.
 
 ## Purpose
 
@@ -242,13 +242,14 @@ verified-public for `:main` (issue #264 closed 2026-06-24) but remains a
 workbench/experimental runtime, not a supported consumer path.
 
 Current support status: publication GHCR is **verified-public** for `v1.13.1`
-(2026-06-21), `v1.14.0` (2026-06-26), and `1.15.0` (the stable release ledger
+(2026-06-21), `v1.14.0` (2026-06-26), and `v1.15.0` (the stable release ledger
 records digest `sha256:53269109c4088274760183f75707e8b776d2a72a5840fab7378d765130a467e4`).
-The `1.15.0` release and consumer workflows pass the binary and container packet
-jobs, including the exact stable container and mounted packet; see
-`docs/releases/1.15-ledger.md`. The container runtime is gate-verified and wired
-for `1.15.0`: the `runtime: container` Action path anonymously pulls that tag
-and runs it against the mounted workspace. Each new stable tag still needs
+The `v1.15.0` release and consumer workflows pass the binary and container packet
+jobs, including the exact stable container and mounted packet; see the [release
+ledger](releases/1.15-ledger.md), Action/container ledger, and consumer run
+`30965258655`. The container runtime is gate-verified and wired for `v1.15.0`:
+the `runtime: container` Action path anonymously pulls that tag and runs it
+against the mounted workspace. Each new stable tag still needs
 post-release verification (gate steps 1-7) and must be added to the Action's
 supported-tag set before its container runtime is called supported.
 
