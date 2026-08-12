@@ -13,6 +13,13 @@ This file provides guidance to AI agents (Claude, Factory Droid, etc.) when work
 - See `.github/workflows/droid.yml` for manual `@droid` command handling
 - See `.github/workflows/droid-security-scan.yml` for scheduled security scanning
 
+## Review and Conversation Resolution
+
+The canonical review and conversation-resolution process is maintained in
+[`agents/shared/repo.md`](agents/shared/repo.md#review-and-conversation-resolution).
+Substantive PRs use independent agentic review passes in separate lanes; this is
+process evidence, not a native approval or reviewer-identity gate.
+
 ## Project Overview
 
 **tokmd** is a Rust CLI tool and library that wraps the `tokei` library to generate "inventory receipts" and derived analytics of code repositories. It produces human-readable summaries (Markdown/TSV) and machine-friendly datasets (JSON/JSONL/CSV) for AI-native workflows, LLM context generation, and code analysis pipelines.
