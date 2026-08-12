@@ -103,6 +103,9 @@ fn checker_rejects_advisory_action_outside_advisory_job() -> Result<(), Box<dyn 
     if success {
         return Err(format!("action outside ub-review job unexpectedly passed: {stderr}").into());
     }
+    if stderr.contains("Tokmd Rust Result job missing required marker") {
+        return Err(format!("gate job was damaged by advisory fixture: {stderr}").into());
+    }
     if !stderr.contains("ub-review action must be inside the top-level ub-review job") {
         return Err(format!("unexpected checker diagnostics: {stderr}").into());
     }

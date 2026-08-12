@@ -156,19 +156,78 @@ pub fn run(args: CiGateContractArgs) -> Result<()> {
 }
 
 fn top_level_job_block(text: &str, job: &str) -> Option<String> {
-    let marker = format!("  {job}:");
+    let mut jobs_indent = None;
+    let mut job_indent = None;
     let mut in_job = false;
     let mut block = String::new();
+
     for line in text.lines() {
-        if line == marker {
-            in_job = true;
-        } else if in_job && line.starts_with("  ") && !line.starts_with("    ") {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+
+        if jobs_indent.is_none() && trimmed == "jobs:" {
+            jobs_indent = Some(indent);
+            continue;
+        }
+
+        let Some(jobs_indent_value) = jobs_indent else {
+            continue;
+        };
+
+        if indent <= jobs_indent_value && !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if in_job {
+                break;
+            }
+            continue;
+        }
+
+        let Some((key, value)) = trimmed.split_once(':') else {
+            if in_job {
+                block.push_str(line);
+                block.push('\n');
+            }
+            continue;
+        };
+        let is_mapping_key = !key.is_empty() && !key.chars().any(char::is_whitespace);
+
+        if !in_job {
+            if is_mapping_key && key == job && value.trim().is_empty() {
+                job_indent = Some(indent);
+                in_job = true;
+                block.push_str(line);
+                block.push('\n');
+            }
+            continue;
+        }
+
+        if is_mapping_key && value.trim().is_empty() && Some(indent) == job_indent {
             break;
         }
-        if in_job {
-            block.push_str(line);
-            block.push('\n');
-        }
+
+        block.push_str(line);
+        block.push('\n');
     }
+
     in_job.then_some(block)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::top_level_job_block;
+
+    #[test]
+    fn finds_jobs_with_nonstandard_indentation() -> anyhow::Result<()> {
+        let workflow = "jobs:\n    tokmd-rust-result:\n      name: Tokmd Rust Result\n    ub-review:\n      name: UB Review (Advisory)\n";
+        let gate = top_level_job_block(workflow, "tokmd-rust-result")
+            .ok_or_else(|| anyhow::anyhow!("gate job was not found"))?;
+        if !gate.contains("name: Tokmd Rust Result") {
+            return Err(anyhow::anyhow!("gate block was truncated incorrectly"));
+        }
+        let advisory = top_level_job_block(workflow, "ub-review")
+            .ok_or_else(|| anyhow::anyhow!("advisory job was not found"))?;
+        if !advisory.contains("name: UB Review (Advisory)") {
+            return Err(anyhow::anyhow!("advisory block was truncated incorrectly"));
+        }
+        Ok(())
+    }
 }
