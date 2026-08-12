@@ -90,6 +90,23 @@ Ask before committing, pushing, or merging only when:
 - the diff is broad or ambiguous relative to the requested lane;
 - the worktree contains unrelated user changes that cannot be isolated safely.
 
+## Review and merge policy
+
+This is a single-maintainer repository. Merge does not require a separate
+reviewer account, a native GitHub approval, or CODEOWNERS approval. Those are
+not substitutes for engineering review and must not be invented as additional
+merge gates.
+
+Independent agentic review passes are part of the normal workflow. Use
+separate review lenses or agent lanes when useful, and preserve their
+actionable findings as inline comments or other repo-visible review evidence.
+The identity of the reviewing agent is not itself a requirement.
+
+Conversation resolution is a merge requirement. Address actionable inline
+comments, reply with the evidence or change, and resolve the conversation when
+the finding is handled. Do not leave actionable bot or agent review threads
+unresolved merely because no separate reviewer approval is required.
+
 ## Release-Prep PR Lifecycle
 
 Never close a PR merely because a release is near.
