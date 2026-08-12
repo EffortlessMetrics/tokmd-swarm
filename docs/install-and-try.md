@@ -130,6 +130,8 @@ needs to become PR review, handoff, or CI evidence.
 Use the GitHub Action when you want the first CI adoption path:
 
 ```yaml
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
 - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
   with:
     version: '1.15.0'
