@@ -346,7 +346,7 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
-Evidence snapshot: `2026-08-12T10:26:51Z` UTC. Exact heads and the linked PR
+Evidence snapshot: `2026-08-12T10:41:12Z` UTC. Exact heads and the linked PR
 checks are the authoritative proof for each row; refresh this snapshot when a
 listed head or hosted verdict changes.
 
@@ -361,10 +361,10 @@ listed head or hosted verdict changes.
 | [#568](https://github.com/EffortlessMetrics/tokmd-swarm/pull/568) | `ebff74af5a797fd0c34b8e26e25ebdcc736f409d` | Exact-head rerun `31520250944` passed cache restoration, serial core proof, advisory UB review, final gate assertion, and supporting checks; 0 unresolved threads | External protection still reports stale `Codex Review Gate`; no merge claim |
 | [#574](https://github.com/EffortlessMetrics/tokmd-swarm/pull/574) | `564803ce210dec254caf76e0b6bd68c2465596b0` | Main-based promotion of the preserved terminal release-preflight contract/workflow plus the proven bounded cache prerequisite; exact-head required Rust, affected/fast/UB/ripr/Cockpit, policy, and supporting checks pass; source identity rejects tag objects, WASM target is installed, and 2 review threads are resolved | Droid provider stalled and was cancelled as unavailable advisory infrastructure; local focused Cargo proof timed out; stale external `Codex Review Gate` remains; no publication or merge claim |
 | [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `c4192b04d405a3372141d6e326d849777b2cc8ab` | 1.15.0 packet/container narrative anchored to the release ledger, exact digest, and consumer run `30965258655`; duplicated lead article removed; exact-head Rust, Droid, ripr, cockpit, Docs, affected/fast, and policy checks pass; 0 unresolved threads | Documentation only; full release readiness is not claimed |
-| [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `00626a648a634eb8f0d7a28631861e4bf5828eb7` | Bounded core-proof diagnostics normalize timeout 137→124 and isolate the Cargo process group; local actionlint/contract checks pass; exact-head hosted required Rust, Droid, Cockpit, ripr, and supporting checks pass; 0 unresolved threads | Linux end-to-end process-group proof unavailable on Windows; external protection still requires stale `Codex Review Gate`, so no merge claim |
+| [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `00626a648a634eb8f0d7a28631861e4bf5828eb7` | Bounded core-proof diagnostics normalize timeout 137→124 and isolate the Cargo process group; local actionlint/contract checks pass; exact-head hosted required Rust, Droid, Cockpit, ripr, and supporting checks pass; 0 unresolved threads | Linux end-to-end process-group proof unavailable on Windows; CodeRabbit rate-limited advisory; external protection still requires stale `Codex Review Gate`, so no merge claim |
 
 The release-preflight implementation in stack-merged feature-branch PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but that commit is not reachable from `main`.
-The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) is now at exact head `3bf46e3fe509070cd296bcc9fcf94b7506a9043d`: locale-stable unresolved-HEAD handling, structural fixture claims, bounded fixture loading, and on-disk loader coverage are locally proven; fresh hosted Docs/policy/supporting checks pass while Rust/Droid/ripr remain pending. Review threads are resolved; no merge or release claim is made.
+The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) is now at exact head `3bf46e3fe509070cd296bcc9fcf94b7506a9043d`: locale-stable unresolved-HEAD handling, structural fixture claims, bounded fixture loading, and on-disk loader coverage are locally proven; fresh hosted Docs/policy/supporting checks pass while Rust/GitGuardian/Droid remain pending and ripr is still pending. Review threads are resolved; no merge or release claim is made.
 
 Live external protection still reports the required contexts `Tokmd Rust
 Result` and stale `Codex Review Gate`. The in-repo correction is carried by
