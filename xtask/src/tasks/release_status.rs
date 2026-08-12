@@ -535,15 +535,49 @@ mod tests {
 
     static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
 
+    struct CurrentDirGuard {
+        original: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn enter(directory: &Path) -> Result<Self> {
+            let original = std::env::current_dir()?;
+            std::env::set_current_dir(directory)?;
+            Ok(Self { original })
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
     fn inspect_local_from(directory: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
         let _current_dir_lock = CURRENT_DIR_LOCK
             .lock()
             .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
-        let original_dir = std::env::current_dir()?;
-        std::env::set_current_dir(directory)?;
-        let inspection = inspect_local(tag);
-        std::env::set_current_dir(original_dir)?;
-        inspection
+        let _current_dir = CurrentDirGuard::enter(directory)?;
+        inspect_local(tag)
+    }
+
+    #[test]
+    fn current_directory_guard_restores_after_scope() -> Result<()> {
+        let _current_dir_lock = CURRENT_DIR_LOCK
+            .lock()
+            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
+        let original = std::env::current_dir()?;
+        let temp = tempfile::tempdir()?;
+        {
+            let _current_dir = CurrentDirGuard::enter(temp.path())?;
+            if std::env::current_dir()? != temp.path() {
+                bail!("current-directory guard did not enter its target");
+            }
+        }
+        if std::env::current_dir()? != original {
+            bail!("current-directory guard did not restore the original directory");
+        }
+        Ok(())
     }
 
     fn passed(detail: &str) -> StateFact {
