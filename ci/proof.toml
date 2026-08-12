@@ -121,6 +121,7 @@ paths = [
   ".github/workflows/proof-observation-collection.yml",
   ".github/workflows/proof-executor.yml",
   ".github/workflows/coverage.yml",
+  ".github/workflows/release-preflight.yml",
   ".github/workflows/droid-review.yml",
   ".github/workflows/droid.yml",
   ".github/workflows/droid-security-scan.yml",
