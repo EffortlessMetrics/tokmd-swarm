@@ -561,6 +561,11 @@ mod tests {
         inspect_local(tag)
     }
 
+    fn current_dir_scope(directory: &Path) -> Result<()> {
+        let _current_dir = CurrentDirGuard::enter(directory)?;
+        Err(anyhow::anyhow!("synthetic current-directory scope failure"))
+    }
+
     #[test]
     fn current_directory_guard_restores_after_scope() -> Result<()> {
         let _current_dir_lock = CURRENT_DIR_LOCK
@@ -576,6 +581,47 @@ mod tests {
         }
         if std::env::current_dir()? != original {
             bail!("current-directory guard did not restore the original directory");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn current_directory_guard_restores_after_error() -> Result<()> {
+        let _current_dir_lock = CURRENT_DIR_LOCK
+            .lock()
+            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
+        let original = std::env::current_dir()?;
+        let temp = tempfile::tempdir()?;
+
+        if current_dir_scope(temp.path()).is_ok() {
+            bail!("synthetic scope failure should be propagated");
+        }
+        if std::env::current_dir()? != original {
+            bail!("current-directory guard did not restore after an error");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn current_directory_guard_restores_after_unwind() -> Result<()> {
+        let _current_dir_lock = CURRENT_DIR_LOCK
+            .lock()
+            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
+        let original = std::env::current_dir()?;
+        let temp = tempfile::tempdir()?;
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _current_dir = match CurrentDirGuard::enter(temp.path()) {
+                Ok(guard) => guard,
+                Err(error) => std::panic::resume_unwind(Box::new(error)),
+            };
+            std::panic::panic_any("synthetic current-directory unwind");
+        }));
+
+        if unwind.is_ok() {
+            bail!("synthetic scope should unwind");
+        }
+        if std::env::current_dir()? != original {
+            bail!("current-directory guard did not restore after an unwind");
         }
         Ok(())
     }
