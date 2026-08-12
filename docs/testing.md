@@ -44,10 +44,17 @@ This document describes the testing infrastructure and strategy for tokmd.
 In-module tests for domain logic:
 
 ```bash
-cargo test                    # Run all tests
+cargo test --all-features          # Test workspace default-members
+cargo test -p xtask --all-features # Test the repo control plane
 cargo test -p tokmd-format    # Test specific crate
 cargo test test_name          # Run single test
 ```
+
+The workspace manifest intentionally excludes `xtask` and `fuzz` from
+`default-members`, so a root `cargo test` or `cargo test --all-features` does
+not select them. `cargo test --workspace --all-features` requests every Cargo
+workspace package, including `xtask`, but it does not execute libFuzzer
+campaigns and is not the command sequence used by the required CI aggregate.
 
 ## Integration Tests
 
@@ -335,14 +342,17 @@ fn test_git_analysis() { ... }
 
 ## CI Gates
 
-Minimum requirements for merging:
+The required `Tokmd Rust Result` runs these commands serially:
 
-1. `cargo fmt-check` - Formatting
-2. `cargo clippy -- -D warnings` - Linting
-3. `cargo test --all-features` - All tests pass
-4. `cargo insta test` - Snapshots match
-5. Property tests (smoke run)
-6. Fuzz tests (short run, optional)
+1. `cargo xtask gate --check` - Core formatting, check, Clippy, and test-compilation gate
+2. `cargo test --all-features` - Default-member tests
+3. `cargo test -p xtask --all-features` - Repo control-plane tests
+4. `cargo xtask proof-policy --check` - Proof-policy validation
+
+This required aggregate does not claim that libFuzzer campaigns, conditional
+platform jobs, or deeper scheduled lanes ran. Those workflows remain separate
+evidence and may be selected by path, label, branch, schedule, or manual
+dispatch.
 
 On Windows, `cargo fmt-check` avoids the `cargo fmt --all` workspace argv limit.
 For bloated local `target/debug` directories, use `cargo trim-target --check` to inspect reclaimable space and `cargo trim-target` to trim PDB and incremental artifacts.

@@ -13,7 +13,8 @@ Common commands:
 ```bash
 cargo build
 cargo build --release
-cargo test --workspace
+cargo test --all-features
+cargo test -p xtask --all-features
 cargo fmt-check
 cargo fmt-fix
 cargo clippy --all-features -- -D warnings
@@ -23,6 +24,15 @@ just lint
 just fmt
 just publish-plan
 ```
+
+`cargo test --all-features` runs the workspace `default-members`; it does not
+select `xtask` or `fuzz`. The required `Tokmd Rust Result` runs the following
+serial proof sequence: `cargo xtask gate --check`, the default-member test
+command above, `cargo test -p xtask --all-features`, and
+`cargo xtask proof-policy --check`. Use `cargo test --workspace --all-features`
+only when broad Cargo workspace package selection is intended. It is not the
+required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
+and platform lanes remain separate proof.
 
 Optional git hooks:
 
