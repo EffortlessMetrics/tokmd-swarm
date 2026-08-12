@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -35,6 +36,96 @@ fn run_xtask_with_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String, 
     (stdout, stderr, output.status.success())
 }
 
+#[derive(Default)]
+struct WorkflowStep {
+    uses: Option<String>,
+    run: Option<String>,
+    with: BTreeMap<String, String>,
+}
+
+fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("CI workflow should define typos before proptest-smoke")?;
+    let mut steps = Vec::new();
+    let mut current: Option<WorkflowStep> = None;
+    let mut step_indent = None;
+    let mut with_indent = None;
+    let mut in_steps = false;
+
+    for line in section.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        if !in_steps {
+            if trimmed == "steps:" {
+                in_steps = true;
+            }
+            continue;
+        }
+        if let Some(item_indent) = step_indent {
+            if indent < item_indent {
+                break;
+            }
+        }
+        if trimmed.starts_with("- ") {
+            if let Some(step) = current.take() {
+                steps.push(step);
+            }
+            step_indent = Some(indent);
+            with_indent = None;
+            current = Some(WorkflowStep::default());
+            let property = trimmed.trim_start_matches("- ");
+            if let Some(value) = property.strip_prefix("uses:") {
+                current.as_mut().context("step should exist")?.uses = Some(
+                    value
+                        .split(" #")
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned(),
+                );
+            }
+            continue;
+        }
+        let Some(step) = current.as_mut() else {
+            continue;
+        };
+        if let Some(parent_indent) = with_indent {
+            if indent > parent_indent {
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    step.with
+                        .insert(key.trim().to_owned(), value.trim().to_owned());
+                }
+                continue;
+            }
+            with_indent = None;
+        }
+        if trimmed == "with:" {
+            with_indent = Some(indent);
+        } else if let Some(value) = trimmed.strip_prefix("uses:") {
+            step.uses = Some(
+                value
+                    .split(" #")
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned(),
+            );
+        } else if let Some(value) = trimmed.strip_prefix("run:") {
+            step.run = Some(value.trim().to_owned());
+        }
+    }
+    if let Some(step) = current {
+        steps.push(step);
+    }
+    Ok(steps)
+}
+
 fn typos_job_contract(workflow: &str) -> Result<()> {
     let section = workflow
         .split("  typos:")
@@ -42,16 +133,40 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
         .and_then(|section| section.split("  proptest-smoke:").next())
         .context("CI workflow should define typos before proptest-smoke")?;
     ensure!(section.contains("runs-on: ubuntu-latest"));
-    ensure!(section.contains(
-        "uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9"
-    ));
-    ensure!(section.contains("tool: typos@1.49.0"));
-    ensure!(section.contains("checksum: true"));
-    ensure!(section.contains("fallback: none"));
-    ensure!(section.lines().any(|line| line.trim() == "run: typos"));
+    let steps = typos_steps(workflow)?;
+    let installer_ref = "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c";
+    let installers = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step.uses.as_deref() == Some(installer_ref))
+        .collect::<Vec<_>>();
+    ensure!(installers.len() == 1);
+    let (install_index, installer) = installers
+        .first()
+        .copied()
+        .context("Typos installer step should exist")?;
+    ensure!(
+        installer.with
+            == BTreeMap::from([
+                ("checksum".to_owned(), "true".to_owned()),
+                ("fallback".to_owned(), "none".to_owned()),
+                ("tool".to_owned(), "typos@1.49.0".to_owned()),
+            ])
+    );
+    ensure!(!installer.with.values().any(|value| value.contains("${{")));
+    let runners = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step.run.as_deref() == Some("typos"))
+        .collect::<Vec<_>>();
+    ensure!(runners.len() == 1);
+    let (run_index, runner) = runners
+        .first()
+        .copied()
+        .context("Typos run step should exist")?;
+    ensure!(runner.uses.is_none() && runner.with.is_empty());
+    ensure!(install_index < run_index);
     ensure!(!section.contains("crate-ci/typos@"));
-    ensure!(!section.contains("${{ github.event"));
-    ensure!(!section.contains("${{ secrets."));
     Ok(())
 }
 
@@ -69,10 +184,12 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         ("checksum: true", "checksum: false"),
         ("fallback: none", "fallback: cargo-binstall"),
         ("run: typos", "run: typos --version"),
+        ("tool: typos@1.49.0", "tool: ${{ inputs.typos_version }}"),
         (
             "tool: typos@1.49.0",
             "tool: ${{ github.event.pull_request.title }}",
         ),
+        ("tool: typos@1.49.0", "tool: ${{ github.token }}"),
         ("fallback: none", "fallback: ${{ secrets.FALLBACK }}"),
     ] {
         let drifted = workflow.replacen(original, replacement, 1);
@@ -82,13 +199,29 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         );
     }
 
-    for required_line in ["      checksum: true\n", "      fallback: none\n"] {
+    for required_line in ["          checksum: true\n", "          fallback: none\n"] {
         let omitted = workflow.replacen(required_line, "", 1);
         ensure!(
             typos_job_contract(&omitted).is_err(),
             "Typos contract accepted omitted {required_line:?}"
         );
     }
+
+    let commented = workflow.replacen("          checksum: true", "          # checksum: true", 1);
+    ensure!(typos_job_contract(&commented).is_err());
+
+    let install_block = "      - name: Install typos with bounded retries\n        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        with:\n          tool: typos@1.49.0\n          checksum: true\n          fallback: none\n";
+    let duplicated =
+        workflow.replacen(install_block, &format!("{install_block}{install_block}"), 1);
+    ensure!(typos_job_contract(&duplicated).is_err());
+
+    let run_block = "      - name: Check spelling\n        run: typos\n";
+    let reordered = workflow.replacen(install_block, "", 1).replacen(
+        run_block,
+        &format!("{run_block}{install_block}"),
+        1,
+    );
+    ensure!(typos_job_contract(&reordered).is_err());
     Ok(())
 }
 
