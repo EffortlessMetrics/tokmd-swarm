@@ -24,7 +24,7 @@ const REQUIRED_MARKERS: &[&str] = &[
 const GATE_MARKERS: &[&str] = &[
     "name: Tokmd Rust Result",
     "dtolnay/rust-toolchain",
-    "Swatinem/rust-cache@v2",
+    "Swatinem/rust-cache@",
     "Fast precontext and launch core gate",
     "cargo xtask gate --check",
     "core_exit",
