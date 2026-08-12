@@ -752,7 +752,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: crate-ci/typos@v1
+      - name: Install typos with bounded retries
+        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+        with:
+          tool: typos@1.49.0
+          checksum: true
+          fallback: none
+      - name: Check spelling
+        run: typos
 
   proptest-smoke:
     name: Proptest Smoke

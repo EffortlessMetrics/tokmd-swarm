@@ -2,6 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::{Context, Result, ensure};
+
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.parent().unwrap().to_path_buf()
@@ -31,6 +33,63 @@ fn run_xtask_with_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String, 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
+}
+
+fn typos_job_contract(workflow: &str) -> Result<()> {
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("CI workflow should define typos before proptest-smoke")?;
+    ensure!(section.contains("runs-on: ubuntu-latest"));
+    ensure!(section.contains(
+        "uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9"
+    ));
+    ensure!(section.contains("tool: typos@1.49.0"));
+    ensure!(section.contains("checksum: true"));
+    ensure!(section.contains("fallback: none"));
+    ensure!(section.lines().any(|line| line.trim() == "run: typos"));
+    ensure!(!section.contains("crate-ci/typos@"));
+    ensure!(!section.contains("${{ github.event"));
+    ensure!(!section.contains("${{ secrets."));
+    Ok(())
+}
+
+#[test]
+fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    typos_job_contract(&workflow)?;
+
+    for (original, replacement) in [
+        (
+            "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c",
+            "taiki-e/install-action@v2",
+        ),
+        ("tool: typos@1.49.0", "tool: typos@1.49"),
+        ("checksum: true", "checksum: false"),
+        ("fallback: none", "fallback: cargo-binstall"),
+        ("run: typos", "run: typos --version"),
+        (
+            "tool: typos@1.49.0",
+            "tool: ${{ github.event.pull_request.title }}",
+        ),
+        ("fallback: none", "fallback: ${{ secrets.FALLBACK }}"),
+    ] {
+        let drifted = workflow.replacen(original, replacement, 1);
+        ensure!(
+            typos_job_contract(&drifted).is_err(),
+            "Typos contract accepted drift from {original} to {replacement}"
+        );
+    }
+
+    for required_line in ["      checksum: true\n", "      fallback: none\n"] {
+        let omitted = workflow.replacen(required_line, "", 1);
+        ensure!(
+            typos_job_contract(&omitted).is_err(),
+            "Typos contract accepted omitted {required_line:?}"
+        );
+    }
+    Ok(())
 }
 
 #[test]
