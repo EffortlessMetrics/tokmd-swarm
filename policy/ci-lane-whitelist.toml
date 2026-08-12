@@ -871,6 +871,26 @@ review_after     = "2026-08-04"
 expires          = "2027-02-04"
 
 [[lane]]
+id               = "release_preflight"
+workflow         = ".github/workflows/release-preflight.yml"
+job              = "Exact-source release preflight"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 75
+owner            = "release/ci"
+intent           = "Run complete exact-source release proof and emit one terminal decision receipt."
+failure_mode     = "Release acceptance interprets partial, moving-source, or unavailable proof as green."
+proof_obligation = "Check out immutable source/base SHAs, record every required command, invoke cargo xtask release-preflight, and consume its uploaded receipt."
+evidence         = ["target/release-preflight/receipt.json", "target/release-preflight/logs/*", "job summary"]
+allowed_triggers = ["workflow_dispatch", "workflow_call"]
+duplicate_of     = []
+review_after     = "2026-08-11"
+expires          = "2026-11-11"
+
+[[lane]]
 id               = "release_verify_container"
 workflow         = ".github/workflows/release.yml"
 job              = "Verify exact container artifact"
