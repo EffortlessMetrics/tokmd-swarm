@@ -116,7 +116,7 @@ fn release_preflight_binds_cache_and_commit_identity() -> Result<()> {
     ensure!(text.matches("git cat-file -t").count() >= 2);
     ensure!(text.contains("affected base must be an ancestor of source"));
     ensure!(text.contains("release_kind must be rc or stable"));
-    ensure!(text.contains("^[0-9a-f]{40}$|^[0-9a-f]{64}$"));
+    ensure!(text.contains("^([0-9a-f]{40}|[0-9a-f]{64})$"));
     ensure!(text.contains("identity_check"));
     Ok(())
 }

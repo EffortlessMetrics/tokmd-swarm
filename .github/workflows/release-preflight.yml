@@ -93,10 +93,10 @@ jobs:
           status=passed
           detail="source and affected base are exact commit identities"
           {
-          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]]; then
+          if [[ ! "${SOURCE_SHA}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
             echo "source_sha must be a lowercase 40- or 64-character hexadecimal SHA"; status=failed
           fi
-          if [[ ! "${AFFECTED_BASE_SHA}" =~ ^[0-9a-f]{40}$|^[0-9a-f]{64}$ ]]; then
+          if [[ ! "${AFFECTED_BASE_SHA}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
             echo "affected_base_sha must be a lowercase 40- or 64-character hexadecimal SHA"; status=failed
           fi
           if [[ ! "${RELEASE_KIND}" =~ ^(rc|stable)$ ]]; then
