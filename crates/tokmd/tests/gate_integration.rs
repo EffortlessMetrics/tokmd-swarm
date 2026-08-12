@@ -646,6 +646,72 @@ fn test_gate_combined_policy_and_ratchet() {
         .stdout(predicate::str::contains("Ratchet Rules"));
 }
 
+fn assert_selected_policy_error_with_passing_ratchet(
+    policy: &std::path::Path,
+    expected_detail: &str,
+) -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let baseline = create_test_baseline(&dir);
+    let current = create_current_receipt_slight_increase(&dir);
+    let ratchet = create_ratchet_config(&dir);
+
+    tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--policy",
+            policy.to_string_lossy().as_ref(),
+            "--baseline",
+            baseline.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to load policy from"))
+        .stderr(predicate::str::contains(
+            policy.to_string_lossy().into_owned(),
+        ))
+        .stderr(predicate::str::contains(expected_detail));
+
+    Ok(())
+}
+
+#[test]
+fn test_gate_missing_selected_policy_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("missing-policy.toml");
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "missing-policy.toml")
+}
+
+#[test]
+fn test_gate_malformed_selected_policy_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("malformed-policy.toml");
+    fs::write(&policy, "[[rules]\nname =")?;
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "TOML parse error")
+}
+
+#[test]
+fn test_gate_invalid_operator_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("invalid-operator-policy.toml");
+    fs::write(
+        &policy,
+        r#"
+[[rules]]
+name = "invalid_operator"
+pointer = "/derived/totals/tokens"
+op = "explode"
+value = 500000
+"#,
+    )?;
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "unknown variant `explode`")
+}
+
 #[test]
 fn test_gate_ratchet_no_baseline() {
     // Given: A current receipt and a ratchet config but no baseline

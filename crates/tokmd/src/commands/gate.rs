@@ -42,7 +42,7 @@ pub(crate) fn handle(
     let receipt = receipt::load_or_compute_receipt(&args, global)?;
 
     // Load policy from file, CLI args, or config (may be None if only ratchet is used)
-    let policy = policy::load_policy(&args, resolved).ok();
+    let policy = policy::load_policy(&args, resolved)?;
 
     // Load baseline if provided
     let baseline = policy::load_baseline(&args, resolved)?;

@@ -9,11 +9,12 @@ use tokmd_gate::{PolicyConfig, PolicyRule, RatchetConfig, RatchetRule, RuleLevel
 pub(super) fn load_policy(
     args: &cli::CliGateArgs,
     resolved: &ResolvedConfig,
-) -> Result<PolicyConfig> {
+) -> Result<Option<PolicyConfig>> {
     // CLI --policy flag takes precedence.
     if let Some(policy_path) = &args.policy {
         return PolicyConfig::from_file(policy_path)
-            .with_context(|| format!("Failed to load policy from {}", policy_path.display()));
+            .with_context(|| format!("Failed to load policy from {}", policy_path.display()))
+            .map(Some);
     }
 
     if let Some(toml) = resolved.toml {
@@ -22,7 +23,8 @@ pub(super) fn load_policy(
         if let Some(policy_path) = &gate_config.policy {
             let path = std::path::PathBuf::from(policy_path);
             return PolicyConfig::from_file(&path)
-                .with_context(|| format!("Failed to load policy from {}", path.display()));
+                .with_context(|| format!("Failed to load policy from {}", path.display()))
+                .map(Some);
         }
 
         if let Some(rules) = &gate_config.rules
@@ -33,15 +35,15 @@ pub(super) fn load_policy(
                 .map(convert_gate_rule)
                 .collect::<Result<Vec<_>>>()?;
 
-            return Ok(PolicyConfig {
+            return Ok(Some(PolicyConfig {
                 rules: policy_rules,
                 fail_fast: gate_config.fail_fast.unwrap_or(false),
                 allow_missing: false,
-            });
+            }));
         }
     }
 
-    bail!("No policy specified")
+    Ok(None)
 }
 
 /// Load baseline receipt for ratchet comparison.
