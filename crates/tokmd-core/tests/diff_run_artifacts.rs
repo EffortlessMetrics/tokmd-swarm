@@ -275,7 +275,7 @@ fn ffi_preserves_json_source_compatibility_and_canonical_receipt_errors() -> Res
     let success: serde_json::Value =
         serde_json::from_str(&run_json("diff", &success_args.to_string()))
             .context("parse successful FFI envelope")?;
-    ensure!(success["ok"] == true);
+    ensure!(success.pointer("/ok") == Some(&serde_json::Value::Bool(true)));
 
     let malformed = root.path().join("lang.json");
     fs::write(&malformed, r#"{"not":"a language receipt"}"#)
@@ -286,9 +286,10 @@ fn ffi_preserves_json_source_compatibility_and_canonical_receipt_errors() -> Res
     });
     let error: serde_json::Value = serde_json::from_str(&run_json("diff", &error_args.to_string()))
         .context("parse failed FFI envelope")?;
-    ensure!(error["ok"] == false);
-    let message = error["error"]["message"]
-        .as_str()
+    ensure!(error.pointer("/ok") == Some(&serde_json::Value::Bool(false)));
+    let message = error
+        .pointer("/error/message")
+        .and_then(serde_json::Value::as_str)
         .context("FFI error has no message")?;
     ensure!(message.contains("lang.json"));
     ensure!(message.contains("missing field"));
