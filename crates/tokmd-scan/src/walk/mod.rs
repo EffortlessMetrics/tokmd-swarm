@@ -13,7 +13,7 @@
 //! * Git history analysis (use tokmd-git)
 //! * File modification
 
-use std::collections::BinaryHeap;
+use std::collections::BTreeSet;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
@@ -102,46 +102,28 @@ pub fn list_files_from_memfs(
 /// Retain deterministic lexicographic membership without retaining every path
 /// when a limit is configured. Determinism requires observing the full input
 /// stream, but the limited form keeps selection memory bounded by the limit.
-enum PathSelector {
-    Unlimited(Vec<PathBuf>),
-    Limited {
-        limit: usize,
-        smallest: BinaryHeap<PathBuf>,
-    },
+struct PathSelector {
+    limit: Option<usize>,
+    smallest: BTreeSet<PathBuf>,
 }
 
 impl PathSelector {
     fn new(limit: Option<usize>) -> Self {
-        match limit {
-            Some(limit) => Self::Limited {
-                limit,
-                smallest: BinaryHeap::new(),
-            },
-            None => Self::Unlimited(Vec::new()),
+        Self {
+            limit,
+            smallest: BTreeSet::new(),
         }
     }
 
     fn push(&mut self, path: PathBuf) {
-        match self {
-            Self::Unlimited(paths) => paths.push(path),
-            Self::Limited { limit, smallest } if smallest.len() < *limit => {
-                smallest.push(path);
-            }
-            Self::Limited { smallest, .. } if smallest.peek().is_some_and(|last| path < *last) => {
-                smallest.pop();
-                smallest.push(path);
-            }
-            Self::Limited { .. } => {}
+        self.smallest.insert(path);
+        if self.limit.is_some_and(|limit| self.smallest.len() > limit) {
+            self.smallest.pop_last();
         }
     }
 
     fn finish(self) -> Vec<PathBuf> {
-        let mut paths = match self {
-            Self::Unlimited(paths) => paths,
-            Self::Limited { smallest, .. } => smallest.into_vec(),
-        };
-        paths.sort();
-        paths
+        self.smallest.into_iter().collect()
     }
 }
 
@@ -369,9 +351,9 @@ mod tests {
     #[test]
     fn path_selector_membership_is_independent_of_discovery_order() -> Result<()> {
         let orders = [
-            ["z.rs", "a.rs", "m.rs", "b.rs"],
-            ["b.rs", "m.rs", "a.rs", "z.rs"],
-            ["m.rs", "z.rs", "b.rs", "a.rs"],
+            ["z.rs", "a.rs", "m.rs", "b.rs", "a.rs"],
+            ["b.rs", "m.rs", "a.rs", "z.rs", "m.rs"],
+            ["m.rs", "z.rs", "b.rs", "a.rs", "z.rs"],
         ];
         let expected = vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")];
 
