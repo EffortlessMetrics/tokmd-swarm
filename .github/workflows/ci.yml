@@ -152,10 +152,15 @@ jobs:
             shift 3
             echo "::group::${label} (bounded 15m)"
             echo "started $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$log"
-            # Do not use --foreground: the timeout wrapper must terminate the
-            # full Cargo process group, including spawned rustc/linker/tests.
-            timeout --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
+            # Start a new session so timeout's TERM/KILL reaches Cargo and its
+            # spawned rustc/linker/tests instead of leaving orphan processes.
+            # GNU timeout reports 137 when its KILL grace path fires; normalize
+            # that equivalent timeout outcome to the receipt's 124 marker.
+            setsid -w timeout --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
             status="${PIPESTATUS[0]}"
+            if [ "$status" -eq 137 ]; then
+              status=124
+            fi
             echo "$status" > "$marker"
             echo "finished $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=${status}" | tee -a "$log"
             echo "::endgroup::"
