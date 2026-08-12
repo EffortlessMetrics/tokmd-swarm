@@ -7,10 +7,10 @@ into one `sensors/tokmd/` packet from a single command. The root
 `EffortlessMetrics/tokmd` Action exposes that orchestration through
 `mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
 defines the one-command CLI path and the `mode: packet` Action path. The
-`1.15.0` binary release is published; its GHCR container-runtime support
-remains separate and is not advertised until the verification-gated tag and
-anonymous runtime checks pass. `1.14.0` remains the latest container-runtime
-verified tag. Downstream `ub-review` consumption remains planned.
+`1.15.0` is published and its GHCR container runtime is verified: the release
+ledger records the exact image digest and the stable release/consumer workflows
+pass the mounted-packet checks. Downstream `ub-review` consumption remains
+planned.
 
 ## Purpose
 
@@ -242,22 +242,22 @@ verified-public for `:main` (issue #264 closed 2026-06-24) but remains a
 workbench/experimental runtime, not a supported consumer path.
 
 Current support status: publication GHCR is **verified-public** for `v1.13.1`
-(2026-06-21) and for `v1.14.0` (2026-06-26). For `1.14.0`, the container-runtime
-gate steps 6-7 in `docs/specs/packet-ghcr-runtime.md` also passed on 2026-06-26
-via the `GHCR Container Smoke` lane (anonymous pull, `tokmd 1.14.0`, and a
-`complete` mounted-repository packet); see `docs/releases/1.14-ledger.md` and
-`docs/ci/ghcr-container-smoke.md`. The container runtime is gate-verified **and
-wired** for `1.14.0`: the `runtime: container` Action path now anonymously pulls
-that tag and runs it against the mounted workspace. New stable tags still need
+(2026-06-21), `v1.14.0` (2026-06-26), and `1.15.0` (the stable release ledger
+records digest `sha256:53269109c4088274760183f75707e8b776d2a72a5840fab7378d765130a467e4`).
+The `1.15.0` release and consumer workflows pass the binary and container packet
+jobs, including the exact stable container and mounted packet; see
+`docs/releases/1.15-ledger.md`. The container runtime is gate-verified and wired
+for `1.15.0`: the `runtime: container` Action path anonymously pulls that tag
+and runs it against the mounted workspace. Each new stable tag still needs
 post-release verification (gate steps 1-7) and must be added to the Action's
-supported-tag set before their container runtime is called supported.
+supported-tag set before its container runtime is called supported.
 
 The Action's `runtime: container` path:
 
 - requires a Linux runner with Docker available;
-- accepts only verification-gated tags. `1.15.0` is published, but it is not a
-  supported container tag until its candidate and anonymous runtime gate
-  passes. Any other tag,
+- accepts only verification-gated tags. `1.15.0` is a supported container tag:
+  its exact digest and anonymous mounted-packet gate are recorded in the
+  release ledger. Any other tag,
   including mutable aliases such as `latest`, `1.14`, and `1`, is a hard error
   pointing at the spec;
 - anonymously pulls `<image>:<normalized-version>` with an isolated docker config
@@ -324,10 +324,10 @@ A packet workflow does not:
 5. ~~Add Action examples and job-summary behavior.~~ (done: see
    [GitHub Action reference](github-action.md) and the packet job summary)
 6. ~~Harden publication GHCR as a secondary runtime.~~ (done: `runtime:
-   container` wired in `action.yml` for verification-gated tags; `1.14.0` is
-   verified. `1.15.0` is published as a binary release but remains pending
-   its separate container-runtime gate.) Re-verify on each release and extend
-   the supported-tag set only after the gate passes.
+   container` wired in `action.yml` for verification-gated tags; `1.14.0` and
+   `1.15.0` are verified, with the `1.15.0` exact digest and mounted-packet
+   receipt recorded in `docs/releases/1.15-ledger.md`.) Re-verify on each
+   release and extend the supported-tag set only after the gate passes.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
 
 ## Related Docs
