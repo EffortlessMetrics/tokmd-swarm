@@ -404,9 +404,13 @@ fn walk_git_max_files_truncates_tracked() {
 
     let files = list_files(root, Some(3)).unwrap();
     assert_eq!(
-        files.len(),
-        3,
-        "max_files should truncate git ls-files output"
+        files,
+        vec![
+            PathBuf::from("file_00.txt"),
+            PathBuf::from("file_01.txt"),
+            PathBuf::from("file_02.txt"),
+        ],
+        "max_files should select the lexicographically first tracked files"
     );
 }
 

@@ -13,6 +13,7 @@
 //! * Git history analysis (use tokmd-git)
 //! * File modification
 
+use std::collections::BinaryHeap;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
@@ -39,21 +40,16 @@ pub fn list_files(root: &Path, max_files: Option<usize>) -> Result<Vec<PathBuf>>
     let root = ValidatedRoot::new(root)?;
 
     if let Some(files) = git::git_ls_files(root.canonical())? {
-        let mut bounded = Vec::new();
+        let mut selected = PathSelector::new(max_files);
         for path in files {
             if let Some(path) = git::bound_git_relative_path(&root, &path)? {
-                bounded.push(path);
-            }
-            if let Some(limit) = max_files
-                && bounded.len() >= limit
-            {
-                break;
+                selected.push(path);
             }
         }
-        return Ok(bounded);
+        return Ok(selected.finish());
     }
 
-    let mut files: Vec<PathBuf> = Vec::new();
+    let mut selected = PathSelector::new(max_files);
     let mut builder = WalkBuilder::new(root.canonical());
     builder.hidden(false);
     builder.git_ignore(true);
@@ -75,16 +71,10 @@ pub fn list_files(root: &Path, max_files: Option<usize>) -> Result<Vec<PathBuf>>
             Err(err) if is_skippable_path_violation(&err) => continue,
             Err(err) => return Err(err.into()),
         };
-        files.push(rel);
-        if let Some(limit) = max_files
-            && files.len() >= limit
-        {
-            break;
-        }
+        selected.push(rel);
     }
 
-    files.sort();
-    Ok(files)
+    Ok(selected.finish())
 }
 
 /// List files from an in-memory filesystem backend.
@@ -100,20 +90,59 @@ pub fn list_files_from_memfs(
     }
 
     let normalized_root = normalize_memfs_root(root)?;
-    let mut files: Vec<PathBuf> = fs
-        .file_paths()
-        .filter_map(|path| memfs_relative_path(path, &normalized_root))
-        .collect();
+    let mut selected = PathSelector::new(max_files);
+    for path in fs.file_paths() {
+        if let Some(relative) = memfs_relative_path(path, &normalized_root) {
+            selected.push(relative);
+        }
+    }
+    Ok(selected.finish())
+}
 
-    files.sort();
+/// Retain deterministic lexicographic membership without retaining every path
+/// when a limit is configured. Determinism requires observing the full input
+/// stream, but the limited form keeps selection memory bounded by the limit.
+enum PathSelector {
+    Unlimited(Vec<PathBuf>),
+    Limited {
+        limit: usize,
+        smallest: BinaryHeap<PathBuf>,
+    },
+}
 
-    if let Some(limit) = max_files
-        && files.len() > limit
-    {
-        files.truncate(limit);
+impl PathSelector {
+    fn new(limit: Option<usize>) -> Self {
+        match limit {
+            Some(limit) => Self::Limited {
+                limit,
+                smallest: BinaryHeap::new(),
+            },
+            None => Self::Unlimited(Vec::new()),
+        }
     }
 
-    Ok(files)
+    fn push(&mut self, path: PathBuf) {
+        match self {
+            Self::Unlimited(paths) => paths.push(path),
+            Self::Limited { limit, smallest } if smallest.len() < *limit => {
+                smallest.push(path);
+            }
+            Self::Limited { smallest, .. } if smallest.peek().is_some_and(|last| path < *last) => {
+                smallest.pop();
+                smallest.push(path);
+            }
+            Self::Limited { .. } => {}
+        }
+    }
+
+    fn finish(self) -> Vec<PathBuf> {
+        let mut paths = match self {
+            Self::Unlimited(paths) => paths,
+            Self::Limited { smallest, .. } => smallest.into_vec(),
+        };
+        paths.sort();
+        paths
+    }
 }
 
 pub fn license_candidates(files: &[PathBuf]) -> LicenseCandidates {
@@ -336,6 +365,85 @@ mod tests {
     }
 
     // ---- list_files tests ----
+
+    #[test]
+    fn path_selector_membership_is_independent_of_discovery_order() -> Result<()> {
+        let orders = [
+            ["z.rs", "a.rs", "m.rs", "b.rs"],
+            ["b.rs", "m.rs", "a.rs", "z.rs"],
+            ["m.rs", "z.rs", "b.rs", "a.rs"],
+        ];
+        let expected = vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")];
+
+        for order in orders {
+            let mut selected = PathSelector::new(Some(2));
+            for path in order {
+                selected.push(PathBuf::from(path));
+            }
+            anyhow::ensure!(selected.finish() == expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn path_selector_zero_limit_retains_nothing() -> Result<()> {
+        let mut selected = PathSelector::new(Some(0));
+        selected.push(PathBuf::from("a.rs"));
+        anyhow::ensure!(selected.finish().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn path_selector_maximum_limit_does_not_preallocate_the_limit() -> Result<()> {
+        let mut selected = PathSelector::new(Some(usize::MAX));
+        selected.push(PathBuf::from("a.rs"));
+        anyhow::ensure!(selected.finish() == vec![PathBuf::from("a.rs")]);
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_walk_selects_lexicographically_smallest_membership() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        for name in ["z.rs", "a.rs", "m.rs"] {
+            fs::write(dir.path().join(name), "fn value() {}\n")?;
+        }
+
+        let files = list_files(dir.path(), Some(2))?;
+
+        anyhow::ensure!(files == vec![PathBuf::from("a.rs"), PathBuf::from("m.rs")]);
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_walk_applies_ignores_before_deterministic_limit() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        fs::write(dir.path().join(".ignore"), "a.rs\n")?;
+        fs::write(dir.path().join("a.rs"), "fn ignored() {}\n")?;
+        fs::write(dir.path().join("b.rs"), "fn kept() {}\n")?;
+        fs::write(dir.path().join("c.rs"), "fn later() {}\n")?;
+
+        let files = list_files(dir.path(), Some(2))?;
+
+        anyhow::ensure!(
+            files == vec![PathBuf::from(".ignore"), PathBuf::from("b.rs")],
+            "unexpected limited membership: {files:?}"
+        );
+        anyhow::ensure!(!files.iter().any(|path| path == Path::new("a.rs")));
+        Ok(())
+    }
+
+    #[test]
+    fn memfs_uses_same_deterministic_membership_rule() -> Result<()> {
+        let mut fs = MemFs::new();
+        fs.add_file("z.rs", "fn z() {}");
+        fs.add_file("a.rs", "fn a() {}");
+        fs.add_file("m.rs", "fn m() {}");
+
+        let files = list_files_from_memfs(&fs, Path::new("."), Some(2))?;
+
+        anyhow::ensure!(files == vec![PathBuf::from("a.rs"), PathBuf::from("m.rs")]);
+        Ok(())
+    }
 
     #[test]
     fn test_list_files_max_zero_returns_empty() {
