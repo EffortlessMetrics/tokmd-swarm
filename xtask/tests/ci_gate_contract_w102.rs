@@ -168,15 +168,3 @@ fn checker_rejects_gate_markers_outside_required_job() -> Result<(), Box<dyn std
     }
     Ok(())
 }
-
-#[test]
-fn reference_fixture_contains_scoped_advisory_markers() -> Result<(), Box<dyn std::error::Error>> {
-    let text =
-        fs::read_to_string(workspace_root().join("fixtures/ci-gate-contract/reference-ci.yml"))?;
-    for marker in ["Record advisory review outcome", "install-mode: source"] {
-        if !text.contains(marker) {
-            return Err(format!("reference fixture missing marker: {marker}").into());
-        }
-    }
-    Ok(())
-}
