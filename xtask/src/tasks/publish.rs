@@ -3958,13 +3958,14 @@ mod tests {
 
     #[test]
     fn publication_receipt_path_rejects_unignored_worktree_locations() -> Result<()> {
-        let root = Path::new("C:/fixture/repo");
-        validate_publish_receipt_path(Path::new("target/publishing/receipt.json"), root)?;
-        validate_publish_receipt_path(Path::new("C:/outside/receipt.json"), root)?;
-        if validate_publish_receipt_path(Path::new("receipt.json"), root).is_ok()
-            || validate_publish_receipt_path(Path::new("docs/receipt.json"), root).is_ok()
-            || validate_publish_receipt_path(Path::new("C:/fixture/repo/receipt.json"), root)
-                .is_ok()
+        let parent = tempdir()?;
+        let root = parent.path().join("repo");
+        let outside = parent.path().join("outside").join("receipt.json");
+        validate_publish_receipt_path(Path::new("target/publishing/receipt.json"), &root)?;
+        validate_publish_receipt_path(&outside, &root)?;
+        if validate_publish_receipt_path(Path::new("receipt.json"), &root).is_ok()
+            || validate_publish_receipt_path(Path::new("docs/receipt.json"), &root).is_ok()
+            || validate_publish_receipt_path(&root.join("receipt.json"), &root).is_ok()
         {
             bail!("receipt paths inside the worktree must stay under ignored target/");
         }
