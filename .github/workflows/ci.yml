@@ -152,7 +152,9 @@ jobs:
             shift 3
             echo "::group::${label} (bounded 15m)"
             echo "started $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$log"
-            timeout --foreground --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
+            # Do not use --foreground: the timeout wrapper must terminate the
+            # full Cargo process group, including spawned rustc/linker/tests.
+            timeout --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
             status="${PIPESTATUS[0]}"
             echo "$status" > "$marker"
             echo "finished $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=${status}" | tee -a "$log"
