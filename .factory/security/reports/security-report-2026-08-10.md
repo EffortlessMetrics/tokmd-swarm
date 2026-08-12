@@ -49,7 +49,9 @@ shallow-clone behavior that prior weekly scans (`2026-07-20`, `2026-07-27`,
 `2026-08-03`) have already verified in place against the
 `2026-06-29` true-merge baseline. Every security-critical control surface
 that the prior weekly scans verified was re-read in-place this scan and
-**all defenses remain intact with no regressions**:
+**remains present in the inspected tree**. Because the true parent is not
+available in this shallow clone, this report does not prove that `8213155` or
+the weekly window introduced no defense regressions:
 
 - `GIT_REPO_SHAPING_ENV` is still env_removed before every git subprocess in
   `crates/tokmd-git/src/command.rs`, `crates/tokmd-scan/src/walk/git.rs`, and
@@ -348,14 +350,16 @@ The following defenses were re-verified during this scan. All remain intact.
 
 ### Threat Model
 
-- **Status:** Current (verified unchanged since 2026-08-02)
+- **Status:** Stale/pending refresh: OBS-003 records a mixed tag-and-SHA
+  policy, so the workspace-wide SHA-pinning statement is not verified
+  unchanged.
 - **Location:** `.factory/threat-model/threat-model.md`
 - **Last Modified:** 2026-08-02 (8 days ago — well within 90-day window)
 - **Methodology:** STRIDE
 - **Next review:** 2026-11-01 (90-day cadence) or upon architecture change
-- **No regeneration this scan** — within freshness window and the
-  xtask-lane addition introduces no new external surface, subprocess
-  invocation, or trust-boundary shift.
+- **No regeneration this scan** — the file is within its normal freshness
+  window, but OBS-003 requires a threat-model refresh before this report can
+  certify the workspace-wide SHA-pinning statement as current.
 
 ### Scan Metadata
 
