@@ -6,11 +6,11 @@ runtime. `tokmd` has the underlying `analyze`, `context`, `syntax`, and
 into one `sensors/tokmd/` packet from a single command. The root
 `EffortlessMetrics/tokmd` Action exposes that orchestration through
 `mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
-defines the one-command CLI path and the `mode: packet` Action path. The GHCR
-container runtime is implemented for verification-gated tags. `1.14.0` is
-verified; `1.15.0` is staged in the release-prep contract and remains
-pending its exact candidate and anonymous runtime gate. Downstream `ub-review`
-consumption remains planned.
+defines the one-command CLI path and the `mode: packet` Action path. The
+`1.15.0` binary release is published; its GHCR container-runtime support
+remains separate and is not advertised until the verification-gated tag and
+anonymous runtime checks pass. `1.14.0` remains the latest container-runtime
+verified tag. Downstream `ub-review` consumption remains planned.
 
 ## Purpose
 
@@ -255,9 +255,9 @@ supported-tag set before their container runtime is called supported.
 The Action's `runtime: container` path:
 
 - requires a Linux runner with Docker available;
-- accepts only verification-gated tags. The unreleased RC-prep source stages
-  `1.15.0` for candidate verification; it is not a supported tag until
-  that gate passes. Any other tag,
+- accepts only verification-gated tags. `1.15.0` is published, but it is not a
+  supported container tag until its candidate and anonymous runtime gate
+  passes. Any other tag,
   including mutable aliases such as `latest`, `1.14`, and `1`, is a hard error
   pointing at the spec;
 - anonymously pulls `<image>:<normalized-version>` with an isolated docker config
@@ -325,8 +325,9 @@ A packet workflow does not:
    [GitHub Action reference](github-action.md) and the packet job summary)
 6. ~~Harden publication GHCR as a secondary runtime.~~ (done: `runtime:
    container` wired in `action.yml` for verification-gated tags; `1.14.0` is
-   verified and `1.15.0` is staged for stable proof.) Re-verify on each
-   release and extend the supported-tag set only after the gate passes.
+   verified. `1.15.0` is published as a binary release but remains pending
+   its separate container-runtime gate.) Re-verify on each release and extend
+   the supported-tag set only after the gate passes.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
 
 ## Related Docs
