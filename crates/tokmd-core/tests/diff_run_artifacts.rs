@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
 use tempfile::TempDir;
-use tokmd_core::{diff_workflow, lang_workflow};
+use tokmd_core::{diff_workflow, ffi::run_json, lang_workflow};
 use tokmd_settings::{DiffSettings, LangSettings, ScanSettings};
 
 const OLD_CODE: usize = 10;
@@ -215,11 +215,11 @@ fn malformed_sibling_lang_receipt_fails_with_parse_context() -> Result<()> {
 }
 
 #[test]
-fn malformed_json_receipt_candidate_fails_without_scan_fallback() -> Result<()> {
+fn malformed_canonical_lang_receipt_fails_without_scan_fallback() -> Result<()> {
     let root = fixture_runs()?;
-    let malformed = root.path().join("malformed.json");
+    let malformed = root.path().join("lang.json");
     fs::write(&malformed, r#"{"not":"a language receipt"}"#)
-        .context("write malformed receipt candidate")?;
+        .context("write malformed canonical receipt")?;
     let settings = DiffSettings {
         from: malformed.to_string_lossy().into_owned(),
         to: root
@@ -231,25 +231,66 @@ fn malformed_json_receipt_candidate_fails_without_scan_fallback() -> Result<()> 
 
     let error = diff_workflow(&settings)
         .err()
-        .context("malformed JSON receipt candidate fell back to a source scan")?;
+        .context("malformed canonical receipt fell back to a source scan")?;
     let message = format!("{error:#}");
     ensure!(message.contains("Failed to parse language receipt"));
-    ensure!(message.contains("malformed.json"));
+    ensure!(message.contains("lang.json"));
     ensure!(message.contains("missing field"));
     Ok(())
 }
 
 #[test]
-fn non_json_source_file_remains_eligible_for_source_path_handling() -> Result<()> {
+fn generic_json_source_files_remain_eligible_for_source_path_handling() -> Result<()> {
     let root = TempDir::new().context("create fixture root")?;
-    let source = root.path().join("lib.rs");
-    fs::write(&source, "pub fn value() -> usize { 1 }\n").context("write source fixture")?;
+    let old = root.path().join("config-old.json");
+    let new = root.path().join("config-new.json");
+    fs::write(&old, "{\"value\":1}\n").context("write old JSON source fixture")?;
+    fs::write(&new, "{\n  \"value\": 1,\n  \"other\": 2\n}\n")
+        .context("write new JSON source fixture")?;
     let settings = DiffSettings {
-        from: source.to_string_lossy().into_owned(),
-        to: source.to_string_lossy().into_owned(),
+        from: old.to_string_lossy().into_owned(),
+        to: new.to_string_lossy().into_owned(),
     };
 
-    let diff = diff_workflow(&settings).context("diff non-JSON source file")?;
-    ensure!(diff.totals.delta_code == 0);
+    let diff = diff_workflow(&settings).context("diff generic JSON source files")?;
+    let json = diff
+        .diff_rows
+        .iter()
+        .find(|row| row.lang == "JSON")
+        .context("diff produced no JSON row")?;
+    ensure!(json.delta_code != 0);
+    Ok(())
+}
+
+#[test]
+fn ffi_preserves_json_source_compatibility_and_canonical_receipt_errors() -> Result<()> {
+    let root = fixture_runs()?;
+    let generic_json = root.path().join("LANG.JSON");
+    fs::write(&generic_json, "{\n  \"value\": true\n}\n")
+        .context("write generic JSON source fixture")?;
+    let success_args = serde_json::json!({
+        "from": generic_json,
+        "to": generic_json,
+    });
+    let success: serde_json::Value =
+        serde_json::from_str(&run_json("diff", &success_args.to_string()))
+            .context("parse successful FFI envelope")?;
+    ensure!(success["ok"] == true);
+
+    let malformed = root.path().join("lang.json");
+    fs::write(&malformed, r#"{"not":"a language receipt"}"#)
+        .context("write malformed canonical receipt")?;
+    let error_args = serde_json::json!({
+        "from": malformed,
+        "to": root.path().join("run-old/lang.json"),
+    });
+    let error: serde_json::Value = serde_json::from_str(&run_json("diff", &error_args.to_string()))
+        .context("parse failed FFI envelope")?;
+    ensure!(error["ok"] == false);
+    let message = error["error"]["message"]
+        .as_str()
+        .context("FFI error has no message")?;
+    ensure!(message.contains("lang.json"));
+    ensure!(message.contains("missing field"));
     Ok(())
 }
