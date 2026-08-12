@@ -346,7 +346,7 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
-Evidence snapshot: `2026-08-12T09:22:33Z` UTC. Exact heads and the linked PR
+Evidence snapshot: `2026-08-12T10:07:06Z` UTC. Exact heads and the linked PR
 checks are the authoritative proof for each row; refresh this snapshot when a
 listed head or hosted verdict changes.
 
@@ -364,7 +364,7 @@ listed head or hosted verdict changes.
 | [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `00626a648a634eb8f0d7a28631861e4bf5828eb7` | Bounded core-proof diagnostics normalize timeout 137→124 and isolate the Cargo process group; local actionlint/contract checks pass; exact-head hosted required Rust, Droid, Cockpit, ripr, and supporting checks pass; 0 unresolved threads | Linux end-to-end process-group proof unavailable on Windows; external protection still requires stale `Codex Review Gate`, so no merge claim |
 
 The release-preflight implementation in stack-merged feature-branch PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but that commit is not reachable from `main`.
-The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) remains unavailable where its core/provider lanes have no terminal diagnostic proof.
+The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) is at exact head `673bb186363c404803ac2e89ec273fedf674a470`: locale-stable unresolved-HEAD handling and the structural fixture claim boundary are locally proven, all supporting hosted checks pass, and the current Rust/Droid/ripr lanes remain pending. Review threads are resolved; no merge or release claim is made.
 
 Live external protection still reports the required contexts `Tokmd Rust
 Result` and stale `Codex Review Gate`. The in-repo correction is carried by
