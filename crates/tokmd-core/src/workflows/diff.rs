@@ -48,15 +48,23 @@ pub fn diff_workflow(settings: &DiffSettings) -> Result<DiffReceipt> {
     ))
 }
 
-/// Load a language report from a receipt file path or scan a directory.
+/// Load a language report from a receipt file or scan a compatible source path.
 fn load_lang_report(source: &str) -> Result<LangReport> {
     let path = Path::new(source);
 
     if path.exists() && path.is_file() {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
-        if let Ok(receipt) = serde_json::from_str::<LangReceipt>(&content) {
-            return Ok(receipt.report);
+        match serde_json::from_str::<LangReceipt>(&content) {
+            Ok(receipt) => return Ok(receipt.report),
+            Err(error) if is_canonical_lang_receipt(path) => {
+                let context = format!(
+                    "Failed to parse language receipt {}: {error}",
+                    path.display()
+                );
+                return Err(error).context(context);
+            }
+            Err(_) => {}
         }
     }
 
@@ -68,6 +76,10 @@ fn load_lang_report(source: &str) -> Result<LangReport> {
     let lang = LangSettings::default();
     let receipt = lang_workflow(&scan, &lang)?;
     Ok(receipt.report)
+}
+
+fn is_canonical_lang_receipt(path: &Path) -> bool {
+    path.file_name() == Some("lang.json".as_ref())
 }
 
 /// Resolve repo-owned run artifacts without changing the existing ability to
