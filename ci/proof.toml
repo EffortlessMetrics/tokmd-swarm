@@ -1606,6 +1606,26 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "release_preflight"
+kind = "rust"
+paths = [
+  ".github/workflows/release-preflight.yml",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/release_preflight.rs",
+  "xtask/tests/release_preflight_workflow_w105.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask release_preflight --verbose",
+  "cargo xtask proof-policy --check",
+]
+reason = "The exact-source release-preflight workflow and its Rust-owned receipt aggregator form one governed release-proof surface; affected planning must route both files to the same focused proof."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "schema_contracts"
 kind = "rust"
 paths = [

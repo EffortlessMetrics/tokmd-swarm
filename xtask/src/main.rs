@@ -71,6 +71,7 @@ fn main() -> Result<()> {
         Some(cli::Commands::CheckLintPolicy(args)) => tasks::lint_policy::run(args),
         Some(cli::Commands::CoverageReceipt(args)) => tasks::coverage_receipt::run(args),
         Some(cli::Commands::CiActuals(args)) => tasks::ci_actuals::run(args),
+        Some(cli::Commands::ReleasePreflight(args)) => tasks::release_preflight::run(args),
         Some(cli::Commands::MutationScope(args)) => tasks::mutation_scope::run(args),
         Some(cli::Commands::MutationSummary(args)) => tasks::mutation_summary::run(args),
         Some(cli::Commands::CheckFilePolicy(args)) => tasks::file_policy::run(args),

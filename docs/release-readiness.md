@@ -145,6 +145,75 @@ On Windows, prefer repo-native commands such as `cargo fmt-check` over raw
 A local timeout is `not_run`, not `failed` and not `passed`. Obtain a terminal
 hosted or adequately budgeted result before release acceptance.
 
+## Hosted terminal preflight
+
+After release-preparation source is committed, run the hosted preflight against
+immutable commit identities. The workflow definition is dispatched from
+`main`; `source_sha` selects the exact committed tree being proved. In Bash:
+
+```bash
+SOURCE_SHA="$(git rev-parse HEAD^{commit})"
+AFFECTED_BASE_SHA="$(git merge-base origin/main HEAD)"
+EXPECTED_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tokmd") | .version' | head -n 1)"
+RELEASE_KIND=rc
+DISPATCHED_AFTER="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+gh workflow run release-preflight.yml \
+  --repo EffortlessMetrics/tokmd-swarm \
+  --ref main \
+  -f source_sha="$SOURCE_SHA" \
+  -f affected_base_sha="$AFFECTED_BASE_SHA" \
+  -f expected_version="$EXPECTED_VERSION" \
+  -f release_kind="$RELEASE_KIND"
+```
+
+Do not use a moving branch or tag for either SHA. If the preparation branch is
+based on an older `main`, use its actual immutable merge base, not a later
+`origin/main`. For stable, change only `RELEASE_KIND=stable` after selecting
+the exact stable source. PowerShell users should assign the same four values
+with `$env:NAME = ...` and pass `$env:NAME` to `gh`.
+
+The Actions run is attached to the dispatch ref (`main`), not to the source SHA
+input. After dispatch, identify the new run by its exact display title and the
+pre-dispatch timestamp, then verify the downloaded receipt identities:
+
+```bash
+RUN_TITLE="Release preflight $SOURCE_SHA ($RELEASE_KIND)"
+export DISPATCHED_AFTER RUN_TITLE
+RUN_ID=""
+for attempt in {1..12}; do
+  RUN_IDS="$(gh run list --repo EffortlessMetrics/tokmd-swarm --workflow release-preflight.yml --event workflow_dispatch --limit 20 --json databaseId,displayTitle,createdAt --jq '.[] | select(.displayTitle == env.RUN_TITLE and .createdAt >= env.DISPATCHED_AFTER) | .databaseId')"
+  RUN_COUNT="$(printf '%s\n' "$RUN_IDS" | grep -cE '^[0-9]+$' || true)"
+  if test "$RUN_COUNT" -gt 1; then
+    echo "multiple matching preflight runs found; inspect Actions without guessing" >&2
+    exit 1
+  fi
+  if test "$RUN_COUNT" -eq 1; then RUN_ID="$RUN_IDS"; break; fi
+  sleep 5
+done
+if test -z "$RUN_ID"; then
+  echo "no matching preflight run appeared before the polling deadline" >&2
+  exit 1
+fi
+gh run watch "$RUN_ID" --repo EffortlessMetrics/tokmd-swarm --exit-status
+gh run download "$RUN_ID" --repo EffortlessMetrics/tokmd-swarm --name "release-preflight-$SOURCE_SHA" --dir target/release-preflight-download
+```
+
+Read `receipt.json` first, then `identity.txt`, `commands.jsonl`, `affected.json`, and the log
+named by each non-passing observation. Acceptance requires the expected schema,
+all requested/resolved identities and object types to match, `overall=passed`,
+every canonical command exactly once with status, duration, and artifact-relative
+log, zero affected unknown files, and terminal workflow success. A missing
+artifact, receipt, or command—or `failed`, `cancelled`, `unavailable`,
+`not_run`, or timeout—is a stop. Retry with a new dispatch using the same
+immutable inputs; never edit or reinterpret the prior receipt.
+
+A passed preflight proves only the recorded source-side checks. It does not
+publish crates, create or verify a tag or GitHub Release, prove downloadable
+assets or registry visibility, run exact released-artifact consumer smoke, or
+authorize GHCR/Action alias promotion. Continue the publication, candidate,
+release-object, registry, consumer, and alias gates separately.
+
 ## Open first
 
 1. `version-consistency` output.

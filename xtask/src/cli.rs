@@ -77,6 +77,8 @@ pub enum Commands {
     CoverageReceipt(CoverageReceiptArgs),
     /// Emit a durable receipt for CI job actuals
     CiActuals(CiActualsArgs),
+    /// Aggregate terminal release-preflight command results into a decision receipt
+    ReleasePreflight(ReleasePreflightArgs),
     /// Select mutation-test scope from a git diff for workflow consumption
     MutationScope(MutationScopeArgs),
     /// Summarize cargo-mutants outputs for workflow consumption
@@ -375,6 +377,17 @@ impl Default for CiActualsArgs {
             sha: None,
         }
     }
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ReleasePreflightArgs {
+    /// JSON input containing immutable release identity and command results
+    #[arg(long, default_value = "target/release-preflight/input.json")]
+    pub input: std::path::PathBuf,
+
+    /// Output path for the terminal release-preflight decision receipt
+    #[arg(long, default_value = "target/release-preflight/receipt.json")]
+    pub output: std::path::PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
