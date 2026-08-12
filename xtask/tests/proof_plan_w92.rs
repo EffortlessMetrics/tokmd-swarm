@@ -67,10 +67,10 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
             }
             continue;
         }
-        if let Some(item_indent) = step_indent {
-            if indent < item_indent {
-                break;
-            }
+        if let Some(item_indent) = step_indent
+            && indent < item_indent
+        {
+            break;
         }
         if trimmed.starts_with("- ") {
             if let Some(step) = current.take() {
