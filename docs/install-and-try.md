@@ -63,8 +63,8 @@ tokmd cockpit \
 
 Open first:
 
-1. `.tokmd/review/review-map.md`
-2. `.tokmd/review/comment.md`
+1. `.tokmd/review/comment.md`
+2. `.tokmd/review/review-map.md`
 3. `.tokmd/review/evidence.json`
 
 In a tokmd contributor checkout, verify the packet:
@@ -130,8 +130,11 @@ needs to become PR review, handoff, or CI evidence.
 Use the GitHub Action when you want the first CI adoption path:
 
 ```yaml
-- uses: EffortlessMetrics/tokmd@v1
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+- uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
   with:
+    version: '1.15.0'
     paths: .
     artifact: 'true'
     comment: 'false'
