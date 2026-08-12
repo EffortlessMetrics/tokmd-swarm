@@ -213,3 +213,43 @@ fn malformed_sibling_lang_receipt_fails_with_parse_context() -> Result<()> {
     ensure!(message.contains("lang.json"));
     Ok(())
 }
+
+#[test]
+fn malformed_json_receipt_candidate_fails_without_scan_fallback() -> Result<()> {
+    let root = fixture_runs()?;
+    let malformed = root.path().join("malformed.json");
+    fs::write(&malformed, r#"{"not":"a language receipt"}"#)
+        .context("write malformed receipt candidate")?;
+    let settings = DiffSettings {
+        from: malformed.to_string_lossy().into_owned(),
+        to: root
+            .path()
+            .join("run-old/lang.json")
+            .to_string_lossy()
+            .into_owned(),
+    };
+
+    let error = diff_workflow(&settings)
+        .err()
+        .context("malformed JSON receipt candidate fell back to a source scan")?;
+    let message = format!("{error:#}");
+    ensure!(message.contains("Failed to parse language receipt"));
+    ensure!(message.contains("malformed.json"));
+    ensure!(message.contains("missing field"));
+    Ok(())
+}
+
+#[test]
+fn non_json_source_file_remains_eligible_for_source_path_handling() -> Result<()> {
+    let root = TempDir::new().context("create fixture root")?;
+    let source = root.path().join("lib.rs");
+    fs::write(&source, "pub fn value() -> usize { 1 }\n").context("write source fixture")?;
+    let settings = DiffSettings {
+        from: source.to_string_lossy().into_owned(),
+        to: source.to_string_lossy().into_owned(),
+    };
+
+    let diff = diff_workflow(&settings).context("diff non-JSON source file")?;
+    ensure!(diff.totals.delta_code == 0);
+    Ok(())
+}

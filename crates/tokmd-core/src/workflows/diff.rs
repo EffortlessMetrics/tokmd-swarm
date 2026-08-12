@@ -55,8 +55,17 @@ fn load_lang_report(source: &str) -> Result<LangReport> {
     if path.exists() && path.is_file() {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;
-        if let Ok(receipt) = serde_json::from_str::<LangReceipt>(&content) {
-            return Ok(receipt.report);
+        match serde_json::from_str::<LangReceipt>(&content) {
+            Ok(receipt) => return Ok(receipt.report),
+            Err(error)
+                if is_json_receipt_candidate(path)
+                    && path.file_name() != Some("receipt.json".as_ref()) =>
+            {
+                return Err(error).with_context(|| {
+                    format!("Failed to parse language receipt {}", path.display())
+                });
+            }
+            Err(_) => {}
         }
     }
 
@@ -68,6 +77,11 @@ fn load_lang_report(source: &str) -> Result<LangReport> {
     let lang = LangSettings::default();
     let receipt = lang_workflow(&scan, &lang)?;
     Ok(receipt.report)
+}
+
+fn is_json_receipt_candidate(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
 }
 
 /// Resolve repo-owned run artifacts without changing the existing ability to

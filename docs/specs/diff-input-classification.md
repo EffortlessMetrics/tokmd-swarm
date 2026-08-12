@@ -48,6 +48,9 @@ receipt; otherwise an existing manifest resolves to sibling `lang.json`.
 Missing or malformed sibling language receipts fail with artifact-path context
 rather than falling back to scanning JSON artifacts as source. A source
 directory that merely contains a file named `lang.json` remains a source scan.
+Other existing `.json` file inputs are receipt candidates: malformed receipts
+fail with parse context rather than falling back to a source scan. Existing
+non-JSON files remain eligible for source scanning through the shared facade.
 
 A missing input is classified as path-like when any of these are true:
 
