@@ -345,7 +345,21 @@ fn proof_policy_includes_current_product_scopes() {
         .collect::<BTreeSet<_>>();
 
     assert!(release_paths.contains(".github/workflows/release.yml"));
+    for expected in [
+        "xtask/src/tasks/publish.rs",
+        "xtask/src/tasks/publish_surface.rs",
+        "xtask/src/tasks/version_consistency.rs",
+        "xtask/tests/publish_w71.rs",
+    ] {
+        assert!(
+            release_paths.contains(expected),
+            "release_metadata missing release owner path {expected}"
+        );
+    }
+    assert!(release_proof.contains("cargo test -p xtask --test publish_w71 --all-features"));
+    assert!(release_proof.contains("cargo xtask version-consistency"));
     assert!(release_proof.contains("cargo xtask publish-surface --json --verify-publish"));
+    assert!(release_proof.contains("cargo xtask docs --check"));
 }
 
 #[test]
