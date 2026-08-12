@@ -340,6 +340,27 @@ badge, or AST default changes.
 - **Cockpit and handoff are the evidence surfaces**: keep `tokmd cockpit` as the PR-review surface and `tokmd handoff` as the agent work-order surface unless a fresh accepted contract selects something else.
 - **Main must stay boring**: keep CI green, keep route receipts truthful about changed files and skipped-by-policy lanes, and avoid release-only branch noise in the swarm workbench.
 
+## Active convergence queue (2026-08-12)
+
+The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
+The following PRs are the active, review-forward queue; their status is kept
+separate from merge and release authority:
+
+| PR | Exact head | Current evidence | Boundary |
+| --- | --- | --- | --- |
+| [#545](https://github.com/EffortlessMetrics/tokmd-swarm/pull/545) | `73f1602aef5df5f8fd310fec02139aec0d044037` | First-hour inspect → review → evidence → handoff UX; hosted Rust, agent review, cockpit, docs, affected proof, and ripr pass; 0 unresolved threads | Merge-ready by source and proof; not merge-complete |
+| [#551](https://github.com/EffortlessMetrics/tokmd-swarm/pull/551) | `ede7fe081b67499e0dac6f398b8b589247c07b92` | Resumable publication receipts; hosted Rust and release proof pass; local consumer smoke 8/8; 0 unresolved threads | Opt-in release tooling; no publication performed |
+| [#552](https://github.com/EffortlessMetrics/tokmd-swarm/pull/552) | `618bd63bf9e9e5161b51a4a950bea47837a07399` | In-repo single-maintainer review policy, conversation resolution, and one required status context | Does not mutate external GitHub protection |
+| [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `e21db4d06abcd61b183b688c5a02a75346ce95ec` | 1.15.0 packet/container narrative reconciled to the release ledger; 0 unresolved threads | Documentation only; full release readiness is not claimed |
+
+The release-preflight implementation in merged stacked PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but is not in `main`.
+The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) remains unavailable where its core/provider lanes have no terminal diagnostic proof.
+
+Live external protection still reports the required contexts `Tokmd Rust
+Result` and stale `Codex Review Gate`. The in-repo correction is carried by
+[#552](https://github.com/EffortlessMetrics/tokmd-swarm/pull/552); no external
+protection mutation, reviewer-account gate, or release claim is implied here.
+
 ## NEXT (short horizon)
 
 - **1.15.1 release-control repair**: move stable GitHub latest/release state
