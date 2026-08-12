@@ -45,6 +45,28 @@ explicit merge-commit PRs in `tokmd`, followed by fast-forwarding
 See `docs/ci/swarm-routing.md` for the shared-history topology and routing
 rules.
 
+## Review and Conversation Resolution
+
+Conversation resolution is part of the merge process. Every actionable inline
+comment from a bot or agent reviewer must be addressed, independently checked,
+and its review thread resolved before merge. Resolution is necessary process
+evidence, not proof by itself that the finding was fixed. A general bot summary
+comment with no review thread is not an unresolved conversation. The
+independent check is a workflow record made in the review reply, PR discussion,
+or handoff; GitHub's conversation setting only enforces the final resolved state
+and does not prove that the finding was fixed or that a separate identity
+performed the check.
+
+This is a single-maintainer repository: a separate human reviewer account,
+native approval, and CODEOWNERS approval are intentionally not merge
+requirements. Substantive PRs should receive independent agentic review passes
+as part of the normal review process. Use separate agent lanes for those passes;
+they may leave inline findings, and the resulting conversations must be
+independently checked and resolved. This is an agent workflow requirement, not
+a native approval or required-review status gate. Do not manufacture a second
+GitHub reviewer account, approval identity, or status check merely to satisfy
+one.
+
 ## Codex Commit / Push Policy
 
 For PR-bound work, Codex may create scoped branches, commit scoped changes, push
@@ -67,23 +89,6 @@ Ask before committing, pushing, or merging only when:
   ownership;
 - the diff is broad or ambiguous relative to the requested lane;
 - the worktree contains unrelated user changes that cannot be isolated safely.
-
-## Review and merge policy
-
-This is a single-maintainer repository. Merge does not require a separate
-reviewer account, a native GitHub approval, or CODEOWNERS approval. Those are
-not substitutes for engineering review and must not be invented as additional
-merge gates.
-
-Independent agentic review passes are part of the normal workflow. Use
-separate review lenses or agent lanes when useful, and preserve their
-actionable findings as inline comments or other repo-visible review evidence.
-The identity of the reviewing agent is not itself a requirement.
-
-Conversation resolution is a merge requirement. Address actionable inline
-comments, reply with the evidence or change, and resolve the conversation when
-the finding is handled. Do not leave actionable bot or agent review threads
-unresolved merely because no separate reviewer approval is required.
 
 ## Release-Prep PR Lifecycle
 
