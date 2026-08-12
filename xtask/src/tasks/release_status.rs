@@ -13,6 +13,7 @@ use crate::cli::ReleaseStatusArgs;
 
 const SCHEMA: &str = "tokmd.release_status.v1";
 const SCHEMA_VERSION: u32 = 1;
+const MAX_FIXTURE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -181,6 +182,17 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
 }
 
 fn load_fixture(path: &Path, expected_tag: &str) -> Result<ReleaseStatusReceipt> {
+    let size = fs::metadata(path)
+        .with_context(|| format!("inspect release status fixture {}", path.display()))?
+        .len();
+    if size > MAX_FIXTURE_BYTES {
+        bail!(
+            "release status fixture {} is {} bytes; maximum supported size is {} bytes",
+            path.display(),
+            size,
+            MAX_FIXTURE_BYTES
+        );
+    }
     let content = fs::read_to_string(path)
         .with_context(|| format!("read release status fixture {}", path.display()))?;
     let receipt: ReleaseStatusReceipt = serde_json::from_str(&content)
@@ -596,6 +608,31 @@ mod tests {
         let path = Path::new("fixture.json");
         if validate_fixture(&fixture, "v1.15.1", path).is_ok() {
             bail!("stale complete claim should be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_reads_and_validates_an_on_disk_receipt() -> Result<()> {
+        let fixture = complete_fixture();
+        let temp = tempfile::NamedTempFile::new()?;
+        fs::write(temp.path(), serde_json::to_vec_pretty(&fixture)?)?;
+
+        let loaded = load_fixture(temp.path(), "v1.15.1")?;
+        if loaded != fixture {
+            bail!("on-disk fixture should round-trip through load_fixture");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn load_fixture_rejects_oversized_input_before_reading() -> Result<()> {
+        let temp = tempfile::NamedTempFile::new()?;
+        let oversized = vec![b' '; (MAX_FIXTURE_BYTES + 1) as usize];
+        fs::write(temp.path(), oversized)?;
+
+        if load_fixture(temp.path(), "v1.15.1").is_ok() {
+            bail!("oversized fixture should be rejected before parsing");
         }
         Ok(())
     }
