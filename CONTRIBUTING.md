@@ -165,7 +165,7 @@ Our receipts include byte counts which are sensitive to line endings. To ensure 
 *   If you see byte count diffs (e.g., `183` vs `172`), check your line endings.
 
 **If you change output logic (e.g., new fields, different formatting):**
-1.  Run tests: `cargo test` (they will fail with a diff).
+1.  Run default-member tests: `cargo test --all-features` (they will fail with a diff).
 2.  Review changes: `cargo insta review` (requires `cargo-insta` installed).
 3.  Accept changes if they are intentional.
 
