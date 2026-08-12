@@ -370,8 +370,11 @@ fn proof_policy_includes_current_product_scopes() {
     let agent_guidance = scopes.iter().find(|scope| {
         scope.get("name").and_then(toml::Value::as_str) == Some("agent_guidance_docs")
     });
+    assert!(
+        agent_guidance.is_some(),
+        "agent_guidance_docs scope should exist"
+    );
     let Some(agent_guidance) = agent_guidance else {
-        assert!(false, "agent_guidance_docs scope should exist");
         return;
     };
     let agent_guidance_paths = agent_guidance
