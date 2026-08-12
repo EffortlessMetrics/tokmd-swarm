@@ -7,7 +7,7 @@ into one `sensors/tokmd/` packet from a single command. The root
 `EffortlessMetrics/tokmd` Action exposes that orchestration through
 `mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
 defines the one-command CLI path and the `mode: packet` Action path. The
-The `1.15.0` binary release is published and its GHCR container runtime is
+`1.15.0` binary release is published and its GHCR container runtime is
 verified: the [release ledger](releases/1.15-ledger.md) records the exact image
 digest, and stable release/consumer run `30965258655` passes the mounted-packet
 checks. Downstream `ub-review` consumption remains planned.
