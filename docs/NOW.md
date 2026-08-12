@@ -346,7 +346,7 @@ The current swarm main is `821315597954e4a88d11b99bd1d741533d6cd551`.
 The following PRs are the active, review-forward queue; their status is kept
 separate from merge and release authority:
 
-Evidence snapshot: `2026-08-12T05:46:38Z` UTC. Exact heads and the linked PR
+Evidence snapshot: `2026-08-12T05:52:33Z` UTC. Exact heads and the linked PR
 checks are the authoritative proof for each row; refresh this snapshot when a
 listed head or hosted verdict changes.
 
@@ -359,7 +359,7 @@ listed head or hosted verdict changes.
 | [#546](https://github.com/EffortlessMetrics/tokmd-swarm/pull/546) | `6f7f93207ed161e61245272d51fc6846d954dcb6` | Changelog contributor workflow aligned with the repository-canonical `cargo change` shortcut; 0 unresolved threads | Documentation/tooling guidance only; no release mutation |
 | [#562](https://github.com/EffortlessMetrics/tokmd-swarm/pull/562) | `a25901663b146b90cbe84ebe11b3fd88868e8fa5` | Advisory agentic UB review decoupled from the deterministic required gate; Rust, contract, and UB advisory checks pass; bounded Droid retry ended unavailable with no diagnostic | Provider review is unavailable, not source-red; no merge claim |
 | [#571](https://github.com/EffortlessMetrics/tokmd-swarm/pull/571) | `3015104e28a8653bf26ad5b6e4c06e92305fa9cc` | 1.15.0 packet/container narrative anchored to the release ledger, exact digest, and consumer run `30965258655`; 0 unresolved threads | Documentation only; full release readiness is not claimed |
-| [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `38135b508923bfd117c9631d12f1de5eaf392448` | Bounded core-proof diagnostics promoted onto the main base; required Rust, Droid, CI Actuals, and supporting checks pass | Exact-head hosted-green; external stale `Codex Review Gate` still blocks merge |
+| [#573](https://github.com/EffortlessMetrics/tokmd-swarm/pull/573) | `00626a648a634eb8f0d7a28631861e4bf5828eb7` | Bounded core-proof diagnostics now normalize timeout 137→124 and isolate the Cargo process group; local actionlint/contract checks pass; fresh hosted Rust/Cockpit/ripr/Droid checks pending; 0 unresolved threads | Linux end-to-end process-group proof unavailable on Windows; no merge claim |
 
 The release-preflight implementation in stack-merged feature-branch PRs [#565](https://github.com/EffortlessMetrics/tokmd-swarm/pull/565) and [#566](https://github.com/EffortlessMetrics/tokmd-swarm/pull/566) ends at `0e85984155f737ef7b28af8103f5520250c3a36d`, but that commit is not reachable from `main`.
 The release-status slice [#550](https://github.com/EffortlessMetrics/tokmd-swarm/pull/550) remains unavailable where its core/provider lanes have no terminal diagnostic proof.
