@@ -96,9 +96,11 @@ the weekly window introduced no defense regressions:
   requires a verification-gated tag from an explicit allowlist
   (`1.14.0 1.15.0`) using an isolated, anonymous `docker --config` dir
   (defense D-19).
-- `.github/settings.yml` still requires the `Tokmd Rust Result` and
-  `Codex Review Gate` status checks, with `allow_force_pushes: false` and
-  `allow_deletions: false` on `main` (defense D-10).
+- At the checked-out commit `8213155`, `.github/settings.yml` required the
+  `Tokmd Rust Result` and `Codex Review Gate` status checks, with
+  `allow_force_pushes: false` and `allow_deletions: false` on `main`
+  (defense D-10). This is historical scan evidence, not a claim about the
+  repository's current settings.
 - `deny.toml` still ignores only the documented transitive
   `RUSTSEC-2020-0163` (`term_size` via `tokei`) — no new advisories
   introduced (defense D-11).
@@ -300,23 +302,24 @@ and reject anything else before constructing the URL.
 | **File** | `.github/settings.yml` |
 | **Status** | Not patched — intentional single-maintainer policy |
 
-**Description:** `.github/settings.yml` configures
+**Description:** At the checked-out commit `8213155`, `.github/settings.yml`
+configures
 `required_approving_review_count: 0` and `require_code_owner_reviews: false`
 on `main`. Native human approval and CODEOWNERS review are intentionally
 absent because the single-maintainer workflow uses the `Tokmd Rust Result`
 + `Codex Review Gate` status checks as the effective gate (per the in-line
 comment: "Codex is the exact-head reviewer for this single-maintainer
 workflow; native human approval and CODEOWNERS review are intentionally
-absent.").
+absent." in `8213155:.github/settings.yml`).
 
 **Why not a finding:**
 - `enforce_admins: false` and `allow_force_pushes: false` keep the
   effective gate narrow but explicit.
 - The two required status checks are deterministic and run on every PR.
 - `allow_deletions: false` prevents destructive reflog manipulation.
-- The checked-in `.github/settings.yml` comment records this as a deliberate
-  operational choice ("Codex is the exact-head reviewer for this single-
-  maintainer workflow"); the threat model is stale on this point and its
+- The checked-out tree's `8213155:.github/settings.yml` comment records this as
+  a deliberate operational choice ("Codex is the exact-head reviewer for this
+  single-maintainer workflow"); the threat model is stale on this point and its
   contradictory approval text is explicitly pending refresh.
 - Below the `medium` severity threshold; informational only.
 
@@ -478,8 +481,10 @@ Subject: ci: run xtask tests in the required gate (#543)
     lanes (exit-code capture, `--- serial retry ---` marker, assertion
     before job exit). No new `secrets.*` access, network egress, or
     trust-boundary change.
-  - `.github/settings.yml` — `Tokmd Rust Result` and `Codex Review Gate`
-    required on `main`; `allow_force_pushes: false`; `allow_deletions: false`.
+  - At `8213155`, `.github/settings.yml` — `Tokmd Rust Result` and
+    `Codex Review Gate` required on `main`; `allow_force_pushes: false`;
+    `allow_deletions: false`. This records the inspected historical tree, not
+    current branch-protection state.
   - `deny.toml` — `RUSTSEC-2020-0163` ignore for transitive `term_size`
     unchanged; license allowlist unchanged.
 
