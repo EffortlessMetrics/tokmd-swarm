@@ -191,7 +191,7 @@ timeout = 10000
 ```bash
 cargo test -p tokmd-scan --test properties
 PROPTEST_CASES=1024 cargo test -p tokmd-scan --test properties
-cargo test properties    # All property tests
+cargo test properties    # Default-member property tests
 ```
 
 ### Regression Seeds
