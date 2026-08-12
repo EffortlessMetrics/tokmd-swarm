@@ -29,10 +29,11 @@ jobs:
   tokmd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: EffortlessMetrics/tokmd@v1
+      - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
         with:
+          version: '1.15.0'
           paths: .
           artifact: 'true'
           comment: 'false'
@@ -62,12 +63,13 @@ jobs:
   tokmd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: EffortlessMetrics/tokmd@v1
+      - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
         with:
+          version: '1.15.0'
           mode: cockpit
           head: HEAD
           review-packet: 'true'
@@ -78,8 +80,8 @@ jobs:
 Open first:
 
 1. the `tokmd-receipts` artifact;
-2. `.tokmd/review/review-map.md`;
-3. `.tokmd/review/comment.md`;
+2. `.tokmd/review/comment.md`;
+3. `.tokmd/review/review-map.md`;
 4. `.tokmd/review/evidence.json`;
 5. `target/tokmd/review-packet-check.json`.
 
@@ -110,12 +112,13 @@ jobs:
   tokmd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: EffortlessMetrics/tokmd@v1
+      - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
         with:
+          version: '1.15.0'
           mode: packet
           preset: bun-ub
           base: origin/main
@@ -145,8 +148,9 @@ and head commits are available.
 Set `base` only when you need an explicit compare ref:
 
 ```yaml
-      - uses: EffortlessMetrics/tokmd@v1
+      - uses: EffortlessMetrics/tokmd@70113a874583b36f6aedabbf9f70b62435314326 # v1
         with:
+          version: '1.15.0'
           mode: cockpit
           base: origin/main
           head: HEAD
