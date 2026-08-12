@@ -156,7 +156,7 @@ fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
                 missing.join(" and ")
             ));
         }
-        command.log = command.log.map(|path| path.replace('\\', "/"));
+        command.log = command.log.map(|path| normalize_path(&path));
         by_id.insert(command.id.clone(), command);
     }
     empty_ids.sort();
@@ -264,6 +264,33 @@ fn aggregate_status(commands: &[CommandResult]) -> CommandStatus {
     CommandStatus::NotRun
 }
 
+fn normalize_path(path: &str) -> String {
+    let path = path.replace('\\', "/");
+    let absolute = path.starts_with('/');
+    let mut components = Vec::new();
+
+    for component in path.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if components.last().is_some_and(|part| *part != "..") {
+                    components.pop();
+                } else if !absolute {
+                    components.push("..");
+                }
+            }
+            component => components.push(component),
+        }
+    }
+
+    let normalized = components.join("/");
+    if absolute {
+        format!("/{normalized}")
+    } else {
+        normalized
+    }
+}
+
 fn status_name(status: &CommandStatus) -> &'static str {
     match status {
         CommandStatus::Passed => "passed",
@@ -366,6 +393,32 @@ mod tests {
         ensure!(error.to_string().contains("duration_ms"));
 
         let receipt = aggregate(input(passed_commands())?)?;
+        let first = receipt
+            .required_commands
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("receipt is empty"))?;
+        ensure!(first.log.as_deref() == Some("logs/affected_plan.log"));
+        Ok(())
+    }
+
+    #[test]
+    fn command_log_paths_canonicalize_dot_segments() -> Result<()> {
+        let mut commands = passed_commands()
+            .as_array()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("passed fixture must be an array"))?;
+        let first = commands
+            .get_mut(0)
+            .ok_or_else(|| anyhow::anyhow!("passed fixture is empty"))?;
+        first
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("command fixture must be an object"))?
+            .insert(
+                "log".to_owned(),
+                json!(r"logs\nested\.\..\affected_plan.log"),
+            );
+
+        let receipt = aggregate(input(serde_json::Value::Array(commands))?)?;
         let first = receipt
             .required_commands
             .first()
