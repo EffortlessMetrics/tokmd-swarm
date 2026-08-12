@@ -75,13 +75,14 @@ fn load_lang_report(source: &str) -> Result<LangReport> {
 fn run_artifact_lang_path(path: &Path) -> Option<PathBuf> {
     if path.is_dir() {
         let lang_path = path.join("lang.json");
-        if lang_path.exists() || path.join("receipt.json").exists() {
+        if path.join("receipt.json").is_file() {
             return Some(lang_path);
         }
         return None;
     }
 
-    (path.file_name()? == "receipt.json").then(|| path.parent().unwrap_or(path).join("lang.json"))
+    (path.is_file() && path.file_name()? == "receipt.json")
+        .then(|| path.parent().unwrap_or(path).join("lang.json"))
 }
 
 fn load_lang_receipt(path: &Path) -> Result<LangReport> {
