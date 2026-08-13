@@ -2,8 +2,8 @@
 
 //! Integration tests for the `tokmd gate` command.
 
-use assert_cmd::Command;
 use assert_cmd::cargo::cargo_bin_cmd;
+use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
@@ -482,6 +482,43 @@ fn test_gate_ratchet_passing() {
         .success()
         .stdout(predicate::str::contains("PASSED"))
         .stdout(predicate::str::contains("Ratchet Rules"));
+}
+
+#[test]
+fn test_gate_ratchet_only_passes_without_policy() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let baseline = create_test_baseline(&dir);
+    let current = create_current_receipt_slight_increase(&dir);
+    let ratchet = create_ratchet_config(&dir);
+
+    let output = tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--baseline",
+            baseline.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+            "--format",
+            "json",
+        ])
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "passing ratchet-only gate failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(result["passed"], true);
+    assert_eq!(result["total_errors"], 0);
+    assert!(result["policy"].is_null());
+    assert!(result["ratchet"].is_object());
+    assert_eq!(result["ratchet"]["passed"], true);
+    assert_eq!(result["ratchet"]["errors"], 0);
+
+    Ok(())
 }
 
 #[test]
