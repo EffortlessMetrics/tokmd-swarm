@@ -43,6 +43,7 @@ struct WorkflowStep {
     with: BTreeMap<String, String>,
     has_env: bool,
     has_permissions: bool,
+    has_execution_control: bool,
 }
 
 struct TyposJob {
@@ -50,6 +51,7 @@ struct TyposJob {
     steps: Vec<WorkflowStep>,
     has_env: bool,
     has_permissions: bool,
+    has_execution_control: bool,
 }
 
 fn workflow_permissions_are_read_only(workflow: &str) -> bool {
@@ -57,22 +59,34 @@ fn workflow_permissions_are_read_only(workflow: &str) -> bool {
         return false;
     };
     let mut in_permissions = false;
+    let mut in_env = false;
     let mut permissions = BTreeMap::new();
+    let mut env = BTreeMap::new();
     for line in header.lines() {
         let trimmed = line.trim();
         let indent = line.len() - line.trim_start().len();
         if indent == 0 {
             in_permissions = trimmed == "permissions:";
+            in_env = trimmed == "env:";
             continue;
         }
-        if in_permissions
-            && indent == 2
+        if indent == 2
             && let Some((key, value)) = trimmed.split_once(':')
         {
-            permissions.insert(key.trim(), value.trim());
+            if in_permissions {
+                permissions.insert(key.trim(), value.trim());
+            } else if in_env {
+                env.insert(key.trim(), value.trim());
+            }
         }
     }
     permissions == BTreeMap::from([("contents", "read")])
+        && env
+            == BTreeMap::from([
+                ("CARGO_INCREMENTAL", "0"),
+                ("CARGO_TERM_COLOR", "always"),
+                ("RUSTFLAGS", "-C debuginfo=0"),
+            ])
 }
 
 fn typos_job(workflow: &str) -> Result<TyposJob> {
@@ -89,6 +103,7 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
     let mut runs_on = None;
     let mut has_env = false;
     let mut has_permissions = false;
+    let mut has_execution_control = false;
 
     for line in section.lines() {
         let trimmed = line.trim();
@@ -106,6 +121,8 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
                     has_env = true;
                 } else if trimmed == "permissions:" || trimmed.starts_with("permissions:") {
                     has_permissions = true;
+                } else if trimmed.starts_with("if:") || trimmed.starts_with("continue-on-error:") {
+                    has_execution_control = true;
                 }
             }
             continue;
@@ -164,6 +181,10 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
             && (trimmed == "permissions:" || trimmed.starts_with("permissions:"))
         {
             step.has_permissions = true;
+        } else if is_step_property
+            && (trimmed.starts_with("if:") || trimmed.starts_with("continue-on-error:"))
+        {
+            step.has_execution_control = true;
         } else if is_step_property && let Some(value) = trimmed.strip_prefix("uses:") {
             step.uses = Some(
                 value
@@ -185,6 +206,7 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
         steps,
         has_env,
         has_permissions,
+        has_execution_control,
     })
 }
 
@@ -220,11 +242,11 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
     ensure!(workflow_permissions_are_read_only(workflow));
     let job = typos_job(workflow)?;
     ensure!(job.runs_on.as_deref() == Some("ubuntu-latest"));
-    ensure!(!job.has_env && !job.has_permissions);
+    ensure!(!job.has_env && !job.has_permissions && !job.has_execution_control);
     ensure!(
         !job.steps
             .iter()
-            .any(|step| step.has_env || step.has_permissions)
+            .any(|step| { step.has_env || step.has_permissions || step.has_execution_control })
     );
     let steps = job.steps;
     let installer_ref = "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c";
@@ -360,6 +382,36 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         )
     })?;
     ensure!(typos_job_contract(&step_env).is_err());
+
+    let root_env = workflow.replacen(
+        "  RUSTFLAGS: -C debuginfo=0\n",
+        "  RUSTFLAGS: -C debuginfo=0\n  TOKEN: ${{ secrets.TOKEN }}\n",
+        1,
+    );
+    ensure!(typos_job_contract(&root_env).is_err());
+
+    for control in ["    if: false\n", "    continue-on-error: true\n"] {
+        let job_control = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "    runs-on: ubuntu-latest\n",
+                &format!("    runs-on: ubuntu-latest\n{control}"),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&job_control).is_err());
+
+        let step_control = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n",
+                &format!(
+                    "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        {}",
+                    control.trim_start()
+                ),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&step_control).is_err());
+    }
     Ok(())
 }
 
