@@ -1033,7 +1033,7 @@ fn reconcile_inventory(
         match lookup.state {
             "present" => {
                 if entry.state != PublishReceiptState::Published {
-                    entry.state = PublishReceiptState::AlreadyPresent;
+                    transition_publish_receipt_entry(entry, PublishReceiptState::AlreadyPresent)?;
                 }
                 entry.registry_visible = Some(true);
                 entry.reason = None;
@@ -1054,13 +1054,13 @@ fn reconcile_inventory(
                         entry.name, entry.state
                     ));
                 } else {
-                    entry.state = PublishReceiptState::Planned;
+                    transition_publish_receipt_entry(entry, PublishReceiptState::Planned)?;
                     entry.reason = None;
                 }
                 entry.updated_at = now.clone();
             }
             "yanked" => {
-                entry.state = PublishReceiptState::Yanked;
+                transition_publish_receipt_entry(entry, PublishReceiptState::Yanked)?;
                 entry.registry_visible = Some(false);
                 entry.reason = Some("exact registry version is yanked".to_string());
                 entry.updated_at = now.clone();
@@ -1177,20 +1177,29 @@ fn update_publish_receipt_entry(
         .iter_mut()
         .find(|entry| entry.name == crate_name)
         .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
+    transition_publish_receipt_entry(entry, state)?;
+    if increment_attempt {
+        entry.attempts = entry.attempts.saturating_add(1);
+    }
+    entry.reason = reason;
+    entry.updated_at = Utc::now().to_rfc3339();
+    receipt.state = PublishRunState::InProgress;
+    Ok(())
+}
+
+fn transition_publish_receipt_entry(
+    entry: &mut PublishCrateReceipt,
+    state: PublishReceiptState,
+) -> Result<()> {
     if !valid_publish_receipt_transition(&entry.state, &state) {
         bail!(
-            "publication receipt entry `{crate_name}` cannot transition from {:?} to {:?}",
+            "publication receipt entry `{}` cannot transition from {:?} to {:?}",
+            entry.name,
             entry.state,
             state
         );
     }
-    if increment_attempt {
-        entry.attempts = entry.attempts.saturating_add(1);
-    }
     entry.state = state;
-    entry.reason = reason;
-    entry.updated_at = Utc::now().to_rfc3339();
-    receipt.state = PublishRunState::InProgress;
     Ok(())
 }
 
@@ -1219,7 +1228,13 @@ fn valid_publish_receipt_transition(
                 PublishReceiptState::Yanked
             ) | (
                 PublishReceiptState::Failed | PublishReceiptState::Blocked,
-                PublishReceiptState::InProgress
+                PublishReceiptState::Planned
+                    | PublishReceiptState::InProgress
+                    | PublishReceiptState::AlreadyPresent
+                    | PublishReceiptState::Yanked
+            ) | (
+                PublishReceiptState::Yanked,
+                PublishReceiptState::AlreadyPresent
             )
         )
 }
@@ -1257,18 +1272,34 @@ fn update_publish_receipt_with_visibility(
     write_publish_receipt(path, receipt)
 }
 
-fn mark_publish_receipt_bootstrap(
-    receipt: &mut PublishReceipt,
+fn publish_bootstrap_decision(
+    receipt: Option<&mut PublishReceipt>,
     crate_name: &str,
-    bootstrap: bool,
-) -> Result<()> {
+    selected: bool,
+    dry_run: bool,
+) -> Result<bool> {
+    let Some(receipt) = receipt else {
+        return Ok(selected);
+    };
     let entry = receipt
         .crates
         .iter_mut()
         .find(|entry| entry.name == crate_name)
         .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
-    entry.bootstrap = bootstrap;
-    Ok(())
+    if dry_run {
+        return Ok(selected);
+    }
+    if entry.attempts == 0 && entry.state == PublishReceiptState::Planned {
+        entry.bootstrap = selected;
+        return Ok(selected);
+    }
+    if entry.bootstrap != selected {
+        bail!(
+            "publication receipt bootstrap decision for `{crate_name}` is {}; current selection is {selected}",
+            entry.bootstrap
+        );
+    }
+    Ok(entry.bootstrap)
 }
 #[derive(Debug, Serialize)]
 struct RegistryInventoryReceipt {
@@ -2158,16 +2189,14 @@ fn execute_publish_with_backend<B: PublishBackend>(
             continue;
         }
 
+        let selected_bootstrap = bootstrap.contains(crate_name);
+        let effective_bootstrap = publish_bootstrap_decision(
+            receipt.as_deref_mut(),
+            crate_name,
+            selected_bootstrap,
+            args.dry_run,
+        )?;
         if let (Some(path), Some(receipt)) = (receipt_path, receipt.as_deref_mut()) {
-            // Record the invocation decision before the single durable state
-            // write; this avoids a second receipt installation per crate.
-            if !args.dry_run {
-                mark_publish_receipt_bootstrap(
-                    receipt,
-                    crate_name,
-                    bootstrap.contains(crate_name),
-                )?;
-            }
             update_publish_receipt(
                 path,
                 receipt,
@@ -2178,7 +2207,7 @@ fn execute_publish_with_backend<B: PublishBackend>(
             )?;
         }
 
-        let result = backend.publish(crate_name, args, bootstrap.contains(crate_name))?;
+        let result = backend.publish(crate_name, args, effective_bootstrap)?;
 
         match result {
             PublishResult::Success => {
@@ -3684,6 +3713,56 @@ mod tests {
     }
 
     #[test]
+    fn inventory_reconciliation_uses_explicit_authoritative_transitions() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let first = receipt
+            .crates
+            .first_mut()
+            .ok_or_else(|| anyhow!("receipt test plan should contain a crate"))?;
+        first.state = PublishReceiptState::Failed;
+        first.attempts = 1;
+        first.reason = Some("upload result was uncertain".to_string());
+        let inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("present")))
+            .collect();
+        reconcile_inventory(&path, &mut receipt, &inventory)?;
+        if receipt.crates.first().is_none_or(|entry| {
+            entry.state != PublishReceiptState::AlreadyPresent
+                || entry.registry_visible != Some(true)
+        }) {
+            bail!("authoritative live inventory must reconcile an uncertain upload");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn resume_rejects_bootstrap_decision_drift() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let entry = receipt
+            .crates
+            .first_mut()
+            .ok_or_else(|| anyhow!("receipt test plan should contain a crate"))?;
+        entry.state = PublishReceiptState::Failed;
+        entry.attempts = 1;
+        entry.bootstrap = true;
+        entry.reason = Some("retryable".to_string());
+        let name = entry.name.clone();
+        if publish_bootstrap_decision(Some(&mut receipt), &name, false, false).is_ok() {
+            bail!("resume must not overwrite a persisted bootstrap decision");
+        }
+        if !publish_bootstrap_decision(Some(&mut receipt), &name, true, false)? {
+            bail!("resume must preserve the matching persisted bootstrap decision");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn cargo_publish_is_bound_to_crates_io_registry() -> Result<()> {
         let args = cargo_publish_args("tokmd", true);
         if !args
@@ -3967,8 +4046,8 @@ mod tests {
     fn bootstrap_receipt_audit_records_true_and_false_decisions() -> Result<()> {
         let plan = receipt_test_plan();
         let mut receipt = new_publish_receipt(&plan);
-        mark_publish_receipt_bootstrap(&mut receipt, "tokmd-core", true)?;
-        mark_publish_receipt_bootstrap(&mut receipt, "tokmd", false)?;
+        publish_bootstrap_decision(Some(&mut receipt), "tokmd-core", true, false)?;
+        publish_bootstrap_decision(Some(&mut receipt), "tokmd", false, false)?;
         let core = receipt
             .crates
             .iter()
