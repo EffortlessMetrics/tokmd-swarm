@@ -41,9 +41,41 @@ struct WorkflowStep {
     uses: Option<String>,
     run: Option<String>,
     with: BTreeMap<String, String>,
+    has_env: bool,
+    has_permissions: bool,
 }
 
-fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
+struct TyposJob {
+    runs_on: Option<String>,
+    steps: Vec<WorkflowStep>,
+    has_env: bool,
+    has_permissions: bool,
+}
+
+fn workflow_permissions_are_read_only(workflow: &str) -> bool {
+    let Some(header) = workflow.split("jobs:").next() else {
+        return false;
+    };
+    let mut in_permissions = false;
+    let mut permissions = BTreeMap::new();
+    for line in header.lines() {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if indent == 0 {
+            in_permissions = trimmed == "permissions:";
+            continue;
+        }
+        if in_permissions
+            && indent == 2
+            && let Some((key, value)) = trimmed.split_once(':')
+        {
+            permissions.insert(key.trim(), value.trim());
+        }
+    }
+    permissions == BTreeMap::from([("contents", "read")])
+}
+
+fn typos_job(workflow: &str) -> Result<TyposJob> {
     let section = workflow
         .split("  typos:")
         .nth(1)
@@ -54,6 +86,9 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
     let mut step_indent = None;
     let mut with_indent = None;
     let mut in_steps = false;
+    let mut runs_on = None;
+    let mut has_env = false;
+    let mut has_permissions = false;
 
     for line in section.lines() {
         let trimmed = line.trim();
@@ -62,8 +97,16 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
         }
         let indent = line.len() - line.trim_start().len();
         if !in_steps {
-            if trimmed == "steps:" {
+            if indent == 4 && trimmed == "steps:" {
                 in_steps = true;
+            } else if indent == 4 {
+                if let Some(value) = trimmed.strip_prefix("runs-on:") {
+                    runs_on = Some(value.trim().to_owned());
+                } else if trimmed == "env:" || trimmed.starts_with("env:") {
+                    has_env = true;
+                } else if trimmed == "permissions:" || trimmed.starts_with("permissions:") {
+                    has_permissions = true;
+                }
             }
             continue;
         }
@@ -72,7 +115,10 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
         {
             break;
         }
-        if trimmed.starts_with("- ") {
+        if step_indent.is_none() && trimmed.starts_with("- ") {
+            step_indent = Some(indent);
+        }
+        if step_indent == Some(indent) && trimmed.starts_with("- ") {
             if let Some(step) = current.take() {
                 steps.push(step);
             }
@@ -96,18 +142,29 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
             continue;
         };
         if let Some(parent_indent) = with_indent {
-            if indent > parent_indent {
+            if indent == parent_indent + 2 {
                 if let Some((key, value)) = trimmed.split_once(':') {
                     step.with
                         .insert(key.trim().to_owned(), value.trim().to_owned());
                 }
                 continue;
             }
-            with_indent = None;
+            if indent <= parent_indent {
+                with_indent = None;
+            } else {
+                continue;
+            }
         }
-        if trimmed == "with:" {
+        let is_step_property = step_indent.is_some_and(|item_indent| indent == item_indent + 2);
+        if is_step_property && trimmed == "with:" {
             with_indent = Some(indent);
-        } else if let Some(value) = trimmed.strip_prefix("uses:") {
+        } else if is_step_property && (trimmed == "env:" || trimmed.starts_with("env:")) {
+            step.has_env = true;
+        } else if is_step_property
+            && (trimmed == "permissions:" || trimmed.starts_with("permissions:"))
+        {
+            step.has_permissions = true;
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("uses:") {
             step.uses = Some(
                 value
                     .split(" #")
@@ -116,14 +173,19 @@ fn typos_steps(workflow: &str) -> Result<Vec<WorkflowStep>> {
                     .trim()
                     .to_owned(),
             );
-        } else if let Some(value) = trimmed.strip_prefix("run:") {
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("run:") {
             step.run = Some(value.trim().to_owned());
         }
     }
     if let Some(step) = current {
         steps.push(step);
     }
-    Ok(steps)
+    Ok(TyposJob {
+        runs_on,
+        steps,
+        has_env,
+        has_permissions,
+    })
 }
 
 fn mutate_typos_job(workflow: &str, mutate: impl FnOnce(&str) -> String) -> Result<String> {
@@ -155,8 +217,16 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
         .nth(1)
         .and_then(|section| section.split("  proptest-smoke:").next())
         .context("CI workflow should define typos before proptest-smoke")?;
-    ensure!(section.contains("runs-on: ubuntu-latest"));
-    let steps = typos_steps(workflow)?;
+    ensure!(workflow_permissions_are_read_only(workflow));
+    let job = typos_job(workflow)?;
+    ensure!(job.runs_on.as_deref() == Some("ubuntu-latest"));
+    ensure!(!job.has_env && !job.has_permissions);
+    ensure!(
+        !job.steps
+            .iter()
+            .any(|step| step.has_env || step.has_permissions)
+    );
+    let steps = job.steps;
     let installer_ref = "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c";
     let installers = steps
         .iter()
@@ -253,6 +323,43 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         )
     })?;
     ensure!(typos_job_contract(&reordered).is_err());
+
+    let forged_script = mutate_typos_job(&workflow, |section| {
+        section
+            .replacen(install_block, "", 1)
+            .replacen(run_block, "", 1)
+            .replace(
+                "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n",
+                "      - name: Forged Typos text in a script\n        run: |\n          echo harmless\n          - uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c\n            with:\n              tool: typos@1.49.0\n              checksum: true\n              fallback: none\n          - run: typos\n",
+            )
+    })?;
+    ensure!(typos_job_contract(&forged_script).is_err());
+
+    for injected in [
+        "    env:\n      TOKEN: ${{ secrets.TOKEN }}\n",
+        "    permissions: write-all\n",
+    ] {
+        let drifted = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "    runs-on: ubuntu-latest\n",
+                &format!("    runs-on: ubuntu-latest\n{injected}"),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&drifted).is_err());
+    }
+
+    let workflow_write_permission = workflow.replacen("  contents: read", "  contents: write", 1);
+    ensure!(typos_job_contract(&workflow_write_permission).is_err());
+
+    let step_env = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n",
+            "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        env:\n          TOKEN: ${{ github.token }}\n",
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&step_env).is_err());
     Ok(())
 }
 
