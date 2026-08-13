@@ -155,7 +155,10 @@ impl Drop for PublishReceiptLock {
     }
 }
 
-fn acquire_publish_receipt_lock(path: &Path) -> Result<PublishReceiptLock> {
+fn acquire_publish_receipt_lock(
+    path: &Path,
+    identity: Option<&PublishIdentity>,
+) -> Result<PublishReceiptLock> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -175,6 +178,11 @@ fn acquire_publish_receipt_lock(path: &Path) -> Result<PublishReceiptLock> {
             )
         })?;
     writeln!(file, "pid={}", std::process::id())?;
+    writeln!(file, "lock_nonce={}", receipt_nonce())?;
+    writeln!(file, "receipt_path={}", path.display())?;
+    if let Some(identity) = identity {
+        writeln!(file, "identity_digest={}", canonical_digest(identity)?)?;
+    }
     file.sync_all()?;
     Ok(PublishReceiptLock {
         path: lock_path,
@@ -251,9 +259,36 @@ fn canonicalize_with_missing_tail(path: &Path) -> Result<PathBuf> {
 fn path_is_within(path: &Path, parent: &Path) -> bool {
     #[cfg(windows)]
     {
-        let folded_path = path.to_string_lossy().to_lowercase();
-        let folded_parent = parent.to_string_lossy().to_lowercase();
-        Path::new(&folded_path).starts_with(Path::new(&folded_parent))
+        use std::os::windows::ffi::OsStrExt;
+
+        fn component_eq(left: &std::ffi::OsStr, right: &std::ffi::OsStr) -> bool {
+            let left: Vec<u16> = left.encode_wide().collect();
+            let right: Vec<u16> = right.encode_wide().collect();
+            let Ok(left_len) = i32::try_from(left.len()) else {
+                return false;
+            };
+            let Ok(right_len) = i32::try_from(right.len()) else {
+                return false;
+            };
+            // SAFETY: both pointers remain valid for the duration of the call and
+            // the explicit lengths describe their respective UTF-16 buffers.
+            unsafe {
+                windows_sys::Win32::Globalization::CompareStringOrdinal(
+                    left.as_ptr(),
+                    left_len,
+                    right.as_ptr(),
+                    right_len,
+                    1,
+                ) == 2
+            }
+        }
+
+        let mut path_components = path.components();
+        parent.components().all(|parent_component| {
+            path_components.next().is_some_and(|path_component| {
+                component_eq(path_component.as_os_str(), parent_component.as_os_str())
+            })
+        })
     }
     #[cfg(not(windows))]
     {
@@ -293,17 +328,17 @@ pub fn run(args: PublishArgs) -> Result<()> {
         )?);
     }
 
-    let _receipt_lock = args
-        .receipt
-        .as_deref()
-        .map(acquire_publish_receipt_lock)
-        .transpose()?;
-
     let bootstrap = validate_bootstrap_crates(&plan.publish_order, args.bootstrap.as_deref())?;
     let identity = args
         .receipt
         .as_ref()
         .map(|_| build_publish_identity(&metadata, &plan, &args, &bootstrap))
+        .transpose()?;
+
+    let _receipt_lock = args
+        .receipt
+        .as_deref()
+        .map(|path| acquire_publish_receipt_lock(path, identity.as_ref()))
         .transpose()?;
 
     let mut receipt = match args.receipt.as_deref() {
@@ -926,13 +961,14 @@ fn install_publish_receipt(temp_path: &Path, path: &Path) -> Result<()> {
 
     if let Err(error) = fs::rename(temp_path, path) {
         let restore_result = fs::rename(&backup_path, path);
-        let _ = fs::remove_file(temp_path);
         if let Err(restore_error) = restore_result {
             return Err(anyhow!(
-                "install publication receipt failed: {error}; restoring the previous receipt also failed: {restore_error}; previous receipt remains at {}",
-                backup_path.display()
+                "install publication receipt failed: {error}; restoring the previous receipt also failed: {restore_error}; previous receipt remains at {} and the new recovery candidate remains at {}",
+                backup_path.display(),
+                temp_path.display()
             ));
         }
+        let _ = fs::remove_file(temp_path);
         return Err(error)
             .with_context(|| format!("install publication receipt {}", path.display()));
     }
@@ -4516,12 +4552,22 @@ mod tests {
     fn publication_receipt_lock_is_exclusive() -> Result<()> {
         let directory = tempdir()?;
         let path = directory.path().join("nested").join("publish.json");
-        let first = acquire_publish_receipt_lock(&path)?;
-        if acquire_publish_receipt_lock(&path).is_ok() {
+        let identity = fixture_publish_identity(&receipt_test_plan());
+        let first = acquire_publish_receipt_lock(&path, Some(&identity))?;
+        let lock_path = PathBuf::from(format!("{}.lock", path.display()));
+        let evidence = fs::read_to_string(&lock_path)?;
+        if !evidence.contains(&format!("pid={}", std::process::id()))
+            || !evidence.contains("lock_nonce=")
+            || !evidence.contains(&format!("receipt_path={}", path.display()))
+            || !evidence.contains(&format!("identity_digest={}", canonical_digest(&identity)?))
+        {
+            bail!("the fail-closed lock must carry operator-verifiable ownership evidence");
+        }
+        if acquire_publish_receipt_lock(&path, Some(&identity)).is_ok() {
             bail!("a concurrent publisher must not acquire the same receipt lock");
         }
         drop(first);
-        acquire_publish_receipt_lock(&path)?;
+        acquire_publish_receipt_lock(&path, Some(&identity))?;
         Ok(())
     }
 
