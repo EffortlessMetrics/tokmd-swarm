@@ -4348,12 +4348,17 @@ mod tests {
     fn publication_receipt_path_rejects_unignored_worktree_locations() -> Result<()> {
         let parent = tempdir()?;
         let root = parent.path().join("repo");
+        fs::create_dir_all(&root)?;
         let outside = parent.path().join("outside").join("receipt.json");
-        validate_publish_receipt_path(Path::new("target/publishing/receipt.json"), &root)?;
-        validate_publish_receipt_path(&outside, &root)?;
-        if validate_publish_receipt_path(Path::new("receipt.json"), &root).is_ok()
-            || validate_publish_receipt_path(Path::new("docs/receipt.json"), &root).is_ok()
-            || validate_publish_receipt_path(&root.join("receipt.json"), &root).is_ok()
+        let relative =
+            validated_publish_receipt_path(Path::new("target/publishing/receipt.json"), &root)?;
+        if relative != root.canonicalize()?.join("target/publishing/receipt.json") {
+            bail!("relative target receipt must normalize against the workspace root");
+        }
+        validated_publish_receipt_path(&outside, &root)?;
+        if validated_publish_receipt_path(Path::new("receipt.json"), &root).is_ok()
+            || validated_publish_receipt_path(Path::new("docs/receipt.json"), &root).is_ok()
+            || validated_publish_receipt_path(&root.join("receipt.json"), &root).is_ok()
         {
             bail!("receipt paths inside the worktree must stay under ignored target/");
         }
