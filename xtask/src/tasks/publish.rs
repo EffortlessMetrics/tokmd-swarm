@@ -1217,6 +1217,9 @@ fn valid_publish_receipt_transition(
             ) | (
                 PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
                 PublishReceiptState::Yanked
+            ) | (
+                PublishReceiptState::Failed | PublishReceiptState::Blocked,
+                PublishReceiptState::InProgress
             )
         )
 }
