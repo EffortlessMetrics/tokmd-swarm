@@ -403072,25 +403072,6 @@ line = 737
 column = 17
 
 [[allow]]
-id = "panic-21217"
-path = "xtask/src/tasks/publish.rs"
-family = "range_indexing"
-classification = "tooling"
-owner = "xtask"
-explanation = "xtask helper; migrate to fallible path in follow-up"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "indexing"
-container = "print_pre_publish_summary"
-callee = "[]"
-receiver_fingerprint = "plan . publish_order[start_idx ..]"
-
-[allow.last_seen]
-line = 422
-column = 29
-
-[[allow]]
 id = "panic-21219"
 path = "xtask/src/tasks/review_packet_check.rs"
 family = "expect"

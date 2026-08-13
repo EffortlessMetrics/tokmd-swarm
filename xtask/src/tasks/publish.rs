@@ -182,7 +182,7 @@ fn acquire_publish_receipt_lock(path: &Path) -> Result<PublishReceiptLock> {
     })
 }
 
-fn validate_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<()> {
+fn validated_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<PathBuf> {
     if path
         .components()
         .any(|component| matches!(component, std::path::Component::ParentDir))
@@ -218,7 +218,7 @@ fn validate_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<(
             );
         }
     }
-    Ok(())
+    Ok(resolved_path)
 }
 
 fn canonicalize_with_missing_tail(path: &Path) -> Result<PathBuf> {
@@ -264,7 +264,7 @@ fn path_is_within(path: &Path, parent: &Path) -> bool {
 /// Publish all workspace crates in dependency order.
 pub fn run(args: PublishArgs) -> Result<()> {
     // Keep the historical hidden alias behavior identical to --dry-run.
-    let args = normalize_publish_args(args);
+    let mut args = normalize_publish_args(args);
 
     // Load workspace metadata
     // Use no_deps() for faster metadata loading - we only need workspace members
@@ -287,7 +287,10 @@ pub fn run(args: PublishArgs) -> Result<()> {
     validate_publish_mode(&args)?;
 
     if let Some(path) = args.receipt.as_deref() {
-        validate_publish_receipt_path(path, metadata.workspace_root.as_std_path())?;
+        args.receipt = Some(validated_publish_receipt_path(
+            path,
+            metadata.workspace_root.as_std_path(),
+        )?);
     }
 
     let _receipt_lock = args
@@ -3439,7 +3442,8 @@ mod tests {
     fn publication_receipt_path_accepts_portable_external_location() -> Result<()> {
         let workspace = tempdir()?;
         let outside = tempdir()?;
-        validate_publish_receipt_path(&outside.path().join("publish.json"), workspace.path())
+        validated_publish_receipt_path(&outside.path().join("publish.json"), workspace.path())?;
+        Ok(())
     }
 
     #[test]
@@ -3451,7 +3455,7 @@ mod tests {
             .join("..")
             .join("tracked")
             .join("publish.json");
-        if validate_publish_receipt_path(&escaped, workspace.path()).is_ok() {
+        if validated_publish_receipt_path(&escaped, workspace.path()).is_ok() {
             bail!("target/../tracked must not pass receipt containment");
         }
         Ok(())
@@ -3468,7 +3472,7 @@ mod tests {
         let outside = tempdir()?;
         let alias = outside.path().join("alias");
         symlink(&tracked, &alias)?;
-        if validate_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
+        if validated_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
             bail!("a symlink alias must not bypass worktree containment");
         }
         Ok(())
@@ -3487,8 +3491,27 @@ mod tests {
         if symlink_dir(&tracked, &alias).is_err() {
             return Ok(());
         }
-        if validate_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
+        if validated_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
             bail!("a directory alias must not bypass worktree containment");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn relative_receipt_is_normalized_to_workspace_target_from_nested_context() -> Result<()> {
+        let workspace = tempdir()?;
+        let nested_context = workspace.path().join("docs").join("nested");
+        fs::create_dir_all(&nested_context)?;
+        let resolved = validated_publish_receipt_path(
+            Path::new("target/publishing/publish.json"),
+            workspace.path(),
+        )?;
+        let expected = workspace
+            .path()
+            .canonicalize()?
+            .join("target/publishing/publish.json");
+        if resolved != expected || resolved.starts_with(&nested_context) {
+            bail!("relative receipt I/O must remain rooted at workspace target/");
         }
         Ok(())
     }
