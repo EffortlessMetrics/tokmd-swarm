@@ -1072,13 +1072,21 @@ fn reconcile_inventory(
                 blockers.push(format!("{} exact version is yanked", entry.name));
             }
             state => {
-                entry.registry_visible = None;
-                entry.updated_at = now.clone();
-                blockers.push(format!(
+                let blocker = format!(
                     "{} registry inventory is unavailable ({state}): {}",
                     entry.name,
                     lookup.error.as_deref().unwrap_or("no detail")
-                ));
+                );
+                if matches!(
+                    entry.state,
+                    PublishReceiptState::Planned | PublishReceiptState::InProgress
+                ) {
+                    transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
+                }
+                entry.registry_visible = None;
+                entry.reason = Some(blocker.clone());
+                entry.updated_at = now.clone();
+                blockers.push(blocker);
             }
         }
     }
@@ -4455,6 +4463,36 @@ mod tests {
                 .is_none_or(|reason| !reason.contains("do not re-upload blindly"))
         {
             bail!("missing uncertain attempts must persist an actionable blocker");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unavailable_inventory_persists_a_reloadable_blocker() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("unavailable")))
+            .collect();
+
+        if reconcile_inventory(&path, &mut receipt, &inventory).is_ok() {
+            bail!("unavailable inventory must stop publication");
+        }
+
+        let loaded = load_publish_receipt(&path, &plan)?;
+        if loaded.crates.iter().any(|entry| {
+            entry.state != PublishReceiptState::Blocked
+                || entry.registry_visible.is_some()
+                || entry.reason.as_deref().is_none_or(|reason| {
+                    !reason.contains("registry inventory is unavailable")
+                        || !reason.contains("fixture state: unavailable")
+                })
+        }) {
+            bail!("unavailable inventory must persist a valid actionable blocker");
         }
         Ok(())
     }
