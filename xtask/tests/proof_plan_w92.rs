@@ -43,7 +43,8 @@ struct WorkflowStep {
     with: BTreeMap<String, String>,
     has_env: bool,
     has_permissions: bool,
-    has_execution_control: bool,
+    has_if: bool,
+    has_continue_on_error: bool,
 }
 
 struct TyposJob {
@@ -51,7 +52,8 @@ struct TyposJob {
     steps: Vec<WorkflowStep>,
     has_env: bool,
     has_permissions: bool,
-    has_execution_control: bool,
+    has_if: bool,
+    has_continue_on_error: bool,
 }
 
 fn workflow_permissions_are_read_only(workflow: &str) -> bool {
@@ -103,7 +105,8 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
     let mut runs_on = None;
     let mut has_env = false;
     let mut has_permissions = false;
-    let mut has_execution_control = false;
+    let mut has_if = false;
+    let mut has_continue_on_error = false;
 
     for line in section.lines() {
         let trimmed = line.trim();
@@ -121,8 +124,10 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
                     has_env = true;
                 } else if trimmed == "permissions:" || trimmed.starts_with("permissions:") {
                     has_permissions = true;
-                } else if trimmed.starts_with("if:") || trimmed.starts_with("continue-on-error:") {
-                    has_execution_control = true;
+                } else if trimmed.starts_with("if:") {
+                    has_if = true;
+                } else if trimmed.starts_with("continue-on-error:") {
+                    has_continue_on_error = true;
                 }
             }
             continue;
@@ -181,10 +186,10 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
             && (trimmed == "permissions:" || trimmed.starts_with("permissions:"))
         {
             step.has_permissions = true;
-        } else if is_step_property
-            && (trimmed.starts_with("if:") || trimmed.starts_with("continue-on-error:"))
-        {
-            step.has_execution_control = true;
+        } else if is_step_property && trimmed.starts_with("if:") {
+            step.has_if = true;
+        } else if is_step_property && trimmed.starts_with("continue-on-error:") {
+            step.has_continue_on_error = true;
         } else if is_step_property && let Some(value) = trimmed.strip_prefix("uses:") {
             step.uses = Some(
                 value
@@ -206,7 +211,8 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
         steps,
         has_env,
         has_permissions,
-        has_execution_control,
+        has_if,
+        has_continue_on_error,
     })
 }
 
@@ -242,13 +248,16 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
     ensure!(workflow_permissions_are_read_only(workflow));
     let job = typos_job(workflow)?;
     ensure!(job.runs_on.as_deref() == Some("ubuntu-latest"));
-    ensure!(!job.has_env && !job.has_permissions && !job.has_execution_control);
-    ensure!(
-        !job.steps
-            .iter()
-            .any(|step| { step.has_env || step.has_permissions || step.has_execution_control })
-    );
+    ensure!(!job.has_env && !job.has_permissions && !job.has_if);
+    ensure!(!job.has_continue_on_error);
+    ensure!(!job.steps.iter().any(|step| {
+        step.has_env || step.has_permissions || step.has_if || step.has_continue_on_error
+    }));
     let steps = job.steps;
+    ensure!(
+        steps.len() == 3,
+        "Typos job must contain exactly three steps"
+    );
     let installer_ref = "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c";
     let installers = steps
         .iter()
@@ -346,6 +355,16 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
     })?;
     ensure!(typos_job_contract(&reordered).is_err());
 
+    let unexpected_step = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            run_block,
+            &("      - name: Unexpected extra step\n        run: echo injected\n".to_owned()
+                + run_block),
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&unexpected_step).is_err());
+
     let forged_script = mutate_typos_job(&workflow, |section| {
         section
             .replacen(install_block, "", 1)
@@ -412,6 +431,19 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         })?;
         ensure!(typos_job_contract(&step_control).is_err());
     }
+
+    let continue_on_error_without_if = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            run_block,
+            "      - name: Check spelling\n        continue-on-error: true\n        run: typos\n",
+            1,
+        )
+    })?;
+    let parsed = typos_job(&continue_on_error_without_if)?;
+    ensure!(parsed.steps.iter().any(|step| {
+        step.has_continue_on_error && !step.has_if && step.run.as_deref() == Some("typos")
+    }));
+    ensure!(typos_job_contract(&continue_on_error_without_if).is_err());
     Ok(())
 }
 
