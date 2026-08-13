@@ -1049,11 +1049,16 @@ fn reconcile_inventory(
                         | PublishReceiptState::Yanked
                 ) || was_complete
                 {
-                    blockers.push(format!(
+                    let blocker = format!(
                         "{} is missing although the receipt records {:?}; retry inventory later and do not re-upload blindly",
                         entry.name, entry.state
-                    ));
-                } else {
+                    );
+                    if entry.state == PublishReceiptState::InProgress {
+                        transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
+                    }
+                    entry.reason = Some(blocker.clone());
+                    blockers.push(blocker);
+                } else if entry.state == PublishReceiptState::Planned {
                     transition_publish_receipt_entry(entry, PublishReceiptState::Planned)?;
                     entry.reason = None;
                 }
@@ -4394,6 +4399,62 @@ mod tests {
             })
         {
             bail!("missing inventory must remain a valid, resumable planned receipt");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_inventory_preserves_retry_history_and_persists_blockers() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let failed = receipt
+            .crates
+            .first_mut()
+            .ok_or_else(|| anyhow!("fixture receipt has no crates"))?;
+        failed.state = PublishReceiptState::Failed;
+        failed.attempts = 1;
+        failed.reason = Some("publish command failed".to_string());
+        let in_progress = receipt
+            .crates
+            .get_mut(1)
+            .ok_or_else(|| anyhow!("fixture receipt has fewer than two crates"))?;
+        in_progress.state = PublishReceiptState::InProgress;
+        in_progress.attempts = 1;
+
+        let inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("missing")))
+            .collect();
+        if reconcile_inventory(&path, &mut receipt, &inventory).is_ok() {
+            bail!("an uncertain in-progress attempt must block on missing inventory");
+        }
+
+        let loaded = load_publish_receipt(&path, &plan)?;
+        let failed = loaded
+            .crates
+            .first()
+            .ok_or_else(|| anyhow!("loaded receipt has no crates"))?;
+        if failed.state != PublishReceiptState::Failed
+            || failed.attempts != 1
+            || failed.reason.as_deref() != Some("publish command failed")
+        {
+            bail!("missing inventory must preserve failed-attempt audit history");
+        }
+        let blocked = loaded
+            .crates
+            .get(1)
+            .ok_or_else(|| anyhow!("loaded receipt has fewer than two crates"))?;
+        if blocked.state != PublishReceiptState::Blocked
+            || blocked.attempts != 1
+            || blocked
+                .reason
+                .as_deref()
+                .is_none_or(|reason| !reason.contains("do not re-upload blindly"))
+        {
+            bail!("missing uncertain attempts must persist an actionable blocker");
         }
         Ok(())
     }
