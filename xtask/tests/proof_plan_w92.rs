@@ -38,7 +38,9 @@ fn run_xtask_with_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String, 
 
 #[derive(Default)]
 struct WorkflowStep {
+    has_unmodeled_property: bool,
     uses: Option<String>,
+    name: Option<String>,
     run: Option<String>,
     with: BTreeMap<String, String>,
     has_env: bool,
@@ -201,6 +203,10 @@ fn typos_job(workflow: &str) -> Result<TyposJob> {
             );
         } else if is_step_property && let Some(value) = trimmed.strip_prefix("run:") {
             step.run = Some(value.trim().to_owned());
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("name:") {
+            step.name = Some(value.trim().to_owned());
+        } else if is_step_property {
+            step.has_unmodeled_property = true;
         }
     }
     if let Some(step) = current {
@@ -251,7 +257,11 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
     ensure!(!job.has_env && !job.has_permissions && !job.has_if);
     ensure!(!job.has_continue_on_error);
     ensure!(!job.steps.iter().any(|step| {
-        step.has_env || step.has_permissions || step.has_if || step.has_continue_on_error
+        step.has_unmodeled_property
+            || step.has_env
+            || step.has_permissions
+            || step.has_if
+            || step.has_continue_on_error
     }));
     let steps = job.steps;
     ensure!(
@@ -444,6 +454,15 @@ fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> 
         step.has_continue_on_error && !step.has_if && step.run.as_deref() == Some("typos")
     }));
     ensure!(typos_job_contract(&continue_on_error_without_if).is_err());
+
+    let unmodeled_step_property = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "        run: typos\n",
+            "        shell: bash -c 'echo injected'\n        run: typos\n",
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&unmodeled_step_property).is_err());
     Ok(())
 }
 
