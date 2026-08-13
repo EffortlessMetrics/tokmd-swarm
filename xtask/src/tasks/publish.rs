@@ -1092,6 +1092,9 @@ fn reconcile_inventory(
                     if entry.state == PublishReceiptState::InProgress {
                         transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
                     }
+                    if entry.state == PublishReceiptState::AlreadyPresent && entry.attempts == 0 {
+                        transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
+                    }
                     entry.reason = Some(blocker.clone());
                     blockers.push(blocker);
                 } else if entry.state == PublishReceiptState::Planned {
@@ -1272,19 +1275,22 @@ fn valid_publish_receipt_transition(
                     | PublishReceiptState::Yanked
                     | PublishReceiptState::Failed
                     | PublishReceiptState::Blocked
-            ) | (
-                PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
-                PublishReceiptState::Yanked
-            ) | (
-                PublishReceiptState::Failed | PublishReceiptState::Blocked,
-                PublishReceiptState::Planned
-                    | PublishReceiptState::InProgress
-                    | PublishReceiptState::AlreadyPresent
-                    | PublishReceiptState::Yanked
-            ) | (
-                PublishReceiptState::Yanked,
-                PublishReceiptState::AlreadyPresent
-            )
+            ) | (PublishReceiptState::Published, PublishReceiptState::Yanked)
+                | (
+                    PublishReceiptState::AlreadyPresent,
+                    PublishReceiptState::Yanked | PublishReceiptState::Blocked
+                )
+                | (
+                    PublishReceiptState::Failed | PublishReceiptState::Blocked,
+                    PublishReceiptState::Planned
+                        | PublishReceiptState::InProgress
+                        | PublishReceiptState::AlreadyPresent
+                        | PublishReceiptState::Yanked
+                )
+                | (
+                    PublishReceiptState::Yanked,
+                    PublishReceiptState::AlreadyPresent
+                )
         )
 }
 
@@ -3158,7 +3164,9 @@ fn create_git_tag(args: &PublishArgs, version: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{Commands, XtaskCli};
     use chrono::Datelike;
+    use clap::Parser;
     use std::collections::VecDeque;
     use tempfile::tempdir;
 
@@ -3757,6 +3765,62 @@ mod tests {
             })
         {
             bail!("live current-run inventory is valid completion evidence");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_inventory_blocks_zero_attempt_already_present_receipt() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let present_inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("present")))
+            .collect();
+        reconcile_inventory(&path, &mut receipt, &present_inventory)?;
+        let missing_inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("missing")))
+            .collect();
+        if reconcile_inventory(&path, &mut receipt, &missing_inventory).is_ok() {
+            bail!("a previously present version that disappears must block publication");
+        }
+        let loaded = load_publish_receipt(&path, &plan)?;
+        if loaded.crates.iter().any(|entry| {
+            entry.state != PublishReceiptState::Blocked
+                || entry.attempts != 0
+                || entry.registry_visible != Some(false)
+                || entry
+                    .reason
+                    .as_deref()
+                    .is_none_or(|reason| !reason.contains("missing although the receipt records"))
+        }) {
+            bail!("the persisted missing-version blocker must remain reloadable");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn registry_inventory_rejects_publish_mutation_options() -> Result<()> {
+        for extra in [["--from", "tokmd-core"].as_slice(), ["--tag"].as_slice()] {
+            let mut argv = vec!["xtask", "publish", "--registry-inventory", "inventory.json"];
+            argv.extend_from_slice(extra);
+            if XtaskCli::try_parse_from(argv).is_ok() {
+                bail!("registry inventory must reject mutation option {extra:?}");
+            }
+        }
+        let parsed = XtaskCli::try_parse_from([
+            "xtask",
+            "publish",
+            "--registry-inventory",
+            "inventory.json",
+        ])?;
+        if !matches!(parsed.command, Some(Commands::Publish(_))) {
+            bail!("registry inventory should remain a valid publish submode");
         }
         Ok(())
     }

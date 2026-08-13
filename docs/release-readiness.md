@@ -52,6 +52,10 @@ cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
 cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
 ```
 
+The resume invocation must repeat the exact original `--crates`, `--exclude`,
+and `--bootstrap` selections (including explicit omissions). These options are
+part of the receipt-bound plan and security identity; disagreement fails closed.
+
 Inside the worktree, the receipt must remain under ignored `target/` so its
 receipt, lock, and recovery snapshots cannot make the committed-source check
 dirty. A path outside the worktree is also accepted. The exclusive `.lock` is

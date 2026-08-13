@@ -1731,7 +1731,7 @@ pub struct PublishArgs {
     #[arg(
         long,
         value_name = "PATH",
-        conflicts_with_all = ["plan", "dry_run", "verify", "bootstrap"]
+        conflicts_with_all = ["plan", "dry_run", "verify", "bootstrap", "from", "tag"]
     )]
     pub registry_inventory: Option<std::path::PathBuf>,
 
