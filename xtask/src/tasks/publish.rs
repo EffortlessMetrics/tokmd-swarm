@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::{DependencyKind, Metadata, MetadataCommand, Package, PackageId};
 use chrono::{DateTime, FixedOffset, Utc};
 use petgraph::algo::toposort;
@@ -183,8 +183,26 @@ fn acquire_publish_receipt_lock(path: &Path) -> Result<PublishReceiptLock> {
 }
 
 fn validate_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<()> {
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        bail!("publication receipt paths must not contain `..`");
+    }
+
+    let workspace_root = canonicalize_with_missing_tail(workspace_root)?;
+    let target_root = canonicalize_with_missing_tail(&workspace_root.join("target"))?;
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        workspace_root.join(path)
+    };
+    let resolved_path = canonicalize_with_missing_tail(&absolute_path)?;
+
     if path.is_absolute() {
-        if path.starts_with(workspace_root) && !path.starts_with(workspace_root.join("target")) {
+        if path_is_within(&resolved_path, &workspace_root)
+            && !path_is_within(&resolved_path, &target_root)
+        {
             bail!(
                 "a receipt inside the worktree must be under ignored target/; use target/publishing/publish-receipt.json or a path outside the worktree"
             );
@@ -194,9 +212,6 @@ fn validate_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<(
         if components
             .next()
             .is_none_or(|component| component.as_os_str() != "target")
-            || path
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
         {
             bail!(
                 "a relative publication receipt must be under ignored target/; use target/publishing/publish-receipt.json"
@@ -204,6 +219,46 @@ fn validate_publish_receipt_path(path: &Path, workspace_root: &Path) -> Result<(
         }
     }
     Ok(())
+}
+
+fn canonicalize_with_missing_tail(path: &Path) -> Result<PathBuf> {
+    let mut existing = path;
+    let mut tail = Vec::new();
+    while !existing.exists() {
+        let name = existing.file_name().ok_or_else(|| {
+            anyhow!(
+                "publication receipt path has no existing ancestor: {}",
+                path.display()
+            )
+        })?;
+        tail.push(name.to_os_string());
+        existing = existing.parent().ok_or_else(|| {
+            anyhow!(
+                "publication receipt path has no existing ancestor: {}",
+                path.display()
+            )
+        })?;
+    }
+    let mut resolved = existing
+        .canonicalize()
+        .with_context(|| format!("canonicalize publication receipt path {}", path.display()))?;
+    for component in tail.iter().rev() {
+        resolved.push(component);
+    }
+    Ok(resolved)
+}
+
+fn path_is_within(path: &Path, parent: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let folded_path = path.to_string_lossy().to_lowercase();
+        let folded_parent = parent.to_string_lossy().to_lowercase();
+        Path::new(&folded_path).starts_with(Path::new(&folded_parent))
+    }
+    #[cfg(not(windows))]
+    {
+        path.starts_with(parent)
+    }
 }
 
 /// Publish all workspace crates in dependency order.
@@ -680,33 +735,12 @@ fn recover_publish_receipt(
                 .map(|receipt| (receipt, bytes))
                 .map_err(std::io::Error::other)
         }) {
-            Ok((receipt, bytes))
-                if receipt.schema == PUBLISH_RECEIPT_SCHEMA
-                    && receipt.schema_version == PUBLISH_RECEIPT_VERSION
-                    && receipt.identity == *identity
-                    && receipt.workspace_version == plan.workspace_version
-                    && receipt.publish_order == plan.publish_order
-                    && receipt.crates.len() == plan.publish_order.len()
-                    && receipt
-                        .crates
-                        .iter()
-                        .zip(&plan.publish_order)
-                        .all(|(entry, name)| {
-                            entry.name == *name && entry.version == plan.workspace_version
-                        })
-                    && receipt
-                        .crates
-                        .iter()
-                        .all(|entry| validate_publish_receipt_entry(entry).is_ok())
-                    && !(receipt.state == PublishRunState::Complete
-                        && receipt
-                            .crates
-                            .iter()
-                            .any(|entry| !is_release_complete_entry(entry))) =>
-            {
-                valid.push((candidate, receipt, bytes));
-            }
-            Err(error) if candidate == path => canonical_error = Some(error),
+            Ok((receipt, bytes)) => match validate_recovery_candidate(&receipt, plan, identity) {
+                Ok(()) => valid.push((candidate, receipt, bytes)),
+                Err(error) if candidate == path => canonical_error = Some(error),
+                Err(_) => {}
+            },
+            Err(error) if candidate == path => canonical_error = Some(error.into()),
             _ => {}
         }
     }
@@ -759,6 +793,43 @@ fn recover_publish_receipt(
         })?;
     }
     Ok(chosen.1)
+}
+
+fn validate_recovery_candidate(
+    receipt: &PublishReceipt,
+    plan: &PublishPlan,
+    identity: &PublishIdentity,
+) -> Result<()> {
+    if receipt.schema != PUBLISH_RECEIPT_SCHEMA || receipt.schema_version != PUBLISH_RECEIPT_VERSION
+    {
+        bail!("publication receipt schema does not match the current publisher");
+    }
+    if receipt.identity != *identity {
+        bail!("publication receipt identity does not match the current publish run");
+    }
+    if receipt.workspace_version != plan.workspace_version
+        || receipt.publish_order != plan.publish_order
+        || receipt.crates.len() != plan.publish_order.len()
+        || receipt
+            .crates
+            .iter()
+            .zip(&plan.publish_order)
+            .any(|(entry, name)| entry.name != *name || entry.version != plan.workspace_version)
+    {
+        bail!("publication receipt entries do not match the current publish plan");
+    }
+    for entry in &receipt.crates {
+        validate_publish_receipt_entry(entry)?;
+    }
+    if receipt.state == PublishRunState::Complete
+        && receipt
+            .crates
+            .iter()
+            .any(|entry| !is_release_complete_entry(entry))
+    {
+        bail!("complete publication receipt contains a non-terminal crate entry");
+    }
+    Ok(())
 }
 
 fn write_publish_receipt(path: &Path, receipt: &PublishReceipt) -> Result<()> {
@@ -931,15 +1002,17 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
 }
 
 fn inventory_publish_plan(plan: &PublishPlan) -> BTreeMap<String, RegistryVersionLookup> {
-    plan.publish_order
-        .iter()
-        .map(|name| {
-            (
-                name.clone(),
-                query_registry_version(name, &plan.workspace_version),
-            )
-        })
-        .collect()
+    let mut inventory = BTreeMap::new();
+    for (index, name) in plan.publish_order.iter().enumerate() {
+        if index > 0 {
+            sleep(REGISTRY_REQUEST_DELAY);
+        }
+        inventory.insert(
+            name.clone(),
+            query_registry_version(name, &plan.workspace_version),
+        );
+    }
+    inventory
 }
 
 fn reconcile_inventory(
@@ -1017,7 +1090,9 @@ fn crates_to_publish(
     start_idx: usize,
     receipt: Option<&PublishReceipt>,
 ) -> Vec<String> {
-    plan.publish_order[start_idx..]
+    plan.publish_order
+        .get(start_idx..)
+        .unwrap_or_default()
         .iter()
         .filter(|name| {
             receipt.is_none_or(|receipt| {
@@ -1099,6 +1174,13 @@ fn update_publish_receipt_entry(
         .iter_mut()
         .find(|entry| entry.name == crate_name)
         .ok_or_else(|| anyhow!("publication receipt is missing crate `{crate_name}`"))?;
+    if !valid_publish_receipt_transition(&entry.state, &state) {
+        bail!(
+            "publication receipt entry `{crate_name}` cannot transition from {:?} to {:?}",
+            entry.state,
+            state
+        );
+    }
     if increment_attempt {
         entry.attempts = entry.attempts.saturating_add(1);
     }
@@ -1107,6 +1189,33 @@ fn update_publish_receipt_entry(
     entry.updated_at = Utc::now().to_rfc3339();
     receipt.state = PublishRunState::InProgress;
     Ok(())
+}
+
+fn valid_publish_receipt_transition(
+    current: &PublishReceiptState,
+    next: &PublishReceiptState,
+) -> bool {
+    current == next
+        || matches!(
+            (current, next),
+            (
+                PublishReceiptState::Planned,
+                PublishReceiptState::InProgress
+                    | PublishReceiptState::AlreadyPresent
+                    | PublishReceiptState::Yanked
+                    | PublishReceiptState::Blocked
+            ) | (
+                PublishReceiptState::InProgress,
+                PublishReceiptState::Published
+                    | PublishReceiptState::AlreadyPresent
+                    | PublishReceiptState::Yanked
+                    | PublishReceiptState::Failed
+                    | PublishReceiptState::Blocked
+            ) | (
+                PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
+                PublishReceiptState::Yanked
+            )
+        )
 }
 
 fn update_publish_receipt_visibility_entry(
@@ -1559,6 +1668,13 @@ fn resolve_publish_plan(metadata: &Metadata, args: &PublishArgs) -> Result<Publi
             exclusion_reasons.insert(name.to_string(), ExclusionReason::NotPublishable);
             continue;
         }
+        if pkg
+            .publish
+            .as_ref()
+            .is_some_and(|registries| !registries.iter().any(|registry| registry == "crates-io"))
+        {
+            bail!("workspace crate `{name}` does not allow publication to the crates-io registry");
+        }
 
         // Skip xtask and fuzz by convention
         if name == "xtask" {
@@ -1842,7 +1958,7 @@ fn reconstruct_publish_command(args: &PublishArgs) -> String {
 
 /// Print pre-publish summary before execution.
 fn print_pre_publish_summary(plan: &PublishPlan, args: &PublishArgs, start_idx: usize) {
-    let crates_to_publish = &plan.publish_order[start_idx..];
+    let crates_to_publish = plan.publish_order.get(start_idx..).unwrap_or_default();
     let mode = if args.dry_run { "[DRY RUN] " } else { "" };
 
     println!("\n{}Publishing {} crate(s):", mode, crates_to_publish.len());
@@ -1945,6 +2061,7 @@ fn execute_publish(
     )
 }
 
+#[allow(clippy::too_many_arguments)] // The test seam mirrors the publish inputs deliberately.
 fn execute_publish_with_backend<B: PublishBackend>(
     crates: &[String],
     args: &PublishArgs,
@@ -2639,10 +2756,7 @@ fn publish_crate_with_retry(
     loop {
         attempt += 1;
 
-        let mut cargo_args = vec!["publish", "-p", crate_name, "--locked"];
-        if bootstrap {
-            cargo_args.push("--no-verify");
-        }
+        let cargo_args = cargo_publish_args(crate_name, bootstrap);
         let output = Command::new("cargo")
             .args(cargo_args)
             .output()
@@ -2762,6 +2876,21 @@ fn publish_crate_with_retry(
     }
 }
 
+fn cargo_publish_args(crate_name: &str, bootstrap: bool) -> Vec<&str> {
+    let mut args = vec![
+        "publish",
+        "-p",
+        crate_name,
+        "--locked",
+        "--registry",
+        "crates-io",
+    ];
+    if bootstrap {
+        args.push("--no-verify");
+    }
+    args
+}
+
 /// Run pre-publish checks.
 fn run_pre_publish_checks(
     args: &PublishArgs,
@@ -2791,11 +2920,6 @@ fn run_pre_publish_checks(
     if !args.skip_version_check {
         print!("  Checking version consistency... ");
         io::stdout().flush()?;
-
-        let metadata = MetadataCommand::new()
-            .no_deps()
-            .exec()
-            .context("Failed to load cargo metadata")?;
 
         let workspace_member_ids: HashSet<_> = metadata.workspace_members.iter().collect();
 
@@ -3303,6 +3427,247 @@ mod tests {
             workspace_version: "1.15.0".to_string(),
             predecessors: BTreeMap::new(),
         }
+    }
+
+    fn write_recovery_candidate(path: &Path, receipt: &PublishReceipt) -> Result<Vec<u8>> {
+        let bytes = serde_json::to_vec_pretty(receipt)?;
+        fs::write(path, &bytes)?;
+        Ok(bytes)
+    }
+
+    #[test]
+    fn publication_receipt_path_accepts_portable_external_location() -> Result<()> {
+        let workspace = tempdir()?;
+        let outside = tempdir()?;
+        validate_publish_receipt_path(&outside.path().join("publish.json"), workspace.path())
+    }
+
+    #[test]
+    fn publication_receipt_path_rejects_parent_escape() -> Result<()> {
+        let workspace = tempdir()?;
+        let escaped = workspace
+            .path()
+            .join("target")
+            .join("..")
+            .join("tracked")
+            .join("publish.json");
+        if validate_publish_receipt_path(&escaped, workspace.path()).is_ok() {
+            bail!("target/../tracked must not pass receipt containment");
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn publication_receipt_path_rejects_symlink_alias_into_tracked_worktree() -> Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempdir()?;
+        let tracked = workspace.path().join("tracked");
+        fs::create_dir_all(&tracked)?;
+        let outside = tempdir()?;
+        let alias = outside.path().join("alias");
+        symlink(&tracked, &alias)?;
+        if validate_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
+            bail!("a symlink alias must not bypass worktree containment");
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn publication_receipt_path_rejects_directory_alias_into_tracked_worktree() -> Result<()> {
+        use std::os::windows::fs::symlink_dir;
+
+        let workspace = tempdir()?;
+        let tracked = workspace.path().join("tracked");
+        fs::create_dir_all(&tracked)?;
+        let outside = tempdir()?;
+        let alias = outside.path().join("alias");
+        if symlink_dir(&tracked, &alias).is_err() {
+            return Ok(());
+        }
+        if validate_publish_receipt_path(&alias.join("publish.json"), workspace.path()).is_ok() {
+            bail!("a directory alias must not bypass worktree containment");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_selects_and_restores_higher_valid_temp() -> Result<()> {
+        let plan = receipt_test_plan();
+        let identity = fixture_publish_identity(&plan);
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut canonical = new_publish_receipt(&plan);
+        canonical.generation = 1;
+        write_recovery_candidate(&path, &canonical)?;
+        let mut newer = canonical.clone();
+        newer.generation = 2;
+        let temp = directory.path().join(".publish.json.tmp-fixture");
+        let expected = write_recovery_candidate(&temp, &newer)?;
+
+        let recovered = recover_publish_receipt(&path, &plan, &identity)?;
+        if recovered.generation != 2 || fs::read(&path)? != expected {
+            bail!("the highest valid generation must be restored canonically");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_restores_backup_when_canonical_is_absent_or_corrupt() -> Result<()> {
+        let plan = receipt_test_plan();
+        let identity = fixture_publish_identity(&plan);
+        for corrupt_canonical in [false, true] {
+            let directory = tempdir()?;
+            let path = directory.path().join("publish.json");
+            if corrupt_canonical {
+                fs::write(&path, b"not json")?;
+            }
+            let mut backup_receipt = new_publish_receipt(&plan);
+            backup_receipt.generation = 4;
+            let backup = directory.path().join(".publish.json.backup-fixture");
+            let expected = write_recovery_candidate(&backup, &backup_receipt)?;
+            let recovered = recover_publish_receipt(&path, &plan, &identity)?;
+            if recovered.generation != 4 || fs::read(&path)? != expected {
+                bail!("a valid backup must replace an absent or corrupt canonical receipt");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_rejects_equal_generation_divergence() -> Result<()> {
+        let plan = receipt_test_plan();
+        let identity = fixture_publish_identity(&plan);
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut first = new_publish_receipt(&plan);
+        first.generation = 3;
+        write_recovery_candidate(&path, &first)?;
+        let mut divergent = first.clone();
+        divergent.state = PublishRunState::InProgress;
+        write_recovery_candidate(
+            &directory.path().join(".publish.json.tmp-divergent"),
+            &divergent,
+        )?;
+        if recover_publish_receipt(&path, &plan, &identity).is_ok() {
+            bail!("equal-generation divergent candidates must fail closed");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_ignores_invalid_higher_candidate_and_fails_without_valid_candidate() -> Result<()> {
+        let plan = receipt_test_plan();
+        let identity = fixture_publish_identity(&plan);
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut valid = new_publish_receipt(&plan);
+        valid.generation = 2;
+        write_recovery_candidate(&path, &valid)?;
+        let mut invalid = valid.clone();
+        invalid.generation = 9;
+        invalid.identity.source_commit = "different".to_string();
+        let temp = directory.path().join(".publish.json.tmp-invalid");
+        write_recovery_candidate(&temp, &invalid)?;
+        if recover_publish_receipt(&path, &plan, &identity)?.generation != 2 {
+            bail!("an invalid higher generation must not supersede valid state");
+        }
+        fs::remove_file(&path)?;
+        if recover_publish_receipt(&path, &plan, &identity).is_ok() {
+            bail!("recovery must fail when only invalid candidates remain");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_resume_detects_orphaned_recovery_candidate() -> Result<()> {
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        fs::write(directory.path().join(".publish.json.tmp-orphan"), b"orphan")?;
+        if !has_publish_recovery_candidates(&path)? {
+            bail!("a non-resume run must detect orphaned recovery state");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_replacement_is_atomic_and_parseable() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        write_publish_receipt(&path, &receipt)?;
+        receipt.state = PublishRunState::InProgress;
+        write_publish_receipt(&path, &receipt)?;
+        let restored: PublishReceipt = serde_json::from_slice(&fs::read(&path)?)?;
+        if restored.generation != 2 || restored.state != PublishRunState::InProgress {
+            bail!("atomic replacement must install the complete newer snapshot");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn publication_receipt_transition_guard_rejects_terminal_regression() -> Result<()> {
+        let plan = receipt_test_plan();
+        let mut receipt = new_publish_receipt(&plan);
+        let entry = receipt
+            .crates
+            .first_mut()
+            .ok_or_else(|| anyhow!("receipt test plan should contain a crate"))?;
+        entry.state = PublishReceiptState::Published;
+        entry.attempts = 1;
+        entry.registry_visible = Some(true);
+        let name = entry.name.clone();
+        if update_publish_receipt_entry(
+            &mut receipt,
+            &name,
+            PublishReceiptState::Planned,
+            None,
+            false,
+        )
+        .is_ok()
+        {
+            bail!("terminal publication evidence must not regress to planned");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn current_inventory_can_complete_an_already_present_entry() -> Result<()> {
+        let plan = receipt_test_plan();
+        let directory = tempdir()?;
+        let path = directory.path().join("publish.json");
+        let mut receipt = new_publish_receipt(&plan);
+        let inventory = plan
+            .publish_order
+            .iter()
+            .map(|name| (name.clone(), fixture_lookup("present")))
+            .collect();
+        reconcile_inventory(&path, &mut receipt, &inventory)?;
+        if receipt.state != PublishRunState::Complete
+            || receipt.crates.iter().any(|entry| {
+                entry.state != PublishReceiptState::AlreadyPresent
+                    || entry.registry_visible != Some(true)
+            })
+        {
+            bail!("live current-run inventory is valid completion evidence");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cargo_publish_is_bound_to_crates_io_registry() -> Result<()> {
+        let args = cargo_publish_args("tokmd", true);
+        if !args
+            .windows(2)
+            .any(|pair| pair == ["--registry", "crates-io"])
+            || !args.contains(&"--no-verify")
+        {
+            bail!("cargo publish must bind mutation to crates-io and preserve bootstrap");
+        }
+        Ok(())
     }
 
     #[test]

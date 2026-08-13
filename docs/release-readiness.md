@@ -56,7 +56,9 @@ Inside the worktree, the receipt must remain under ignored `target/` so its
 receipt, lock, and recovery snapshots cannot make the committed-source check
 dirty. A path outside the worktree is also accepted. The exclusive `.lock` is
 held for the live run; never remove it until the owning publisher is proven
-stopped. Parent directories are created automatically.
+stopped. Parent directories are created automatically. Paths containing `..`
+are rejected, and containment is checked through existing symlink, junction,
+and case aliases so a nominal `target/` path cannot escape into tracked state.
 
 Development-only bootstrap cycles are opt-in and plan-bound. For the two
 known bootstrap crates, an intentional release may pass
@@ -85,7 +87,9 @@ the publisher performs bounded crates.io visibility observations and records
 `registry_visible`; an unobserved or missing result is retryable on resume rather
 than terminal. A yanked result is terminal but is not usable release proof.
 `dependency_closure` remains null until the package/closure proof records that
-fact. The receipt is local recovery state, not a hosted durable upload. It does
+fact. Inventory is paced between crates, and live mutation explicitly passes
+`--registry crates-io`; any package that excludes that registry fails before
+publication. The receipt is local recovery state, not a hosted durable upload. It does
 not consume or authenticate the hosted terminal preflight receipt from
 `.github/workflows/release-preflight.yml`; that distinct passed exact-source
 evidence remains a prerequisite operator gate, not publication authorization.

@@ -238,6 +238,12 @@ visibility, dependency-closure evidence, bootstrap intent, reason, and
 non-yanked, and represented as `published` or `already_present`; a stored
 visibility value is rechecked on every resume.
 
+The publisher paces inventory requests and invokes Cargo with
+`--registry crates-io`, so observation identity and the mutation target cannot
+diverge through local Cargo configuration. Recovery chooses the highest valid
+generation, rejects equal-generation divergence, and atomically restores a
+valid temporary or backup snapshot over an absent or corrupt canonical file.
+
 Earlier receipt schemas are rejected because they lack the immutable identity
 binding. The file is local crash-recovery state, not authorization or a hosted
 durable upload. It does not prove the terminal preflight, tag, GitHub Release,
