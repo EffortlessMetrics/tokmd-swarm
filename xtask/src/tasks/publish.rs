@@ -1021,11 +1021,8 @@ fn validate_publish_receipt_entry(entry: &PublishCrateReceipt) -> Result<()> {
             _,
             Some(false),
         ) => true,
-        (
-            PublishReceiptState::Published | PublishReceiptState::AlreadyPresent,
-            attempts,
-            Some(_),
-        ) if attempts > 0 => true,
+        (PublishReceiptState::Published, attempts, Some(true)) if attempts > 0 => true,
+        (PublishReceiptState::AlreadyPresent, attempts, Some(true)) if attempts > 0 => true,
         (PublishReceiptState::AlreadyPresent, 0, Some(true)) => true,
         (PublishReceiptState::Yanked, attempts, Some(false)) if attempts > 0 => true,
         (PublishReceiptState::Yanked, 0, Some(false)) => true,
@@ -1089,10 +1086,12 @@ fn reconcile_inventory(
                         "{} is missing although the receipt records {:?}; retry inventory later and do not re-upload blindly",
                         entry.name, entry.state
                     );
-                    if entry.state == PublishReceiptState::InProgress {
-                        transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
-                    }
-                    if entry.state == PublishReceiptState::AlreadyPresent && entry.attempts == 0 {
+                    if matches!(
+                        entry.state,
+                        PublishReceiptState::Published
+                            | PublishReceiptState::AlreadyPresent
+                            | PublishReceiptState::InProgress
+                    ) {
                         transition_publish_receipt_entry(entry, PublishReceiptState::Blocked)?;
                     }
                     entry.reason = Some(blocker.clone());
@@ -1275,22 +1274,22 @@ fn valid_publish_receipt_transition(
                     | PublishReceiptState::Yanked
                     | PublishReceiptState::Failed
                     | PublishReceiptState::Blocked
-            ) | (PublishReceiptState::Published, PublishReceiptState::Yanked)
-                | (
-                    PublishReceiptState::AlreadyPresent,
-                    PublishReceiptState::Yanked | PublishReceiptState::Blocked
-                )
-                | (
-                    PublishReceiptState::Failed | PublishReceiptState::Blocked,
-                    PublishReceiptState::Planned
-                        | PublishReceiptState::InProgress
-                        | PublishReceiptState::AlreadyPresent
-                        | PublishReceiptState::Yanked
-                )
-                | (
-                    PublishReceiptState::Yanked,
-                    PublishReceiptState::AlreadyPresent
-                )
+            ) | (
+                PublishReceiptState::Published,
+                PublishReceiptState::Yanked | PublishReceiptState::Blocked
+            ) | (
+                PublishReceiptState::AlreadyPresent,
+                PublishReceiptState::Yanked | PublishReceiptState::Blocked
+            ) | (
+                PublishReceiptState::Failed | PublishReceiptState::Blocked,
+                PublishReceiptState::Planned
+                    | PublishReceiptState::InProgress
+                    | PublishReceiptState::AlreadyPresent
+                    | PublishReceiptState::Yanked
+            ) | (
+                PublishReceiptState::Yanked,
+                PublishReceiptState::AlreadyPresent
+            )
         )
 }
 
@@ -3781,6 +3780,12 @@ mod tests {
             .map(|name| (name.clone(), fixture_lookup("present")))
             .collect();
         reconcile_inventory(&path, &mut receipt, &present_inventory)?;
+        let published = receipt
+            .crates
+            .first_mut()
+            .ok_or_else(|| anyhow!("fixture receipt has no crates"))?;
+        published.state = PublishReceiptState::Published;
+        published.attempts = 1;
         let missing_inventory = plan
             .publish_order
             .iter()
@@ -3792,14 +3797,15 @@ mod tests {
         let loaded = load_publish_receipt(&path, &plan)?;
         if loaded.crates.iter().any(|entry| {
             entry.state != PublishReceiptState::Blocked
-                || entry.attempts != 0
                 || entry.registry_visible != Some(false)
                 || entry
                     .reason
                     .as_deref()
                     .is_none_or(|reason| !reason.contains("missing although the receipt records"))
         }) {
-            bail!("the persisted missing-version blocker must remain reloadable");
+            bail!(
+                "published and already-present visibility loss must persist as reloadable blockers"
+            );
         }
         Ok(())
     }
