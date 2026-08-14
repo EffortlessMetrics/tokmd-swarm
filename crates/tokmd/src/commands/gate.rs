@@ -42,17 +42,18 @@ pub(crate) fn handle(
     let receipt = receipt::load_or_compute_receipt(&args, global)?;
 
     // Load policy from file, CLI args, or config (may be None if only ratchet is used)
-    let policy = policy::load_policy(&args, resolved)?;
+    let policy = policy::load_policy(&args, resolved)
+        .map_err(|error| anyhow::Error::new(super::UsageError(format!("{error:#}"))))?;
 
     // Load baseline if provided
     let baseline = policy::load_baseline(&args, resolved)?;
 
-    // Load ratchet config if baseline provided
-    let ratchet_config = if baseline.is_some() {
-        policy::load_ratchet_config(&args, resolved)?
-    } else {
-        None
-    };
+    // Load selected ratchet rules even when the baseline is absent so an
+    // explicitly requested control cannot be silently skipped.
+    let ratchet_config = policy::load_ratchet_config(&args, resolved)?;
+    if ratchet_config.is_some() && baseline.is_none() {
+        bail!("Ratchet rules require a baseline receipt");
+    }
 
     // Ensure we have at least policy or ratchet rules
     if policy.is_none() && ratchet_config.is_none() {

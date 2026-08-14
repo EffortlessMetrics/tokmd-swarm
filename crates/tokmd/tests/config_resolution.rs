@@ -355,6 +355,7 @@ fn test_resolve_lang_with_config_precedence() {
         toml_view: Some(&view),
         json_profile: Some(&profile),
         toml: None,
+        toml_path: None,
     };
 
     let resolved = resolve_lang_with_config(&cli, &config);
@@ -373,6 +374,7 @@ fn test_resolve_lang_with_config_precedence() {
         toml_view: None,
         json_profile: Some(&profile),
         toml: None,
+        toml_path: None,
     };
     let fallback_resolved = resolve_lang_with_config(&CliLangArgs::default(), &fallback_config);
 

@@ -21,7 +21,7 @@ pub(super) fn load_policy(
         let gate_config = &toml.gate;
 
         if let Some(policy_path) = &gate_config.policy {
-            let path = std::path::PathBuf::from(policy_path);
+            let path = configured_path(policy_path, resolved.toml_path);
             return PolicyConfig::from_file(&path)
                 .with_context(|| format!("Failed to load policy from {}", path.display()))
                 .map(Some);
@@ -44,6 +44,17 @@ pub(super) fn load_policy(
     }
 
     Ok(None)
+}
+
+fn configured_path(path: &str, config_path: Option<&std::path::Path>) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(path);
+    if path.is_absolute() {
+        return path;
+    }
+
+    config_path
+        .and_then(std::path::Path::parent)
+        .map_or(path.clone(), |parent| parent.join(path))
 }
 
 /// Load baseline receipt for ratchet comparison.

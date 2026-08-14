@@ -704,7 +704,7 @@ fn assert_selected_policy_error_with_passing_ratchet(
             ratchet.to_string_lossy().as_ref(),
         ])
         .assert()
-        .failure()
+        .code(2)
         .stderr(predicate::str::contains("Failed to load policy from"))
         .stderr(predicate::str::contains(
             policy.to_string_lossy().into_owned(),
@@ -750,6 +750,54 @@ value = 500000
 }
 
 #[test]
+fn test_gate_configured_policy_is_relative_to_discovered_config() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let receipt = create_test_receipt(&dir);
+    create_passing_policy(&dir);
+    fs::write(
+        dir.path().join("tokmd.toml"),
+        "[gate]\npolicy = \"policy.toml\"\n",
+    )?;
+    let subdir = dir.path().join("nested");
+    fs::create_dir(&subdir)?;
+
+    tokmd()
+        .current_dir(subdir)
+        .args(["gate", receipt.to_string_lossy().as_ref()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASSED"));
+
+    Ok(())
+}
+
+#[test]
+fn test_gate_selected_ratchet_is_not_masked_without_baseline() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let current = create_current_receipt_slight_increase(&dir);
+    let policy = create_passing_policy(&dir);
+    let ratchet = dir.path().join("missing-ratchet.toml");
+
+    tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--policy",
+            policy.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to load ratchet config"))
+        .stderr(predicate::str::contains(
+            ratchet.to_string_lossy().into_owned(),
+        ));
+
+    Ok(())
+}
+
+#[test]
 fn test_gate_ratchet_no_baseline() {
     // Given: A current receipt and a ratchet config but no baseline
     // When: User runs `tokmd gate current.json --ratchet-config ratchet.toml`
@@ -768,5 +816,7 @@ fn test_gate_ratchet_no_baseline() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No policy or ratchet rules"));
+        .stderr(predicate::str::contains(
+            "Ratchet rules require a baseline receipt",
+        ));
 }
