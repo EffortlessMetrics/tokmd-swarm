@@ -39,6 +39,7 @@ pub mod proof_run_pr_policy;
 pub mod proof_workflow_status;
 pub mod publish;
 pub mod publish_surface;
+pub mod release_preflight;
 pub mod repo_graph;
 pub mod review_packet_check;
 pub mod ripr_pr;

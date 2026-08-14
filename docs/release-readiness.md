@@ -42,6 +42,64 @@ The next patch release exists to make the successful 1.15.0 path repeatable:
 - keep recovery overlays explicit and fixture-tested rather than rewriting
   package manifests with broad regexes.
 
+### Receipt-backed publication resume
+
+The publisher can persist a local, identity-bound `tokmd.publish_receipt.v3` receipt
+after each crate attempt:
+
+```bash
+cargo xtask publish --receipt target/publishing/publish-receipt.json --yes
+cargo xtask publish --resume --receipt target/publishing/publish-receipt.json --yes
+```
+
+The resume invocation must repeat the exact original `--crates`, `--exclude`,
+and `--bootstrap` selections (including explicit omissions). These options are
+part of the receipt-bound plan and security identity; disagreement fails closed.
+
+Inside the worktree, the receipt must remain under ignored `target/` so its
+receipt, lock, and recovery snapshots cannot make the committed-source check
+dirty. A path outside the worktree is also accepted. The exclusive `.lock` is
+held for the live run; never remove it until the owning publisher is proven
+stopped. Parent directories are created automatically. Paths containing `..`
+are rejected, and containment is checked through existing symlink, junction,
+and case aliases so a nominal `target/` path cannot escape into tracked state.
+
+Development-only bootstrap cycles are opt-in and plan-bound. For the two
+known bootstrap crates, an intentional release may pass
+`--bootstrap tokmd-types,tokmd-envelope`; this maps only those selected crates
+to Cargo's `--no-verify` publish mode. Ordinary crates retain Cargo
+verification, and an unknown or out-of-plan bootstrap name is rejected.
+
+The per-crate `bootstrap` field records whether the current publisher
+invocation requested Cargo's `--no-verify`, including when Cargo reports
+`already_present` or the attempt fails. It is an audit of the invocation
+decision, not proof that an upload succeeded; receipt state and registry
+visibility carry those outcomes. Earlier unmerged receipt schemas are rejected
+because they do not bind immutable source identity.
+
+`--resume` repeats live inventory for every planned crate; persisted visibility
+is never skip authority by itself. Present non-yanked versions are reconciled
+without upload. Yanked, unavailable, changed-source, changed-tree, changed-plan,
+changed-manifest, changed-registry, and changed-bootstrap evidence fails closed.
+Receipt-backed publication rejects `--skip-checks`, `--skip-git-check`, `--from`,
+and `--tag`. Before the first upload, preflight checks the package file list for every
+planned crate and verifies that each normal, build, or otherwise
+publish-relevant workspace dependency is in the same plan with a version
+requirement matching the planned package version. A successful preflight records
+`dependency_closure: true` for every planned crate. After a non-dry-run upload,
+the publisher performs bounded crates.io visibility observations and records
+`registry_visible`; an unobserved or missing result is retryable on resume rather
+than terminal. A yanked result is terminal but is not usable release proof.
+`dependency_closure` remains null until the package/closure proof records that
+fact. Inventory is paced between crates, and live mutation explicitly passes
+`--registry crates-io`; any package that excludes that registry fails before
+publication. The receipt is local recovery state, not a hosted durable upload. It does
+not consume or authenticate the hosted terminal preflight receipt from
+`.github/workflows/release-preflight.yml`; that distinct passed exact-source
+evidence remains a prerequisite operator gate, not publication authorization.
+Receipt completion does not prove a tag, GitHub Release, assets, latest state,
+consumer installation, Action alias, or GHCR alias.
+
 These controls are process and release-surface work. They do not authorize a
 new product feature, schema change, dependency wave, or alias movement by
 themselves.
@@ -144,6 +202,75 @@ On Windows, prefer repo-native commands such as `cargo fmt-check` over raw
 
 A local timeout is `not_run`, not `failed` and not `passed`. Obtain a terminal
 hosted or adequately budgeted result before release acceptance.
+
+## Hosted terminal preflight
+
+After release-preparation source is committed, run the hosted preflight against
+immutable commit identities. The workflow definition is dispatched from
+`main`; `source_sha` selects the exact committed tree being proved. In Bash:
+
+```bash
+SOURCE_SHA="$(git rev-parse HEAD^{commit})"
+AFFECTED_BASE_SHA="$(git merge-base origin/main HEAD)"
+EXPECTED_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tokmd") | .version' | head -n 1)"
+RELEASE_KIND=rc
+DISPATCHED_AFTER="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+gh workflow run release-preflight.yml \
+  --repo EffortlessMetrics/tokmd-swarm \
+  --ref main \
+  -f source_sha="$SOURCE_SHA" \
+  -f affected_base_sha="$AFFECTED_BASE_SHA" \
+  -f expected_version="$EXPECTED_VERSION" \
+  -f release_kind="$RELEASE_KIND"
+```
+
+Do not use a moving branch or tag for either SHA. If the preparation branch is
+based on an older `main`, use its actual immutable merge base, not a later
+`origin/main`. For stable, change only `RELEASE_KIND=stable` after selecting
+the exact stable source. PowerShell users should assign the same four values
+with `$env:NAME = ...` and pass `$env:NAME` to `gh`.
+
+The Actions run is attached to the dispatch ref (`main`), not to the source SHA
+input. After dispatch, identify the new run by its exact display title and the
+pre-dispatch timestamp, then verify the downloaded receipt identities:
+
+```bash
+RUN_TITLE="Release preflight $SOURCE_SHA ($RELEASE_KIND)"
+export DISPATCHED_AFTER RUN_TITLE
+RUN_ID=""
+for attempt in {1..12}; do
+  RUN_IDS="$(gh run list --repo EffortlessMetrics/tokmd-swarm --workflow release-preflight.yml --event workflow_dispatch --limit 20 --json databaseId,displayTitle,createdAt --jq '.[] | select(.displayTitle == env.RUN_TITLE and .createdAt >= env.DISPATCHED_AFTER) | .databaseId')"
+  RUN_COUNT="$(printf '%s\n' "$RUN_IDS" | grep -cE '^[0-9]+$' || true)"
+  if test "$RUN_COUNT" -gt 1; then
+    echo "multiple matching preflight runs found; inspect Actions without guessing" >&2
+    exit 1
+  fi
+  if test "$RUN_COUNT" -eq 1; then RUN_ID="$RUN_IDS"; break; fi
+  sleep 5
+done
+if test -z "$RUN_ID"; then
+  echo "no matching preflight run appeared before the polling deadline" >&2
+  exit 1
+fi
+gh run watch "$RUN_ID" --repo EffortlessMetrics/tokmd-swarm --exit-status
+gh run download "$RUN_ID" --repo EffortlessMetrics/tokmd-swarm --name "release-preflight-$SOURCE_SHA" --dir target/release-preflight-download
+```
+
+Read `receipt.json` first, then `identity.txt`, `commands.jsonl`, `affected.json`, and the log
+named by each non-passing observation. Acceptance requires the expected schema,
+all requested/resolved identities and object types to match, `overall=passed`,
+every canonical command exactly once with status, duration, and artifact-relative
+log, zero affected unknown files, and terminal workflow success. A missing
+artifact, receipt, or command—or `failed`, `cancelled`, `unavailable`,
+`not_run`, or timeout—is a stop. Retry with a new dispatch using the same
+immutable inputs; never edit or reinterpret the prior receipt.
+
+A passed preflight proves only the recorded source-side checks. It does not
+publish crates, create or verify a tag or GitHub Release, prove downloadable
+assets or registry visibility, run exact released-artifact consumer smoke, or
+authorize GHCR/Action alias promotion. Continue the publication, candidate,
+release-object, registry, consumer, and alias gates separately.
 
 ## Open first
 

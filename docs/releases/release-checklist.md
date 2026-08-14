@@ -151,6 +151,12 @@ The affected planner must report zero unknown files. A local timeout is
 `not_run`, not `passed`; obtain a terminal hosted or adequately budgeted result
 before release acceptance.
 
+Run the [hosted terminal preflight](../release-readiness.md#hosted-terminal-preflight)
+after committing the exact source.
+
+- [ ] Hosted release-preflight receipt is terminal `passed` for the exact
+  source/base/version/kind; artifact retained and run URL recorded.
+
 ### Review and merge control
 
 After the final push:

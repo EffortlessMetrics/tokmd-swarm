@@ -1,0 +1,354 @@
+name: Release Preflight
+run-name: Release preflight ${{ inputs.source_sha }} (${{ inputs.release_kind }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact lowercase committed source SHA to prove (40 or 64 hex characters)
+        required: true
+        type: string
+      affected_base_sha:
+        description: Exact immutable base SHA for affected planning
+        required: true
+        type: string
+      expected_version:
+        description: Exact workspace version expected by the preflight
+        required: true
+        type: string
+      release_kind:
+        description: Release boundary being proven
+        required: true
+        type: choice
+        options:
+          - rc
+          - stable
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact committed source SHA to prove
+        required: true
+        type: string
+      affected_base_sha:
+        description: Exact immutable base SHA for affected planning
+        required: true
+        type: string
+      expected_version:
+        description: Exact workspace version expected by the preflight
+        required: true
+        type: string
+      release_kind:
+        description: Release boundary being proven
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-preflight-${{ inputs.source_sha }}-${{ inputs.release_kind }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -C debuginfo=0
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  AFFECTED_BASE_SHA: ${{ inputs.affected_base_sha }}
+  EXPECTED_VERSION: ${{ inputs.expected_version }}
+  RELEASE_KIND: ${{ inputs.release_kind }}
+  PREFLIGHT_ROOT: target/release-preflight
+  CARGO_TARGET_DIR: target/release-preflight-cache
+  PROOF_BUDGET_SECONDS: 10500
+  RESOLVED_SOURCE_SHA: ${{ inputs.source_sha }}
+  RESOLVED_AFFECTED_BASE_SHA: ${{ inputs.affected_base_sha }}
+  SOURCE_OBJECT_TYPE: unknown
+  AFFECTED_BASE_OBJECT_TYPE: unknown
+  IDENTITY_VERIFIED: false
+
+jobs:
+  preflight:
+    name: Exact-source release preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check out exact source SHA
+        timeout-minutes: 10
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable source and affected base
+        if: always()
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "${PREFLIGHT_ROOT}/logs"
+          : > "${PREFLIGHT_ROOT}/commands.jsonl"
+          identity_log="${PREFLIGHT_ROOT}/logs/identity_check.log"
+          started="$(date +%s%3N)"
+          status=passed
+          detail="source and affected base are exact commit identities"
+          {
+          if [[ ! "${SOURCE_SHA}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+            echo "source_sha must be a lowercase 40- or 64-character hexadecimal SHA"; status=failed
+          fi
+          if [[ ! "${AFFECTED_BASE_SHA}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+            echo "affected_base_sha must be a lowercase 40- or 64-character hexadecimal SHA"; status=failed
+          fi
+          if [[ ! "${RELEASE_KIND}" =~ ^(rc|stable)$ ]]; then
+            echo "release_kind must be rc or stable"; status=failed
+          fi
+          source_type="$(git cat-file -t "${SOURCE_SHA}" 2>/dev/null || echo unknown)"
+          if [[ "${source_type}" != "commit" ]]; then
+            echo "source_sha must identify a commit object, not ${source_type}"; status=failed
+          fi
+          git fetch --no-tags origin "${AFFECTED_BASE_SHA}"
+          base_type="$(git cat-file -t "${AFFECTED_BASE_SHA}" 2>/dev/null || echo unknown)"
+          if [[ "${base_type}" != "commit" ]]; then
+            echo "affected_base_sha must identify a commit object, not ${base_type}"; status=failed
+          fi
+          actual_source="$(git rev-parse HEAD^{commit} 2>/dev/null || echo unresolved)"
+          requested_source="$(git rev-parse --verify "${SOURCE_SHA}^{commit}" 2>/dev/null || echo unresolved)"
+          requested_base="$(git rev-parse --verify "${AFFECTED_BASE_SHA}^{commit}" 2>/dev/null || echo unresolved)"
+          if [[ "${actual_source,,}" != "${SOURCE_SHA,,}" || "${requested_source,,}" != "${SOURCE_SHA,,}" ]]; then
+            echo "checked out source does not equal requested source"; status=failed
+          fi
+          if [[ "${requested_base,,}" != "${AFFECTED_BASE_SHA,,}" ]]; then
+            echo "resolved affected base does not equal requested base"; status=failed
+          fi
+          if ! git merge-base --is-ancestor "${AFFECTED_BASE_SHA}" "${SOURCE_SHA}"; then
+            echo "affected base must be an ancestor of source"; status=failed
+          fi
+          } >"${identity_log}" 2>&1
+          if [[ "${status}" != passed ]]; then detail="immutable identity validation failed"; fi
+          ended="$(date +%s%3N)"
+          jq -cn --arg id identity_check --arg status "${status}" --arg log logs/identity_check.log \
+            --arg detail "${detail}" --argjson duration_ms "$((ended-started))" \
+            '{id:$id,status:$status,duration_ms:$duration_ms,log:$log,detail:$detail}' >> "${PREFLIGHT_ROOT}/commands.jsonl"
+          {
+            echo "RESOLVED_SOURCE_SHA=${requested_source}"
+            echo "RESOLVED_AFFECTED_BASE_SHA=${requested_base}"
+            echo "SOURCE_OBJECT_TYPE=${source_type}"
+            echo "AFFECTED_BASE_OBJECT_TYPE=${base_type}"
+            echo "IDENTITY_VERIFIED=$([[ "${status}" = passed ]] && echo true || echo false)"
+          } >> "$GITHUB_ENV"
+          {
+            echo "source_sha=${SOURCE_SHA}"
+            echo "resolved_source_sha=${requested_source}"
+            echo "affected_base_sha=${AFFECTED_BASE_SHA}"
+            echo "resolved_affected_base_sha=${requested_base}"
+            echo "source_object_type=${source_type}"
+            echo "affected_base_object_type=${base_type}"
+            echo "expected_version=${EXPECTED_VERSION}"
+            echo "release_kind=${RELEASE_KIND}"
+          } | tee "${PREFLIGHT_ROOT}/identity.txt"
+
+      - name: Set up Rust
+        timeout-minutes: 10
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Set up Node.js
+        timeout-minutes: 10
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Install wasm-pack
+        timeout-minutes: 10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: wasm-pack
+
+      - name: Install cargo-deny
+        timeout-minutes: 10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cargo-deny@0.19.0
+
+      - name: Cache Rust build artifacts (best effort)
+        id: rust_cache
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: . -> target/release-preflight-cache
+
+      - name: Record cache outcome
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        env:
+          CACHE_OUTCOME: ${{ steps.rust_cache.outcome }}
+        run: |
+          mkdir -p "${PREFLIGHT_ROOT}"
+          cache_outcome="${CACHE_OUTCOME}"
+          printf 'rust_cache=%s\n' "${cache_outcome}" > "${PREFLIGHT_ROOT}/cache.txt"
+          if [[ "${cache_outcome}" != "success" ]]; then
+            echo "Cache unavailable (${cache_outcome}); continuing without restored Rust artifacts." >> "${PREFLIGHT_ROOT}/cache.txt"
+          fi
+
+      - name: Run required commands and record terminal observations
+        if: always()
+        timeout-minutes: 180
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="${PREFLIGHT_ROOT}"
+          logs="${root}/logs"
+          mkdir -p "${logs}"
+          touch "${root}/commands.jsonl"
+          proof_deadline=$(( $(date +%s) + PROOF_BUDGET_SECONDS ))
+
+          run_command() {
+            local id="$1"
+            local cap_seconds="$2"
+            local command="$3"
+            local log_path="${logs}/${id}.log"
+            local started ended duration exit_code status detail
+            local remaining=$(( proof_deadline - $(date +%s) ))
+            started="$(date +%s%3N)"
+            if [[ "${IDENTITY_VERIFIED}" != true || "${remaining}" -le 0 ]]; then
+              status=not_run
+              detail="$([[ "${IDENTITY_VERIFIED}" = true ]] && echo 'global proof budget exhausted' || echo 'identity check did not pass')"
+              : > "${log_path}"
+              duration=0
+              jq -cn --arg id "${id}" --arg status "${status}" --arg log "${log_path#${root}/}" --arg detail "${detail}" --argjson duration_ms "${duration}" '{id:$id,status:$status,duration_ms:$duration_ms,log:$log,detail:$detail}' >> "${root}/commands.jsonl"
+              return
+            fi
+            local timeout_seconds="${cap_seconds}"
+            if [[ "${remaining}" -lt "${timeout_seconds}" ]]; then timeout_seconds="${remaining}"; fi
+            exit_code=0
+            timeout --signal=TERM --kill-after=30s "${timeout_seconds}s" bash -o pipefail -c "${command}" >"${log_path}" 2>&1 || exit_code=$?
+            ended="$(date +%s%3N)"
+            duration=$((ended - started))
+            if [[ "${exit_code}" -eq 0 ]]; then
+              status=passed
+              detail="command completed successfully"
+            elif [[ "${exit_code}" -eq 124 || "${exit_code}" -eq 137 ]]; then
+              status=unavailable
+              detail="command exceeded its bounded timeout"
+            elif [[ "${exit_code}" -eq 130 || "${exit_code}" -eq 143 ]]; then
+              status=cancelled
+              detail="command was interrupted or cancelled"
+            else
+              status=failed
+              detail="command exited with ${exit_code}"
+            fi
+            jq -cn \
+              --arg id "${id}" \
+              --arg status "${status}" \
+              --arg log "${log_path#${root}/}" \
+              --arg detail "${detail}" \
+              --argjson duration_ms "${duration}" \
+              '{id:$id,status:$status,duration_ms:$duration_ms,log:$log,detail:$detail}' \
+              >> "${root}/commands.jsonl"
+            echo "${id}: ${status} (${duration}ms)"
+          }
+
+          run_command affected_plan 300 \
+            'cargo xtask affected --base "${AFFECTED_BASE_SHA}" --head "${SOURCE_SHA}" --json-output "${PREFLIGHT_ROOT}/affected.json" && jq -e ".unknown_files | length == 0" "${PREFLIGHT_ROOT}/affected.json"'
+          run_command proof_plan 300 \
+            'cargo xtask proof --profile affected --base "${AFFECTED_BASE_SHA}" --head "${SOURCE_SHA}" --plan --plan-json "${PREFLIGHT_ROOT}/proof-plan.json" --evidence-json "${PREFLIGHT_ROOT}/proof-evidence.json"'
+          run_command fmt_check 300 'cargo fmt-check'
+          run_command gate_check 900 'cargo gate-check'
+          run_command version_consistency 300 \
+            'cargo xtask version-consistency && test "$(cargo metadata --no-deps --format-version 1 | jq -r ".packages[] | select(.name == \"tokmd\") | .version" | head -n 1)" = "${EXPECTED_VERSION}"'
+          run_command publish_surface 900 \
+            'cargo xtask publish-surface --json --verify-publish | tee "${PREFLIGHT_ROOT}/publish-surface.json"'
+          run_command doc_artifacts 300 'cargo xtask doc-artifacts --check --json "${PREFLIGHT_ROOT}/doc-artifacts.json"'
+          run_command docs_check 600 'cargo xtask docs --check'
+          run_command proof_policy 300 'cargo xtask proof-policy --check'
+          run_command no_panic 300 'cargo xtask check-no-panic-family --strict'
+          run_command workspace_tests 2100 'cargo test --workspace --all-features'
+          run_command clippy 2100 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+          run_command cargo_deny 600 'cargo deny --all-features check'
+          run_command publish_dry_run 2100 'cargo xtask publish --dry-run'
+          run_command browser_wasm_archive 900 'npm --prefix web/runner run build:wasm:archive-zip'
+          run_command browser_tests 600 'npm --prefix web/runner test'
+
+      - name: Materialize terminal preflight input
+        if: always()
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          mkdir -p "${PREFLIGHT_ROOT}/logs"
+          touch "${PREFLIGHT_ROOT}/commands.jsonl"
+          for id in identity_check affected_plan proof_plan fmt_check gate_check version_consistency publish_surface doc_artifacts docs_check proof_policy no_panic workspace_tests clippy cargo_deny publish_dry_run browser_wasm_archive browser_tests; do
+            if ! jq -e --arg id "${id}" 'select(.id == $id)' "${PREFLIGHT_ROOT}/commands.jsonl" >/dev/null; then
+              : > "${PREFLIGHT_ROOT}/logs/${id}.log"
+              jq -cn --arg id "${id}" --arg status not_run --arg log "logs/${id}.log" \
+                --arg detail "observation was not recorded before finalization" --argjson duration_ms 0 \
+                '{id:$id,status:$status,duration_ms:$duration_ms,log:$log,detail:$detail}' >> "${PREFLIGHT_ROOT}/commands.jsonl"
+            fi
+          done
+          jq -s '{schema:"tokmd.release_preflight_input.v2",schema_version:2,source_sha:env.SOURCE_SHA,affected_base_sha:env.AFFECTED_BASE_SHA,resolved_source_sha:env.RESOLVED_SOURCE_SHA,resolved_affected_base_sha:env.RESOLVED_AFFECTED_BASE_SHA,source_object_type:env.SOURCE_OBJECT_TYPE,affected_base_object_type:env.AFFECTED_BASE_OBJECT_TYPE,expected_version:env.EXPECTED_VERSION,release_kind:env.RELEASE_KIND,commands:.}' "${PREFLIGHT_ROOT}/commands.jsonl" > "${PREFLIGHT_ROOT}/input.json"
+
+      - name: Aggregate terminal release-preflight receipt
+        if: always()
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "${PREFLIGHT_ROOT}"
+          if [[ -f "${PREFLIGHT_ROOT}/input.json" ]]; then
+            cargo xtask release-preflight \
+              --input "${PREFLIGHT_ROOT}/input.json" \
+              --output "${PREFLIGHT_ROOT}/receipt.json"
+            aggregate_exit=$?
+          else
+            aggregate_exit=1
+            echo "release-preflight input was not produced" > "${PREFLIGHT_ROOT}/aggregate.log"
+          fi
+          echo "aggregate_exit=${aggregate_exit}" >> "${PREFLIGHT_ROOT}/aggregate.log"
+          exit 0
+
+      - name: Write preflight summary
+        if: always()
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          {
+            echo "## Release preflight"
+            echo "- source_sha: ${SOURCE_SHA}"
+            echo "- affected_base_sha: ${AFFECTED_BASE_SHA}"
+            echo "- expected_version: ${EXPECTED_VERSION}"
+            echo "- release_kind: ${RELEASE_KIND}"
+            if [[ -f "${PREFLIGHT_ROOT}/receipt.json" ]]; then
+              echo "- overall: $(jq -r '.overall' "${PREFLIGHT_ROOT}/receipt.json")"
+            else
+              echo "- overall: unavailable (receipt was not produced)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload terminal release-preflight evidence
+        if: always()
+        timeout-minutes: 10
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preflight-${{ inputs.source_sha }}
+          path: target/release-preflight/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce terminal release-preflight decision
+        if: always()
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${PREFLIGHT_ROOT}/receipt.json" ]]; then
+            echo "::error::terminal release-preflight receipt is missing"
+            exit 1
+          fi
+          overall="$(jq -r '.overall' "${PREFLIGHT_ROOT}/receipt.json")"
+          if [[ "${overall}" != "passed" ]]; then
+            echo "::error::terminal release-preflight decision is ${overall}"
+            exit 1
+          fi
