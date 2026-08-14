@@ -50,7 +50,8 @@ pub(crate) fn handle(
 
     // Load selected ratchet rules even when the baseline is absent so an
     // explicitly requested control cannot be silently skipped.
-    let ratchet_config = policy::load_ratchet_config(&args, resolved)?;
+    let ratchet_config = policy::load_ratchet_config(&args, resolved)
+        .map_err(|error| anyhow::Error::new(super::UsageError(format!("{error:#}"))))?;
     if ratchet_config.is_some() && baseline.is_none() {
         bail!("Ratchet rules require a baseline receipt");
     }

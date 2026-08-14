@@ -788,7 +788,7 @@ fn test_gate_selected_ratchet_is_not_masked_without_baseline() -> anyhow::Result
             ratchet.to_string_lossy().as_ref(),
         ])
         .assert()
-        .failure()
+        .code(2)
         .stderr(predicate::str::contains("Failed to load ratchet config"))
         .stderr(predicate::str::contains(
             ratchet.to_string_lossy().into_owned(),
