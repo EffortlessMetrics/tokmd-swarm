@@ -58,6 +58,8 @@ fn main_protection_block(payload: &str) -> Option<String> {
 #[derive(Default)]
 struct ProtectionContract {
     approvals: Option<u32>,
+    dismiss_stale_reviews: Option<bool>,
+    require_code_owner_reviews: Option<bool>,
     conversation_resolution: Option<bool>,
     strict: Option<bool>,
     contexts: Vec<String>,
@@ -65,6 +67,7 @@ struct ProtectionContract {
     restrictions: Option<String>,
     allow_force_pushes: Option<bool>,
     allow_deletions: Option<bool>,
+    required_linear_history: Option<bool>,
 }
 
 fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
@@ -79,6 +82,10 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             section = "status";
         } else if let Some(value) = line.strip_prefix("required_approving_review_count:") {
             contract.approvals = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("dismiss_stale_reviews:") {
+            contract.dismiss_stale_reviews = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("require_code_owner_reviews:") {
+            contract.require_code_owner_reviews = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("required_conversation_resolution:") {
             contract.conversation_resolution = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("strict:") {
@@ -101,6 +108,8 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             contract.allow_force_pushes = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("allow_deletions:") {
             contract.allow_deletions = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("required_linear_history:") {
+            contract.required_linear_history = value.trim().parse().ok();
         } else if !line.is_empty() && !line.starts_with('#') && section == "reviews" {
             section = "";
         }
@@ -115,6 +124,12 @@ fn settings_contract_findings(payload: &str) -> Vec<&'static str> {
     let mut missing = Vec::new();
     if contract.approvals != Some(0) {
         missing.push("required_approving_review_count: 0");
+    }
+    if contract.dismiss_stale_reviews != Some(false) {
+        missing.push("dismiss_stale_reviews: false");
+    }
+    if contract.require_code_owner_reviews != Some(false) {
+        missing.push("require_code_owner_reviews: false");
     }
     if contract.conversation_resolution != Some(true) {
         missing.push("required_conversation_resolution: true");
@@ -136,6 +151,9 @@ fn settings_contract_findings(payload: &str) -> Vec<&'static str> {
     }
     if contract.allow_deletions != Some(false) {
         missing.push("allow_deletions: false");
+    }
+    if contract.required_linear_history != Some(false) {
+        missing.push("required_linear_history: false");
     }
     missing
 }
@@ -222,6 +240,27 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         (
             "admins enforced",
             payload.replace("enforce_admins: false", "enforce_admins: true"),
+        ),
+        (
+            "stale reviews dismissed",
+            payload.replace(
+                "dismiss_stale_reviews: false",
+                "dismiss_stale_reviews: true",
+            ),
+        ),
+        (
+            "code owner reviews required",
+            payload.replace(
+                "require_code_owner_reviews: false",
+                "require_code_owner_reviews: true",
+            ),
+        ),
+        (
+            "linear history required",
+            payload.replace(
+                "required_linear_history: false",
+                "required_linear_history: true",
+            ),
         ),
         (
             "extra required context",
