@@ -117,6 +117,15 @@ jobs:
         run: |
           echo "Rust cache outcome: ${{ steps.rust_cache.outcome }}" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Initialize CI observability receipt
+        if: always()
+        run: |
+          mkdir -p target/ci-core
+          mark_clock() {
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+          }
+          mark_clock target/ci-core/job_started
+
       - name: Fast precontext and launch core gate
         timeout-minutes: 70
         env:
@@ -124,6 +133,10 @@ jobs:
         run: |
           set +e
           mkdir -p target/ci-core
+          mark_clock() {
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+          }
+          mark_clock target/ci-core/core_started
           if [ "${RUNNER_KIND}" = "self-hosted" ]; then
             df -h . || true
           else
@@ -173,10 +186,20 @@ jobs:
           # and the no-panic checker, and breakage there is invisible otherwise.
           run_bounded "cargo test -p xtask --all-features" target/ci-core/xtask_test_exit target/ci-core/xtask_test.log cargo test -p xtask --all-features
           run_bounded "cargo xtask proof-policy --check" target/ci-core/proof_policy_exit target/ci-core/proof_policy.log cargo xtask proof-policy --check
+          mark_clock target/ci-core/core_completed
           echo "completed serial core gate, tests, and proof-policy"
+
+      - name: Record UB Review start
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        run: |
+          mark_clock() {
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+          }
+          mark_clock target/ci-core/ub_review_started
 
       - name: UB Review (advisory)
         id: ubreview
+        timeout-minutes: 15
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         continue-on-error: true
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
@@ -212,6 +235,12 @@ jobs:
               echo "ub-review advisory lane failed (${UB_OUTCOME}): check provider secrets and model availability, then re-run. Deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
               ;;
           esac
+          mark_clock() {
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+          }
+          if [ -n "${UB_OUTCOME:-}" ] && [ "${UB_OUTCOME}" != "skipped" ]; then
+            mark_clock target/ci-core/ub_review_completed
+          fi
 
       - name: Assert core gate verdict
         if: ${{ always() }}
@@ -267,6 +296,13 @@ jobs:
             fi
           fi
 
+          # Persist the post-retry values so the always-run receipt reflects
+          # the final verdict rather than stale first-attempt markers.
+          printf '%s\n' "${core_exit}" > target/ci-core/core_exit
+          printf '%s\n' "${test_exit}" > target/ci-core/test_exit
+          printf '%s\n' "${xtask_test_exit}" > target/ci-core/xtask_test_exit
+          printf '%s\n' "${proof_policy_exit}" > target/ci-core/proof_policy_exit
+
           {
             echo "## Deterministic core gate"
             if [ "${core_exit}" = "0" ]; then
@@ -294,6 +330,120 @@ jobs:
           test "${test_exit}" = "0"
           test "${xtask_test_exit}" = "0"
           test "${proof_policy_exit}" = "0"
+
+      - name: Write UB Review observability receipt
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          UB_OUTCOME: ${{ steps.ubreview.outcome }}
+          RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -u
+          receipt_dir="target/ci-core"
+          read_marker() {
+            if [ -s "$1" ]; then
+              cat "$1"
+            else
+              echo ""
+            fi
+          }
+          read_mono() {
+            value="$1"
+            case "$value" in
+              ''|*[!0-9]*) echo "" ;;
+              *) echo "$value" ;;
+            esac
+          }
+          json_number() {
+            if [ -n "$1" ]; then echo "$1"; else echo "null"; fi
+          }
+          job_started="$(read_mono "$(read_marker "${receipt_dir}/job_started_mono_ns")")"
+          core_started="$(read_mono "$(read_marker "${receipt_dir}/core_started_mono_ns")")"
+          core_completed="$(read_mono "$(read_marker "${receipt_dir}/core_completed_mono_ns")")"
+          ub_started="$(read_mono "$(read_marker "${receipt_dir}/ub_review_started_mono_ns")")"
+          ub_completed="$(read_mono "$(read_marker "${receipt_dir}/ub_review_completed_mono_ns")")"
+          core_started_utc="$(read_marker "${receipt_dir}/core_started_utc")"
+          core_completed_utc="$(read_marker "${receipt_dir}/core_completed_utc")"
+          ub_started_utc="$(read_marker "${receipt_dir}/ub_review_started_utc")"
+          ub_completed_utc="$(read_marker "${receipt_dir}/ub_review_completed_utc")"
+          timing_integrity="valid"
+          core_elapsed=0
+          if [ -n "${core_started}" ] && [ -n "${core_completed}" ] && [ "${core_completed}" -ge "${core_started}" ]; then
+            core_elapsed=$(( (core_completed - core_started) / 1000000000 ))
+          else
+            timing_integrity="incomplete_or_reversed"
+          fi
+          ub_elapsed=0
+          if [ -n "${ub_started}" ] && [ -n "${ub_completed}" ] && [ "${ub_completed}" -ge "${ub_started}" ]; then
+            ub_elapsed=$(( (ub_completed - ub_started) / 1000000000 ))
+          elif [ -n "${ub_started}" ] || [ -n "${ub_completed}" ]; then
+            timing_integrity="incomplete_or_reversed"
+          fi
+          core_exit="$(read_marker "${receipt_dir}/core_exit")"
+          test_exit="$(read_marker "${receipt_dir}/test_exit")"
+          xtask_test_exit="$(read_marker "${receipt_dir}/xtask_test_exit")"
+          proof_policy_exit="$(read_marker "${receipt_dir}/proof_policy_exit")"
+          timeout_classification="not_timeout"
+          terminal_reason="completed"
+          for exit_code in "${core_exit}" "${test_exit}" "${xtask_test_exit}" "${proof_policy_exit}"; do
+            if [ "${exit_code}" = "124" ]; then
+              timeout_classification="bounded_command_timeout"
+              terminal_reason="core_proof_timeout"
+            fi
+          done
+          if [ "${terminal_reason}" = "completed" ]; then
+            for exit_code in "${core_exit}" "${test_exit}" "${xtask_test_exit}" "${proof_policy_exit}"; do
+              if [ -n "${exit_code}" ] && [ "${exit_code}" != "0" ]; then
+                terminal_reason="core_proof_failed"
+              fi
+            done
+          fi
+          if [ "${terminal_reason}" = "completed" ]; then
+            case "${UB_OUTCOME:-}" in
+              success) terminal_reason="completed" ;;
+              failure) terminal_reason="ub_review_advisory_failed" ;;
+              skipped|"") terminal_reason="ub_review_skipped" ;;
+              cancelled) terminal_reason="ub_review_cancelled" ;;
+              *) terminal_reason="ub_review_unexpected_${UB_OUTCOME:-unknown}" ;;
+            esac
+          fi
+          jq -cn \
+            --arg schema_version "tokmd.ci.ub-review.v1" \
+            --arg workflow "${GITHUB_WORKFLOW}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
+            --arg job "${GITHUB_JOB}" \
+            --arg head_sha "${HEAD_SHA}" \
+            --arg runner_kind "${RUNNER_KIND:-github}" \
+            --arg ub_provider_policy "minimax-primary" \
+            --arg ub_model "MiniMax-M3" \
+            --arg ub_outcome "${UB_OUTCOME:-unknown}" \
+            --arg terminal_reason "${terminal_reason}" \
+            --arg timeout_classification "${timeout_classification}" \
+            --arg timing_integrity "${timing_integrity}" \
+            --argjson job_started_mono_ns "$(json_number "${job_started}")" \
+            --argjson core_started_mono_ns "$(json_number "${core_started}")" \
+            --argjson core_completed_mono_ns "$(json_number "${core_completed}")" \
+            --argjson core_elapsed_seconds "${core_elapsed}" \
+            --argjson ub_started_mono_ns "$(json_number "${ub_started}")" \
+            --argjson ub_completed_mono_ns "$(json_number "${ub_completed}")" \
+            --argjson ub_elapsed_seconds "${ub_elapsed}" \
+            --arg core_started_utc "${core_started_utc}" \
+            --arg core_completed_utc "${core_completed_utc}" \
+            --arg ub_started_utc "${ub_started_utc}" \
+            --arg ub_completed_utc "${ub_completed_utc}" \
+            '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:90,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:null,selection:"not_exposed",candidates:[{provider_policy:$ub_provider_policy,model:$ub_model},{provider_policy:"opencode-fallback",model:"deepseek-v4-flash"}],outcome:$ub_outcome}}}}' \
+            > "${receipt_dir}/ub-review-receipt.json"
+
+      - name: Upload UB Review observability receipt
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ub-review-observability-receipt
+          path: target/ci-core/ub-review-receipt.json
+          if-no-files-found: warn
 
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
   # this output into their `if:` so the deep lanes also run when matching
