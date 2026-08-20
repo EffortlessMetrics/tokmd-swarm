@@ -238,7 +238,9 @@ jobs:
           mark_clock() {
             python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
           }
-          mark_clock target/ci-core/ub_review_completed
+          if [ -n "${UB_OUTCOME:-}" ] && [ "${UB_OUTCOME}" != "skipped" ]; then
+            mark_clock target/ci-core/ub_review_completed
+          fi
 
       - name: Assert core gate verdict
         if: ${{ always() }}
