@@ -6,11 +6,11 @@ runtime. `tokmd` has the underlying `analyze`, `context`, `syntax`, and
 into one `sensors/tokmd/` packet from a single command. The root
 `EffortlessMetrics/tokmd` Action exposes that orchestration through
 `mode: packet`, downloading a prebuilt `tokmd` binary by default. This page
-defines the one-command CLI path and the `mode: packet` Action path. The GHCR
-container runtime is implemented for verification-gated tags. `1.14.0` is
-verified; `1.15.0` is staged in the release-prep contract and remains
-pending its exact candidate and anonymous runtime gate. Downstream `ub-review`
-consumption remains planned.
+defines the one-command CLI path and the `mode: packet` Action path. The
+`1.15.0` binary release is published and its GHCR container runtime is
+verified: the [release ledger](releases/1.15-ledger.md) records the exact image
+digest, and stable release/consumer run `30965258655` passes the mounted-packet
+checks. Downstream `ub-review` consumption remains planned.
 
 ## Purpose
 
@@ -242,22 +242,23 @@ verified-public for `:main` (issue #264 closed 2026-06-24) but remains a
 workbench/experimental runtime, not a supported consumer path.
 
 Current support status: publication GHCR is **verified-public** for `v1.13.1`
-(2026-06-21) and for `v1.14.0` (2026-06-26). For `1.14.0`, the container-runtime
-gate steps 6-7 in `docs/specs/packet-ghcr-runtime.md` also passed on 2026-06-26
-via the `GHCR Container Smoke` lane (anonymous pull, `tokmd 1.14.0`, and a
-`complete` mounted-repository packet); see `docs/releases/1.14-ledger.md` and
-`docs/ci/ghcr-container-smoke.md`. The container runtime is gate-verified **and
-wired** for `1.14.0`: the `runtime: container` Action path now anonymously pulls
-that tag and runs it against the mounted workspace. New stable tags still need
+(2026-06-21), `v1.14.0` (2026-06-26), and `v1.15.0` (the stable release ledger
+records digest `sha256:53269109c4088274760183f75707e8b776d2a72a5840fab7378d765130a467e4`).
+The `v1.15.0` release and consumer workflows pass the binary and container packet
+jobs, including the exact stable container and mounted packet; see the [release
+ledger](releases/1.15-ledger.md), Action/container ledger, and consumer run
+`30965258655`. The container runtime is gate-verified and wired for `v1.15.0`:
+the `runtime: container` Action path anonymously pulls that tag and runs it
+against the mounted workspace. Each new stable tag still needs
 post-release verification (gate steps 1-7) and must be added to the Action's
-supported-tag set before their container runtime is called supported.
+supported-tag set before its container runtime is called supported.
 
 The Action's `runtime: container` path:
 
 - requires a Linux runner with Docker available;
-- accepts only verification-gated tags. The unreleased RC-prep source stages
-  `1.15.0` for candidate verification; it is not a supported tag until
-  that gate passes. Any other tag,
+- accepts only verification-gated tags. `v1.15.0` is a supported container tag:
+  its exact digest and anonymous mounted-packet gate are recorded in the
+  release ledger. Any other tag,
   including mutable aliases such as `latest`, `1.14`, and `1`, is a hard error
   pointing at the spec;
 - anonymously pulls `<image>:<normalized-version>` with an isolated docker config
@@ -324,8 +325,9 @@ A packet workflow does not:
 5. ~~Add Action examples and job-summary behavior.~~ (done: see
    [GitHub Action reference](github-action.md) and the packet job summary)
 6. ~~Harden publication GHCR as a secondary runtime.~~ (done: `runtime:
-   container` wired in `action.yml` for verification-gated tags; `1.14.0` is
-   verified and `1.15.0` is staged for stable proof.) Re-verify on each
+   container` wired in `action.yml` for verification-gated tags; `v1.14.0` and
+   `v1.15.0` are verified, with the `v1.15.0` exact digest and mounted-packet
+   receipt recorded in `docs/releases/1.15-ledger.md`.) Re-verify on each
    release and extend the supported-tag set only after the gate passes.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
 
