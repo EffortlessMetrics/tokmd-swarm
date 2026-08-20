@@ -220,7 +220,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload candidate receipt
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: container-candidate-${{ steps.source.outputs.commit }}
           path: artifacts/container-candidate-${{ steps.source.outputs.commit }}.json
