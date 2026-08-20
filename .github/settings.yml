@@ -60,6 +60,9 @@ branches:
         contexts:
           - "Tokmd Rust Result"
       enforce_admins: false
+      # Settings app replacement payloads require an explicit null when push
+      # restrictions are disabled; omission can reject the whole update.
+      restrictions: null
       # Not linear: publication imports land as two-parent merge commits, and
       # tokmd-swarm/main then fast-forwards onto them. Requiring linear history
       # would block the documented import path in docs/ci/swarm-routing.md.
