@@ -89,9 +89,9 @@ These items were considered during the scan but do not meet the `medium`
 severity threshold. They are recorded here for traceability and the next
 scheduled scan.
 
-The manual comparison recorded no new low-severity observations for the
-`#594` typos install hardening relative to the carried `2026-08-10`
-observations. The hardening actually *reduces* one carried observation
+The manual comparison recorded one new low-severity observation for the
+`#594` typos install hardening (OBS-007 below), alongside the carried
+`2026-08-10` observations. The hardening also *reduces* one carried observation
 (OBS-003 below): the typos lane is now SHA-pinned where it was previously
 tag-pinned (`crate-ci/typos@v1`), narrowing the residual mixed-pinning
 gap. The remaining tag-pinned first-party actions are unchanged.
