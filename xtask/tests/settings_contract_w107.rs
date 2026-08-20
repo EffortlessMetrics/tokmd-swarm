@@ -54,16 +54,70 @@ fn main_protection_block(payload: &str) -> Option<String> {
             continue;
         }
         if in_protection {
-            if let Some(branch_indent) = main_indent {
-                if !trimmed.is_empty() && indent <= branch_indent {
-                    break;
-                }
+            if let Some(branch_indent) = main_indent
+                && !trimmed.is_empty()
+                && indent <= branch_indent
+            {
+                break;
             }
             block.push(line.to_owned());
         }
     }
 
     in_main.then_some(block.join("\n"))
+}
+
+fn main_protection_line_mutation(payload: &str, target: &str, replacement: &str) -> String {
+    let normalized = payload.replace("\r\n", "\n");
+    let mut in_branches = false;
+    let mut in_main = false;
+    let mut main_indent = None;
+    let mut in_protection = false;
+    let mut replaced = false;
+    let mut output = Vec::new();
+
+    for line in normalized.lines() {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if trimmed == "branches:" {
+            in_branches = true;
+        } else if in_branches && trimmed.starts_with("- name: ") && !in_protection {
+            in_main = trimmed == "- name: main";
+            main_indent = in_main.then_some(indent);
+        } else if in_main && !in_protection && trimmed == "protection:" {
+            in_protection = true;
+        } else if in_protection
+            && let Some(branch_indent) = main_indent
+            && !trimmed.is_empty()
+            && indent <= branch_indent
+        {
+            in_protection = false;
+            in_main = false;
+        }
+        if in_protection && !replaced && trimmed == target {
+            let prefix: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+            output.push(format!("{prefix}{replacement}"));
+            replaced = true;
+        } else {
+            output.push(line.to_owned());
+        }
+    }
+    output.join("\n")
+}
+
+fn main_protection_insert_after(payload: &str, target: &str, inserted: &str) -> String {
+    let replaced = main_protection_line_mutation(payload, target, target);
+    let mut lines = Vec::new();
+    let mut inserted_once = false;
+    for line in replaced.lines() {
+        lines.push(line.to_owned());
+        if !inserted_once && line.trim() == target {
+            let prefix: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+            lines.push(format!("{prefix}{inserted}"));
+            inserted_once = true;
+        }
+    }
+    lines.join("\n")
 }
 
 #[derive(Default)]
@@ -215,9 +269,10 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         anyhow::bail!("missing restrictions must be rejected");
     }
 
-    let stale_context = payload.replace(
-        "          - \"Tokmd Rust Result\"",
-        "          - \"Codex Review Gate\"",
+    let stale_context = main_protection_line_mutation(
+        &payload,
+        "- \"Tokmd Rust Result\"",
+        "- \"Codex Review Gate\"",
     );
     if stale_context == payload {
         anyhow::bail!("stale-context mutation did not change the payload");
@@ -226,7 +281,8 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         anyhow::bail!("stale required context must be rejected");
     }
 
-    let weakened_resolution = payload.replace(
+    let weakened_resolution = main_protection_line_mutation(
+        &payload,
         "required_conversation_resolution: true",
         "required_conversation_resolution: false",
     );
@@ -237,7 +293,8 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         anyhow::bail!("weakened conversation resolution must be rejected");
     }
 
-    let weakened_strictness = payload.replace("        strict: true", "        strict: false");
+    let weakened_strictness =
+        main_protection_line_mutation(&payload, "strict: true", "strict: false");
     if weakened_strictness == payload {
         anyhow::bail!("weakened-strictness mutation did not change the payload");
     }
@@ -245,8 +302,11 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         anyhow::bail!("weakened strictness must be rejected");
     }
 
-    let force_push_enabled =
-        payload.replace("allow_force_pushes: false", "allow_force_pushes: true");
+    let force_push_enabled = main_protection_line_mutation(
+        &payload,
+        "allow_force_pushes: false",
+        "allow_force_pushes: true",
+    );
     if force_push_enabled == payload {
         anyhow::bail!("force-push mutation did not change the payload");
     }
@@ -257,41 +317,50 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
     for (name, mutation) in [
         (
             "missing approvals",
-            payload.replace(
+            main_protection_line_mutation(
+                &payload,
                 "required_approving_review_count: 0",
                 "required_approving_review_count: 1",
             ),
         ),
         (
             "admins enforced",
-            payload.replace("enforce_admins: false", "enforce_admins: true"),
+            main_protection_line_mutation(
+                &payload,
+                "enforce_admins: false",
+                "enforce_admins: true",
+            ),
         ),
         (
             "stale reviews dismissed",
-            payload.replace(
+            main_protection_line_mutation(
+                &payload,
                 "dismiss_stale_reviews: false",
                 "dismiss_stale_reviews: true",
             ),
         ),
         (
             "code owner reviews required",
-            payload.replace(
+            main_protection_line_mutation(
+                &payload,
                 "require_code_owner_reviews: false",
                 "require_code_owner_reviews: true",
             ),
         ),
         (
             "linear history required",
-            payload.replace(
+            main_protection_line_mutation(
+                &payload,
                 "required_linear_history: false",
                 "required_linear_history: true",
             ),
         ),
         (
             "extra required context",
-            payload.replace(
-                "      required_status_checks:\n        strict: true\n        contexts:\n          - \"Tokmd Rust Result\"",
-                "      required_status_checks:\n        strict: true\n        contexts:\n          - \"Tokmd Rust Result\"\n          - \"Unexpected Context\"",
+            main_protection_insert_after(
+                &payload,
+                "- \"Tokmd Rust Result\"",
+                "- \"Unexpected Context\"",
             ),
         ),
     ] {
