@@ -39,8 +39,10 @@ fallback to `cargo-binstall` / `cargo install`) with a SHA-pinned
 `taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c` (tagged
 `# v2.85.9`) running with `tool: typos@1.49.0`, `checksum: true`, and
 `fallback: none`, then runs `typos` as a separate step. The same commit
-back-fills a contract test in `xtask/tests/proof_plan_w92.rs` that
-structurally rejects drift: floating version refs, mutable `${{ … }}`
+back-fills a contract test in `xtask/tests/proof_plan_w92.rs` in the reviewed
+historical commit. This report PR documents that source evidence; it does not
+add or execute the historical test itself. The test structurally rejects drift:
+floating version refs, mutable `${{ … }}`
 expressions (inputs, secrets, tokens, PR titles), disabled checksums,
 cargo-binstall fallbacks, step reordering, comment-out drift, duplicated
 install steps, write permissions, injected `env`, `permissions`, `if`,
@@ -513,7 +515,9 @@ Subject: ci(typos): harden release asset install (#594)
     unchanged; license allowlist unchanged.
 
 **The manual review recorded no security findings at or above the `medium`
-threshold for `24d5a53`. The change is itself a STRIDE-positive hardening
+threshold for `24d5a53`. Based on the reviewed source commit and its referenced
+contract test (not test execution in this report PR), the change is itself a
+STRIDE-positive hardening
 across Spoofing, Tampering, Denial of Service (incidentally), and Elevation
 of Privilege.**
 
