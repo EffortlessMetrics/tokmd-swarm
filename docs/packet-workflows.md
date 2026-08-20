@@ -256,7 +256,7 @@ supported-tag set before its container runtime is called supported.
 The Action's `runtime: container` path:
 
 - requires a Linux runner with Docker available;
-- accepts only verification-gated tags. `1.15.0` is a supported container tag:
+- accepts only verification-gated tags. `v1.15.0` is a supported container tag:
   its exact digest and anonymous mounted-packet gate are recorded in the
   release ledger. Any other tag,
   including mutable aliases such as `latest`, `1.14`, and `1`, is a hard error
