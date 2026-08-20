@@ -90,10 +90,10 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             contract.conversation_resolution = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("strict:") {
             contract.strict = value.trim().parse().ok();
-        } else if line.starts_with("- ") {
+        } else if let Some(value) = line.strip_prefix("- ") {
             if section == "status" {
                 contract.contexts.push(
-                    line[2..]
+                    value
                         .trim()
                         .trim_matches('\"')
                         .trim_matches('\'')
