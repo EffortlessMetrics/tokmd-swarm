@@ -106,18 +106,50 @@ fn main_protection_line_mutation(payload: &str, target: &str, replacement: &str)
 }
 
 fn main_protection_insert_after(payload: &str, target: &str, inserted: &str) -> String {
-    let replaced = main_protection_line_mutation(payload, target, target);
+    let target_prefix = main_protection_line_prefix(payload, target);
     let mut lines = Vec::new();
     let mut inserted_once = false;
-    for line in replaced.lines() {
+    for line in payload.lines() {
         lines.push(line.to_owned());
-        if !inserted_once && line.trim() == target {
-            let prefix: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        if !inserted_once
+            && line.trim() == target
+            && let Some(prefix) = target_prefix.as_deref()
+        {
             lines.push(format!("{prefix}{inserted}"));
             inserted_once = true;
         }
     }
     lines.join("\n")
+}
+
+fn main_protection_line_prefix(payload: &str, target: &str) -> Option<String> {
+    let mut in_branches = false;
+    let mut in_main = false;
+    let mut in_protection = false;
+    let mut main_indent = None;
+    for line in payload.lines() {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if trimmed == "branches:" {
+            in_branches = true;
+        } else if in_branches && trimmed.starts_with("- name: ") && !in_protection {
+            in_main = trimmed == "- name: main";
+            main_indent = in_main.then_some(indent);
+        } else if in_main && !in_protection && trimmed == "protection:" {
+            in_protection = true;
+        } else if in_protection
+            && let Some(branch_indent) = main_indent
+            && !trimmed.is_empty()
+            && indent <= branch_indent
+        {
+            in_protection = false;
+            in_main = false;
+        }
+        if in_protection && trimmed == target {
+            return Some(line.chars().take_while(|c| c.is_whitespace()).collect());
+        }
+    }
+    None
 }
 
 #[derive(Default)]
@@ -373,6 +405,9 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
     }
 
     let renamed_main = payload.replace("  - name: main", "  - name: backup");
+    if renamed_main == payload {
+        anyhow::bail!("renamed_main mutation did not change the payload");
+    }
     if settings_contract_is_valid(&renamed_main) {
         anyhow::bail!("protection on a non-main branch must be rejected");
     }
