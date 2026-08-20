@@ -399,6 +399,7 @@ jobs:
           fi
           if [ "${terminal_reason}" = "completed" ]; then
             case "${UB_OUTCOME:-}" in
+              success) terminal_reason="completed" ;;
               failure) terminal_reason="ub_review_advisory_failed" ;;
               skipped|"") terminal_reason="ub_review_skipped" ;;
               cancelled) terminal_reason="ub_review_cancelled" ;;
@@ -430,7 +431,7 @@ jobs:
             --arg core_completed_utc "${core_completed_utc}" \
             --arg ub_started_utc "${ub_started_utc}" \
             --arg ub_completed_utc "${ub_completed_utc}" \
-            '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:90,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:$ub_model,outcome:$ub_outcome}}}}' \
+            '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:90,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:null,selection:"not_exposed",candidates:[{provider_policy:$ub_provider_policy,model:$ub_model},{provider_policy:"opencode-fallback",model:"deepseek-v4-flash"}],outcome:$ub_outcome}}}}' \
             > "${receipt_dir}/ub-review-receipt.json"
 
       - name: Upload UB Review observability receipt
