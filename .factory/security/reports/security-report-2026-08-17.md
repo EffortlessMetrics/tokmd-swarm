@@ -39,7 +39,7 @@ fallback to `cargo-binstall` / `cargo install`) with a SHA-pinned
 `taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c` (tagged
 `# v2.85.9`) running with `tool: typos@1.49.0`, `checksum: true`, and
 `fallback: none`, then runs `typos` as a separate step. The same commit
-back-fills a 230-line test in `xtask/tests/proof_plan_w92.rs` that
+back-fills a contract test in `xtask/tests/proof_plan_w92.rs` that
 structurally rejects drift: floating version refs, mutable `${{ … }}`
 expressions (inputs, secrets, tokens, PR titles), disabled checksums,
 cargo-binstall fallbacks, step reordering, comment-out drift, duplicated
@@ -367,11 +367,12 @@ prior weekly scans have re-verified.
 
 - **Known commit reviewed:** `24d5a53fe360383693ad63a814b2a16606753f84 ci(typos):
   harden release asset install (#594)`, 2026-08-14, GPG-signed
-- **Window completeness:** Independently verified. `git log --since="7 days ago"
-  --pretty=format:"%H %s"` returned exactly one commit (`24d5a53`). The
-  prior `origin` shallow fetch was extended with `git fetch --depth=20 origin
-  main` to confirm no additional commits exist in the intended window.
-- **Files in scope:** 4 (the diff against the parent is +254/-24, scoped to
+- **Window completeness:** Not independently proven. `git log --since="7 days ago"
+  --pretty=format:"%H %s"` returned exactly one commit (`24d5a53`) in the
+  observed checkout, but the recorded `git fetch --depth=20 origin main` is
+  bounded and cannot establish full-history completeness.
+- **Files in scope:** 4 (the diff against the parent is +443/-3, approximately
+  97% tests by changed-line composition), scoped to
   `.github/workflows/ci.yml`, `docs/ci/inventory.md`,
   `policy/ci-lane-whitelist.toml`, `xtask/tests/proof_plan_w92.rs`). The
   full surface was previously reviewed under the `2026-06-29` true-merge
@@ -418,7 +419,8 @@ Subject: ci(typos): harden release asset install (#594)
 ```
 
 - **Type:** GPG-signed single-commit CI workflow hardening.
-- **Surface:** 4 files (`+254/-24`, 86% tests, 11% config, 3% docs).
+- **Surface:** 4 files (`+443/-3`, approximately 97% tests by changed-line
+  composition).
 - **Net code change in the commit body:**
   - `.github/workflows/ci.yml::typos`: replaces
     `- uses: crate-ci/typos@v1` with a SHA-pinned
