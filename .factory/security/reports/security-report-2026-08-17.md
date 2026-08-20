@@ -165,8 +165,9 @@ prevent regression.
 - The custom Droid action — the highest-privilege third-party surface — IS
   SHA-pinned.
 - After `24d5a53`, the typos lane is also SHA-pinned with structural test
-  enforcement; the remaining tag-pinned examples are independent action
-  dependencies for cargo-llvm-cov, wasm-pack, and similar tool installers.
+  enforcement; remaining tag-pinned examples include first-party actions and
+  third-party tool installers such as `taiki-e/install-action@v2` used by
+  coverage, CI, proof-executor, and release workflows.
 - Below the `medium` severity threshold for this scan; flagged for the next
   threat-model refresh (target: 2026-11-01 or earlier if scope changes).
 
