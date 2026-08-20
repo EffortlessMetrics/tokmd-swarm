@@ -83,11 +83,15 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             contract.conversation_resolution = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("strict:") {
             contract.strict = value.trim().parse().ok();
-        } else if let Some(value) = line.strip_prefix("- \"") {
+        } else if line.starts_with("- ") {
             if section == "status" {
-                contract
-                    .contexts
-                    .push(value.trim_end_matches('\"').to_owned());
+                contract.contexts.push(
+                    line[2..]
+                        .trim()
+                        .trim_matches('\"')
+                        .trim_matches('\'')
+                        .to_owned(),
+                );
             }
         } else if let Some(value) = line.strip_prefix("enforce_admins:") {
             contract.enforce_admins = value.trim().parse().ok();
@@ -183,17 +187,26 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         "required_conversation_resolution: true",
         "required_conversation_resolution: false",
     );
+    if weakened_resolution == payload {
+        anyhow::bail!("weakened-resolution mutation did not change the payload");
+    }
     if settings_contract_is_valid(&weakened_resolution) {
         anyhow::bail!("weakened conversation resolution must be rejected");
     }
 
     let weakened_strictness = payload.replace("        strict: true", "        strict: false");
+    if weakened_strictness == payload {
+        anyhow::bail!("weakened-strictness mutation did not change the payload");
+    }
     if settings_contract_is_valid(&weakened_strictness) {
         anyhow::bail!("weakened strictness must be rejected");
     }
 
     let force_push_enabled =
         payload.replace("allow_force_pushes: false", "allow_force_pushes: true");
+    if force_push_enabled == payload {
+        anyhow::bail!("force-push mutation did not change the payload");
+    }
     if settings_contract_is_valid(&force_push_enabled) {
         anyhow::bail!("force-push drift must be rejected");
     }
@@ -211,10 +224,6 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
             payload.replace("enforce_admins: false", "enforce_admins: true"),
         ),
         (
-            "missing strictness",
-            payload.replace("        strict: true", "        strict: false"),
-        ),
-        (
             "extra required context",
             payload.replace(
                 "          - \"Tokmd Rust Result\"",
@@ -222,6 +231,9 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
             ),
         ),
     ] {
+        if mutation == payload {
+            anyhow::bail!("{name} mutation did not change the payload");
+        }
         if settings_contract_is_valid(&mutation) {
             anyhow::bail!("{name} drift must be rejected");
         }
