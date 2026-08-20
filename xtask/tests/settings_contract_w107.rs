@@ -26,29 +26,40 @@ fn main_protection_block(payload: &str) -> Option<String> {
     let normalized = payload.replace("\r\n", "\n");
     let mut in_branches = false;
     let mut in_main = false;
+    let mut main_indent = None;
+    let mut in_protection = false;
     let mut block = Vec::new();
 
     for line in normalized.lines() {
-        if line == "branches:" {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if trimmed == "branches:" {
             in_branches = true;
             continue;
         }
         if !in_branches {
             continue;
         }
-        if line.starts_with("  - name: ") {
-            if in_main && !block.is_empty() {
-                return Some(block.join("\n"));
+        if trimmed.starts_with("- name: ") && !in_protection {
+            in_main = trimmed == "- name: main";
+            main_indent = in_main.then_some(indent);
+            if !in_main {
+                continue;
             }
-            in_main = line == "  - name: main";
             continue;
         }
-        if in_main {
-            if line.starts_with("    protection:") || line.starts_with("      ") {
-                block.push(line.to_string());
-            } else if !line.is_empty() && !line.starts_with(' ') {
-                break;
+        if in_main && !in_protection && trimmed == "protection:" {
+            in_protection = true;
+            block.push(trimmed.to_owned());
+            continue;
+        }
+        if in_protection {
+            if let Some(branch_indent) = main_indent {
+                if !trimmed.is_empty() && indent <= branch_indent {
+                    break;
+                }
             }
+            block.push(line.to_owned());
         }
     }
 
@@ -90,8 +101,19 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             contract.conversation_resolution = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("strict:") {
             contract.strict = value.trim().parse().ok();
-        } else if let Some(value) = line.strip_prefix("- ") {
+        } else if let Some(value) = line.strip_prefix("contexts:") {
             if section == "status" {
+                let values = value.trim().trim_start_matches('[').trim_end_matches(']');
+                contract.contexts.extend(
+                    values
+                        .split(',')
+                        .filter(|item| !item.trim().is_empty())
+                        .map(|item| item.trim().trim_matches('"').trim_matches('\'').to_owned()),
+                );
+                section = "status_contexts";
+            }
+        } else if let Some(value) = line.strip_prefix("- ") {
+            if section == "status_contexts" || section == "status" {
                 contract.contexts.push(
                     value
                         .trim()
@@ -110,7 +132,10 @@ fn parse_main_protection(payload: &str) -> Option<ProtectionContract> {
             contract.allow_deletions = value.trim().parse().ok();
         } else if let Some(value) = line.strip_prefix("required_linear_history:") {
             contract.required_linear_history = value.trim().parse().ok();
-        } else if !line.is_empty() && !line.starts_with('#') && section == "reviews" {
+        } else if !line.is_empty()
+            && !line.starts_with('#')
+            && (section == "reviews" || section == "status_contexts")
+        {
             section = "";
         }
     }
@@ -265,8 +290,8 @@ fn settings_contract_rejects_missing_required_fields_and_drift() -> anyhow::Resu
         (
             "extra required context",
             payload.replace(
-                "          - \"Tokmd Rust Result\"",
-                "          - \"Tokmd Rust Result\"\n          - \"Unexpected Context\"",
+                "      required_status_checks:\n        strict: true\n        contexts:\n          - \"Tokmd Rust Result\"",
+                "      required_status_checks:\n        strict: true\n        contexts:\n          - \"Tokmd Rust Result\"\n          - \"Unexpected Context\"",
             ),
         ),
     ] {
