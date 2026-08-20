@@ -1445,6 +1445,22 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "settings_protection_contract"
+kind = "rust"
+paths = [
+  ".github/settings.yml",
+  "xtask/tests/settings_contract_w107.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask --test settings_contract_w107 --locked",
+  "cargo xtask docs --check",
+]
+reason = "The repository-owned Settings-app protection payload and its recurrence fixture form one source-and-proof contract; route both files together so the fixture is never an unknown affected file."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "ripr_policy"
 kind = "rust"
 paths = [
