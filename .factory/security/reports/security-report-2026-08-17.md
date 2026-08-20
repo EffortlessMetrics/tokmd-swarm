@@ -5,10 +5,11 @@
 **Repository:** EffortlessMetrics/tokmd-swarm
 **Severity Threshold:** medium
 **Intended Window:** 2026-08-10 → 2026-08-17
-**Observed Scope:** Checked-out commit `24d5a53` (the only commit in the
-intended 7-day window per `git log --since="7 days ago"`); window completeness
-was independently confirmed because the `origin` remote was fetched with
-non-shallow history for this run
+**Observed Scope:** Checked-out commit `24d5a53`; `git log --since="7 days ago"`
+reported no other commits in this checkout for the intended window. The scan
+does not independently prove window completeness: the appendix records only a
+bounded `git fetch --depth=20`, so the zero-finding tally is limited to the
+observed checkout and must not be read as a full-history claim.
 
 ## Executive Summary
 
@@ -28,7 +29,8 @@ vulnerabilities.
 **Manual Review Required:** 0
 
 **Summary:** The manual review reported no findings at or above the `medium`
-severity threshold for the only commit in the intended window,
+severity threshold for the only commit observed in this checkout for the
+intended window,
 `24d5a53 ci(typos): harden release asset install (#594)`, dated 2026-08-14.
 This is itself a defensive STRIDE-positive CI hardening. The commit replaces
 the prior mutable `crate-ci/typos@v1` install (which fetched a tool binary
@@ -327,7 +329,7 @@ prior weekly scans have re-verified.
 | D-07 | Strict JSON parsing with type validation | `crates/tokmd-core/src/ffi/parse.rs` | ✓ |
 | D-08 | Per-family schema versioning (`SCHEMA_VERSION=2`, `COCKPIT_SCHEMA_VERSION=3`, `HANDOFF_SCHEMA_VERSION=5`, `CONTEXT_SCHEMA_VERSION=4`, `CONTEXT_BUNDLE_SCHEMA_VERSION=2`) | `crates/tokmd-types/src/` | ✓ |
 | D-09 | SHA-pinned Droid-related actions; tag-pinned first-party actions; **typos lane SHA-pinned after `24d5a53`** | `.github/workflows/droid*.yml` (SHA), `ci.yml::typos` (SHA after `24d5a53`) | ✓ |
-| D-10 | Branch protection on `main` (status checks required, no force-push, no deletions) | `.github/settings.yml` | ✓ |
+| D-10 | Branch-protection settings for `main` are present (status checks required, no force-push, no deletions); live enforcement and per-PR execution were not independently proven by this scan | `.github/settings.yml` | configured; live enforcement unverified |
 | D-11 | `cargo-deny` advisory + license allowlist | `deny.toml` | ✓ |
 | D-12 | BLAKE3 redaction with extension allowlist | `crates/tokmd-format/src/redact/mod.rs`, `crates/tokmd-format/src/redact/extensions.rs` | ✓ |
 | D-13 | Content reads bounded by `ContentLimits` (`DEFAULT_MAX_FILE_BYTES = 128 KiB`) | `crates/tokmd-analysis/src/content/mod.rs` | ✓ |
