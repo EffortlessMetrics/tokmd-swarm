@@ -325,8 +325,8 @@ A packet workflow does not:
 5. ~~Add Action examples and job-summary behavior.~~ (done: see
    [GitHub Action reference](github-action.md) and the packet job summary)
 6. ~~Harden publication GHCR as a secondary runtime.~~ (done: `runtime:
-   container` wired in `action.yml` for verification-gated tags; `1.14.0` and
-   `1.15.0` are verified, with the `1.15.0` exact digest and mounted-packet
+   container` wired in `action.yml` for verification-gated tags; `v1.14.0` and
+   `v1.15.0` are verified, with the `v1.15.0` exact digest and mounted-packet
    receipt recorded in `docs/releases/1.15-ledger.md`.) Re-verify on each
    release and extend the supported-tag set only after the gate passes.
 7. Wire downstream `ub-review` consumption after the Action path is stable.
