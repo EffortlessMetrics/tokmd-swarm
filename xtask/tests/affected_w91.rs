@@ -215,9 +215,15 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
 
     let paired = affected_fixture(&["AGENTS.md", "agents/shared/repo.md"], &after_policy)?;
     let guidance = scope(&paired, "agent_guidance_docs")?;
+    let cargo_guard = scope(&paired, "cargo_command_surfaces")?;
     ensure!(array_len(guidance, "matched_files")? == 2);
     ensure!(array_len(guidance, "proof")? == 2);
-    ensure!(array_len(&paired, "scopes")? == 1);
+    // Both scopes intentionally own the adopted guidance: the existing docs
+    // checks remain paired with the cargo-command guard. Affected planning
+    // keeps both scope entries while deduplicating commands within each scope.
+    ensure!(array_len(cargo_guard, "matched_files")? == 2);
+    ensure!(array_len(cargo_guard, "proof")? == 2);
+    ensure!(array_len(&paired, "scopes")? == 2);
     ensure!(array_len(&paired, "unknown_files")? == 0);
 
     let workflow = affected_fixture(&[".github/workflows/ci.yml"], &after_policy)?;
