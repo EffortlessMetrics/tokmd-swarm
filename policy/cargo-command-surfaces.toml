@@ -12,9 +12,22 @@ non_goal = "This inventory does not replace depguard scanning, prove release rea
 candidate_roots = [
     "AGENTS.md",
     "agents",
+    ".cargo",
+    ".claude",
+    ".codex",
+    ".factory",
+    ".githooks",
+    ".github",
+    ".jules",
+    ".tokmd-spec",
+    ".vscode",
+    "badges",
     "README.md",
     "CONTRIBUTING.md",
     "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "CITATION.cff",
+    "CODE_OF_CONDUCT.md",
     "RELEASE.md",
     "SECURITY.md",
     "CLAUDE.md",
@@ -26,6 +39,7 @@ candidate_roots = [
     "Dockerfile.release",
     "flake.nix",
     "scripts",
+    "xtask",
     "xtask/src",
     "crates",
     "Cargo.toml",
@@ -33,9 +47,26 @@ candidate_roots = [
     "Justfile",
     "action.yml",
     "ci",
+    "contracts",
+    "deny.toml",
+    "fixtures",
     "fuzz",
+    "plans",
+    "PR_DRAIN.md",
+    "proptest.toml",
+    "ripr.toml",
+    "ROADMAP.md",
+    "TODO.md",
+    "vendor",
     "web",
     "policy",
+    "_typos.toml",
+    ".dockerignore",
+    ".editorconfig",
+    ".gitattributes",
+    ".gitignore",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
 ]
 
 # Longest matching path wins.  A directory classification applies recursively.
@@ -57,14 +88,14 @@ mode = "deferred"
 reason = "role-specific copies are a follow-up inventory"
 
 [[surface]]
+path = ".factory"
+mode = "deferred"
+reason = "review and security support artifacts are outside this adoption slice"
+
+[[surface]]
 path = ".factory/security/reports"
 mode = "historical"
 reason = "security reports preserve incident-era command text"
-
-[[surface]]
-path = ".jules"
-mode = "historical"
-reason = "Jules provenance is not an operative command surface"
 
 [[surface]]
 path = "docs/examples"
@@ -75,6 +106,156 @@ reason = "examples may preserve historical command output"
 path = "xtask/src"
 mode = "dynamic"
 reason = "Rust-spawned commands require semantic ownership review"
+
+[[surface]]
+path = "xtask"
+mode = "deferred"
+reason = "xtask control-plane ownership is a separate follow-up slice"
+
+[[surface]]
+path = ".cargo"
+mode = "deferred"
+reason = "Cargo configuration is a separate dependency and tooling slice"
+
+[[surface]]
+path = ".claude"
+mode = "deferred"
+reason = "adapter tooling guidance is outside this adoption slice"
+
+[[surface]]
+path = ".codex"
+mode = "deferred"
+reason = "operator workspace state is outside this adoption slice"
+
+[[surface]]
+path = ".githooks"
+mode = "deferred"
+reason = "local hook behavior is a separate tooling slice"
+
+[[surface]]
+path = ".github"
+mode = "deferred"
+reason = "GitHub metadata and automation are separate workflow slices"
+
+[[surface]]
+path = ".jules"
+mode = "historical"
+reason = "Jules provenance is not an operative command surface"
+
+[[surface]]
+path = ".tokmd-spec"
+mode = "deferred"
+reason = "repo-native specifications are outside this adoption slice"
+
+[[surface]]
+path = ".vscode"
+mode = "deferred"
+reason = "editor integration is outside this adoption slice"
+
+[[surface]]
+path = "badges"
+mode = "deferred"
+reason = "verification badge assets are a separate evidence slice"
+
+[[surface]]
+path = "contracts"
+mode = "deferred"
+reason = "contract fixtures are a separate evidence slice"
+
+[[surface]]
+path = "fixtures"
+mode = "deferred"
+reason = "test fixtures are a separate proof slice"
+
+[[surface]]
+path = "plans"
+mode = "deferred"
+reason = "planning artifacts are outside this adoption slice"
+
+[[surface]]
+path = "vendor"
+mode = "deferred"
+reason = "vendored sources are outside this adoption slice"
+
+[[surface]]
+path = "CHANGELOG.md"
+mode = "deferred"
+reason = "release history is outside this adoption slice"
+
+[[surface]]
+path = "CITATION.cff"
+mode = "deferred"
+reason = "citation metadata is outside this adoption slice"
+
+[[surface]]
+path = "CODE_OF_CONDUCT.md"
+mode = "deferred"
+reason = "community policy is outside this adoption slice"
+
+[[surface]]
+path = "deny.toml"
+mode = "deferred"
+reason = "dependency policy is a separate trust slice"
+
+[[surface]]
+path = "PR_DRAIN.md"
+mode = "deferred"
+reason = "PR operations are outside this adoption slice"
+
+[[surface]]
+path = "proptest.toml"
+mode = "deferred"
+reason = "property-test configuration is a separate proof slice"
+
+[[surface]]
+path = "ripr.toml"
+mode = "deferred"
+reason = "advisory mutation configuration is a separate proof slice"
+
+[[surface]]
+path = "ROADMAP.md"
+mode = "deferred"
+reason = "roadmap guidance is outside this adoption slice"
+
+[[surface]]
+path = "TODO.md"
+mode = "deferred"
+reason = "backlog guidance is outside this adoption slice"
+
+[[surface]]
+path = "_typos.toml"
+mode = "deferred"
+reason = "text tooling configuration is outside this adoption slice"
+
+[[surface]]
+path = ".dockerignore"
+mode = "deferred"
+reason = "container context configuration is outside this adoption slice"
+
+[[surface]]
+path = ".editorconfig"
+mode = "deferred"
+reason = "editor configuration is outside this adoption slice"
+
+[[surface]]
+path = ".gitattributes"
+mode = "deferred"
+reason = "Git attributes are outside this adoption slice"
+
+[[surface]]
+path = ".gitignore"
+mode = "deferred"
+reason = "Git ignore policy is outside this adoption slice"
+
+[[surface]]
+path = "LICENSE-APACHE"
+mode = "deferred"
+reason = "license text is outside this adoption slice"
+
+[[surface]]
+path = "LICENSE-MIT"
+mode = "deferred"
+reason = "license text is outside this adoption slice"
 
 [[surface]]
 path = "README.md"
