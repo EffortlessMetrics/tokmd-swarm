@@ -26,29 +26,50 @@ process evidence, not a native approval or reviewer-identity gate.
 
 ## Build and Test Commands
 
+Routine workspace work uses the committed `Cargo.lock`; use `--locked` so a
+missing or stale lock fails visibly instead of changing dependency state:
+
 ```bash
-cargo build                          # Debug build
-cargo build --release                # Release build with LTO
-cargo test --all-features            # Test workspace default-members
-cargo test -p xtask --all-features   # Test the repo control plane
+cargo build --locked                          # Debug build
+cargo build --locked --release                # Release build with LTO
+cargo check --locked --workspace              # Check the workspace
+cargo test --locked --all-features            # Test workspace default-members
+cargo test --locked -p xtask --all-features   # Test the repo control plane
 cargo fmt-fix                        # Format code across the workspace
 cargo fmt-check                      # Verify workspace formatting
 cargo trim-target --check            # Report reclaimable target/debug space
 cargo sccache-check                  # Verify local sccache setup
-cargo clippy -- -D warnings          # Lint with strict warnings
-cargo install --path crates/tokmd    # Local install
+cargo clippy --locked --all-features -- -D warnings # Lint with strict warnings
+cargo run --locked -p tokmd -- --version       # Run the workspace binary
 ```
+
+Install from the workspace only when an installed binary is actually needed;
+ordinary development should use the workspace commands above:
+
+```bash
+cargo install --path crates/tokmd --locked
+```
+
+This source install is reproducible only to the committed lock available in
+the checkout. Registry consumer installation is governed by the published
+package's lock and exact release proof, not by this workspace source-install
+path.
 
 The required `Tokmd Rust Result` runs, serially, `cargo xtask gate --check`,
 the default-member test command above, the separate `xtask` test command, and
-`cargo xtask proof-policy --check`. `cargo test --workspace --all-features`
+`cargo xtask proof-policy --check`. `cargo test --locked --workspace --all-features`
 uses Cargo's broader workspace package selection, but it is not the required
 CI sequence and does not execute libFuzzer campaigns. Scheduled fuzz and
 platform lanes provide separate, deeper proof.
 
+This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
+and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)
+programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
+and [depguard#24](https://github.com/EffortlessMetrics/depguard/issues/24).
+
 On Windows, prefer `cargo fmt-fix` / `cargo fmt-check` over `cargo fmt --all`; the full workspace can exceed Cargo's formatter argv budget even when long paths are enabled.
 Windows MSVC builds in this repo also default to line-table debuginfo to keep `target/debug` from being dominated by full PDBs.
-If you need full local symbols for a debugging session, use `$env:RUSTFLAGS='-C debuginfo=2'; cargo test ...`.
+If you need full local symbols for a debugging session, use `$env:RUSTFLAGS='-C debuginfo=2'; cargo test --locked ...`.
 For opt-in local build caching, use `cargo with-sccache ...`; the wrapper sets `RUSTC_WRAPPER=sccache` and defaults `CARGO_INCREMENTAL=0` unless you pass `--keep-incremental`.
 For cross-worktree cache reuse, use `cargo xtask sccache --basedir <PATH> -- <cargo args>` so the wrapper can set `SCCACHE_BASEDIRS` explicitly.
 
@@ -202,7 +223,7 @@ When invoking `git diff` or `git log` with range syntax:
 
 Run a single test:
 ```bash
-cargo test test_name --verbose
+cargo test --locked test_name --verbose
 ```
 
 Update snapshots:
@@ -212,7 +233,7 @@ cargo insta review
 
 Run property tests:
 ```bash
-cargo test -p tokmd-scan properties
+cargo test --locked -p tokmd-scan properties
 ```
 
 Run mutation testing:

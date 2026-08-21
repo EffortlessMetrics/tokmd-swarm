@@ -10,14 +10,19 @@ This file is the canonical shared repo context for checked-in agent adapters in 
 
 Common commands:
 
+Routine workspace work preserves the committed `Cargo.lock`; use `--locked` so
+a missing or stale lock fails visibly instead of changing dependency state:
+
 ```bash
-cargo build
-cargo build --release
-cargo test --all-features
-cargo test -p xtask --all-features
+cargo build --locked
+cargo build --locked --release
+cargo check --locked --workspace
+cargo test --locked --all-features
+cargo test --locked -p xtask --all-features
 cargo fmt-check
 cargo fmt-fix
-cargo clippy --all-features -- -D warnings
+cargo clippy --locked --all-features -- -D warnings
+cargo run --locked -p tokmd -- --version
 cargo xtask lint-fix
 cargo xtask gate --check
 just lint
@@ -25,14 +30,31 @@ just fmt
 just publish-plan
 ```
 
-`cargo test --all-features` runs the workspace `default-members`; it does not
+Install from the workspace only when an installed binary is actually needed;
+ordinary development should use the workspace commands above:
+
+```bash
+cargo install --path crates/tokmd --locked
+```
+
+This source install is reproducible only to the committed lock available in
+the checkout. Registry consumer installation is governed by the published
+package's lock and exact release proof, not by this workspace source-install
+path.
+
+`cargo test --locked --all-features` runs the workspace `default-members`; it does not
 select `xtask` or `fuzz`. The required `Tokmd Rust Result` runs the following
 serial proof sequence: `cargo xtask gate --check`, the default-member test
-command above, `cargo test -p xtask --all-features`, and
-`cargo xtask proof-policy --check`. Use `cargo test --workspace --all-features`
+command above, `cargo test --locked -p xtask --all-features`, and
+`cargo xtask proof-policy --check`. Use `cargo test --locked --workspace --all-features`
 only when broad Cargo workspace package selection is intended. It is not the
 required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
 and platform lanes remain separate proof.
+
+This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
+and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)
+programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
+and [depguard#24](https://github.com/EffortlessMetrics/depguard/issues/24).
 
 Optional git hooks:
 
@@ -231,8 +253,8 @@ Rule:
 Common targeted commands:
 
 ```bash
-cargo test test_name --verbose
-cargo test -p tokmd-scan properties
+cargo test --locked test_name --verbose
+cargo test --locked -p tokmd-scan properties
 cargo mutants --file crates/tokmd-format/src/redact/mod.rs
 cargo +nightly fuzz list
 ```
