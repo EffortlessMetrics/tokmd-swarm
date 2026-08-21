@@ -39,7 +39,7 @@ cargo fmt-fix                        # Format code across the workspace
 cargo fmt-check                      # Verify workspace formatting
 cargo trim-target --check            # Report reclaimable target/debug space
 cargo sccache-check                  # Verify local sccache setup
-cargo clippy --locked -- -D warnings # Lint with strict warnings
+cargo clippy --locked --all-features -- -D warnings # Lint with strict warnings
 cargo run --locked -p tokmd -- --version       # Run the workspace binary
 ```
 
