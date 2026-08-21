@@ -1,0 +1,192 @@
+# Transitional source/command inventory for issue #604.
+#
+# This is an adoption guard, not a replacement for depguard#22/#24.  The
+# inventory is deliberately closed: every candidate root has an explicit
+# classification, and a new candidate root must be added here before it can be
+# treated as a known surface.
+schema_version = 1
+inventory = "closed-world"
+claim = "Transitional adoption guard: detect unlocked Cargo guidance on adopted live surfaces and classify deferred, historical, and dynamically assembled surfaces without executing commands."
+non_goal = "This inventory does not replace depguard scanning, prove release readiness, or interpret shell programs."
+
+candidate_roots = [
+    "AGENTS.md",
+    "agents",
+    "README.md",
+    "CONTRIBUTING.md",
+    "ARCHITECTURE.md",
+    "RELEASE.md",
+    "SECURITY.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "tokmd-role.md",
+    "docs",
+    ".github/workflows",
+    "Dockerfile",
+    "Dockerfile.release",
+    "flake.nix",
+    "scripts",
+    "xtask/src",
+    "crates",
+    "Cargo.toml",
+    "Cargo.lock",
+    "Justfile",
+    "action.yml",
+    "ci",
+    "fuzz",
+    "web",
+    "policy",
+]
+
+# Longest matching path wins.  A directory classification applies recursively.
+# Live guidance is intentionally limited to the canonical surfaces repaired by
+# #605; the remaining roots are visible adoption boundaries for follow-up work.
+[[surface]]
+path = "AGENTS.md"
+mode = "live"
+reason = "canonical agent guidance"
+
+[[surface]]
+path = "agents/shared/repo.md"
+mode = "live"
+reason = "canonical mirrored repository guidance"
+
+[[surface]]
+path = "agents"
+mode = "deferred"
+reason = "role-specific copies are a follow-up inventory"
+
+[[surface]]
+path = ".factory/security/reports"
+mode = "historical"
+reason = "security reports preserve incident-era command text"
+
+[[surface]]
+path = ".jules"
+mode = "historical"
+reason = "Jules provenance is not an operative command surface"
+
+[[surface]]
+path = "docs/examples"
+mode = "historical"
+reason = "examples may preserve historical command output"
+
+[[surface]]
+path = "xtask/src"
+mode = "dynamic"
+reason = "Rust-spawned commands require semantic ownership review"
+
+[[surface]]
+path = "README.md"
+mode = "deferred"
+reason = "front-door product guidance is a follow-up slice"
+
+[[surface]]
+path = "CONTRIBUTING.md"
+mode = "deferred"
+reason = "contributor guidance is a follow-up slice"
+
+[[surface]]
+path = "ARCHITECTURE.md"
+mode = "deferred"
+reason = "architecture documentation is outside this adoption slice"
+
+[[surface]]
+path = "RELEASE.md"
+mode = "deferred"
+reason = "release claims remain release-owned"
+
+[[surface]]
+path = "SECURITY.md"
+mode = "deferred"
+reason = "security policy prose is outside this adoption slice"
+
+[[surface]]
+path = "CLAUDE.md"
+mode = "deferred"
+reason = "adapter guidance follows the canonical guidance lane"
+
+[[surface]]
+path = "GEMINI.md"
+mode = "deferred"
+reason = "adapter guidance follows the canonical guidance lane"
+
+[[surface]]
+path = "tokmd-role.md"
+mode = "deferred"
+reason = "role guidance follows the canonical guidance lane"
+
+[[surface]]
+path = "docs"
+mode = "deferred"
+reason = "maintained docs require a separate inventory and repair slice"
+
+[[surface]]
+path = ".github/workflows"
+mode = "deferred"
+reason = "workflow command ownership is a separate CI slice"
+
+[[surface]]
+path = "Dockerfile"
+mode = "deferred"
+reason = "container packaging is a separate release slice"
+
+[[surface]]
+path = "Dockerfile.release"
+mode = "deferred"
+reason = "container packaging is a separate release slice"
+
+[[surface]]
+path = "flake.nix"
+mode = "deferred"
+reason = "Nix packaging is a separate release slice"
+
+[[surface]]
+path = "scripts"
+mode = "deferred"
+reason = "script command semantics require a dedicated follow-up"
+
+[[surface]]
+path = "crates"
+mode = "deferred"
+reason = "package-local docs and build metadata require a dedicated follow-up"
+
+[[surface]]
+path = "Cargo.toml"
+mode = "deferred"
+reason = "manifest command ownership is a separate dependency slice"
+
+[[surface]]
+path = "Cargo.lock"
+mode = "deferred"
+reason = "the lockfile is evidence, not a command surface"
+
+[[surface]]
+path = "Justfile"
+mode = "deferred"
+reason = "wrapper command ownership is a follow-up slice"
+
+[[surface]]
+path = "action.yml"
+mode = "deferred"
+reason = "action packaging is a separate workflow slice"
+
+[[surface]]
+path = "ci"
+mode = "deferred"
+reason = "CI support files are a separate workflow slice"
+
+[[surface]]
+path = "fuzz"
+mode = "deferred"
+reason = "fuzz command ownership is a separate proof slice"
+
+[[surface]]
+path = "web"
+mode = "deferred"
+reason = "web packaging is a separate product slice"
+
+[[surface]]
+path = "policy"
+mode = "deferred"
+reason = "policy command ownership is a separate policy slice"
