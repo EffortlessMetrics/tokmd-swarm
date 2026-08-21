@@ -239,6 +239,8 @@ coverage = false
 name = "cargo_command_surfaces"
 kind = "rust"
 paths = [
+  "AGENTS.md",
+  "agents/shared/repo.md",
   "policy/cargo-command-surfaces.toml",
   "xtask/tests/cargo_command_surfaces_w104.rs",
 ]
