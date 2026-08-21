@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use walkdir::WalkDir;
 
 const POLICY: &str = include_str!("../../policy/cargo-command-surfaces.toml");
 
@@ -166,6 +165,43 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
     None
 }
 
+fn ambiguous_command_line(line: &str) -> bool {
+    let tokens = line.split_whitespace().collect::<Vec<_>>();
+    let Some(cargo) = tokens.iter().position(|token| {
+        let token = token.trim_matches(['`', '\'', '"']);
+        token == "cargo"
+            || token.ends_with("/cargo")
+            || token.ends_with("\\cargo")
+            || token.ends_with("cargo.exe")
+    }) else {
+        return false;
+    };
+    let Some(arguments) = tokens.get(cargo + 1..) else {
+        return false;
+    };
+    arguments.iter().any(|token| {
+        token.starts_with('$')
+            || token.starts_with('"')
+            || token.starts_with('\'')
+            || (*token == "--features"
+                && arguments.iter().any(|candidate| {
+                    matches!(
+                        *candidate,
+                        "build"
+                            | "check"
+                            | "test"
+                            | "clippy"
+                            | "install"
+                            | "update"
+                            | "generate-lockfile"
+                    )
+                }))
+    }) || tokens.get(cargo).is_some_and(|token| {
+        let token = token.trim_matches(['`', '\'', '"']);
+        token.ends_with("cargo.exe") || token.starts_with(".\\") || token.starts_with("/")
+    })
+}
+
 fn dynamic_line(line: &str) -> bool {
     ["$(", "${", "{{", "format!", "Command::new", "env!("]
         .iter()
@@ -174,6 +210,9 @@ fn dynamic_line(line: &str) -> bool {
 
 fn scan_live(text: &str, lock_present: bool) -> Verdict {
     for line in text.lines() {
+        if ambiguous_command_line(line) {
+            return Verdict::NotProven;
+        }
         let Some(tokens) = command_tokens(line) else {
             continue;
         };
@@ -212,26 +251,14 @@ fn load_inventory() -> Result<Inventory, Box<dyn std::error::Error>> {
     toml::from_str(POLICY).map_err(Into::into)
 }
 
-fn candidate_files(root: &Path, inventory: &Inventory) -> Vec<String> {
-    let mut files = BTreeSet::new();
-    for candidate in &inventory.candidate_roots {
-        let path = root.join(candidate);
-        if path.is_file() {
-            files.insert(normalize(candidate));
-            continue;
-        }
-        if !path.is_dir() {
-            continue;
-        }
-        for entry in WalkDir::new(path).follow_links(false).into_iter().flatten() {
-            if entry.file_type().is_file() {
-                if let Ok(relative) = entry.path().strip_prefix(root) {
-                    files.insert(normalize(&relative.to_string_lossy()));
-                }
-            }
-        }
-    }
-    files.into_iter().collect()
+fn candidate_files(
+    root: &Path,
+    inventory: &Inventory,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    Ok(tracked_files(root)?
+        .into_iter()
+        .filter(|path| candidate_path(inventory, path))
+        .collect())
 }
 
 fn tracked_files(root: &Path) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -297,7 +324,7 @@ fn policy_is_closed_and_live_surfaces_are_locked() -> Result<(), Box<dyn std::er
             unclassified.push(path);
         }
     }
-    for path in candidate_files(&root, &inventory) {
+    for path in candidate_files(&root, &inventory)? {
         let Some(surface) = surface_for(&inventory, &path) else {
             unclassified.push(path);
             continue;
@@ -306,7 +333,8 @@ fn policy_is_closed_and_live_surfaces_are_locked() -> Result<(), Box<dyn std::er
             continue;
         }
         let text = fs::read_to_string(root.join(&path))?;
-        if scan_live(&text, lock_present) != Verdict::Pass {
+        let verdict = scan_live(&text, lock_present);
+        if verdict != Verdict::Pass {
             violations.push(path);
         }
     }
@@ -372,6 +400,16 @@ fn scanner_has_positive_negative_and_missing_lock_controls() {
         scan_live("see cargo build in the guide", true),
         Verdict::Pass
     );
+    for line in [
+        "cargo $cmd",
+        "cargo \"$cmd\"",
+        "cargo --features x build",
+        "cargo.exe build --locked",
+        ".\\cargo.exe test --locked",
+        "/usr/bin/cargo build --locked",
+    ] {
+        assert_eq!(scan_live(line, true), Verdict::NotProven, "{line}");
+    }
 }
 
 #[test]
@@ -415,6 +453,79 @@ fn scanner_preserves_historical_deferred_and_dynamic_boundaries()
         Verdict::NotProven
     );
     Ok(())
+}
+
+fn temp_fixture_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let base = std::env::temp_dir();
+    let pid = std::process::id();
+    for attempt in 0..100u32 {
+        let candidate = base.join(format!("tokmd-cargo-command-surfaces-{pid}-{attempt}"));
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err("could not allocate an isolated Cargo fixture directory".into())
+}
+
+fn fixture_cargo_check(
+    fixture: &Path,
+) -> Result<std::process::ExitStatus, Box<dyn std::error::Error>> {
+    let manifest = fixture.join("Cargo.toml");
+    let target = fixture.join("target");
+    let manifest_arg = manifest.to_string_lossy().to_string();
+    Ok(Command::new("cargo")
+        .current_dir(fixture)
+        .env("CARGO_TARGET_DIR", target)
+        .args([
+            "check",
+            "--locked",
+            "--offline",
+            "--manifest-path",
+            &manifest_arg,
+        ])
+        .status()?)
+}
+
+#[test]
+fn locked_fixture_rejects_lock_movement_without_mutating_lock()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = temp_fixture_dir()?;
+    let outcome = (|| -> Result<(), Box<dyn std::error::Error>> {
+        fs::create_dir(fixture.join("src"))?;
+        fs::write(
+            fixture.join("Cargo.toml"),
+            "[package]\nname = \"cargo-command-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )?;
+        fs::write(fixture.join("src/main.rs"), "fn main() {}\n")?;
+        fs::write(
+            fixture.join("Cargo.lock"),
+            "# This file is automatically @generated by Cargo.\nversion = 3\n\n[[package]]\nname = \"cargo-command-fixture\"\nversion = \"0.1.0\"\n",
+        )?;
+
+        assert!(fixture_cargo_check(&fixture)?.success());
+        let lock = fixture.join("Cargo.lock");
+        let locked_bytes = fs::read(&lock)?;
+
+        fs::write(
+            fixture.join("Cargo.toml"),
+            "[package]\nname = \"cargo-command-fixture\"\nversion = \"0.2.0\"\nedition = \"2021\"\n",
+        )?;
+        assert!(!fixture_cargo_check(&fixture)?.success());
+        assert_eq!(fs::read(&lock)?, locked_bytes);
+
+        fs::write(
+            fixture.join("Cargo.toml"),
+            "[package]\nname = \"cargo-command-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )?;
+        fs::remove_file(&lock)?;
+        assert!(!fixture_cargo_check(&fixture)?.success());
+        assert!(!lock.exists());
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&fixture);
+    outcome.and(cleanup.map_err(Into::into))
 }
 
 #[test]

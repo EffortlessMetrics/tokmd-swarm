@@ -28,6 +28,8 @@ candidate_roots = [
     "CHANGELOG.md",
     "CITATION.cff",
     "CODE_OF_CONDUCT.md",
+    "clippy.toml",
+    "codecov.yml",
     "RELEASE.md",
     "SECURITY.md",
     "CLAUDE.md",
@@ -191,6 +193,16 @@ reason = "citation metadata is outside this adoption slice"
 path = "CODE_OF_CONDUCT.md"
 mode = "deferred"
 reason = "community policy is outside this adoption slice"
+
+[[surface]]
+path = "clippy.toml"
+mode = "deferred"
+reason = "lint configuration is a separate quality-policy slice"
+
+[[surface]]
+path = "codecov.yml"
+mode = "deferred"
+reason = "coverage service configuration is a separate CI slice"
 
 [[surface]]
 path = "deny.toml"
