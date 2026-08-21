@@ -16,6 +16,9 @@ fn main() -> Result<()> {
         Some(cli::Commands::PublishSurface(args)) => tasks::publish_surface::run(args),
         Some(cli::Commands::Cockpit(args)) => tasks::cockpit::run(args),
         Some(cli::Commands::Docs(args)) => tasks::docs::run(args),
+        Some(cli::Commands::Change(args)) => tasks::changelog::run_change(args),
+        Some(cli::Commands::Precommit(args)) => tasks::changelog::run_precommit(args),
+        Some(cli::Commands::Hooks(args)) => tasks::changelog::run_hooks(args),
         Some(cli::Commands::DocArtifacts(args)) => tasks::doc_artifacts::run(args),
         Some(cli::Commands::ProofPolicy(args)) => tasks::proof_policy::run(args),
         Some(cli::Commands::ProofObservationThresholds(args)) => {

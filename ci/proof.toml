@@ -163,6 +163,7 @@ paths = [
   "xtask/src/tasks/ci_plan.rs",
   "xtask/src/tasks/ci_route.rs",
   "xtask/src/tasks/ci_runner_health.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/coverage_receipt.rs",
   "xtask/src/tasks/doc_artifacts.rs",
   "xtask/src/tasks/file_policy.rs",
@@ -419,6 +420,7 @@ paths = [
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
   "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/no_panic.rs",
   "xtask/tests/no_panic_w94.rs",
 ]
@@ -1344,6 +1346,22 @@ paths = [
 ]
 proof = ["cargo xtask docs --check"]
 reason = "Top-level architecture, ADR, design, roadmap, requirements, proposal/spec/plan/template, and audit docs are project truth surfaces; edits should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "release_note_workflow"
+kind = "non_rust"
+paths = [
+  ".changes/**",
+  ".changie-version",
+  ".changie.yaml",
+  ".cargo/config.toml",
+  ".githooks/pre-commit",
+  "docs/changelog-workflow.md",
+]
+proof = ["cargo xtask docs --check"]
+reason = "Changie configuration, release-note fragments, and their workflow guide are release-process source truth; route them through documentation checks instead of leaving them as unknown proof files."
 mutation = false
 coverage = false
 

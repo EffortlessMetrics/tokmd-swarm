@@ -1,0 +1,43 @@
+changesDir: .changes
+unreleasedDir: unreleased
+headerPath: header.tpl.md
+changelogPath: CHANGELOG.md
+versionExt: md
+versionFormat: '## [{{.VersionNoPrefix}}] - {{.Time.Format "2006-01-02"}}'
+kindFormat: '#### {{.Kind}}'
+componentFormat: '### {{.Component}}'
+changeFormat: '- {{.Body}}'
+components:
+  - CLI
+  - Action
+  - Packets
+  - Browser/WASM
+  - Release
+  - Security
+  - Documentation
+  - Internal
+kinds:
+  - key: added
+    label: Added
+    auto: minor
+  - key: changed
+    label: Changed
+    auto: minor
+  - key: fixed
+    label: Fixed
+    auto: patch
+  - key: security
+    label: Security
+    auto: patch
+  - key: documentation
+    label: Documentation
+    auto: none
+  - key: internal
+    label: Internal
+    auto: none
+newlines:
+  afterChangelogHeader: 1
+  beforeChangelogVersion: 1
+  beforeComponent: 1
+  beforeKind: 1
+  endOfVersion: 1
