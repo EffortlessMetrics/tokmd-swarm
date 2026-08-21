@@ -43,11 +43,11 @@ enum Verdict {
     Unclassified,
 }
 
-fn workspace_root() -> PathBuf {
+fn workspace_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("xtask workspace parent")
-        .to_path_buf()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "xtask workspace parent is missing".into())
 }
 
 fn normalize(path: &str) -> String {
@@ -100,7 +100,11 @@ fn command_tokens(line: &str) -> Option<Vec<&str>> {
     let cargo = tokens
         .iter()
         .position(|token| *token == "cargo" || token.strip_suffix("/cargo").is_some())?;
-    (cargo + 1 < tokens.len()).then(|| tokens[cargo..].to_vec())
+    (cargo + 1 < tokens.len()).then(|| {
+        tokens
+            .get(cargo..)
+            .map_or_else(Vec::new, |slice| slice.to_vec())
+    })
 }
 
 fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
@@ -154,8 +158,8 @@ fn evaluate(mode: Mode, text: &str, lock_present: bool) -> Verdict {
     }
 }
 
-fn load_inventory() -> Inventory {
-    toml::from_str(POLICY).expect("cargo command surface policy must parse")
+fn load_inventory() -> Result<Inventory, Box<dyn std::error::Error>> {
+    toml::from_str(POLICY).map_err(Into::into)
 }
 
 fn candidate_files(root: &Path, inventory: &Inventory) -> Vec<String> {
@@ -181,8 +185,8 @@ fn candidate_files(root: &Path, inventory: &Inventory) -> Vec<String> {
 }
 
 #[test]
-fn policy_is_closed_and_live_surfaces_are_locked() {
-    let inventory = load_inventory();
+fn policy_is_closed_and_live_surfaces_are_locked() -> Result<(), Box<dyn std::error::Error>> {
+    let inventory = load_inventory()?;
     assert_eq!(inventory.schema_version, 1);
     assert_eq!(inventory.inventory, "closed-world");
     assert!(inventory.claim.contains("adoption"));
@@ -208,7 +212,7 @@ fn policy_is_closed_and_live_surfaces_are_locked() {
     assert_eq!(live.len(), 2, "only #605 canonical surfaces are adopted");
     assert!(live.iter().all(|surface| !surface.reason.is_empty()));
 
-    let root = workspace_root();
+    let root = workspace_root()?;
     let lock_present = root.join("Cargo.lock").is_file();
     assert!(lock_present, "the checked workspace must have Cargo.lock");
     let mut unclassified = Vec::new();
@@ -221,7 +225,7 @@ fn policy_is_closed_and_live_surfaces_are_locked() {
         if surface.mode != Mode::Live {
             continue;
         }
-        let text = fs::read_to_string(root.join(&path)).expect("live surface must be readable");
+        let text = fs::read_to_string(root.join(&path))?;
         if scan_live(&text, lock_present) != Verdict::Pass {
             violations.push(path);
         }
@@ -247,6 +251,7 @@ fn policy_is_closed_and_live_surfaces_are_locked() {
         classify(&inventory, "xtask/src/new_command.rs"),
         Verdict::NotProven
     );
+    Ok(())
 }
 
 #[test]
@@ -272,7 +277,8 @@ fn scanner_has_positive_negative_and_missing_lock_controls() {
 }
 
 #[test]
-fn scanner_preserves_historical_deferred_and_dynamic_boundaries() {
+fn scanner_preserves_historical_deferred_and_dynamic_boundaries()
+-> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
         evaluate(Mode::Historical, "cargo install tokmd", false),
         Verdict::Historical
@@ -286,7 +292,7 @@ fn scanner_preserves_historical_deferred_and_dynamic_boundaries() {
         Verdict::NotProven
     );
 
-    let inventory = load_inventory();
+    let inventory = load_inventory()?;
     assert_eq!(
         classify(&inventory, "docs/examples/real-user-path-smoke-run.md"),
         Verdict::Historical
@@ -299,4 +305,5 @@ fn scanner_preserves_historical_deferred_and_dynamic_boundaries() {
         classify(&inventory, "xtask/src/tasks/docs.rs"),
         Verdict::NotProven
     );
+    Ok(())
 }
