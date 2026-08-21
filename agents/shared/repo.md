@@ -37,6 +37,11 @@ ordinary development should use the workspace commands above:
 cargo install --path crates/tokmd --locked
 ```
 
+This source install is reproducible only to the committed lock available in
+the checkout. Registry consumer installation is governed by the published
+package's lock and exact release proof, not by this workspace source-install
+path.
+
 `cargo test --locked --all-features` runs the workspace `default-members`; it does not
 select `xtask` or `fuzz`. The required `Tokmd Rust Result` runs the following
 serial proof sequence: `cargo xtask gate --check`, the default-member test
