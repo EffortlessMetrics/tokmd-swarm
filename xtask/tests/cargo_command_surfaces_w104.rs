@@ -184,18 +184,24 @@ fn ambiguous_command_line(line: &str) -> bool {
             || token.starts_with('"')
             || token.starts_with('\'')
             || (*token == "--features"
-                && arguments.iter().any(|candidate| {
-                    matches!(
-                        *candidate,
-                        "build"
-                            | "check"
-                            | "test"
-                            | "clippy"
-                            | "install"
-                            | "update"
-                            | "generate-lockfile"
-                    )
-                }))
+                && arguments
+                    .iter()
+                    .position(|candidate| *candidate == "--features")
+                    .and_then(|feature| arguments.get(feature + 1..))
+                    .is_some_and(|after_features| {
+                        after_features.iter().any(|candidate| {
+                            matches!(
+                                *candidate,
+                                "build"
+                                    | "check"
+                                    | "test"
+                                    | "clippy"
+                                    | "install"
+                                    | "update"
+                                    | "generate-lockfile"
+                            )
+                        })
+                    }))
     }) || tokens.get(cargo).is_some_and(|token| {
         let token = token.trim_matches(['`', '\'', '"']);
         token.ends_with("cargo.exe") || token.starts_with(".\\") || token.starts_with("/")
@@ -394,6 +400,10 @@ fn scanner_has_positive_negative_and_missing_lock_controls() {
             "RUSTUP_TOOLCHAIN=stable cargo --manifest-path Cargo.toml test --locked",
             true
         ),
+        Verdict::Pass
+    );
+    assert_eq!(
+        scan_live("cargo test --features x --locked", true),
         Verdict::Pass
     );
     assert_eq!(
