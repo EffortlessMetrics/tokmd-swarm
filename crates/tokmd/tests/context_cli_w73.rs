@@ -363,6 +363,99 @@ fn context_rejects_zero_max_file_tokens() {
 }
 
 #[test]
+fn context_require_git_scores_fails_closed_when_scores_are_unavailable() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    fs::write(dir.path().join("lib.rs"), "pub fn add() {}\n")?;
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "context",
+            "--mode",
+            "json",
+            "--rank-by",
+            "hotspot",
+            "--require-git-scores",
+            "--no-git",
+        ])
+        .output()?;
+
+    anyhow::ensure!(
+        !output.status.success(),
+        "required Git scores must fail closed"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    anyhow::ensure!(
+        stderr.contains("Git scores required but unavailable"),
+        "unexpected stderr: {stderr}"
+    );
+    anyhow::ensure!(
+        output.stdout.is_empty(),
+        "failed context must not emit JSON"
+    );
+    Ok(())
+}
+
+#[test]
+fn context_require_git_scores_allows_non_git_ranking() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    fs::write(dir.path().join("lib.rs"), "pub fn add() {}\n")?;
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "context",
+            "--mode",
+            "json",
+            "--rank-by",
+            "code",
+            "--require-git-scores",
+            "--no-git",
+        ])
+        .output()?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "code ranking should not require Git scores: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("code"));
+    Ok(())
+}
+
+#[test]
+fn context_git_ranking_fallback_is_reported_without_requirement() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    fs::write(dir.path().join("lib.rs"), "pub fn add() {}\n")?;
+    let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(dir.path())
+        .args([
+            "context",
+            "--mode",
+            "json",
+            "--rank-by",
+            "hotspot",
+            "--no-git",
+        ])
+        .output()?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "optional Git ranking should fall back: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("hotspot"));
+    anyhow::ensure!(
+        parsed["fallback_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("hotspot requires git scores")),
+        "fallback reason missing: {}",
+        parsed["fallback_reason"]
+    );
+    Ok(())
+}
+
+#[test]
 fn handoff_rejects_zero_max_file_pct() {
     let dir = tempdir().unwrap();
     Command::new(env!("CARGO_BIN_EXE_tokmd"))
