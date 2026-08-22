@@ -42,12 +42,9 @@ fn run_handoff_fallible(extra: &[&str]) -> anyhow::Result<serde_json::Value> {
     for arg in extra {
         cmd.arg(arg);
     }
-    let output = cmd.output()?;
-    anyhow::ensure!(
-        output.status.success(),
-        "handoff failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    cmd.assert()
+        .try_success()
+        .map_err(|error| anyhow::anyhow!("handoff failed: {error}"))?;
     let manifest = fs::read_to_string(out_dir.join("manifest.json"))?;
     Ok(serde_json::from_str(&manifest)?)
 }
@@ -79,9 +76,8 @@ fn handoff_rank_by_hotspot_no_git_fallback() -> anyhow::Result<()> {
     anyhow::ensure!(parsed["rank_by"].as_str() == Some("hotspot"));
     anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
     anyhow::ensure!(
-        parsed["fallback_reason"]
-            .as_str()
-            .is_some_and(|reason| reason.contains("hotspot requires git scores"))
+        parsed["fallback_reason"].as_str()
+            == Some("hotspot requires git scores; falling back to code lines")
     );
     Ok(())
 }
@@ -93,9 +89,8 @@ fn handoff_rank_by_churn_no_git_fallback() -> anyhow::Result<()> {
     anyhow::ensure!(parsed["rank_by"].as_str() == Some("churn"));
     anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
     anyhow::ensure!(
-        parsed["fallback_reason"]
-            .as_str()
-            .is_some_and(|reason| reason.contains("churn requires git scores"))
+        parsed["fallback_reason"].as_str()
+            == Some("churn requires git scores; falling back to code lines")
     );
     Ok(())
 }
