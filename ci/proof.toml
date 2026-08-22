@@ -236,6 +236,24 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "cargo_command_surfaces"
+kind = "rust"
+paths = [
+  "AGENTS.md",
+  "agents/shared/repo.md",
+  "policy/cargo-command-surfaces.toml",
+  "xtask/tests/cargo_command_surfaces_w104.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask --test cargo_command_surfaces_w104 --locked --verbose",
+  "cargo xtask proof-policy --check",
+]
+mutation = false
+coverage = false
+reason = "The closed cargo-command-surface inventory and its focused contract test form one bounded adoption guard; route both files to the same proof without widening release or publication scopes."
+
+[[scope]]
 name = "agent_guidance_docs"
 kind = "non_rust"
 paths = [
