@@ -22,7 +22,7 @@ fn sibling_derived_fixture_bundle() -> PathBuf {
 fn write_render_manifest(
     dir: &std::path::Path,
     manifest: &serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     std::fs::write(
         dir.join("tokmd-packets.json"),
         serde_json::to_string_pretty(manifest)?,
@@ -124,8 +124,7 @@ fn render_absent_preset_inputs_emits_limitation() {
 }
 
 #[test]
-fn render_declared_missing_manual_candidates_is_bounded() -> Result<(), Box<dyn std::error::Error>>
-{
+fn render_declared_missing_manual_candidates_is_bounded() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let manifest = serde_json::json!({
         "schema": "tokmd.packets/v1",
@@ -159,7 +158,7 @@ fn render_declared_missing_manual_candidates_is_bounded() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn render_declared_missing_cards_is_bounded() -> Result<(), Box<dyn std::error::Error>> {
+fn render_declared_missing_cards_is_bounded() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let manifest = serde_json::json!({
         "schema": "tokmd.packets/v1",
@@ -195,7 +194,7 @@ fn render_declared_missing_cards_is_bounded() -> Result<(), Box<dyn std::error::
 }
 
 #[test]
-fn render_rejects_malformed_declared_sibling_input() -> Result<(), Box<dyn std::error::Error>> {
+fn render_rejects_malformed_declared_sibling_input() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let manifest = serde_json::json!({
         "schema": "tokmd.packets/v1",
