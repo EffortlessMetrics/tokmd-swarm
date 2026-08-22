@@ -7,6 +7,7 @@
 
 mod common;
 
+use anyhow::{Context, Result, ensure};
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
@@ -145,6 +146,52 @@ fn handoff_preset_deep_intelligence_has_derived() {
     // Deep preset should include tree and derived metrics
     assert!(parsed["tree"].is_string());
     assert!(parsed["derived"].is_object());
+}
+
+#[test]
+fn handoff_risk_no_git_records_hotspot_warning() -> Result<()> {
+    let dir = tempdir().context("create temporary handoff directory")?;
+    let out_dir = dir.path().join("ho_risk_no_git");
+
+    tokmd_cmd()
+        .args([
+            "handoff",
+            "--preset",
+            "risk",
+            "--no-git",
+            "--budget",
+            "20k",
+            "--out-dir",
+        ])
+        .arg(&out_dir)
+        .assert()
+        .try_success()
+        .map_err(|error| anyhow::anyhow!("handoff risk no-git failed: {error}"))?;
+
+    let intel = fs::read_to_string(out_dir.join("intelligence.json"))
+        .context("read handoff intelligence artifact")?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&intel).context("parse handoff intelligence JSON")?;
+    let warnings = parsed
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .context("handoff intelligence warnings should be an array")?;
+
+    ensure!(
+        parsed
+            .get("hotspots")
+            .is_some_and(serde_json::Value::is_null),
+        "risk no-git intelligence should have null hotspots"
+    );
+    ensure!(
+        warnings.iter().any(|warning| {
+            warning.as_str().is_some_and(|warning| {
+                warning.starts_with("hotspots unavailable: git history skipped")
+            })
+        }),
+        "risk no-git intelligence should record the skipped git warning"
+    );
+    Ok(())
 }
 
 #[test]
