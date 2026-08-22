@@ -172,12 +172,15 @@ fn handoff_risk_no_git_records_hotspot_warning() -> Result<()> {
         .context("read handoff intelligence artifact")?;
     let parsed: serde_json::Value =
         serde_json::from_str(&intel).context("parse handoff intelligence JSON")?;
-    let warnings = parsed["warnings"]
-        .as_array()
+    let warnings = parsed
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
         .context("handoff intelligence warnings should be an array")?;
 
     ensure!(
-        parsed["hotspots"].is_null(),
+        parsed
+            .get("hotspots")
+            .is_some_and(serde_json::Value::is_null),
         "risk no-git intelligence should have null hotspots"
     );
     ensure!(
