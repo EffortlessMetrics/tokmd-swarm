@@ -34,14 +34,35 @@ fn run_handoff(extra: &[&str]) -> serde_json::Value {
     serde_json::from_str(&manifest).unwrap()
 }
 
+fn run_handoff_fallible(extra: &[&str]) -> anyhow::Result<serde_json::Value> {
+    let dir = tempdir()?;
+    let out_dir = dir.path().join("ho");
+    let mut cmd = tokmd_cmd();
+    cmd.arg("handoff").arg("--out-dir").arg(&out_dir);
+    for arg in extra {
+        cmd.arg(arg);
+    }
+    let output = cmd.output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "handoff failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let manifest = fs::read_to_string(out_dir.join("manifest.json"))?;
+    Ok(serde_json::from_str(&manifest)?)
+}
+
 // ===========================================================================
 // 1. Rank-by variants
 // ===========================================================================
 
 #[test]
-fn handoff_rank_by_code() {
-    let parsed = run_handoff(&["--rank-by", "code", "--budget", "10k"]);
-    assert_eq!(parsed["rank_by"].as_str(), Some("code"));
+fn handoff_rank_by_code() -> anyhow::Result<()> {
+    let parsed = run_handoff_fallible(&["--rank-by", "code", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("code"));
+    anyhow::ensure!(parsed["rank_by_effective"].is_null());
+    anyhow::ensure!(parsed["fallback_reason"].is_null());
+    Ok(())
 }
 
 #[test]
@@ -51,17 +72,32 @@ fn handoff_rank_by_tokens() {
 }
 
 #[test]
-fn handoff_rank_by_hotspot_no_git_fallback() {
+fn handoff_rank_by_hotspot_no_git_fallback() -> anyhow::Result<()> {
     // With --no-git, hotspot ranking should gracefully fallback
-    let parsed = run_handoff(&["--rank-by", "hotspot", "--no-git", "--budget", "10k"]);
-    // Should succeed even without git; rank_by or rank_by_effective recorded
-    assert!(parsed["budget_tokens"].is_number());
+    let parsed = run_handoff_fallible(&["--rank-by", "hotspot", "--no-git", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["budget_tokens"].is_number());
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("hotspot"));
+    anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
+    anyhow::ensure!(
+        parsed["fallback_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("hotspot requires git scores"))
+    );
+    Ok(())
 }
 
 #[test]
-fn handoff_rank_by_churn_no_git_fallback() {
-    let parsed = run_handoff(&["--rank-by", "churn", "--no-git", "--budget", "10k"]);
-    assert!(parsed["budget_tokens"].is_number());
+fn handoff_rank_by_churn_no_git_fallback() -> anyhow::Result<()> {
+    let parsed = run_handoff_fallible(&["--rank-by", "churn", "--no-git", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["budget_tokens"].is_number());
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("churn"));
+    anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
+    anyhow::ensure!(
+        parsed["fallback_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("churn requires git scores"))
+    );
+    Ok(())
 }
 
 // ===========================================================================
