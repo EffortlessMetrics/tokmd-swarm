@@ -72,6 +72,9 @@ tokmd handoff . \
   --output-dir .handoff
 ```
 
+Use the canonical `--output-dir` spelling for handoff artifacts; `--out-dir`
+remains a compatibility alias.
+
 Open the resulting artifacts in this order:
 
 1. the terminal summary from `tokmd --top 8 --files`;
