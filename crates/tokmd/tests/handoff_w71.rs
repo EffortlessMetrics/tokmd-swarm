@@ -148,6 +148,37 @@ fn handoff_preset_deep_intelligence_has_derived() {
 }
 
 #[test]
+fn handoff_risk_no_git_records_hotspot_warning() {
+    let dir = tempdir().unwrap();
+    let out_dir = dir.path().join("ho_risk_no_git");
+
+    tokmd_cmd()
+        .args([
+            "handoff",
+            "--preset",
+            "risk",
+            "--no-git",
+            "--budget",
+            "20k",
+            "--out-dir",
+        ])
+        .arg(&out_dir)
+        .assert()
+        .success();
+
+    let intel = fs::read_to_string(out_dir.join("intelligence.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&intel).unwrap();
+    let warnings = parsed["warnings"].as_array().unwrap();
+
+    assert!(parsed["hotspots"].is_null());
+    assert!(warnings.iter().any(|warning| {
+        warning
+            .as_str()
+            .is_some_and(|warning| warning.starts_with("hotspots unavailable: git history skipped"))
+    }));
+}
+
+#[test]
 fn handoff_manifest_records_intelligence_preset() {
     let parsed = run_handoff(&["--preset", "minimal", "--budget", "5k"]);
     assert_eq!(
