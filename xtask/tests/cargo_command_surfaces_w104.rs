@@ -156,6 +156,9 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Result<Option<&'a str>, ()> {
             index += 1;
             continue;
         }
+        if token.starts_with('-') {
+            return Err(());
+        }
         let command = token;
         return Ok(matches!(
             command,
