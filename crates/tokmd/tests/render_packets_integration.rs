@@ -19,6 +19,17 @@ fn sibling_derived_fixture_bundle() -> PathBuf {
         .expect("sibling-derived fixture bundle exists")
 }
 
+fn write_render_manifest(
+    dir: &std::path::Path,
+    manifest: &serde_json::Value,
+) -> anyhow::Result<()> {
+    std::fs::write(
+        dir.join("tokmd-packets.json"),
+        serde_json::to_string_pretty(manifest)?,
+    )?;
+    Ok(())
+}
+
 #[test]
 fn render_handoff_preset_from_fixture_bundle() {
     let bundle = workspace_fixture_bundle();
@@ -110,6 +121,104 @@ fn render_absent_preset_inputs_emits_limitation() {
         .success()
         .stdout(predicate::str::contains("preset_inputs"))
         .stdout(predicate::str::contains("## Limitations"));
+}
+
+#[test]
+fn render_declared_missing_manual_candidates_is_bounded() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let manifest = serde_json::json!({
+        "schema": "tokmd.packets/v1",
+        "inputs_present": ["manual-candidates.json"],
+        "inputs_absent": [],
+        "non_claims": ["Does not prove UB."],
+        "preset_inputs": {}
+    });
+    write_render_manifest(dir.path(), &manifest)?;
+
+    let bundle_path = dir.path().to_string_lossy().into_owned();
+    let mut cmd = Command::cargo_bin("tokmd")?;
+    cmd.args([
+        "render",
+        "--from-packets",
+        &bundle_path,
+        "--preset",
+        "bun-ub-handoff",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("## Limitations"))
+        .stdout(predicate::str::contains("manual-candidates.json"))
+        .stdout(predicate::str::contains(
+            "listed in `inputs_present` but could not be read",
+        ))
+        .stdout(predicate::str::contains("## Non-claims"))
+        .stdout(predicate::str::contains("Does not prove UB."))
+        .stdout(predicate::str::contains("## Candidate Identity").not());
+    Ok(())
+}
+
+#[test]
+fn render_declared_missing_cards_is_bounded() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let manifest = serde_json::json!({
+        "schema": "tokmd.packets/v1",
+        "inputs_present": ["cards.json"],
+        "inputs_absent": [],
+        "non_claims": ["Does not prove posting readiness."],
+        "preset_inputs": {}
+    });
+    write_render_manifest(dir.path(), &manifest)?;
+
+    let bundle_path = dir.path().to_string_lossy().into_owned();
+    let mut cmd = Command::cargo_bin("tokmd")?;
+    cmd.args([
+        "render",
+        "--from-packets",
+        &bundle_path,
+        "--preset",
+        "bun-ub-review-map",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("## Limitations"))
+        .stdout(predicate::str::contains("cards.json"))
+        .stdout(predicate::str::contains(
+            "listed in `inputs_present` but could not be read",
+        ))
+        .stdout(predicate::str::contains("## Non-claims"))
+        .stdout(predicate::str::contains(
+            "Does not prove posting readiness.",
+        ))
+        .stdout(predicate::str::contains("ReviewCard rc-17").not());
+    Ok(())
+}
+
+#[test]
+fn render_rejects_malformed_declared_sibling_input() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let manifest = serde_json::json!({
+        "schema": "tokmd.packets/v1",
+        "inputs_present": ["manual-candidates.json"],
+        "inputs_absent": [],
+        "non_claims": ["Does not prove UB."],
+        "preset_inputs": {}
+    });
+    write_render_manifest(dir.path(), &manifest)?;
+    std::fs::write(dir.path().join("manual-candidates.json"), "{not json")?;
+
+    let bundle_path = dir.path().to_string_lossy().into_owned();
+    let mut cmd = Command::cargo_bin("tokmd")?;
+    cmd.args([
+        "render",
+        "--from-packets",
+        &bundle_path,
+        "--preset",
+        "bun-ub-handoff",
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "failed to parse sibling bundle file",
+    ));
+    Ok(())
 }
 
 #[test]
