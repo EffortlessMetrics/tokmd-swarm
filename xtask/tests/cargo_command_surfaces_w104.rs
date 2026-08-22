@@ -126,7 +126,7 @@ fn command_tokens(line: &str) -> Option<Vec<&str>> {
     })
 }
 
-fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
+fn governed_command<'a>(tokens: &'a [&'a str]) -> Result<Option<&'a str>, ()> {
     let mut index = 1;
     while let Some(token) = tokens.get(index).copied() {
         if token.starts_with('+') {
@@ -135,6 +135,14 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
         }
         if token == "--manifest-path" || token == "--config" || token == "--color" {
             index += 2;
+            continue;
+        }
+        if matches!(token, "-C" | "-Z") {
+            index += 2;
+            continue;
+        }
+        if matches!(token, "-v" | "-vv" | "-q" | "-qq") || token.starts_with("-Z") {
+            index += 1;
             continue;
         }
         if token.starts_with("--manifest-path=")
@@ -149,7 +157,7 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
             continue;
         }
         let command = token;
-        return matches!(
+        return Ok(matches!(
             command,
             "build"
                 | "check"
@@ -160,9 +168,9 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Option<&'a str> {
                 | "update"
                 | "generate-lockfile"
         )
-        .then_some(command);
+        .then_some(command));
     }
-    None
+    Err(())
 }
 
 fn ambiguous_command_line(line: &str) -> bool {
@@ -222,8 +230,10 @@ fn scan_live(text: &str, lock_present: bool) -> Verdict {
         let Some(tokens) = command_tokens(line) else {
             continue;
         };
-        let Some(command) = governed_command(&tokens) else {
-            continue;
+        let command = match governed_command(&tokens) {
+            Ok(Some(command)) => command,
+            Ok(None) => continue,
+            Err(()) => return Verdict::NotProven,
         };
         if dynamic_line(line) {
             return Verdict::NotProven;
@@ -234,7 +244,11 @@ fn scan_live(text: &str, lock_present: bool) -> Verdict {
         if matches!(command, "update" | "generate-lockfile") {
             return Verdict::Violation;
         }
-        if !tokens
+        let cargo_arguments = tokens
+            .iter()
+            .position(|token| *token == "--")
+            .map_or(tokens.as_slice(), |separator| &tokens[..separator]);
+        if !cargo_arguments
             .iter()
             .any(|token| matches!(*token, "--locked" | "--frozen"))
         {
@@ -388,6 +402,13 @@ fn scanner_has_positive_negative_and_missing_lock_controls() {
         scan_live("cargo test --locked --manifest-path ${MANIFEST}", true),
         Verdict::NotProven
     );
+    assert_eq!(scan_live("cargo -v build --locked", true), Verdict::Pass);
+    assert_eq!(scan_live("cargo -q test", true), Verdict::Violation);
+    assert_eq!(
+        scan_live("cargo -x build --locked", true),
+        Verdict::NotProven
+    );
+    assert_eq!(scan_live("cargo run -- --locked", true), Verdict::Violation);
     assert_eq!(
         scan_live(
             "cargo +stable --manifest-path Cargo.toml build --locked",
