@@ -211,12 +211,23 @@ fn derive_review_map(
         if cards.is_empty() {
             limitations.push("`cards.json` was present but contained no ReviewCards".into());
         } else {
-            let body = cards
+            let rendered_cards = cards
                 .iter()
                 .filter_map(review_card_line)
-                .collect::<Vec<_>>()
-                .join("\n");
-            sections.insert("reviewcard_ids_and_seams".into(), body);
+                .collect::<Vec<_>>();
+            let omitted = cards.len() - rendered_cards.len();
+            if rendered_cards.is_empty() {
+                limitations.push(
+                    "`cards.json` contained no renderable ReviewCards; rows require an id".into(),
+                );
+            } else {
+                sections.insert("reviewcard_ids_and_seams".into(), rendered_cards.join("\n"));
+                if omitted > 0 {
+                    limitations.push(format!(
+                        "`cards.json` omitted {omitted} ReviewCard row(s) without an id"
+                    ));
+                }
+            }
         }
     } else {
         limitations.push("`cards.json` was not ingested; ReviewCard seams are unavailable".into());
@@ -322,8 +333,8 @@ fn missing_handoff_sections(sections: &BTreeMap<String, String>) -> Vec<String> 
 mod tests {
     use super::*;
     use tokmd_types::{
-        MANUAL_CANDIDATES_SCHEMA, ManualCandidatesFile, PacketSiblingInputs, TOKMD_PACKETS_SCHEMA,
-        TokmdPacketsManifest,
+        CardsFile, MANUAL_CANDIDATES_SCHEMA, ManualCandidatesFile, PacketSiblingInputs,
+        ReviewCardRecord, TOKMD_PACKETS_SCHEMA, TokmdPacketsManifest,
     };
 
     fn sample_candidate() -> ManualCandidateRecord {
@@ -401,5 +412,83 @@ mod tests {
             Some("from manifest")
         );
         assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn all_unrenderable_cards_are_reported_as_a_limitation() -> anyhow::Result<()> {
+        let manifest = TokmdPacketsManifest {
+            schema: TOKMD_PACKETS_SCHEMA.into(),
+            producer: None,
+            inputs_present: vec!["cards.json".into()],
+            inputs_absent: vec![],
+            non_claims: vec![],
+            preset_inputs: BTreeMap::new(),
+        };
+        let siblings = PacketSiblingInputs {
+            cards: Some(CardsFile {
+                schema_version: Some("0.2".into()),
+                cards: vec![ReviewCardRecord {
+                    id: None,
+                    title: Some("missing identity".into()),
+                    ..ReviewCardRecord::default()
+                }],
+            }),
+            ..PacketSiblingInputs::default()
+        };
+        let (input, _) = resolve_preset_input(&manifest, &siblings, "bun-ub-review-map");
+        let input = input.ok_or_else(|| anyhow::anyhow!("review map input missing"))?;
+        anyhow::ensure!(
+            input
+                .limitations
+                .iter()
+                .any(|note| note.contains("no renderable ReviewCards")),
+            "missing unusable-card limitation: {:?}",
+            input.limitations
+        );
+        anyhow::ensure!(
+            !input.sections.contains_key("reviewcard_ids_and_seams"),
+            "unrenderable cards must not produce an evidence section"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_cards_keep_valid_rows_and_report_omitted_rows() -> anyhow::Result<()> {
+        let manifest = TokmdPacketsManifest {
+            schema: TOKMD_PACKETS_SCHEMA.into(),
+            producer: None,
+            inputs_present: vec!["cards.json".into()],
+            inputs_absent: vec![],
+            non_claims: vec![],
+            preset_inputs: BTreeMap::new(),
+        };
+        let siblings = PacketSiblingInputs {
+            cards: Some(CardsFile {
+                schema_version: Some("0.2".into()),
+                cards: vec![
+                    ReviewCardRecord {
+                        id: Some("rc-17".into()),
+                        location_text: Some("src/lib.rs:10".into()),
+                        ..ReviewCardRecord::default()
+                    },
+                    ReviewCardRecord::default(),
+                ],
+            }),
+            ..PacketSiblingInputs::default()
+        };
+        let (input, _) = resolve_preset_input(&manifest, &siblings, "bun-ub-review-map");
+        let input = input.ok_or_else(|| anyhow::anyhow!("review map input missing"))?;
+        let body = input
+            .sections
+            .get("reviewcard_ids_and_seams")
+            .ok_or_else(|| anyhow::anyhow!("valid card section missing"))?;
+        anyhow::ensure!(body.contains("ReviewCard rc-17 @ src/lib.rs:10"));
+        anyhow::ensure!(
+            input
+                .limitations
+                .iter()
+                .any(|note| note.contains("omitted 1 ReviewCard row"))
+        );
+        Ok(())
     }
 }
