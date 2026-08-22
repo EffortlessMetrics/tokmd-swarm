@@ -247,7 +247,9 @@ fn scan_live(text: &str, lock_present: bool) -> Verdict {
         let cargo_arguments = tokens
             .iter()
             .position(|token| *token == "--")
-            .map_or(tokens.as_slice(), |separator| &tokens[..separator]);
+            .map_or(tokens.as_slice(), |separator| {
+                tokens.get(..separator).unwrap_or_default()
+            });
         if !cargo_arguments
             .iter()
             .any(|token| matches!(*token, "--locked" | "--frozen"))
