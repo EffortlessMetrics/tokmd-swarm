@@ -218,7 +218,7 @@ jobs:
 
       - name: Upload proof executor artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: proof-executor-artifacts
           path: target/proof/
