@@ -198,6 +198,7 @@ paths = [
   "xtask/tests/proof_plan_w92.rs",
   "xtask/tests/proof_workflow_status_w98.rs",
   "xtask/tests/repo_graph_w99.rs",
+  "xtask/tests/required_gate_locked_commands_w108.rs",
   "xtask/tests/xtask_contract_w65.rs",
 ]
 packages = ["xtask"]
@@ -231,6 +232,7 @@ proof = [
   "cargo test -p xtask proof_workflow_status --verbose",
   "cargo test -p xtask publish --verbose",
   "cargo test -p xtask repo_graph --verbose -- --test-threads=1",
+  "cargo test -p xtask --test required_gate_locked_commands_w108 --locked --verbose",
 ]
 mutation = false
 coverage = false

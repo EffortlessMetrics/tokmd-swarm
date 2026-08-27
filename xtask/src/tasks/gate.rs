@@ -14,6 +14,10 @@ struct Step {
     use_workspace_fmt: bool,
 }
 
+// Every dependency-resolving step runs `--locked` so the required gate proves
+// the committed `Cargo.lock` instead of quietly rewriting it (#608). `cargo
+// fmt` is the deliberate exception: it resolves no dependencies and rejects
+// the flag, which makes it the positive control for the contract.
 const STEPS: &[Step] = &[
     Step {
         label: "fmt",
@@ -27,6 +31,7 @@ const STEPS: &[Step] = &[
         cmd: "cargo",
         args: &[
             "check",
+            "--locked",
             "--workspace",
             "--all-features",
             "--exclude",
@@ -40,6 +45,7 @@ const STEPS: &[Step] = &[
         cmd: "cargo",
         args: &[
             "clippy",
+            "--locked",
             "--workspace",
             "--all-targets",
             "--all-features",
@@ -57,6 +63,7 @@ const STEPS: &[Step] = &[
         cmd: "cargo",
         args: &[
             "test",
+            "--locked",
             "--workspace",
             "--all-features",
             "--exclude",
