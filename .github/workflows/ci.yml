@@ -146,8 +146,8 @@ jobs:
             echo "# Deterministic precontext for ub-review"
             echo
             echo "- core gate (gates the merge; serial Cargo lane): cargo xtask gate --check"
-            echo "- core tests (serial Cargo lane): cargo test --all-features"
-            echo "- xtask tests (serial Cargo lane): cargo test -p xtask --all-features"
+            echo "- core tests (serial Cargo lane): cargo test --locked --all-features"
+            echo "- xtask tests (serial Cargo lane): cargo test --locked -p xtask --all-features"
             echo "- proof policy (serial Cargo lane): cargo xtask proof-policy --check"
             echo "- runner: ${RUNNER_KIND:-github} event: ${GITHUB_EVENT_NAME}"
           } > target/ci-core/precontext.md
@@ -179,12 +179,20 @@ jobs:
             echo "::endgroup::"
           }
 
+          # Locked-command contract (AGENTS.md / agents/shared/repo.md): every
+          # governed Cargo command in this required gate resolves against the
+          # committed `Cargo.lock`, so a missing or stale lock fails visibly
+          # instead of silently changing dependency state. The gate task passes
+          # `--locked` to its own check, clippy, and compile-only test steps;
+          # its `cargo fmt` step stays unlocked because fmt resolves no
+          # dependencies and rejects the flag. The claim covers this job only:
+          # platform, coverage, mutation, and scheduled lanes are outside it.
           run_bounded "cargo xtask gate --check" target/ci-core/core_exit target/ci-core/core.log cargo xtask gate --check
-          run_bounded "cargo test --all-features" target/ci-core/test_exit target/ci-core/test.log cargo test --all-features
+          run_bounded "cargo test --locked --all-features" target/ci-core/test_exit target/ci-core/test.log cargo test --locked --all-features
           # `xtask` is not a default-member, so the lane above never builds it.
           # Test it explicitly: it owns the publish plan, the policy linters,
           # and the no-panic checker, and breakage there is invisible otherwise.
-          run_bounded "cargo test -p xtask --all-features" target/ci-core/xtask_test_exit target/ci-core/xtask_test.log cargo test -p xtask --all-features
+          run_bounded "cargo test --locked -p xtask --all-features" target/ci-core/xtask_test_exit target/ci-core/xtask_test.log cargo test --locked -p xtask --all-features
           run_bounded "cargo xtask proof-policy --check" target/ci-core/proof_policy_exit target/ci-core/proof_policy.log cargo xtask proof-policy --check
           mark_clock target/ci-core/core_completed
           echo "completed serial core gate, tests, and proof-policy"
@@ -279,13 +287,13 @@ jobs:
             if [ "${test_exit}" != "0" ] && [ "${test_exit}" != "124" ]; then
               echo "Concurrent tests failed (exit ${test_exit}); retrying serially"
               { echo; echo "--- serial retry ---"; } >> target/ci-core/test.log
-              cargo test --all-features >> target/ci-core/test.log 2>&1
+              cargo test --locked --all-features >> target/ci-core/test.log 2>&1
               test_exit=$?
             fi
             if [ "${xtask_test_exit}" != "0" ] && [ "${xtask_test_exit}" != "124" ]; then
               echo "Concurrent xtask tests failed (exit ${xtask_test_exit}); retrying serially"
               { echo; echo "--- serial retry ---"; } >> target/ci-core/xtask_test.log
-              cargo test -p xtask --all-features >> target/ci-core/xtask_test.log 2>&1
+              cargo test --locked -p xtask --all-features >> target/ci-core/xtask_test.log 2>&1
               xtask_test_exit=$?
             fi
             if [ "${proof_policy_exit}" != "0" ] && [ "${proof_policy_exit}" != "124" ]; then
@@ -311,12 +319,12 @@ jobs:
               echo "Gate: FAIL (exit ${core_exit})"
             fi
             if [ "${test_exit}" = "0" ]; then
-              echo "Tests: PASS (cargo test --all-features exit 0)"
+              echo "Tests: PASS (cargo test --locked --all-features exit 0)"
             else
               echo "Tests: FAIL (exit ${test_exit})"
             fi
             if [ "${xtask_test_exit}" = "0" ]; then
-              echo "xtask tests: PASS (cargo test -p xtask --all-features exit 0)"
+              echo "xtask tests: PASS (cargo test --locked -p xtask --all-features exit 0)"
             else
               echo "xtask tests: FAIL (exit ${xtask_test_exit})"
             fi

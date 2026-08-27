@@ -345,9 +345,15 @@ fn test_git_analysis() { ... }
 The required `Tokmd Rust Result` runs these commands serially:
 
 1. `cargo xtask gate --check` - Core formatting, check, Clippy, and test-compilation gate
-2. `cargo test --all-features` - Default-member tests
-3. `cargo test -p xtask --all-features` - Repo control-plane tests
+2. `cargo test --locked --all-features` - Default-member tests
+3. `cargo test --locked -p xtask --all-features` - Repo control-plane tests
 4. `cargo xtask proof-policy --check` - Proof-policy validation
+
+Every dependency-resolving command in that sequence runs `--locked`, so the
+required proof preserves the committed `Cargo.lock` instead of rewriting it;
+`cargo xtask gate --check` applies the same flag to its own check, Clippy, and
+test-compilation steps. Its formatting step is the deliberate exception,
+because `cargo fmt` resolves no dependencies and rejects the flag.
 
 This required aggregate does not claim that libFuzzer campaigns, conditional
 platform jobs, or deeper scheduled lanes ran. Those workflows remain separate

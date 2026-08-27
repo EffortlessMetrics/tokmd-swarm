@@ -51,6 +51,14 @@ only when broad Cargo workspace package selection is intended. It is not the
 required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
 and platform lanes remain separate proof.
 
+The required workflow executes that sequence with `--locked` in
+`.github/workflows/ci.yml`, and `cargo xtask gate --check` passes `--locked` to
+its own check, clippy, and compile-only test steps. The gate's `cargo fmt` step
+is the deliberate exception and stays outside the claim: fmt resolves no
+dependencies and rejects the flag, which makes it the positive control. The
+claim covers the required gate only; non-required platform, coverage, mutation,
+and scheduled lanes are not represented by it.
+
 This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
 and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)
 programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
