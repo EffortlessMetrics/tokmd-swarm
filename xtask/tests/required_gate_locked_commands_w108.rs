@@ -36,6 +36,7 @@ const GOVERNED: &[&str] = &[
     "xtask",
 ];
 
+/// Resolve the repository root from this crate's manifest directory.
 fn workspace_root() -> Result<PathBuf> {
     Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -43,6 +44,7 @@ fn workspace_root() -> Result<PathBuf> {
         .to_path_buf())
 }
 
+/// Read a repository-relative file as UTF-8.
 fn read(relative: &str) -> Result<String> {
     let path = workspace_root()?.join(relative);
     fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))
@@ -71,6 +73,7 @@ fn required_gate_job(workflow: &str) -> Result<&str> {
     body.get(..end).context("job body slice out of range")
 }
 
+/// Drop the shell and Markdown quoting that wraps commands in YAML and prose.
 fn strip_quotes(token: &str) -> &str {
     token.trim_matches(['`', '\'', '"'])
 }
