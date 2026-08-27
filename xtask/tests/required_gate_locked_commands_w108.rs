@@ -78,11 +78,33 @@ fn strip_quotes(token: &str) -> &str {
     token.trim_matches(['`', '\'', '"'])
 }
 
-/// Cargo global options accepted before the subcommand that take a value.
+/// Options accepted before the subcommand that consume the following token.
+///
+/// This list can never be complete, so it is a fast path rather than the
+/// safety net: `unlocked_invocations` keeps scanning past an unrecognised
+/// value instead of mistaking it for the subcommand.
 fn takes_value(token: &str) -> bool {
     matches!(
         token,
-        "--manifest-path" | "--config" | "--color" | "-C" | "-Z"
+        "--manifest-path"
+            | "--config"
+            | "--color"
+            | "-C"
+            | "-Z"
+            | "--target"
+            | "--target-dir"
+            | "--package"
+            | "-p"
+            | "--exclude"
+            | "--jobs"
+            | "-j"
+            | "--profile"
+            | "--features"
+            | "-F"
+            | "--bin"
+            | "--example"
+            | "--test"
+            | "--bench"
     )
 }
 
@@ -108,14 +130,31 @@ fn unlocked_invocations(text: &str) -> Vec<String> {
             };
             let mut index = 1;
             let mut subcommand = None;
+            let mut after_option = false;
             while let Some(&token) = segment.get(index) {
                 let token = strip_quotes(token);
-                if token.starts_with('+') || (token.starts_with('-') && !takes_value(token)) {
-                    index += 1;
-                    continue;
+                if token == "--" {
+                    // Everything past the separator belongs to the built binary.
+                    break;
                 }
                 if takes_value(token) {
                     index += 2;
+                    after_option = false;
+                    continue;
+                }
+                if token.starts_with('+') || token.starts_with('-') {
+                    index += 1;
+                    after_option = true;
+                    continue;
+                }
+                // A bare word right after an option may be that option's value
+                // rather than the subcommand. Concluding "ungoverned" here would
+                // silently exempt the real command that follows, so keep
+                // scanning; `takes_value` only shortcuts the pairs whose value
+                // could itself collide with a governed name.
+                if after_option && !GOVERNED.contains(&token) {
+                    index += 1;
+                    after_option = false;
                     continue;
                 }
                 subcommand = Some(token);
@@ -282,6 +321,8 @@ fn scanner_has_positive_and_negative_controls() {
         "cargo fmt --all -- --check",
         "cargo +stable --manifest-path Cargo.toml check --locked",
         "cargo -q --color never build --locked",
+        "cargo --locked --target x86_64-unknown-linux-gnu build",
+        "cargo --locked --jobs 4 build",
         "run_bounded \"cargo test --locked\" marker log cargo test --locked",
         "no cargo invocation here",
     ] {
@@ -305,6 +346,10 @@ fn scanner_has_positive_and_negative_controls() {
         "cargo xtask proof-policy --check",
         // `--locked` after the alias reaches the xtask binary, not Cargo.
         "cargo xtask gate --check --locked",
+        // A value-taking option must not let its value pose as the subcommand
+        // and exempt the governed command behind it.
+        "cargo --target x86_64-unknown-linux-gnu build",
+        "cargo --jobs 4 build",
     ] {
         assert_eq!(
             unlocked_invocations(line).len(),
