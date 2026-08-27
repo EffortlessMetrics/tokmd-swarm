@@ -44,20 +44,24 @@ path.
 
 `cargo test --locked --all-features` runs the workspace `default-members`; it does not
 select `xtask` or `fuzz`. The required `Tokmd Rust Result` runs the following
-serial proof sequence: `cargo xtask gate --check`, the default-member test
+serial proof sequence: `cargo --locked xtask gate --check`, the default-member test
 command above, `cargo test --locked -p xtask --all-features`, and
-`cargo xtask proof-policy --check`. Use `cargo test --locked --workspace --all-features`
+`cargo --locked xtask proof-policy --check`. Use `cargo test --locked --workspace --all-features`
 only when broad Cargo workspace package selection is intended. It is not the
 required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
 and platform lanes remain separate proof.
 
 The required workflow executes that sequence with `--locked` in
 `.github/workflows/ci.yml`, and `cargo xtask gate --check` passes `--locked` to
-its own check, clippy, and compile-only test steps. The gate's `cargo fmt` step
-is the deliberate exception and stays outside the claim: fmt resolves no
-dependencies and rejects the flag, which makes it the positive control. The
-claim covers the required gate only; non-required platform, coverage, mutation,
-and scheduled lanes are not represented by it.
+its own check, clippy, and compile-only test steps. `--locked` precedes the
+`xtask` alias because `.cargo/config.toml` expands it to `run -p xtask --`, so
+the launcher resolves dependencies itself and only a global option ahead of the
+alias reaches Cargo. The gate's `cargo fmt` step is the deliberate exception and
+stays outside the claim: fmt resolves no dependencies and rejects the flag,
+which makes it the positive control. The claim covers the required gate only;
+non-required platform, coverage, mutation, and scheduled lanes are not
+represented by it, and the general developer command block above remains part of
+the broader adoption lane rather than this gate claim.
 
 This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
 and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)

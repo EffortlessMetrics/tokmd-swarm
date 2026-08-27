@@ -17,6 +17,13 @@ use anyhow::{Context, Result, ensure};
 
 /// Cargo subcommands that resolve the dependency graph, mirroring the governed
 /// set in `policy/cargo-command-surfaces.toml`.
+///
+/// `xtask` is this repository's own alias, which `.cargo/config.toml` expands to
+/// `run -p xtask --`. The launcher therefore resolves dependencies exactly like
+/// the governed `run` it becomes, and an unlocked launcher could rewrite
+/// `Cargo.lock` before the gate's own locked steps ever execute. Cargo applies
+/// global options before expanding an alias, so the flag belongs ahead of the
+/// alias: `cargo --locked xtask …`.
 const GOVERNED: &[&str] = &[
     "build",
     "check",
@@ -26,6 +33,7 @@ const GOVERNED: &[&str] = &[
     "install",
     "update",
     "generate-lockfile",
+    "xtask",
 ];
 
 fn workspace_root() -> Result<PathBuf> {
@@ -116,13 +124,20 @@ fn unlocked_invocations(text: &str) -> Vec<String> {
             if !GOVERNED.contains(&subcommand) {
                 continue;
             }
-            // Arguments after `--` belong to the built binary, not to Cargo.
-            let cargo_arguments = segment
-                .iter()
-                .position(|token| strip_quotes(token) == "--")
-                .map_or(segment, |separator| {
-                    segment.get(..separator).unwrap_or_default()
-                });
+            // `xtask` is an alias ending in `--`, so every token after the alias
+            // name is forwarded to the built binary. Only a global option ahead
+            // of the alias reaches Cargo itself. Built-in subcommands accept the
+            // flag on either side, up to their own `--` separator.
+            let cargo_arguments = if subcommand == "xtask" {
+                segment.get(..index).unwrap_or_default()
+            } else {
+                segment
+                    .iter()
+                    .position(|token| strip_quotes(token) == "--")
+                    .map_or(segment, |separator| {
+                        segment.get(..separator).unwrap_or_default()
+                    })
+            };
             if !cargo_arguments
                 .iter()
                 .any(|token| matches!(strip_quotes(token), "--locked" | "--frozen"))
@@ -153,12 +168,21 @@ fn required_gate_runs_every_governed_cargo_command_locked() -> Result<()> {
     for command in [
         "cargo test --locked --all-features",
         "cargo test --locked -p xtask --all-features",
+        "cargo --locked xtask gate --check",
+        "cargo --locked xtask proof-policy --check",
     ] {
         ensure!(
             job.contains(command),
             "required gate no longer runs `{command}`"
         );
     }
+    // The alias launcher must not appear unlocked anywhere in the job, receipt
+    // and summary strings included, or the receipts would name a command the
+    // gate did not run.
+    ensure!(
+        !job.contains("cargo xtask "),
+        "required gate still has an unlocked `cargo xtask` launcher"
+    );
 
     let findings = unlocked_invocations(job);
     ensure!(
@@ -250,7 +274,8 @@ fn scanner_has_positive_and_negative_controls() {
     for line in [
         "cargo test --locked --all-features",
         "cargo test --frozen -p xtask --all-features",
-        "cargo xtask gate --check",
+        "cargo --locked xtask gate --check",
+        "cargo --locked xtask proof-policy --check",
         "cargo fmt --all -- --check",
         "cargo +stable --manifest-path Cargo.toml check --locked",
         "cargo -q --color never build --locked",
@@ -271,6 +296,12 @@ fn scanner_has_positive_and_negative_controls() {
         "cargo run -- --locked",
         "cargo -q check",
         "cargo +stable --manifest-path Cargo.toml clippy",
+        // The alias expands to `run -p xtask --`, so an unlocked launcher
+        // resolves dependencies before any inner locked step runs.
+        "cargo xtask gate --check",
+        "cargo xtask proof-policy --check",
+        // `--locked` after the alias reaches the xtask binary, not Cargo.
+        "cargo xtask gate --check --locked",
     ] {
         assert_eq!(
             unlocked_invocations(line).len(),

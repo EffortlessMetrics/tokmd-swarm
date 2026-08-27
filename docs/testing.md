@@ -344,10 +344,10 @@ fn test_git_analysis() { ... }
 
 The required `Tokmd Rust Result` runs these commands serially:
 
-1. `cargo xtask gate --check` - Core formatting, check, Clippy, and test-compilation gate
+1. `cargo --locked xtask gate --check` - Core formatting, check, Clippy, and test-compilation gate
 2. `cargo test --locked --all-features` - Default-member tests
 3. `cargo test --locked -p xtask --all-features` - Repo control-plane tests
-4. `cargo xtask proof-policy --check` - Proof-policy validation
+4. `cargo --locked xtask proof-policy --check` - Proof-policy validation
 
 Every dependency-resolving command in that sequence runs `--locked`, so the
 required proof preserves the committed `Cargo.lock` instead of rewriting it;

@@ -1,8 +1,10 @@
 # Default PR gate (phase 2, #226)
 
 The required merge check is **`Tokmd Rust Result`** — a single tight gate with
-advisory `route`, concurrent `cargo xtask gate --check`, `cargo test
---all-features`, `cargo xtask proof-policy --check`, and advisory `ub-review`.
+advisory `route`, then, run serially and each bounded separately,
+`cargo --locked xtask gate --check`, `cargo test --locked --all-features`,
+`cargo test --locked -p xtask --all-features`, and
+`cargo --locked xtask proof-policy --check`, plus advisory `ub-review`.
 
 Parallel satellite lanes still run for MSRV, docs, deny, typos, risk-gated
 builds, and proof planning. They are visible on the PR but are **not** aggregated
@@ -30,9 +32,9 @@ Result` after the admin step in issue #226.
 
 ## Retired lanes (folded into `Tokmd Rust Result`)
 
-- `Quality Gate` → `cargo xtask gate --check` in the gate job background
+- `Quality Gate` → `cargo --locked xtask gate --check` in the gate job background
 - `Build & Test (Linux)` → `cargo test --locked --all-features` in the gate job background
-- `Proof Policy` → `cargo xtask proof-policy --check` in the gate job background
+- `Proof Policy` → `cargo --locked xtask proof-policy --check` in the gate job background
 - `CI (Required)` → replaced by single required check + `CI Actuals (Advisory)`
 - `Tokmd Rust Small Result` + routed `em-routed-rust-small.yml` frontdoor
   (`Route Tokmd Rust Small`, `Tokmd Rust Small on Self Hosted`, `Tokmd Rust
