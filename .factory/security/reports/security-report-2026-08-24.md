@@ -98,9 +98,10 @@ items remain unchanged:
   `@v1` floating tag) for that lane; no new pin drift was observed in the
   `c8c3aa1` window.
 - **OBS-006 (carried):** `RUSTSEC-2020-0163` (transitive `term_size`) is
-  recorded as ignored in `deny.toml`. This is a transitive advisory on the
-  `home` crate vendored at `vendor/home-0.5.12` (intentional temporary
-  patch via `[patch.crates-io]`). Not in the change scope this window.
+  recorded as ignored in `deny.toml`. The advisory concerns the unmaintained
+  `term_size` crate, transitive via `tokei`. The `home` crate vendored at
+  `vendor/home-0.5.12` under `[patch.crates-io]` is an unrelated
+  dependency-pinning note. Not in the change scope this window.
 
 The `c8c3aa1` change adds no new observation. The test verifies existing
 behavior; the docs update names an existing channel.
