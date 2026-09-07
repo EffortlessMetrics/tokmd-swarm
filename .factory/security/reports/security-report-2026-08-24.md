@@ -89,14 +89,12 @@ beyond what is already documented in the standing defenses and the prior
 identifiers from that report:
 
 - **OBS-003 (carried):** Mixed GitHub Action pinning posture in
-  `.github/workflows/*.yml`. The first-party `EffortlessMetrics/droid-action-safe`,
-  `EffortlessMetrics/ub-review`, `EffortlessMetrics/release-packager`,
-  `taiki-e/install-action`, `Swatinem/rust-cache`, `github/codeql-action`,
-  `docker/setup-buildx-action`, `docker/login-action`, `docker/build-push-action`,
-  and the `actions/*` set are SHA-pinned at the checked-out commit. The
-  `2026-08-17` typos lane hardening closed the most material gap (a mutable
-  `@v1` floating tag) for that lane; no new pin drift was observed in the
-  `c8c3aa1` window.
+  `.github/workflows/*.yml`. The typos installer and Droid wrapper are
+  SHA-pinned at the checked-out commit, while other CI steps retain mutable
+  references such as `Swatinem/rust-cache@v2`, `taiki-e/install-action@v2`,
+  and `actions/upload-artifact@v7`. The typos lane hardening does not establish
+  immutable pinning for every use of those actions. The `c8c3aa1` test/docs
+  change did not modify action references.
 - **OBS-002 (carried):** `RUSTSEC-2020-0163` (transitive `term_size`) is
   recorded as ignored in `deny.toml`. The advisory concerns the unmaintained
   `term_size` crate, transitive via `tokei`. The `home` crate vendored at
@@ -156,12 +154,10 @@ Subject: test(handoff): cover intelligence warning provenance (#622)
     reports. They are not in the diff scope for this window.
 - **Production code touched:** none. The warning-emitting path
   (`crates/tokmd/src/commands/handoff/intelligence.rs::build_intelligence`,
-  lines 60–95) is unchanged at this commit. The four warning message
-  strings the test exercises — `"hotspots unavailable: no git history
-  found"`, `"hotspots unavailable: git history skipped (<reason>)"`,
-  `"hotspots unavailable: git history skipped"`,
-  `"hotspots unavailable: git history unavailable (<reason>)"` — are
-  already present and unchanged.
+    lines 60–95) is unchanged at this commit. Existing producer warning
+    variants are unchanged; this test exercises only the skipped-history
+    path and accepts the `"hotspots unavailable: git history skipped"`
+    prefix with or without a parenthesized reason.
 - **Security-critical files re-read in place:**
   - `crates/tokmd-git/src/command.rs` — `GIT_REPO_SHAPING_ENV`
     (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_SSH`, `GIT_SSH_COMMAND`,
