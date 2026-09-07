@@ -93,7 +93,9 @@ Specifically:
   `hotspots unavailable: git history skipped`. This is a STRIDE-positive
   Information Disclosure reduction: the contract that downstream consumers
   rely on for "I asked for git, but you skipped it — tell me clearly" is
-  now under test, and the artifact documentation states the behavior.
+  now under test, and the artifact documentation states the behavior. The
+  added test checks this hotspot warning only, not every warning the producer
+  can emit; this manual scan did not execute that test.
 
 - `365894f test(handoff): assert fallback receipt provenance (#620)`,
   `598f29d test(context): guard required git score fallback (#618)`,
@@ -199,7 +201,7 @@ Out of scope per `SECURITY.md`. No change in this scan's commits.
 (`.github/workflows/droid.yml`, `droid-review.yml`, `droid-security-scan.yml`)
 pin third-party actions by SHA, including the custom
 `EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec`.
-Other workflows pin third-party actions by tag. `actions/checkout`
+Other workflow references use a mixture of tags and SHAs. `actions/checkout`
 is SHA-pinned at `3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1` across
 the workflows that use it.
 
@@ -211,14 +213,17 @@ plus an exact `tool: typos@1.49.0` and structural test coverage to
 prevent regression.
 
 **Why not a finding:**
-- Tag-pinned first-party actions (`actions/*`) are a well-accepted practice
-  with low residual risk; GitHub's own recommended baseline.
+- The original reviewer classified the remaining tag references below the
+  scan's reporting threshold; this is a manual assessment, not proof of
+  immutable dependency identity.
 - The custom Droid action — the highest-privilege third-party surface — IS
   SHA-pinned.
 - After `24d5a53`, the typos lane is also SHA-pinned with structural test
-  enforcement; remaining tag-pinned examples include first-party actions and
-  third-party tool installers such as `taiki-e/install-action@v2` used by
-  coverage, CI, proof-executor, and release workflows.
+  enforcement. In the inspected `ci.yml`, tag references still include
+  `actions/upload-artifact@v7`, `actions/setup-node@v7`,
+  `Swatinem/rust-cache@v2`, and `taiki-e/install-action@v2`; other workflow
+  steps retain SHA pins. A pin in one job does not establish a
+  repository-wide pinning contract.
 - Below the `medium` severity threshold for this scan; flagged for the next
   threat-model refresh (target: 2026-11-01 or earlier if scope changes).
 
@@ -308,20 +313,22 @@ and reject anything else before constructing the URL.
 **Description:** At the checked-out commit `c8c3aa1`, `.github/settings.yml`
 configures `required_approving_review_count: 0` and
 `require_code_owner_reviews: false` for `main`. The same historical file
-declares `Tokmd Rust Result` and `Codex Review Gate` as status contexts and
-describes native human approval and CODEOWNERS review as intentionally
-absent (per the in-line comment recorded in the inspected file).
+declares only `Tokmd Rust Result` as a required status context and enables
+`required_conversation_resolution: true`. Its comments require independent
+agentic review in separate lanes as repo process while keeping bot review
+statuses advisory; native human approval and CODEOWNERS review are
+intentionally absent. This updates the carried OBS-006 description to the
+inspected source; it does not claim live settings enforcement.
 
 **Why not a finding:**
 - The checked-in policy is narrow and explicit: `enforce_admins: false`,
-  `allow_force_pushes: false`, `allow_deletions: false`, and two declared
-  status contexts.
-- Live enforcement and per-PR execution of those contexts were not
+  `allow_force_pushes: false`, `allow_deletions: false`, one required
+  status context, and required conversation resolution.
+- Live enforcement and per-PR execution of that context were not
   independently proven by this scan.
-- The checked-out tree's `.github/settings.yml` comment records this as
-  a deliberate operational choice ("Codex is the exact-head reviewer for this
-  single-maintainer workflow"); the threat model is stale on this point and
-  its contradictory approval text is explicitly pending refresh.
+- The checked-out tree's `.github/settings.yml` comments distinguish the
+  independent agentic review process from native approval and status gates;
+  the threat model's contradictory approval text remains pending refresh.
 - Below the `medium` severity threshold; informational only.
 
 **Recommended action (optional, future):** When the maintainer count
@@ -420,7 +427,7 @@ prior weekly scans have re-verified.
 | D-06 | FFI in-memory input path validation | `crates/tokmd-core/src/ffi/inputs.rs` (line: `MAX_IN_MEMORY_INPUT_PATH_BYTES = 4096`) | ✓ |
 | D-07 | Strict JSON parsing with type validation | `crates/tokmd-core/src/ffi/parse.rs` | ✓ |
 | D-08 | Per-family schema versioning (`SCHEMA_VERSION=2`, `COCKPIT_SCHEMA_VERSION=3`, `HANDOFF_SCHEMA_VERSION=5`, `CONTEXT_SCHEMA_VERSION=4`, `CONTEXT_BUNDLE_SCHEMA_VERSION=2`) | `crates/tokmd-types/src/lib.rs`, `cockpit.rs`, `context.rs` | ✓ |
-| D-09 | SHA-pinned Droid-related actions; tag-pinned first-party actions; **typos lane SHA-pinned after `24d5a53`** | `.github/workflows/droid*.yml` (SHA), `ci.yml::typos` (SHA after `24d5a53`) | ✓ |
+| D-09 | Mixed action references: custom Droid action and typos installer are SHA-pinned; `ci.yml` also retains `actions/upload-artifact@v7`, `actions/setup-node@v7`, `Swatinem/rust-cache@v2`, and `taiki-e/install-action@v2` | `.github/workflows/droid*.yml`, `.github/workflows/ci.yml` | inspected mixed references |
 | D-10 | Branch-protection settings for `main` are present (status checks required, no force-push, no deletions); live enforcement and per-PR execution were not independently proven by this scan | `.github/settings.yml` | configured; live enforcement unverified |
 | D-11 | `cargo-deny` advisory + license allowlist | `deny.toml` (`RUSTSEC-2020-0163` ignore for transitive `term_size` via `tokei`) | ✓ |
 | D-12 | BLAKE3 redaction with extension allowlist | `crates/tokmd-format/src/redact/mod.rs`, `extensions.rs` | ✓ |
@@ -497,6 +504,8 @@ Subject: test(handoff): cover intelligence warning provenance (#622)
     that the `risk --no-git` handoff path emits a `null` hotspots value
     and a `warnings[]` entry prefixed with
     `hotspots unavailable: git history skipped`.
+    This is the added test's specific oracle; it does not enumerate or
+    verify all warning variants emitted by the producer.
   - `docs/artifacts.md`: one-line documentation update stating that
     unavailable git enrichments are recorded in `intelligence.json.warnings`.
 - **STRIDE analysis:** STRIDE-positive for Information Disclosure. The
@@ -644,9 +653,9 @@ fd01edd09e6aa6dbe1aee4f0fde4417bddb0f9b0  2026-08-21  fix(cockpit): simplify doc
   # v2.85.9`) with `checksum: true` and `fallback: none`, then
   `run: typos`. Enforced by
   `xtask/tests/proof_plan_w92.rs::typos_install_contract_is_immutable_verified_and_fail_closed`.
-- At `c8c3aa1`, `.github/settings.yml` — `Tokmd Rust Result` and
-  `Codex Review Gate` declared as status contexts for `main`;
-  `allow_force_pushes: false`; `allow_deletions: false`. This records the
+- At `c8c3aa1`, `.github/settings.yml` — only `Tokmd Rust Result` is a
+  required status context for `main`; `required_conversation_resolution:
+  true`; `allow_force_pushes: false`; `allow_deletions: false`. This records the
   inspected historical file; live enforcement at scan time and current
   branch-protection state were not independently proven.
 - `deny.toml` — `RUSTSEC-2020-0163` ignore for transitive `term_size`
@@ -730,7 +739,10 @@ The next scheduled security scan runs Monday, 2026-09-07 via
 ### Reporting correction (2026-09-07)
 
 PR review identified the incomplete adjacent-window claim, stale scanner
-line count, and overly broad locked-command wording. This correction checks
+line count, and overly broad locked-command wording. The correction also
+aligns the carried branch-protection description and mixed-pinning inventory
+with the inspected source, and bounds the handoff warning test claim to its
+actual oracle. This correction checks
 those reporting facts against the immutable inspected source
 `c8c3aa1987aeac40d5397936ec84519a82f8993a`; it does not rerun the security scan
 or add retrospective security verdicts. The original scan date, duration,
@@ -744,6 +756,10 @@ the scanner and guidance files. They confirm sixteen adjacent commits,
 zero strict-window commits reachable from that source, fourteen changed
 paths in the reviewed subset, and 582 scanner lines including blank lines.
 These later checks do not expand the original scan's security coverage.
+The carried observation IDs are preserved from the August 17 report:
+OBS-002 concerns transitive `term_size`, and OBS-006 concerns branch
+protection. All seven earlier observations remain present; this correction
+does not mark an observation or the six omitted commits as closed.
 
 ## References
 
