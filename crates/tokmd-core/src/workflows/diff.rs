@@ -1,6 +1,8 @@
 //! Diff workflow facade.
 
-use anyhow::Result;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
 use tokmd_types::{DiffReceipt, LangReceipt, LangReport};
 
 use crate::settings::{DiffSettings, LangSettings, ScanSettings};
@@ -46,19 +48,59 @@ pub fn diff_workflow(settings: &DiffSettings) -> Result<DiffReceipt> {
     ))
 }
 
-/// Load a language report from a receipt file path or scan a directory.
+/// Load a language report from a receipt file or scan a compatible source path.
 fn load_lang_report(source: &str) -> Result<LangReport> {
-    let path = std::path::Path::new(source);
+    let path = Path::new(source);
 
     if path.exists() && path.is_file() {
-        let content = std::fs::read_to_string(path)?;
-        if let Ok(receipt) = serde_json::from_str::<LangReceipt>(&content) {
-            return Ok(receipt.report);
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        match serde_json::from_str::<LangReceipt>(&content) {
+            Ok(receipt) => return Ok(receipt.report),
+            Err(error) if is_canonical_lang_receipt(path) => {
+                let context = format!(
+                    "Failed to parse language receipt {}: {error}",
+                    path.display()
+                );
+                return Err(error).context(context);
+            }
+            Err(_) => {}
         }
+    }
+
+    if let Some(lang_path) = run_artifact_lang_path(path) {
+        return load_lang_receipt(&lang_path);
     }
 
     let scan = ScanSettings::for_paths(vec![source.to_string()]);
     let lang = LangSettings::default();
     let receipt = lang_workflow(&scan, &lang)?;
+    Ok(receipt.report)
+}
+
+fn is_canonical_lang_receipt(path: &Path) -> bool {
+    path.file_name() == Some("lang.json".as_ref())
+}
+
+/// Resolve repo-owned run artifacts without changing the existing ability to
+/// diff arbitrary source directories and files through the binding facade.
+fn run_artifact_lang_path(path: &Path) -> Option<PathBuf> {
+    if path.is_dir() {
+        let lang_path = path.join("lang.json");
+        if path.join("receipt.json").is_file() {
+            return Some(lang_path);
+        }
+        return None;
+    }
+
+    (path.is_file() && path.file_name()? == "receipt.json")
+        .then(|| path.parent().unwrap_or(path).join("lang.json"))
+}
+
+fn load_lang_receipt(path: &Path) -> Result<LangReport> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read run language receipt {}", path.display()))?;
+    let receipt: LangReceipt = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse run language receipt {}", path.display()))?;
     Ok(receipt.report)
 }

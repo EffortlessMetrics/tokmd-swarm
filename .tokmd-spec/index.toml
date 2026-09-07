@@ -70,6 +70,12 @@ path = "docs/specs/proof-workflow-status.md"
 status = "active"
 
 [[artifact]]
+id = "release-preflight-spec"
+kind = "spec"
+path = "docs/specs/release-preflight.md"
+status = "active"
+
+[[artifact]]
 id = "handoff-work-order-spec"
 kind = "spec"
 path = "docs/specs/handoff-work-order.md"

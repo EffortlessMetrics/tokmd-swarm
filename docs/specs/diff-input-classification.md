@@ -40,6 +40,22 @@ current rules:
 - a `receipt.json` input loads sibling `lang.json`;
 - any other file input is loaded directly as the language receipt.
 
+The shared `tokmd-core` diff facade used by the Python and Node bindings also
+accepts source paths for compatibility. It recognizes a run-artifact directory
+when `receipt.json` is present, and resolves that directory to `lang.json`. A
+`receipt.json` input is parsed directly first when it is itself a language
+receipt; otherwise an existing manifest resolves to sibling `lang.json`.
+Missing or malformed sibling language receipts fail with artifact-path context
+rather than falling back to scanning JSON artifacts as source. A source
+directory that merely contains a file named `lang.json` remains a source scan.
+An existing file named exactly `lang.json` is an unambiguous canonical language
+receipt candidate, so a malformed one fails with path and parse context rather
+than falling back to a source scan. Other existing files, including generic
+JSON source files, remain eligible for source scanning after the direct receipt
+parse attempt. Repo-owned artifact basenames are case-sensitive: `lang.json`
+and `receipt.json` are reserved, while differently-cased JSON filenames remain
+compatible source paths.
+
 A missing input is classified as path-like when any of these are true:
 
 - it is an absolute path;

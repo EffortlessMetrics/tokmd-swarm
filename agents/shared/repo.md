@@ -10,19 +10,51 @@ This file is the canonical shared repo context for checked-in agent adapters in 
 
 Common commands:
 
+Routine workspace work preserves the committed `Cargo.lock`; use `--locked` so
+a missing or stale lock fails visibly instead of changing dependency state:
+
 ```bash
-cargo build
-cargo build --release
-cargo test --workspace
+cargo build --locked
+cargo build --locked --release
+cargo check --locked --workspace
+cargo test --locked --all-features
+cargo test --locked -p xtask --all-features
 cargo fmt-check
 cargo fmt-fix
-cargo clippy --all-features -- -D warnings
+cargo clippy --locked --all-features -- -D warnings
+cargo run --locked -p tokmd -- --version
 cargo xtask lint-fix
 cargo xtask gate --check
 just lint
 just fmt
 just publish-plan
 ```
+
+Install from the workspace only when an installed binary is actually needed;
+ordinary development should use the workspace commands above:
+
+```bash
+cargo install --path crates/tokmd --locked
+```
+
+This source install is reproducible only to the committed lock available in
+the checkout. Registry consumer installation is governed by the published
+package's lock and exact release proof, not by this workspace source-install
+path.
+
+`cargo test --locked --all-features` runs the workspace `default-members`; it does not
+select `xtask` or `fuzz`. The required `Tokmd Rust Result` runs the following
+serial proof sequence: `cargo xtask gate --check`, the default-member test
+command above, `cargo test --locked -p xtask --all-features`, and
+`cargo xtask proof-policy --check`. Use `cargo test --locked --workspace --all-features`
+only when broad Cargo workspace package selection is intended. It is not the
+required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
+and platform lanes remain separate proof.
+
+This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
+and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)
+programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
+and [depguard#24](https://github.com/EffortlessMetrics/depguard/issues/24).
 
 Optional git hooks:
 
@@ -44,6 +76,28 @@ explicit merge-commit PRs in `tokmd`, followed by fast-forwarding
 
 See `docs/ci/swarm-routing.md` for the shared-history topology and routing
 rules.
+
+## Review and Conversation Resolution
+
+Conversation resolution is part of the merge process. Every actionable inline
+comment from a bot or agent reviewer must be addressed, independently checked,
+and its review thread resolved before merge. Resolution is necessary process
+evidence, not proof by itself that the finding was fixed. A general bot summary
+comment with no review thread is not an unresolved conversation. The
+independent check is a workflow record made in the review reply, PR discussion,
+or handoff; GitHub's conversation setting only enforces the final resolved state
+and does not prove that the finding was fixed or that a separate identity
+performed the check.
+
+This is a single-maintainer repository: a separate human reviewer account,
+native approval, and CODEOWNERS approval are intentionally not merge
+requirements. Substantive PRs should receive independent agentic review passes
+as part of the normal review process. Use separate agent lanes for those passes;
+they may leave inline findings, and the resulting conversations must be
+independently checked and resolved. This is an agent workflow requirement, not
+a native approval or required-review status gate. Do not manufacture a second
+GitHub reviewer account, approval identity, or status check merely to satisfy
+one.
 
 ## Codex Commit / Push Policy
 
@@ -199,8 +253,8 @@ Rule:
 Common targeted commands:
 
 ```bash
-cargo test test_name --verbose
-cargo test -p tokmd-scan properties
+cargo test --locked test_name --verbose
+cargo test --locked -p tokmd-scan properties
 cargo mutants --file crates/tokmd-format/src/redact/mod.rs
 cargo +nightly fuzz list
 ```
