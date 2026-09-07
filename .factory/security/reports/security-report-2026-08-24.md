@@ -85,8 +85,8 @@ scheduled scan.
 
 The manual review did not introduce any new observations this scan window
 beyond what is already documented in the standing defenses and the prior
-`2026-08-17` report. The two previously observed MEDIUM-but-not-finding
-items remain unchanged:
+`2026-08-17` report. The two observations summarized here retain their
+identifiers from that report:
 
 - **OBS-003 (carried):** Mixed GitHub Action pinning posture in
   `.github/workflows/*.yml`. The first-party `EffortlessMetrics/droid-action-safe`,
@@ -97,11 +97,23 @@ items remain unchanged:
   `2026-08-17` typos lane hardening closed the most material gap (a mutable
   `@v1` floating tag) for that lane; no new pin drift was observed in the
   `c8c3aa1` window.
-- **OBS-006 (carried):** `RUSTSEC-2020-0163` (transitive `term_size`) is
+- **OBS-002 (carried):** `RUSTSEC-2020-0163` (transitive `term_size`) is
   recorded as ignored in `deny.toml`. The advisory concerns the unmaintained
   `term_size` crate, transitive via `tokei`. The `home` crate vendored at
   `vendor/home-0.5.12` under `[patch.crates-io]` is an unrelated
   dependency-pinning note. Not in the change scope this window.
+
+The other observations from the [August 17 report](security-report-2026-08-17.md)
+were not reassessed for this focused test/docs scan. Their omission from the
+summary is not closure or fresh confirmation of their original descriptions:
+
+| Prior ID | Prior subject | Disposition in this report |
+|---------|---------------|----------------------------|
+| OBS-001 | FFI JSON payload size | Not reassessed; see prior report. |
+| OBS-004 | Browser GitHub API base URL | Not reassessed; see prior report. |
+| OBS-005 | Action binary download | Not reassessed; see prior report. |
+| OBS-006 | Branch protection review requirements | Not reassessed; live enforcement was not queried. |
+| OBS-007 | Typos installer pin/comment correspondence | Not reassessed; see prior report. |
 
 The `c8c3aa1` change adds no new observation. The test verifies existing
 behavior; the docs update names an existing channel.
@@ -197,8 +209,8 @@ Subject: test(handoff): cover intelligence warning provenance (#622)
     `xtask/tests/proof_plan_w92.rs::typos_install_contract_is_immutable_verified_and_fail_closed`.
     This is the `2026-08-17` hardening; it carries through `c8c3aa1`
     unchanged.
-  - `.github/settings.yml` — `Tokmd Rust Result` and `Codex Review Gate`
-    declared as status contexts for `main`; `allow_force_pushes: false`;
+  - `.github/settings.yml` — only `Tokmd Rust Result` is declared as a
+    required status context for `main`; `allow_force_pushes: false`;
     `allow_deletions: false`. Live branch-protection state was not
     independently proven at scan time.
   - `deny.toml` — `RUSTSEC-2020-0163` ignore for transitive `term_size`
@@ -248,7 +260,7 @@ No patches were generated this scan (no findings at or above `medium`).
 ### Threat Model
 
 - **Status:** Within freshness window. The OBS-003 mixed-pinning note and
-  OBS-006 transitive `term_size` ignore remain known pending refresh items;
+  OBS-002 transitive `term_size` ignore remain known pending refresh items;
   neither was touched in the `c8c3aa1` window.
 - **Location:** `.factory/threat-model/threat-model.md`
 - **Last Modified:** 2026-08-02 (22 days ago — well within 90-day window)
