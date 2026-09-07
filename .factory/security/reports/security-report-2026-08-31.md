@@ -10,6 +10,9 @@ reported no other commits in this checkout for the intended window. The scan
 does not independently prove window completeness: the appendix records only a
 bounded `git fetch --depth=50 origin main`, so the zero-finding tally is limited
 to the observed checkout and must not be read as a full-history claim.
+The adjacent manual review covers the ten commits named below, not the whole
+2026-08-17 → 2026-08-22 interval. Six other reachable commits in that interval
+have no commit-review record in this report; see Scan Metadata.
 
 ## Executive Summary
 
@@ -32,20 +35,22 @@ vulnerabilities.
 no commits in the observed checkout for the intended 2026-08-24 → 2026-08-31
 window. The most recent commit on the working branch is `c8c3aa1 test(handoff):
 cover intelligence warning provenance (#622)` from 2026-08-22 — two days
-outside the strict 7-day window. The manual review extended to `c8c3aa1` and
-to the adjacent commit batch landed between the previous report's
-2026-08-17 cutoff and the 2026-08-22 most-recent commit, because those
-commits had not been covered by any prior weekly scan. The reviewed changes
-are a tightly scoped test/doc/lint batch plus a STRIDE-positive supply-chain
+outside the strict 7-day window. The manual review recorded ten selected
+commits from the adjacent 2026-08-17 → 2026-08-22 interval, including
+`c8c3aa1`. It did not cover all sixteen reachable commits in that interval;
+the six omissions are listed in Scan Metadata without a security verdict.
+The reviewed changes are a tightly scoped test/doc/lint batch plus a
+STRIDE-positive supply-chain
 hardening series that lands the `tokmd-swarm#604` locked-Cargo-command
 adoption guard.
 
 Specifically:
 
 - `c2f77f0 docs(security): lock Cargo guidance` — rewrites `AGENTS.md` and
-  `agents/shared/repo.md` so every documented `cargo` invocation passes
-  `--locked`, with explicit "this source install is reproducible only to
-  the committed lock" framing and an issue-tracker pointer to
+  `agents/shared/repo.md` so documented governed Cargo `build`, `check`,
+  `test`, `clippy`, `run`, and `install` commands pass `--locked`, with
+  explicit "this source install is reproducible only to the committed lock"
+  framing and an issue-tracker pointer to
   `tokmd-swarm#604`, `depguard#21`, `depguard#22`, `depguard#24`. This is a
   STRIDE-positive Elevation of Privilege / Tampering reduction: it narrows
   the surface where developers (and tools that imitate the docs) could run
@@ -66,7 +71,8 @@ Specifically:
 - `f3cfd24 test(policy): guard governed cargo command surfaces` — adds
   `policy/cargo-command-surfaces.toml` (closed-world inventory, 385 lines,
   `schema_version = 1`) and a deterministic tracked-file scanner in
-  `xtask/tests/cargo_command_surfaces_w104.rs` (566 lines) that classifies
+  `xtask/tests/cargo_command_surfaces_w104.rs` (582 lines at the inspected
+  `c8c3aa1` tree, including later hardening) that classifies
   each candidate root as `live` / `deferred` / `historical` / `dynamic`
   without executing commands, plus a `cargo_command_surfaces` proof scope
   in `ci/proof.toml`. The scanner is purely text-based and never
@@ -133,10 +139,12 @@ The manual comparison recorded one new low-severity observation
 (OBS-008 below) for the `#604` locked-Cargo-command adoption guard
 series, alongside the carried `2026-08-17` observations. The hardening
 also *narrows* the supply-chain drift risk for the documented `cargo`
-lanes: every `cargo` invocation listed in `AGENTS.md` /
-`agents/shared/repo.md` now passes `--locked`, and the closed-world
-`cargo_command_surfaces_w104` test re-asserts that contract on every
-proof run.
+lanes: documented governed Cargo `build`, `check`, `test`, `clippy`, `run`,
+and `install` commands in `AGENTS.md` / `agents/shared/repo.md` pass
+`--locked`. Formatter aliases, xtask commands, and other ungoverned
+subcommands remain distinct. The closed-world `cargo_command_surfaces_w104`
+test checks the adopted live surfaces when that proof scope executes; this
+manual scan did not execute it.
 
 ### OBS-001 (carried): FFI JSON payload size not bounded
 
@@ -431,15 +439,16 @@ prior weekly scans have re-verified.
 | D-25 | `Command::new("cargo")` and `Command::new("git")` invocations use `arg()` (not shell) and `current_dir` for path control, no `sh -c` / `bash -c` | `crates/tokmd-cockpit/src/supply_chain.rs`, `crates/tokmd-cockpit/src/gates/contracts.rs`, `tokmd-git/src/command.rs`, `crates/tokmd-scan/src/walk/git.rs` | ✓ |
 | D-26 | Typos lane install contract: SHA-pinned action, pinned tool version, `checksum: true`, `fallback: none`, plus a structural drift/fork rejection test | `.github/workflows/ci.yml::typos`, `xtask/tests/proof_plan_w92.rs::typos_install_contract_is_immutable_verified_and_fail_closed` | ✓ |
 | D-27 (new) | `cargo_command_surfaces` adoption guard: closed-world inventory in `policy/cargo-command-surfaces.toml` (`schema_version = 1`), deterministic tracked-file scanner in `xtask/tests/cargo_command_surfaces_w104.rs`, routed through `ci/proof.toml::cargo_command_surfaces` proof scope; scanner is text-only and never executes guidance | `policy/cargo-command-surfaces.toml`, `xtask/tests/cargo_command_surfaces_w104.rs`, `ci/proof.toml` | ✓ |
-| D-28 (new) | Canonical `cargo` guidance uses `--locked`: every documented `cargo` invocation in `AGENTS.md` and `agents/shared/repo.md` passes `--locked`, with explicit "this source install is reproducible only to the committed lock" framing and tracked under `tokmd-swarm#604` / `depguard#21` / `depguard#22` / `depguard#24` | `AGENTS.md`, `agents/shared/repo.md` | ✓ |
+| D-28 (new) | Canonical governed Cargo `build`, `check`, `test`, `clippy`, `run`, and `install` guidance uses `--locked`, with explicit "this source install is reproducible only to the committed lock" framing and tracked under `tokmd-swarm#604` / `depguard#21` / `depguard#22` / `depguard#24`; formatter aliases, xtask, and other ungoverned subcommands are outside this claim | `AGENTS.md`, `agents/shared/repo.md` | ✓ |
 
 
 ### Scan Coverage Matrix
 
 The coverage below applies to the ten commits reviewed for context
 (`fd01edd`, `c2f77f0`, `f3cfd24`, `7d192f0`, `c3ac6f3`, `9c0bedb`,
-`fa89267`, `598f29d`, `365894f`, `c8c3aa1`) and the re-verified standing
-defenses.
+`fa89267`, `598f29d`, `365894f`, `c8c3aa1`) and the standing defenses the
+original reviewer recorded as re-read. It does not establish commit-level
+coverage of the six omitted adjacent commits listed in Scan Metadata.
 
 | Area | Files reviewed | Findings |
 |------|----------------|----------|
@@ -468,10 +477,9 @@ defenses.
 ### Commit-level Analysis
 
 The strict intended 2026-08-24 → 2026-08-31 window contains zero commits in
-the observed checkout. The manual review extended to the most recent commit
-on the working branch and to the adjacent commit batch that landed between
-the 2026-08-17 report cutoff and the 2026-08-22 most-recent commit
-(because those commits had not been covered by any prior weekly scan):
+the observed checkout. The recorded adjacent manual review covers ten
+selected commits from 2026-08-17 through 2026-08-22. The most recent reviewed
+commit is:
 
 ```
 c8c3aa1987aeac40d5397936ec84519a82f8993a
@@ -496,9 +504,9 @@ Subject: test(handoff): cover intelligence warning provenance (#622)
   skipped it — tell me clearly" is now under test, and the artifact
   documentation states the behavior explicitly.
 
-The full adjacent commit stack reviewed for context (between 2026-08-17 and
-2026-08-22) is summarized below. None of these commits add new trust
-boundaries, new subprocess invocations, new secret/env surfaces, new CLI
+The other nine commits in the recorded adjacent review subset are summarized
+below. The original manual review assessed these named commits as adding no
+new trust boundaries, new subprocess invocations, new secret/env surfaces, new CLI
 flags, new dependencies, new schema bumps, or new release surface; all
 are STRIDE-neutral or STRIDE-positive for their respective categories.
 
@@ -515,9 +523,10 @@ fd01edd09e6aa6dbe1aee4f0fde4417bddb0f9b0  2026-08-21  fix(cockpit): simplify doc
 ```
 
 - **`c2f77f0 docs(security): lock Cargo guidance`** — `+63/-20` across
-  `AGENTS.md` and `agents/shared/repo.md`. Rewrites every documented
-  `cargo` invocation to pass `--locked`, adds explicit "this source
-  install is reproducible only to the committed lock" framing, and
+  `AGENTS.md` and `agents/shared/repo.md`. Updates documented governed Cargo
+  `build`, `check`, `test`, `clippy`, `run`, and `install` commands to pass
+  `--locked`, adds explicit "this source install is reproducible only to the
+  committed lock" framing, and
   tracks the locked-command contract under `tokmd-swarm#604` /
   `depguard#21` / `depguard#22` / `depguard#24`. STRIDE-positive
   Elevation of Privilege / Tampering reduction.
@@ -642,11 +651,15 @@ fd01edd09e6aa6dbe1aee4f0fde4417bddb0f9b0  2026-08-21  fix(cockpit): simplify doc
   branch-protection state were not independently proven.
 - `deny.toml` — `RUSTSEC-2020-0163` ignore for transitive `term_size`
   unchanged; license allowlist unchanged.
-- `AGENTS.md` and `agents/shared/repo.md` — every documented `cargo`
-  invocation now passes `--locked`; source-install framing explicit.
+- `AGENTS.md` and `agents/shared/repo.md` — documented governed Cargo
+  `build`, `check`, `test`, `clippy`, `run`, and `install` commands pass
+  `--locked`; source-install framing explicit. This does not cover formatter
+  aliases, xtask commands, or other ungoverned subcommands.
 
 **The manual review recorded no security findings at or above the `medium`
-threshold for the reviewed commit stack. Based on the reviewed source
+threshold for the ten named reviewed commits and recorded standing-defense
+inspection. No finding tally is established for the six omitted adjacent
+commits. Based on the reviewed source
 commits and the closed-world `cargo_command_surfaces` adoption guard, the
 change set is STRIDE-positive across Spoofing, Tampering, Information
 Disclosure, Denial of Service (incidentally, via tighter fail-closed
@@ -680,10 +693,15 @@ The next scheduled security scan runs Monday, 2026-09-07 via
 
 - **Strict window:** 2026-08-24 → 2026-08-31 — zero commits in the
   observed checkout.
-- **Adjacent review window:** 2026-08-17 → 2026-08-22 — ten commits
+- **Adjacent review subset:** 2026-08-17 → 2026-08-22 — ten named commits
   (`fd01edd`, `c2f77f0`, `f3cfd24`, `7d192f0`, `c3ac6f3`, `9c0bedb`,
-  `fa89267`, `598f29d`, `365894f`, `c8c3aa1`) reviewed for context
-  because they had not been covered by any prior weekly scan.
+  `fa89267`, `598f29d`, `365894f`, `c8c3aa1`) recorded as reviewed for context.
+  This is a subset of the sixteen reachable commits in that interval.
+- **Adjacent commits without a review record in this report:**
+  `5dbf8e7b` (selected policy errors), `c51493b0` (August 17 security report),
+  `e2e21214` (protection contract payload), `d20a0b0c` (badge endpoints),
+  `8c19ed93` (UB Review phase receipts), and `4649de15` (1.15.0 packet release
+  status). Their omission is a coverage gap, not a zero-finding result.
 - **Known commit reviewed (most recent on working branch):**
   `c8c3aa1987aeac40d5397936ec84519a82f8993a test(handoff): cover
   intelligence warning provenance (#622)`, 2026-08-22.
@@ -691,7 +709,7 @@ The next scheduled security scan runs Monday, 2026-09-07 via
   days ago" --pretty=format:"%H %s"` returned zero commits in the observed
   checkout, but the recorded `git fetch --depth=50 origin main` is
   bounded and cannot establish full-history completeness.
-- **Files in scope for the adjacent review:** ~15 across
+- **Files changed by the ten named adjacent commits:** 14 unique paths across
   `crates/tokmd/tests/handoff_w71.rs`, `crates/tokmd/tests/context_cli_w73.rs`,
   `crates/tokmd-format/src/packet_siblings.rs`,
   `crates/tokmd/tests/render_packets_integration.rs`, `README.md`,
@@ -699,14 +717,33 @@ The next scheduled security scan runs Monday, 2026-09-07 via
   `policy/cargo-command-surfaces.toml`, `ci/proof.toml`,
   `xtask/tests/affected_w91.rs`, `AGENTS.md`, `agents/shared/repo.md`,
   `crates/tokmd-cockpit/src/render/evidence.rs`, `docs/artifacts.md`.
-  The full surface was previously reviewed under the `2026-06-29` true-merge
-  baseline; this scan re-verified all security-critical modules in place.
+  The original reviewer also recorded the standing-defense inspection above.
+  Neither that inspection nor the earlier `2026-06-29` baseline establishes
+  commit-level review of the six omitted changes.
 - **Scan Duration:** ~5m (focused diff review + defense re-verification)
 - **Skills Used:** commit-security-scan (manual, STRIDE),
   vulnerability-validation (manual, exploitability assessment), security-review
   (manual, defense confirmation)
 - **Manual Reviewers:** 1 (Droid scheduled security scan)
 - **False Positive Filter:** applied — see Observations above
+
+### Reporting correction (2026-09-07)
+
+PR review identified the incomplete adjacent-window claim, stale scanner
+line count, and overly broad locked-command wording. This correction checks
+those reporting facts against the immutable inspected source
+`c8c3aa1987aeac40d5397936ec84519a82f8993a`; it does not rerun the security scan
+or add retrospective security verdicts. The original scan date, duration,
+reviewer count, and manual methodology above remain historical provenance.
+
+The factual checks used `git log` on that source with inclusive UTC date
+bounds (`2026-08-17T00:00:00Z` through `2026-08-22T23:59:59Z`, and
+`2026-08-24T00:00:00Z` through `2026-08-31T23:59:59Z`), `git diff-tree
+--no-commit-id --name-only -r` for the ten named commits, and `git show` for
+the scanner and guidance files. They confirm sixteen adjacent commits,
+zero strict-window commits reachable from that source, fourteen changed
+paths in the reviewed subset, and 582 scanner lines including blank lines.
+These later checks do not expand the original scan's security coverage.
 
 ## References
 
