@@ -32,9 +32,9 @@ Result` after the admin step in issue #226.
 
 ## Retired lanes (folded into `Tokmd Rust Result`)
 
-- `Quality Gate` → `cargo --locked xtask gate --check` in the gate job background
-- `Build & Test (Linux)` → `cargo test --locked --all-features` in the gate job background
-- `Proof Policy` → `cargo --locked xtask proof-policy --check` in the gate job background
+- `Quality Gate` → `cargo --locked xtask gate --check` in the serial gate job
+- `Build & Test (Linux)` → `cargo test --locked --all-features` in the serial gate job
+- `Proof Policy` → `cargo --locked xtask proof-policy --check` in the serial gate job
 - `CI (Required)` → replaced by single required check + `CI Actuals (Advisory)`
 - `Tokmd Rust Small Result` + routed `em-routed-rust-small.yml` frontdoor
   (`Route Tokmd Rust Small`, `Tokmd Rust Small on Self Hosted`, `Tokmd Rust

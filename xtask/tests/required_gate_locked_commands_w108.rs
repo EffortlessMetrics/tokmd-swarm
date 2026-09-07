@@ -311,7 +311,7 @@ fn guidance_states_the_locked_claim_and_its_boundary() -> Result<()> {
 }
 
 #[test]
-fn scanner_has_positive_and_negative_controls() {
+fn scanner_has_positive_and_negative_controls() -> Result<()> {
     // Positive controls: locked, non-governed, and prose forms are accepted.
     for line in [
         "cargo test --locked --all-features",
@@ -326,7 +326,7 @@ fn scanner_has_positive_and_negative_controls() {
         "run_bounded \"cargo test --locked\" marker log cargo test --locked",
         "no cargo invocation here",
     ] {
-        assert!(
+        ensure!(
             unlocked_invocations(line).is_empty(),
             "false positive for {line:?}"
         );
@@ -351,31 +351,32 @@ fn scanner_has_positive_and_negative_controls() {
         "cargo --target x86_64-unknown-linux-gnu build",
         "cargo --jobs 4 build",
     ] {
-        assert_eq!(
-            unlocked_invocations(line).len(),
-            1,
+        ensure!(
+            unlocked_invocations(line).len() == 1,
             "missed unlocked command in {line:?}"
         );
     }
 
     // A wrapper that labels one command and runs another is judged per
     // invocation, so a half-migrated line cannot pass.
-    assert_eq!(
+    ensure!(
         unlocked_invocations(
             "run_bounded \"cargo test --all-features\" marker log cargo test --locked --all-features"
         )
-        .len(),
-        1
+        .len()
+            == 1,
+        "a locked executable command must not hide its unlocked receipt label"
     );
+    Ok(())
 }
 
 #[test]
 fn job_extraction_stops_at_the_next_job_key() -> Result<()> {
     let workflow = "jobs:\n  tokmd-rust-result:\n    name: Tokmd Rust Result\n    steps:\n      - run: cargo test --locked\n  other:\n    name: Other\n    steps:\n      - run: cargo test\n";
     let job = required_gate_job(workflow)?;
-    assert!(job.contains("cargo test --locked"));
-    assert!(!job.contains("name: Other"));
-    assert!(unlocked_invocations(job).is_empty());
-    assert!(required_gate_job("jobs:\n  other:\n").is_err());
+    ensure!(job.contains("cargo test --locked"));
+    ensure!(!job.contains("name: Other"));
+    ensure!(unlocked_invocations(job).is_empty());
+    ensure!(required_gate_job("jobs:\n  other:\n").is_err());
     Ok(())
 }
