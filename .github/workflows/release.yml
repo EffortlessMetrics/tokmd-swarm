@@ -72,7 +72,7 @@ jobs:
           fi
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
@@ -114,7 +114,7 @@ jobs:
             -C web/runner/vendor/tokmd-wasm .
           sha256sum "artifacts/tokmd-wasm-${GITHUB_REF_NAME}.tar.gz" > "artifacts/tokmd-wasm-${GITHUB_REF_NAME}.sha256"
       - name: Upload wasm artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: tokmd-wasm-${{ github.ref_name }}
           path: |
