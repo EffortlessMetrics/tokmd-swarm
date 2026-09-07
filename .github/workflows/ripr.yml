@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload RIPR PR evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ripr-pr
           path: target/ripr/pr
@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload RIPR review guidance
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ripr-review
           path: target/ripr/review

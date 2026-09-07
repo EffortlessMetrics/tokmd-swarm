@@ -439,7 +439,7 @@ jobs:
       - name: Upload UB Review observability receipt
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ub-review-observability-receipt
           path: target/ci-core/ub-review-receipt.json
@@ -513,7 +513,7 @@ jobs:
 
       - name: Upload proof-pack route receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: proof-pack-route
           path: |
@@ -694,7 +694,7 @@ jobs:
 
       - name: Upload affected proof artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: affected-proof-plan
           path: target/proof/
@@ -828,7 +828,7 @@ jobs:
 
       - name: Upload fast proof-run artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.proof_run_policy.outputs.artifact_name || 'fast-proof-run' }}
           path: target/proof-run/
@@ -1009,7 +1009,7 @@ jobs:
           CI: true
       - name: Upload doc artifact check receipt
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: doc-artifacts-check
           path: target/docs/doc-artifacts-check.json
@@ -1152,7 +1152,7 @@ jobs:
 
       - name: Upload mutants report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: mutants-report
           path: |
@@ -1311,7 +1311,7 @@ jobs:
       - name: Upload CI actuals receipt
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ci-actuals
           path: |
