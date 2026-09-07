@@ -4,11 +4,15 @@ use crate::cli::{ChangeArgs, HooksArgs, HooksCommand, PrecommitArgs};
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use serde_json::to_string;
+use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+// Pinned with .changie.yaml; the contract fixture below detects layout drift.
+const FRAGMENT_DIRECTORY: &str = ".changes/unreleased";
 
 const KINDS: &[&str] = &[
     "added",
@@ -50,17 +54,9 @@ pub fn run_change(args: ChangeArgs) -> Result<()> {
         Some(output) => output,
         None => default_fragment_path(&component, &kind),
     };
-    let (relative, path) = fragment_output_path(&root, &output)?;
-    if path.exists() {
-        bail!("refusing to overwrite existing fragment: {relative}");
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create fragment directory {}", parent.display()))?;
-    }
     let encoded_body = to_string(body).context("encode fragment body")?;
     let content = format!("component: {component}\nkind: {kind}\nbody: {encoded_body}\n");
-    std::fs::write(&path, content).with_context(|| format!("write fragment {}", path.display()))?;
+    let relative = write_fragment(&root, &output, &content)?;
     println!("created {relative}");
     println!("stage it with: git add -- {relative}");
     Ok(())
@@ -186,6 +182,8 @@ fn classify_paths(paths: &[String]) -> ChangeClass {
 }
 
 fn is_explicitly_exempt(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    let path = normalized.as_str();
     path == "Cargo.lock"
         || path == ".changes/unreleased/.gitkeep"
         || path.starts_with("tests/")
@@ -198,13 +196,18 @@ fn is_explicitly_exempt(path: &str) -> bool {
 }
 
 fn is_fragment(path: &str) -> bool {
-    path.starts_with(".changes/unreleased/") && (path.ends_with(".yaml") || path.ends_with(".yml"))
+    let normalized = path.replace('\\', "/");
+    fragment_name(&normalized).is_some()
+        && (normalized.ends_with(".yaml") || normalized.ends_with(".yml"))
+}
+
+fn fragment_name(path: &str) -> Option<&str> {
+    path.strip_prefix(FRAGMENT_DIRECTORY)?.strip_prefix('/')
 }
 
 fn validate_fragment(path: &str, content: &str) -> Result<()> {
     let normalized_path = path.replace('\\', "/");
-    let fragment_name = normalized_path
-        .strip_prefix(".changes/unreleased/")
+    let fragment_name = fragment_name(&normalized_path)
         .ok_or_else(|| anyhow::anyhow!("fragment is outside .changes/unreleased/: {path}"))?;
     if fragment_name.contains('/') {
         bail!("fragment must be directly in .changes/unreleased/: {path}");
@@ -217,7 +220,7 @@ fn validate_fragment(path: &str, content: &str) -> Result<()> {
         bail!("invalid unreleased fragment filename: {path}");
     }
     let component = yaml_field(content, "component")?;
-    let kind = yaml_field(content, "kind")?.to_ascii_lowercase();
+    let kind = yaml_field(content, "kind")?;
     let body = yaml_field(content, "body")?;
     validate_component(&component)?;
     validate_kind(&kind)?;
@@ -255,7 +258,11 @@ fn validate_kind(kind: &str) -> Result<()> {
 }
 
 fn validate_component(component: &str) -> Result<()> {
-    canonical_component(component).map(|_| ())
+    let canonical = canonical_component(component)?;
+    if component != canonical {
+        bail!("fragment component `{component}` must use canonical spelling `{canonical}`");
+    }
+    Ok(())
 }
 
 fn canonical_component(component: &str) -> Result<String> {
@@ -284,7 +291,7 @@ fn default_fragment_path(component: &str, kind: &str) -> PathBuf {
         .collect::<String>();
     let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
     PathBuf::from(format!(
-        ".changes/unreleased/{safe_component}-{kind}-{timestamp}.yaml"
+        "{FRAGMENT_DIRECTORY}/{safe_component}-{kind}-{timestamp}.yaml"
     ))
 }
 
@@ -301,21 +308,69 @@ fn fragment_output_path(root: &Path, output: &Path) -> Result<(String, PathBuf)>
     {
         bail!("fragment output must not be absolute or contain parent traversal: {relative}");
     }
-    if !relative.starts_with(".changes/unreleased/") {
-        bail!("fragment output must be under .changes/unreleased/: {relative}");
-    }
-    let fragment_name = relative
-        .strip_prefix(".changes/unreleased/")
-        .ok_or_else(|| anyhow::anyhow!("fragment output has no filename: {relative}"))?;
-    if fragment_name.is_empty() || fragment_name.contains('/') {
+    let fragment_name = fragment_name(&relative).ok_or_else(|| {
+        anyhow::anyhow!("fragment output must be under {FRAGMENT_DIRECTORY}/: {relative}")
+    })?;
+    if fragment_name.is_empty()
+        || fragment_name.contains('/')
+        || fragment_name.contains(':')
+        || fragment_name.chars().any(char::is_control)
+    {
         bail!("fragment output must be directly in .changes/unreleased/: {relative}");
     }
-    let path = root.join(output_path);
-    let unreleased_root = root.join(".changes/unreleased");
-    if !path.starts_with(&unreleased_root) {
-        bail!("fragment output escapes .changes/unreleased/: {relative}");
+    if !fragment_name.ends_with(".yaml") && !fragment_name.ends_with(".yml") {
+        bail!("fragment output must have a .yaml or .yml extension: {relative}");
     }
+    let path = root.join(output_path);
     Ok((relative, path))
+}
+
+fn write_fragment(root: &Path, output: &Path, content: &str) -> Result<String> {
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("canonicalize repository root {}", root.display()))?;
+    let (relative, path) = fragment_output_path(&root, output)?;
+    prepare_fragment_directory(&root)?;
+
+    // Exclusive creation rejects existing files and leaf symlinks, including
+    // dangling links, without following or overwriting them.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .with_context(|| {
+            format!("create new fragment {relative}; existing outputs are never overwritten")
+        })?;
+    file.write_all(content.as_bytes())
+        .with_context(|| format!("write fragment {relative}"))?;
+    Ok(relative)
+}
+
+fn prepare_fragment_directory(root: &Path) -> Result<()> {
+    let mut directory = root.to_path_buf();
+    for component in Path::new(FRAGMENT_DIRECTORY).components() {
+        directory.push(component);
+        match std::fs::create_dir(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("create fragment directory {}", directory.display()));
+            }
+        }
+        let metadata = std::fs::symlink_metadata(&directory)
+            .with_context(|| format!("inspect fragment directory {}", directory.display()))?;
+        let canonical = directory
+            .canonicalize()
+            .with_context(|| format!("canonicalize fragment directory {}", directory.display()))?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() || canonical != directory {
+            bail!(
+                "fragment directory must be a real directory at the pinned path, not a symlink or alias: {}",
+                directory.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 fn normalize_relative(path: &Path) -> String {
@@ -562,6 +617,229 @@ mod tests {
         .is_ok()
         {
             bail!("nested fragment paths should be rejected");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changie_config_matches_the_pinned_validator_contract() -> Result<()> {
+        let config = include_str!("../../../.changie.yaml").replace("\r\n", "\n");
+        let directory = format!(
+            "{}/{}",
+            yaml_field(&config, "changesDir")?,
+            yaml_field(&config, "unreleasedDir")?
+        );
+        if directory != FRAGMENT_DIRECTORY {
+            bail!("Changie directory differs from the staged-fragment contract");
+        }
+        let (_, components) = config
+            .split_once("components:\n")
+            .ok_or_else(|| anyhow::anyhow!("Changie components are missing"))?;
+        let (components, kinds) = components
+            .split_once("kinds:\n")
+            .ok_or_else(|| anyhow::anyhow!("Changie kinds are missing"))?;
+        let components = components
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("- "))
+            .collect::<Vec<_>>();
+        let kinds = kinds
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("- key: "))
+            .collect::<Vec<_>>();
+        if components != COMPONENTS || kinds != KINDS {
+            bail!("Changie vocabulary differs from the fragment validator");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_fragments_require_canonical_keys_on_both_line_endings() -> Result<()> {
+        for component in COMPONENTS {
+            for kind in KINDS {
+                for newline in ["\n", "\r\n"] {
+                    let content = format!(
+                        "component: {component}{newline}kind: {kind}{newline}body: \"A correction\"{newline}"
+                    );
+                    validate_fragment(".changes/unreleased/valid.yaml", &content)?;
+                }
+            }
+        }
+        for content in [
+            "component: cli\nkind: fixed\nbody: correction\n",
+            "component: CLI\nkind: Fixed\nbody: correction\n",
+            "component: CLI\nkind: UNKNOWN\nbody: correction\n",
+        ] {
+            if validate_fragment(".changes/unreleased/invalid.yaml", content).is_ok() {
+                bail!("a non-canonical staged fragment was accepted: {content}");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fragment_classification_normalizes_path_separators() -> Result<()> {
+        for path in [
+            "tests/unit.rs",
+            "xtask/tests/fixture.rs",
+            "crates/example/tests/unit.rs",
+            ".changes/unreleased/.gitkeep",
+            ".jules/provenance.md",
+        ] {
+            if !is_explicitly_exempt(path) || !is_explicitly_exempt(&path.replace('/', "\\")) {
+                bail!("path separator changed the exemption for {path}");
+            }
+        }
+        let path = ".changes/unreleased/Release-fixed.yaml";
+        if !is_fragment(path) || !is_fragment(&path.replace('/', "\\")) {
+            bail!("path separator changed fragment recognition");
+        }
+        if is_fragment(".changes/unreleased-other/fake.yaml") {
+            bail!("a sibling directory was accepted as the fragment directory");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fragment_creation_preserves_existing_output() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let output = Path::new(".changes/unreleased/Release-fixed.yaml");
+        let content = "component: Release\nkind: fixed\nbody: original\n";
+        let relative = write_fragment(root.path(), output, content)?;
+        validate_fragment(
+            &relative,
+            &std::fs::read_to_string(root.path().join(output))?,
+        )?;
+        if write_fragment(root.path(), output, "replacement").is_ok() {
+            bail!("an existing fragment was overwritten");
+        }
+        if std::fs::read_to_string(root.path().join(output))? != content {
+            bail!("refused overwrite changed the original fragment");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fragment_creation_rejects_invalid_names_before_creating_directories() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        for output in [
+            ".changes/unreleased/../escape.yaml",
+            ".changes/unreleased/nested/escape.yaml",
+            ".changes/unreleased/file.yaml:stream",
+            ".changes/unreleased/file:stream.yaml",
+            ".changes/unreleased/control\n.yaml",
+            ".changes/unreleased/not-a-fragment.txt",
+        ] {
+            if write_fragment(root.path(), Path::new(output), "invalid").is_ok() {
+                bail!("invalid fragment output was accepted: {output:?}");
+            }
+        }
+        if root.path().join(".changes").try_exists()? {
+            bail!("invalid output created the fragment directory");
+        }
+        Ok(())
+    }
+
+    #[cfg(any(unix, windows))]
+    fn create_directory_alias(target: &Path, link: &Path) -> Result<()> {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link)?;
+        #[cfg(windows)]
+        {
+            // Junctions need no symlink privilege on Windows. Paths arrive as
+            // environment values, never interpolated PowerShell source.
+            let output = Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path $env:TOKMD_TEST_JUNCTION -Target $env:TOKMD_TEST_TARGET | Out-Null",
+                ])
+                .env("TOKMD_TEST_JUNCTION", link)
+                .env("TOKMD_TEST_TARGET", target)
+                .output()
+                .context("create test junction")?;
+            if !output.status.success() {
+                bail!(
+                    "create test junction failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn fragment_creation_rejects_directory_aliases() -> Result<()> {
+        for directory in [".changes", FRAGMENT_DIRECTORY] {
+            let root = tempfile::tempdir()?;
+            let outside = tempfile::tempdir()?;
+            let link = root.path().join(directory);
+            let parent = link
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("test link has no parent"))?;
+            std::fs::create_dir_all(parent)?;
+            create_directory_alias(outside.path(), &link)?;
+            let result = write_fragment(
+                root.path(),
+                Path::new(".changes/unreleased/escaped.yaml"),
+                "must stay inside the repository",
+            );
+            let outside_changed = outside.path().read_dir()?.next().transpose()?.is_some();
+            #[cfg(unix)]
+            std::fs::remove_file(&link)?;
+            #[cfg(windows)]
+            std::fs::remove_dir(&link)?;
+            if result.is_ok() || outside_changed {
+                bail!("fragment creation followed directory alias {directory}");
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fragment_creation_rejects_existing_and_dangling_leaf_symlinks() -> Result<()> {
+        for target_exists in [true, false] {
+            let root = tempfile::tempdir()?;
+            let outside = tempfile::tempdir()?;
+            let target = outside.path().join("outside.yaml");
+            if target_exists {
+                std::fs::write(&target, "original")?;
+            }
+            let output = Path::new(".changes/unreleased/linked.yaml");
+            let link = root.path().join(output);
+            std::fs::create_dir_all(root.path().join(FRAGMENT_DIRECTORY))?;
+            std::os::unix::fs::symlink(&target, &link)?;
+            if write_fragment(root.path(), output, "replacement").is_ok() {
+                bail!("fragment creation followed a leaf symlink");
+            }
+            if target_exists {
+                if std::fs::read_to_string(&target)? != "original" {
+                    bail!("fragment creation overwrote the symlink target");
+                }
+            } else if target.try_exists()? {
+                bail!("fragment creation wrote through a dangling symlink");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_validation_uses_index_content_and_rejects_noncanonical_keys() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        run_git_checked(root.path(), ["init", "--quiet"])?;
+        let output = Path::new(".changes/unreleased/CLI-fixed.yaml");
+        let content = "component: CLI\nkind: fixed\nbody: correct\n";
+        write_fragment(root.path(), output, content)?;
+        std::fs::write(root.path().join("README.md"), "user-visible change")?;
+        run_git_checked(root.path(), ["add", "--", "README.md", ".changes"])?;
+        std::fs::write(root.path().join(output), content.replace("CLI", "cli"))?;
+        let paths = staged_paths(root.path())?;
+        validate_staged(root.path(), &paths)?;
+        run_git_checked(root.path(), ["add", "--", ".changes"])?;
+        if validate_staged(root.path(), &paths).is_ok() {
+            bail!("staged noncanonical component was accepted");
         }
         Ok(())
     }

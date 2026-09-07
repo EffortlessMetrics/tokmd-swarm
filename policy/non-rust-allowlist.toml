@@ -506,6 +506,33 @@ reason = "Optional git hooks (pre-commit / pre-push)."
 covered_by = []
 
 [[allow]]
+glob = ".changie.yaml"
+kind = "release_notes"
+owner = "release/notes"
+surface = "release"
+classification = "config"
+reason = "Pinned Changie vocabulary and layout are checked against the staged-fragment validator."
+covered_by = ["cargo test --locked -p xtask changelog"]
+
+[[allow]]
+glob = ".changie-version"
+kind = "release_notes"
+owner = "release/notes"
+surface = "release"
+classification = "config"
+reason = "Explicit Changie tool version for reproducible release-note preparation."
+covered_by = ["cargo xtask docs --check"]
+
+[[allow]]
+glob = ".changes/**"
+kind = "release_notes"
+owner = "release/notes"
+surface = "release"
+classification = "config"
+reason = "Changelog header template and staged release-note intent; not publication evidence."
+covered_by = ["cargo test --locked -p xtask changelog", "cargo xtask docs --check"]
+
+[[allow]]
 glob = "contracts/**"
 kind = "contract"
 owner = "product/contracts"

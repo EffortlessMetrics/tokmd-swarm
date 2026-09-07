@@ -1,0 +1,3 @@
+component: Release
+kind: fixed
+body: "Reject non-canonical staged fragment keys and directory aliases while preserving existing fragment files."

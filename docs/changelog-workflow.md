@@ -15,9 +15,40 @@ cargo change --kind fixed --component CLI \
 
 `cargo change` is the repository's xtask shortcut for creating a Changie
 fragment, so contributors do not need a separate global `changie` install for
-this step. Use one of the configured components and kinds. `Documentation` and `Internal`
-are intentionally `auto: none`: a batch containing only those kinds must use an
-explicit version, never `batch auto`.
+this step. The CLI accepts case-insensitive component/kind input and writes
+canonical values. Staged fragments must already use the exact configured
+component spelling (`CLI`, `Release`, `Browser/WASM`, and so on) and lowercase
+kind keys (`added`, `changed`, `fixed`, `security`, `documentation`, `internal`).
+The `documentation` and `internal` kinds are intentionally `auto: none`: a
+batch containing only those kinds must use an explicit version, never
+`batch auto`.
+
+Stage the fragment with the corresponding change, then run:
+
+```bash
+cargo precommit
+```
+
+This checks the Git index, so unstaged edits do not change its verdict. It
+requires a fragment for user-visible or unknown paths, reports explicit
+test/generated-only exemptions, and rejects invalid staged fragments. It
+does not create fragments or edit the index. Optional `cargo xtask hooks
+install` adds the check to the existing local hook workflow described in
+[CONTRIBUTING.md](../CONTRIBUTING.md#local-hooks).
+
+### Pinned layout and creation boundary
+
+`.changes/unreleased/` is part of the pinned contract shared by `.changie.yaml`
+and `xtask/src/tasks/changelog.rs`. Changes to `changesDir`, `unreleasedDir`,
+components, or kind keys must update both surfaces together; a focused test
+checks that the committed configuration and validator agree.
+
+Fragments are direct `.yaml` or `.yml` children of that directory. Custom
+`--output` values cannot be absolute, traverse parents, select nested paths,
+or contain colons/control characters. Creation rejects symlink or junction
+directories and uses exclusive creation to preserve existing output files
+and leaf symlinks. These checks assume repository directories are not being
+replaced concurrently by another process.
 
 ## Prepare a release
 
@@ -37,9 +68,13 @@ review the generated version file, and then merge it into `CHANGELOG.md`.
 Publishing, tagging, alias promotion, and release creation remain governed by
 the [canonical release checklist](releases/release-checklist.md).
 
-The historical changelog remains the source baseline until its lossless
-Changie round-trip is landed. This configuration slice does not rewrite
-`CHANGELOG.md` or manufacture historical fragments.
+The 1.15 section of `CHANGELOG.md` is normalized into one stable entry and
+compact release-candidate history, while the 1.14-and-earlier tail is
+preserved. That checked-in changelog remains the source baseline until its
+lossless Changie round-trip is landed under
+[issue #530](https://github.com/EffortlessMetrics/tokmd-swarm/issues/530).
+The configuration and staged-input slice does not manufacture historical
+fragments or complete the round-trip requirement.
 
 ## Evidence boundary
 
