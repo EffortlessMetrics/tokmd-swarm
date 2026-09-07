@@ -186,7 +186,7 @@ base_lem         = 1
 owner            = "docs"
 intent           = "Catch typos in source, docs, and config."
 failure_mode     = "Typos in user-facing docs or schemas reach main."
-proof_obligation = "Run crate-ci/typos."
+proof_obligation = "Install checksum-verified typos 1.49.0 with the pinned bounded-retry, fail-closed installer, then run typos."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
@@ -869,6 +869,26 @@ allowed_triggers = ["workflow_dispatch"]
 duplicate_of     = []
 review_after     = "2026-08-04"
 expires          = "2027-02-04"
+
+[[lane]]
+id               = "release_preflight"
+workflow         = ".github/workflows/release-preflight.yml"
+job              = "Exact-source release preflight"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 75
+owner            = "release/ci"
+intent           = "Run complete exact-source release proof and emit one terminal decision receipt."
+failure_mode     = "Release acceptance interprets partial, moving-source, or unavailable proof as green."
+proof_obligation = "Check out immutable source/base SHAs, record every required command, invoke cargo xtask release-preflight, and consume its uploaded receipt."
+evidence         = ["target/release-preflight/receipt.json", "target/release-preflight/logs/*", "job summary"]
+allowed_triggers = ["workflow_dispatch", "workflow_call"]
+duplicate_of     = []
+review_after     = "2026-08-11"
+expires          = "2026-11-11"
 
 [[lane]]
 id               = "release_verify_container"

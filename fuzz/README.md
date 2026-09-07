@@ -76,26 +76,32 @@ boundary instead of making pseudo-fuzz claims.
 
 ## Fuzz Targets
 
-| Target | Feature | Input Format | Description |
-|--------|---------|--------------|-------------|
-| `fuzz_entropy` | `content` | Raw bytes | Tests entropy calculation |
-| `fuzz_json_types` | `types` | JSON string | Tests JSON deserialization of receipt types |
-| `fuzz_normalize_path` | `model` | Path string | Tests path normalization |
-| `fuzz_module_key` | `module_key` | Path string | Tests module key computation |
-| `fuzz_toml_config` | `config` | TOML string | Tests `tokmd.toml` config parsing |
-| `fuzz_policy_toml` | `gate` | TOML string | Tests policy TOML parsing |
-| `fuzz_json_pointer` | `gate` | Composite (see below) | Tests RFC 6901 JSON pointer resolution |
-| `fuzz_policy_evaluate` | `gate` | Composite (see below) | Tests policy evaluation logic |
-| `fuzz_redact` | `redact` | Path string | Tests path redaction |
-| `fuzz_scan_args` | `scan_args` | Composite (flags + sections) | Tests deterministic `ScanArgs` shaping |
-| `fuzz_import_parser` | `analysis_imports` | Composite (`lang\nsource`) | Tests import parsing + normalization |
-| `fuzz_export_tree` | `export_tree` | Path-list text | Tests deterministic analysis/handoff tree rendering |
-| `fuzz_exclude_pattern` | `exclude` | Composite (`root\x1fpath`) | Tests exclude-pattern normalization + dedupe invariants |
-| `fuzz_context_policy` | `context_policy` | Composite (`path\x1ftokens\x1flines\x1fbudget`) | Tests context policy classification, cap, and inclusion invariants |
-| `fuzz_run_json` | `core` | Composite (`mode\nargs_json`) | Tests FFI `run_json` no-panic and envelope invariants |
-| `fuzz_ffi_envelope` | `ffi_envelope` | JSON string | Tests envelope parser/extractor determinism and equivalence |
-| `fuzz_gate_ratchet` | `gate_ratchet` | Composite (`baseline\ncurrent\nratchet_toml`) | Tests ratchet policy evaluation invariants |
-| `fuzz_badge_svg` | `badge` | Composite (`label\nvalue`) | Tests SVG badge rendering no-panic and determinism |
+`fuzz/Cargo.toml` is the complete target inventory. The **Nightly** column
+records the deliberately bounded subset scheduled by
+`.github/workflows/fuzz.yml`; `no` means the target remains available for
+manual or risk-selected runs, not that nightly exercised it.
+
+| Target | Feature | Nightly | Input Format | Description |
+|--------|---------|---------|--------------|-------------|
+| `fuzz_entropy` | `content` | yes | Raw bytes | Tests entropy calculation |
+| `fuzz_json_types` | `types` | yes | JSON string | Tests JSON deserialization of receipt types |
+| `fuzz_normalize_path` | `model` | yes | Path string | Tests path normalization |
+| `fuzz_module_key` | `module_key` | yes | Path string | Tests module key computation |
+| `fuzz_math_stats` | `math_stats` | no | Raw bytes | Tests numeric helper determinism and bounds |
+| `fuzz_toml_config` | `config` | yes | TOML string | Tests `tokmd.toml` config parsing |
+| `fuzz_policy_toml` | `gate` | yes | TOML string | Tests policy TOML parsing |
+| `fuzz_json_pointer` | `gate` | yes | Composite (see below) | Tests RFC 6901 JSON pointer resolution |
+| `fuzz_policy_evaluate` | `gate` | yes | Composite (see below) | Tests policy evaluation logic |
+| `fuzz_redact` | `redact` | yes | Path string | Tests path redaction |
+| `fuzz_scan_args` | `scan_args` | no | Composite (flags + sections) | Tests deterministic `ScanArgs` shaping |
+| `fuzz_import_parser` | `analysis_imports` | no | Composite (`lang\nsource`) | Tests import parsing + normalization |
+| `fuzz_export_tree` | `export_tree` | no | Path-list text | Tests deterministic analysis/handoff tree rendering |
+| `fuzz_exclude_pattern` | `exclude` | no | Composite (`root\x1fpath`) | Tests exclude-pattern normalization + dedupe invariants |
+| `fuzz_context_policy` | `context_policy` | no | Composite (`path\x1ftokens\x1flines\x1fbudget`) | Tests context policy classification, cap, and inclusion invariants |
+| `fuzz_run_json` | `core` | no | Composite (`mode\nargs_json`) | Tests FFI `run_json` no-panic and envelope invariants |
+| `fuzz_ffi_envelope` | `ffi_envelope` | no | JSON string | Tests envelope parser/extractor determinism and equivalence |
+| `fuzz_gate_ratchet` | `gate_ratchet` | no | Composite (`baseline\ncurrent\nratchet_toml`) | Tests ratchet policy evaluation invariants |
+| `fuzz_badge_svg` | `badge` | no | Composite (`label\nvalue`) | Tests SVG badge rendering no-panic and determinism |
 
 ### Composite Input Formats
 

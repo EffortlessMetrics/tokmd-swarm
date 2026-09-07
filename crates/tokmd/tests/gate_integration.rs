@@ -485,6 +485,43 @@ fn test_gate_ratchet_passing() {
 }
 
 #[test]
+fn test_gate_ratchet_only_passes_without_policy() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let baseline = create_test_baseline(&dir);
+    let current = create_current_receipt_slight_increase(&dir);
+    let ratchet = create_ratchet_config(&dir);
+
+    let output = tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--baseline",
+            baseline.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+            "--format",
+            "json",
+        ])
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "passing ratchet-only gate failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(result["passed"], true);
+    assert_eq!(result["total_errors"], 0);
+    assert!(result["policy"].is_null());
+    assert!(result["ratchet"].is_object());
+    assert_eq!(result["ratchet"]["passed"], true);
+    assert_eq!(result["ratchet"]["errors"], 0);
+
+    Ok(())
+}
+
+#[test]
 fn test_gate_ratchet_failing_percentage() {
     // Given: A baseline and current receipt with large complexity increase (over 10% threshold)
     // When: User runs `tokmd gate current.json --baseline baseline.json --ratchet-config ratchet.toml`
@@ -646,6 +683,120 @@ fn test_gate_combined_policy_and_ratchet() {
         .stdout(predicate::str::contains("Ratchet Rules"));
 }
 
+fn assert_selected_policy_error_with_passing_ratchet(
+    policy: &std::path::Path,
+    expected_detail: &str,
+) -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let baseline = create_test_baseline(&dir);
+    let current = create_current_receipt_slight_increase(&dir);
+    let ratchet = create_ratchet_config(&dir);
+
+    tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--policy",
+            policy.to_string_lossy().as_ref(),
+            "--baseline",
+            baseline.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Failed to load policy from"))
+        .stderr(predicate::str::contains(
+            policy.to_string_lossy().into_owned(),
+        ))
+        .stderr(predicate::str::contains(expected_detail));
+
+    Ok(())
+}
+
+#[test]
+fn test_gate_missing_selected_policy_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("missing-policy.toml");
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "missing-policy.toml")
+}
+
+#[test]
+fn test_gate_malformed_selected_policy_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("malformed-policy.toml");
+    fs::write(&policy, "[[rules]\nname =")?;
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "TOML parse error")
+}
+
+#[test]
+fn test_gate_invalid_operator_is_not_masked_by_passing_ratchet() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let policy = dir.path().join("invalid-operator-policy.toml");
+    fs::write(
+        &policy,
+        r#"
+[[rules]]
+name = "invalid_operator"
+pointer = "/derived/totals/tokens"
+op = "explode"
+value = 500000
+"#,
+    )?;
+
+    assert_selected_policy_error_with_passing_ratchet(&policy, "unknown variant `explode`")
+}
+
+#[test]
+fn test_gate_configured_policy_is_relative_to_discovered_config() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let receipt = create_test_receipt(&dir);
+    create_passing_policy(&dir);
+    fs::write(
+        dir.path().join("tokmd.toml"),
+        "[gate]\npolicy = \"policy.toml\"\n",
+    )?;
+    let subdir = dir.path().join("nested");
+    fs::create_dir(&subdir)?;
+
+    tokmd()
+        .current_dir(subdir)
+        .args(["gate", receipt.to_string_lossy().as_ref()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PASSED"));
+
+    Ok(())
+}
+
+#[test]
+fn test_gate_selected_ratchet_is_not_masked_without_baseline() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let current = create_current_receipt_slight_increase(&dir);
+    let policy = create_passing_policy(&dir);
+    let ratchet = dir.path().join("missing-ratchet.toml");
+
+    tokmd()
+        .args([
+            "gate",
+            current.to_string_lossy().as_ref(),
+            "--policy",
+            policy.to_string_lossy().as_ref(),
+            "--ratchet-config",
+            ratchet.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Failed to load ratchet config"))
+        .stderr(predicate::str::contains(
+            ratchet.to_string_lossy().into_owned(),
+        ));
+
+    Ok(())
+}
+
 #[test]
 fn test_gate_ratchet_no_baseline() {
     // Given: A current receipt and a ratchet config but no baseline
@@ -665,5 +816,7 @@ fn test_gate_ratchet_no_baseline() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No policy or ratchet rules"));
+        .stderr(predicate::str::contains(
+            "Ratchet rules require a baseline receipt",
+        ));
 }

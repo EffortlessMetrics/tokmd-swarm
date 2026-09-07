@@ -198,6 +198,7 @@ mod tests {
             toml_view: None,
             json_profile: Some(&profile),
             toml: None,
+            toml_path: None,
         };
         let ctx = ConfigContext::default();
         let out = render(&ctx, Some("default"), ProfileSource::Env, &resolved)?;

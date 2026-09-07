@@ -31,7 +31,7 @@ These lanes run on ordinary pull requests.
 | `affected_proof_plan` | Affected Proof Plan | `ci.yml` | ubuntu | 4 | yes | PR affected proof artifacts (`affected`, `proof --profile affected`). |
 | `fast_proof_run_advisory` | Fast Proof Run (Advisory) | `ci.yml` | ubuntu | 5 | no | Advisory fast proof-run observation. |
 | `feature_boundaries` | Feature Boundaries | `ci.yml` | ubuntu | 10 | yes | Analysis feature combinations + `boundaries-check`. |
-| `typos` | Typos | `ci.yml` | ubuntu | 1 | yes | crate-ci/typos. |
+| `typos` | Typos | `ci.yml` | ubuntu | 1 | yes | Pinned checksum-verified typos 1.49.0 install with bounded retries and no fallback, then `typos`. |
 | `cargo_deny` | Cargo Deny | `ci.yml` | ubuntu | 4 | yes | Advisories + licenses. |
 | `version_consistency` | Version consistency | `ci.yml` | ubuntu | 2 | yes | Release metadata alignment. |
 | `docs_check` | Docs Check | `ci.yml` | ubuntu | 4 | yes | `docs --check` + `doc-artifacts --check`. |

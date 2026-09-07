@@ -15,8 +15,9 @@ install the tool or run the first local command, use
 | User job | Run first | Primary artifact | Open first | Meaning |
 | --- | --- | --- | --- | --- |
 | Inspect repo | `tokmd --format md --top 8` | Markdown summary | terminal output | Repo shape, language mix, and largest surfaces. |
+| Produce evidence | `tokmd packet generate --base origin/main --head HEAD --output-dir sensors/tokmd .` | `sensors/tokmd/` | `manifest.json`, then indexed receipts | Bounded analysis, context, and optional syntax evidence for CI and agent workflows. |
 | Review PR | `tokmd cockpit --base origin/main --head HEAD --review-packet-dir .tokmd/review` | `.tokmd/review/` | `.tokmd/review/comment.md`, then `.tokmd/review/review-map.md` | Compact status first, then review order, evidence state, missing evidence, and reproduction commands. |
-| Prepare agent handoff | `tokmd handoff --preset risk --budget 128k --strategy spread --out-dir .handoff` | `.handoff/` | `.handoff/work-order.md` | Bounded source/context bundle plus agent task map. |
+| Prepare agent handoff | `tokmd handoff --preset risk --budget 128k --strategy spread --output-dir .handoff` | `.handoff/` | `.handoff/work-order.md` | Bounded source/context bundle plus agent task map. |
 | Read CI proof evidence | `cargo xtask affected ...`, `cargo xtask ci-plan ... --route-json-out ...`, then `cargo xtask proof --profile affected ... --plan` | `target/proof/` and `target/ci/` | `affected.json`, `proof-pack-route.json`, then `proof-plan.json` | Changed files, matched proof scopes, CI risk/proof-pack routing, skipped-by-policy lanes, and required/advisory proof expectations. |
 | Try browser mode | Browser runner | downloaded browser-safe receipt | UI summary | No-install repo inspection over browser-supported inputs. |
 | Check publishing evidence | `cargo xtask publish-surface --json --verify-publish` | publish-surface JSON/stdout | command output or saved JSON | Package-surface and publish-readiness evidence before release mutation. |
@@ -110,7 +111,7 @@ tokmd handoff \
   --preset risk \
   --budget 128k \
   --strategy spread \
-  --out-dir .handoff
+  --output-dir .handoff
 ```
 
 When review and proof artifacts exist, link them:
@@ -124,7 +125,7 @@ tokmd handoff \
   --review-packet-check target/tokmd/review-packet-check.json \
   --affected target/proof/affected.json \
   --proof-plan target/proof/proof-plan.json \
-  --out-dir .handoff
+  --output-dir .handoff
 ```
 
 Artifact: `.handoff/`.

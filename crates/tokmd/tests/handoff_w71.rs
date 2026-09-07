@@ -7,6 +7,7 @@
 
 mod common;
 
+use anyhow::{Context, Result, ensure};
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
@@ -34,14 +35,32 @@ fn run_handoff(extra: &[&str]) -> serde_json::Value {
     serde_json::from_str(&manifest).unwrap()
 }
 
+fn run_handoff_fallible(extra: &[&str]) -> anyhow::Result<serde_json::Value> {
+    let dir = tempdir()?;
+    let out_dir = dir.path().join("ho");
+    let mut cmd = tokmd_cmd();
+    cmd.arg("handoff").arg("--out-dir").arg(&out_dir);
+    for arg in extra {
+        cmd.arg(arg);
+    }
+    cmd.assert()
+        .try_success()
+        .map_err(|error| anyhow::anyhow!("handoff failed: {error}"))?;
+    let manifest = fs::read_to_string(out_dir.join("manifest.json"))?;
+    Ok(serde_json::from_str(&manifest)?)
+}
+
 // ===========================================================================
 // 1. Rank-by variants
 // ===========================================================================
 
 #[test]
-fn handoff_rank_by_code() {
-    let parsed = run_handoff(&["--rank-by", "code", "--budget", "10k"]);
-    assert_eq!(parsed["rank_by"].as_str(), Some("code"));
+fn handoff_rank_by_code() -> anyhow::Result<()> {
+    let parsed = run_handoff_fallible(&["--rank-by", "code", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("code"));
+    anyhow::ensure!(parsed["rank_by_effective"].is_null());
+    anyhow::ensure!(parsed["fallback_reason"].is_null());
+    Ok(())
 }
 
 #[test]
@@ -51,17 +70,30 @@ fn handoff_rank_by_tokens() {
 }
 
 #[test]
-fn handoff_rank_by_hotspot_no_git_fallback() {
+fn handoff_rank_by_hotspot_no_git_fallback() -> anyhow::Result<()> {
     // With --no-git, hotspot ranking should gracefully fallback
-    let parsed = run_handoff(&["--rank-by", "hotspot", "--no-git", "--budget", "10k"]);
-    // Should succeed even without git; rank_by or rank_by_effective recorded
-    assert!(parsed["budget_tokens"].is_number());
+    let parsed = run_handoff_fallible(&["--rank-by", "hotspot", "--no-git", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["budget_tokens"].is_number());
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("hotspot"));
+    anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
+    anyhow::ensure!(
+        parsed["fallback_reason"].as_str()
+            == Some("hotspot requires git scores; falling back to code lines")
+    );
+    Ok(())
 }
 
 #[test]
-fn handoff_rank_by_churn_no_git_fallback() {
-    let parsed = run_handoff(&["--rank-by", "churn", "--no-git", "--budget", "10k"]);
-    assert!(parsed["budget_tokens"].is_number());
+fn handoff_rank_by_churn_no_git_fallback() -> anyhow::Result<()> {
+    let parsed = run_handoff_fallible(&["--rank-by", "churn", "--no-git", "--budget", "10k"])?;
+    anyhow::ensure!(parsed["budget_tokens"].is_number());
+    anyhow::ensure!(parsed["rank_by"].as_str() == Some("churn"));
+    anyhow::ensure!(parsed["rank_by_effective"].as_str() == Some("code"));
+    anyhow::ensure!(
+        parsed["fallback_reason"].as_str()
+            == Some("churn requires git scores; falling back to code lines")
+    );
+    Ok(())
 }
 
 // ===========================================================================
@@ -114,6 +146,52 @@ fn handoff_preset_deep_intelligence_has_derived() {
     // Deep preset should include tree and derived metrics
     assert!(parsed["tree"].is_string());
     assert!(parsed["derived"].is_object());
+}
+
+#[test]
+fn handoff_risk_no_git_records_hotspot_warning() -> Result<()> {
+    let dir = tempdir().context("create temporary handoff directory")?;
+    let out_dir = dir.path().join("ho_risk_no_git");
+
+    tokmd_cmd()
+        .args([
+            "handoff",
+            "--preset",
+            "risk",
+            "--no-git",
+            "--budget",
+            "20k",
+            "--out-dir",
+        ])
+        .arg(&out_dir)
+        .assert()
+        .try_success()
+        .map_err(|error| anyhow::anyhow!("handoff risk no-git failed: {error}"))?;
+
+    let intel = fs::read_to_string(out_dir.join("intelligence.json"))
+        .context("read handoff intelligence artifact")?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&intel).context("parse handoff intelligence JSON")?;
+    let warnings = parsed
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .context("handoff intelligence warnings should be an array")?;
+
+    ensure!(
+        parsed
+            .get("hotspots")
+            .is_some_and(serde_json::Value::is_null),
+        "risk no-git intelligence should have null hotspots"
+    );
+    ensure!(
+        warnings.iter().any(|warning| {
+            warning.as_str().is_some_and(|warning| {
+                warning.starts_with("hotspots unavailable: git history skipped")
+            })
+        }),
+        "risk no-git intelligence should record the skipped git warning"
+    );
+    Ok(())
 }
 
 #[test]

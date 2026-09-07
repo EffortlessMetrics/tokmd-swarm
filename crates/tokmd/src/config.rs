@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tokmd_settings::{Profile, TomlConfig, UserConfig, ViewProfile};
 
@@ -212,6 +212,8 @@ pub struct ResolvedConfig<'a> {
     pub json_profile: Option<&'a Profile>,
     /// TOML config sections.
     pub toml: Option<&'a TomlConfig>,
+    /// Path of the discovered TOML config, for resolving config-relative inputs.
+    pub toml_path: Option<&'a Path>,
 }
 
 impl ResolvedConfig<'_> {
@@ -315,6 +317,7 @@ pub fn resolve_config<'a>(
         toml_view,
         json_profile,
         toml: ctx.toml.as_ref(),
+        toml_path: ctx.toml_path.as_deref(),
     }
 }
 

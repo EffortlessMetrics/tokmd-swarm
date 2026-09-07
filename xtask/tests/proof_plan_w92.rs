@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+
+use anyhow::{Context, Result, ensure};
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -31,6 +34,436 @@ fn run_xtask_with_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String, 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
+}
+
+#[derive(Default)]
+struct WorkflowStep {
+    has_unmodeled_property: bool,
+    uses: Option<String>,
+    name: Option<String>,
+    run: Option<String>,
+    with: BTreeMap<String, String>,
+    has_env: bool,
+    has_permissions: bool,
+    has_if: bool,
+    has_continue_on_error: bool,
+}
+
+struct TyposJob {
+    runs_on: Option<String>,
+    steps: Vec<WorkflowStep>,
+    has_env: bool,
+    has_permissions: bool,
+    has_if: bool,
+    has_continue_on_error: bool,
+}
+
+fn workflow_permissions_are_read_only(workflow: &str) -> bool {
+    let Some(header) = workflow.split("jobs:").next() else {
+        return false;
+    };
+    let mut in_permissions = false;
+    let mut in_env = false;
+    let mut permissions = BTreeMap::new();
+    let mut env = BTreeMap::new();
+    for line in header.lines() {
+        let trimmed = line.trim();
+        let indent = line.len() - line.trim_start().len();
+        if indent == 0 {
+            in_permissions = trimmed == "permissions:";
+            in_env = trimmed == "env:";
+            continue;
+        }
+        if indent == 2
+            && let Some((key, value)) = trimmed.split_once(':')
+        {
+            if in_permissions {
+                permissions.insert(key.trim(), value.trim());
+            } else if in_env {
+                env.insert(key.trim(), value.trim());
+            }
+        }
+    }
+    permissions == BTreeMap::from([("contents", "read")])
+        && env
+            == BTreeMap::from([
+                ("CARGO_INCREMENTAL", "0"),
+                ("CARGO_TERM_COLOR", "always"),
+                ("RUSTFLAGS", "-C debuginfo=0"),
+            ])
+}
+
+fn typos_job(workflow: &str) -> Result<TyposJob> {
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("CI workflow should define typos before proptest-smoke")?;
+    let mut steps = Vec::new();
+    let mut current: Option<WorkflowStep> = None;
+    let mut step_indent = None;
+    let mut with_indent = None;
+    let mut in_steps = false;
+    let mut runs_on = None;
+    let mut has_env = false;
+    let mut has_permissions = false;
+    let mut has_if = false;
+    let mut has_continue_on_error = false;
+
+    for line in section.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        if !in_steps {
+            if indent == 4 && trimmed == "steps:" {
+                in_steps = true;
+            } else if indent == 4 {
+                if let Some(value) = trimmed.strip_prefix("runs-on:") {
+                    runs_on = Some(value.trim().to_owned());
+                } else if trimmed == "env:" || trimmed.starts_with("env:") {
+                    has_env = true;
+                } else if trimmed == "permissions:" || trimmed.starts_with("permissions:") {
+                    has_permissions = true;
+                } else if trimmed.starts_with("if:") {
+                    has_if = true;
+                } else if trimmed.starts_with("continue-on-error:") {
+                    has_continue_on_error = true;
+                }
+            }
+            continue;
+        }
+        if let Some(item_indent) = step_indent
+            && indent < item_indent
+        {
+            break;
+        }
+        if step_indent.is_none() && trimmed.starts_with("- ") {
+            step_indent = Some(indent);
+        }
+        if step_indent == Some(indent) && trimmed.starts_with("- ") {
+            if let Some(step) = current.take() {
+                steps.push(step);
+            }
+            step_indent = Some(indent);
+            with_indent = None;
+            current = Some(WorkflowStep::default());
+            let property = trimmed.trim_start_matches("- ");
+            if let Some(value) = property.strip_prefix("uses:") {
+                current.as_mut().context("step should exist")?.uses = Some(
+                    value
+                        .split(" #")
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned(),
+                );
+            }
+            continue;
+        }
+        let Some(step) = current.as_mut() else {
+            continue;
+        };
+        if let Some(parent_indent) = with_indent {
+            if indent == parent_indent + 2 {
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    step.with
+                        .insert(key.trim().to_owned(), value.trim().to_owned());
+                }
+                continue;
+            }
+            if indent <= parent_indent {
+                with_indent = None;
+            } else {
+                continue;
+            }
+        }
+        let is_step_property = step_indent.is_some_and(|item_indent| indent == item_indent + 2);
+        if is_step_property && trimmed == "with:" {
+            with_indent = Some(indent);
+        } else if is_step_property && (trimmed == "env:" || trimmed.starts_with("env:")) {
+            step.has_env = true;
+        } else if is_step_property
+            && (trimmed == "permissions:" || trimmed.starts_with("permissions:"))
+        {
+            step.has_permissions = true;
+        } else if is_step_property && trimmed.starts_with("if:") {
+            step.has_if = true;
+        } else if is_step_property && trimmed.starts_with("continue-on-error:") {
+            step.has_continue_on_error = true;
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("uses:") {
+            step.uses = Some(
+                value
+                    .split(" #")
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned(),
+            );
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("run:") {
+            step.run = Some(value.trim().to_owned());
+        } else if is_step_property && let Some(value) = trimmed.strip_prefix("name:") {
+            step.name = Some(value.trim().to_owned());
+        } else if is_step_property {
+            step.has_unmodeled_property = true;
+        }
+    }
+    if let Some(step) = current {
+        steps.push(step);
+    }
+    Ok(TyposJob {
+        runs_on,
+        steps,
+        has_env,
+        has_permissions,
+        has_if,
+        has_continue_on_error,
+    })
+}
+
+fn mutate_typos_job(workflow: &str, mutate: impl FnOnce(&str) -> String) -> Result<String> {
+    let start = workflow
+        .find("  typos:")
+        .context("CI workflow should define typos")?;
+    let tail = workflow
+        .get(start..)
+        .context("Typos job boundary should be valid UTF-8")?;
+    let end_offset = tail
+        .find("  proptest-smoke:")
+        .context("CI workflow should define proptest-smoke after typos")?;
+    let end = start + end_offset;
+    let prefix = workflow
+        .get(..start)
+        .context("Typos job prefix should be valid UTF-8")?;
+    let section = workflow
+        .get(start..end)
+        .context("Typos job section should be valid UTF-8")?;
+    let suffix = workflow
+        .get(end..)
+        .context("Typos job suffix should be valid UTF-8")?;
+    Ok(format!("{}{}{}", prefix, mutate(section), suffix))
+}
+
+fn typos_job_contract(workflow: &str) -> Result<()> {
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("CI workflow should define typos before proptest-smoke")?;
+    ensure!(workflow_permissions_are_read_only(workflow));
+    let job = typos_job(workflow)?;
+    ensure!(job.runs_on.as_deref() == Some("ubuntu-latest"));
+    ensure!(!job.has_env && !job.has_permissions && !job.has_if);
+    ensure!(!job.has_continue_on_error);
+    ensure!(!job.steps.iter().any(|step| {
+        step.has_unmodeled_property
+            || step.has_env
+            || step.has_permissions
+            || step.has_if
+            || step.has_continue_on_error
+    }));
+    let steps = job.steps;
+    ensure!(
+        steps.len() == 3,
+        "Typos job must contain exactly three steps"
+    );
+    let installer_ref = "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c";
+    let installers = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step.uses.as_deref() == Some(installer_ref))
+        .collect::<Vec<_>>();
+    ensure!(installers.len() == 1);
+    let (install_index, installer) = installers
+        .first()
+        .copied()
+        .context("Typos installer step should exist")?;
+    ensure!(
+        installer.with
+            == BTreeMap::from([
+                ("checksum".to_owned(), "true".to_owned()),
+                ("fallback".to_owned(), "none".to_owned()),
+                ("tool".to_owned(), "typos@1.49.0".to_owned()),
+            ])
+    );
+    ensure!(!installer.with.values().any(|value| value.contains("${{")));
+    let runners = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step.run.as_deref() == Some("typos"))
+        .collect::<Vec<_>>();
+    ensure!(runners.len() == 1);
+    let (run_index, runner) = runners
+        .first()
+        .copied()
+        .context("Typos run step should exist")?;
+    ensure!(runner.uses.is_none() && runner.with.is_empty());
+    ensure!(install_index < run_index);
+    ensure!(!section.contains("crate-ci/typos@"));
+    Ok(())
+}
+
+#[test]
+fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    typos_job_contract(&workflow)?;
+
+    for (original, replacement) in [
+        (
+            "taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c",
+            "taiki-e/install-action@v2",
+        ),
+        ("tool: typos@1.49.0", "tool: typos@1.49"),
+        ("checksum: true", "checksum: false"),
+        ("fallback: none", "fallback: cargo-binstall"),
+        ("run: typos", "run: typos --version"),
+        ("tool: typos@1.49.0", "tool: ${{ inputs.typos_version }}"),
+        (
+            "tool: typos@1.49.0",
+            "tool: ${{ github.event.pull_request.title }}",
+        ),
+        ("tool: typos@1.49.0", "tool: ${{ github.token }}"),
+        ("fallback: none", "fallback: ${{ secrets.FALLBACK }}"),
+    ] {
+        let drifted = mutate_typos_job(&workflow, |section| {
+            section.replacen(original, replacement, 1)
+        })?;
+        ensure!(
+            typos_job_contract(&drifted).is_err(),
+            "Typos contract accepted drift from {original} to {replacement}"
+        );
+    }
+
+    for required_line in ["          checksum: true\n", "          fallback: none\n"] {
+        let omitted =
+            mutate_typos_job(&workflow, |section| section.replacen(required_line, "", 1))?;
+        ensure!(
+            typos_job_contract(&omitted).is_err(),
+            "Typos contract accepted omitted {required_line:?}"
+        );
+    }
+
+    let commented = mutate_typos_job(&workflow, |section| {
+        section.replacen("          checksum: true", "          # checksum: true", 1)
+    })?;
+    ensure!(typos_job_contract(&commented).is_err());
+
+    let install_block = "      - name: Install typos with bounded retries\n        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        with:\n          tool: typos@1.49.0\n          checksum: true\n          fallback: none\n";
+    let duplicated = mutate_typos_job(&workflow, |section| {
+        section.replacen(install_block, &format!("{install_block}{install_block}"), 1)
+    })?;
+    ensure!(typos_job_contract(&duplicated).is_err());
+
+    let run_block = "      - name: Check spelling\n        run: typos\n";
+    let reordered = mutate_typos_job(&workflow, |section| {
+        section.replacen(install_block, "", 1).replacen(
+            run_block,
+            &format!("{run_block}{install_block}"),
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&reordered).is_err());
+
+    let unexpected_step = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            run_block,
+            &("      - name: Unexpected extra step\n        run: echo injected\n".to_owned()
+                + run_block),
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&unexpected_step).is_err());
+
+    let forged_script = mutate_typos_job(&workflow, |section| {
+        section
+            .replacen(install_block, "", 1)
+            .replacen(run_block, "", 1)
+            .replace(
+                "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n",
+                "      - name: Forged Typos text in a script\n        run: |\n          echo harmless\n          - uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c\n            with:\n              tool: typos@1.49.0\n              checksum: true\n              fallback: none\n          - run: typos\n",
+            )
+    })?;
+    ensure!(typos_job_contract(&forged_script).is_err());
+
+    for injected in [
+        "    env:\n      TOKEN: ${{ secrets.TOKEN }}\n",
+        "    permissions: write-all\n",
+    ] {
+        let drifted = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "    runs-on: ubuntu-latest\n",
+                &format!("    runs-on: ubuntu-latest\n{injected}"),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&drifted).is_err());
+    }
+
+    let workflow_write_permission = workflow.replacen("  contents: read", "  contents: write", 1);
+    ensure!(typos_job_contract(&workflow_write_permission).is_err());
+
+    let step_env = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n",
+            "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        env:\n          TOKEN: ${{ github.token }}\n",
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&step_env).is_err());
+
+    let root_env = workflow.replacen(
+        "  RUSTFLAGS: -C debuginfo=0\n",
+        "  RUSTFLAGS: -C debuginfo=0\n  TOKEN: ${{ secrets.TOKEN }}\n",
+        1,
+    );
+    ensure!(typos_job_contract(&root_env).is_err());
+
+    for control in ["    if: false\n", "    continue-on-error: true\n"] {
+        let job_control = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "    runs-on: ubuntu-latest\n",
+                &format!("    runs-on: ubuntu-latest\n{control}"),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&job_control).is_err());
+
+        let step_control = mutate_typos_job(&workflow, |section| {
+            section.replacen(
+                "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n",
+                &format!(
+                    "        uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9\n        {}",
+                    control.trim_start()
+                ),
+                1,
+            )
+        })?;
+        ensure!(typos_job_contract(&step_control).is_err());
+    }
+
+    let continue_on_error_without_if = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            run_block,
+            "      - name: Check spelling\n        continue-on-error: true\n        run: typos\n",
+            1,
+        )
+    })?;
+    let parsed = typos_job(&continue_on_error_without_if)?;
+    ensure!(parsed.steps.iter().any(|step| {
+        step.has_continue_on_error && !step.has_if && step.run.as_deref() == Some("typos")
+    }));
+    ensure!(typos_job_contract(&continue_on_error_without_if).is_err());
+
+    let unmodeled_step_property = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "        run: typos\n",
+            "        shell: bash -c 'echo injected'\n        run: typos\n",
+            1,
+        )
+    })?;
+    ensure!(typos_job_contract(&unmodeled_step_property).is_err());
+    Ok(())
 }
 
 #[test]

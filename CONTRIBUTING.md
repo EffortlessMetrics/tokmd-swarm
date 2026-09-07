@@ -142,10 +142,18 @@ CLI/config/progress/tool-schema wiring in `tokmd`.
 We prioritize deterministic outputs. This is critical because `tokmd` is used to generate receipts that must be stable over time.
 
 ### 1. Unit Tests
-Run standard unit tests for model logic and utility functions:
+Run the default-member suite for model logic and utility functions, then test
+the repo control plane separately:
 ```bash
-cargo test
+cargo test --all-features
+cargo test -p xtask --all-features
 ```
+
+The workspace manifest excludes `xtask` and `fuzz` from `default-members`.
+Accordingly, root `cargo test` commands do not test `xtask`. The required
+`Tokmd Rust Result` runs `cargo xtask gate --check`, the two commands above,
+and `cargo xtask proof-policy --check` serially. It does not claim that
+libFuzzer campaigns, conditional platform jobs, or deeper scheduled lanes ran.
 
 ### 2. Integration / Golden Tests
 We use `insta` for snapshot testing. These tests run the full CLI against fixtures.
@@ -157,17 +165,21 @@ Our receipts include byte counts which are sensitive to line endings. To ensure 
 *   If you see byte count diffs (e.g., `183` vs `172`), check your line endings.
 
 **If you change output logic (e.g., new fields, different formatting):**
-1.  Run tests: `cargo test` (they will fail with a diff).
+1.  Run default-member tests: `cargo test --all-features` (they will fail with a diff).
 2.  Review changes: `cargo insta review` (requires `cargo-insta` installed).
 3.  Accept changes if they are intentional.
 
 This guarantees that `tokmd` outputs (receipts) remain deterministic and stable.
 
 ### 3. Crate-Level Tests
-Each crate may have its own tests in a `tests/` directory. Run all tests with:
+Each crate may have its own tests in a `tests/` directory. To ask Cargo to
+select every workspace package, run:
 ```bash
-cargo test --workspace
+cargo test --workspace --all-features
 ```
+
+This broader package selection includes `xtask`, but it is not the required CI
+command sequence and does not execute libFuzzer campaigns.
 
 ### 4. Property-Based Testing (proptest)
 
@@ -178,7 +190,8 @@ Property-based testing verifies that functions behave correctly across a wide ra
 **Running property tests**:
 ```bash
 cargo test -p tokmd-scan properties    # Run property tests for tokmd-scan
-cargo test --workspace                  # Includes all property tests
+cargo test --all-features               # Includes default-member property tests
+cargo test -p xtask --all-features      # Runs xtask control-plane tests
 ```
 
 **Example patterns** (from path/redaction property tests):

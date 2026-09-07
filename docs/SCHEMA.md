@@ -218,6 +218,37 @@ Produced by `tokmd --format json` or `tokmd lang --format json`.
 }
 ```
 
+## Local publication receipt
+
+`cargo xtask publish --receipt <path>` writes
+`tokmd.publish_receipt.v3`. This operator artifact is separate from the public
+tokmd receipt families and from hosted release-preflight evidence.
+
+The envelope contains `schema`, `schema_version`, monotonic `generation`,
+`workspace_version`, run `state`, `identity`, `publish_order`, and `crates`.
+`identity` binds the exact Git commit and tree, fixed crates.io endpoint, version,
+canonical plan/predecessors, selected bootstrap options, and planned manifest
+digests. Observation timestamps are excluded from identity hashes.
+
+Run states are `planned`, `in_progress`, `complete`, and `incomplete`. Crate
+states are `planned`, `in_progress`, `published`, `already_present`, `yanked`,
+`failed`, and `blocked`. Each crate also records attempts, live registry
+visibility, dependency-closure evidence, bootstrap intent, reason, and
+`updated_at`. `complete` requires every planned exact version to be live,
+non-yanked, and represented as `published` or `already_present`; a stored
+visibility value is rechecked on every resume.
+
+The publisher paces inventory requests and invokes Cargo with
+`--registry crates-io`, so observation identity and the mutation target cannot
+diverge through local Cargo configuration. Recovery chooses the highest valid
+generation, rejects equal-generation divergence, and atomically restores a
+valid temporary or backup snapshot over an absent or corrupt canonical file.
+
+Earlier receipt schemas are rejected because they lack the immutable identity
+binding. The file is local crash-recovery state, not authorization or a hosted
+durable upload. It does not prove the terminal preflight, tag, GitHub Release,
+assets, consumer installation, Action alias, or GHCR alias.
+
 ### Language Receipt Fields
 
 | Field | Type | Description |

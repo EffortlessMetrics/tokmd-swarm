@@ -89,11 +89,12 @@ paths = [
   "fuzz/dict/**",
   "fuzz/fuzz_targets/**",
   "xtask/tests/fuzz_dict_w100.rs",
+  "xtask/tests/fuzz_inventory_w103.rs",
 ]
 packages = ["tokmd-fuzz", "xtask"]
 proof = [
   "cargo +nightly fuzz list",
-  "cargo test -p xtask fuzz_dictionaries_do_not_define_empty_tokens -- --exact",
+  "cargo test -p xtask --test fuzz_dict_w100 --test fuzz_inventory_w103",
 ]
 mutation = false
 coverage = false
@@ -134,7 +135,6 @@ paths = [
   ".factory/rules/droid-review.md",
   ".factory/skills/review-guidelines/SKILL.md",
   ".github/agents/ci-fix-forward.agent.md",
-  "AGENTS.md",
   "ci/proof.toml",
   "codecov.yml",
   "fixtures/ci-gate-contract/**",
@@ -145,7 +145,7 @@ paths = [
   "docs/ci/coverage.md",
   "docs/agent-context/review-invariants.md",
   "docs/agent-context/droid-smoke-tests.md",
-  "agents/shared/**",
+  "fixtures/proof-policy/**",
   "_typos.toml",
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
@@ -234,6 +234,39 @@ proof = [
   "cargo test -p xtask release_status --verbose",
   "cargo test -p xtask repo_graph --verbose -- --test-threads=1",
 ]
+mutation = false
+coverage = false
+
+[[scope]]
+name = "cargo_command_surfaces"
+kind = "rust"
+paths = [
+  "AGENTS.md",
+  "agents/shared/repo.md",
+  "policy/cargo-command-surfaces.toml",
+  "xtask/tests/cargo_command_surfaces_w104.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask --test cargo_command_surfaces_w104 --locked --verbose",
+  "cargo xtask proof-policy --check",
+]
+mutation = false
+coverage = false
+reason = "The closed cargo-command-surface inventory and its focused contract test form one bounded adoption guard; route both files to the same proof without widening release or publication scopes."
+
+[[scope]]
+name = "agent_guidance_docs"
+kind = "non_rust"
+paths = [
+  "AGENTS.md",
+  "agents/shared/**",
+]
+proof = [
+  "cargo xtask docs --check",
+  "cargo xtask doc-artifacts --check --json target/docs/doc-artifacts-check.json",
+]
+reason = "agents/shared/** is canonical shared guidance and AGENTS.md is its repo-local mirror; route either side and future shared guidance through both repo docs guards without selecting Rust control-plane tests."
 mutation = false
 coverage = false
 
@@ -1432,6 +1465,21 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "settings_protection_contract"
+kind = "rust"
+paths = [
+  ".github/settings.yml",
+  "xtask/tests/settings_contract_w107.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask --test settings_contract_w107 --locked",
+]
+reason = "The repository-owned Settings-app protection payload and its recurrence fixture form one source-and-proof contract; route both files together so the fixture is never an unknown affected file."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "ripr_policy"
 kind = "rust"
 paths = [
@@ -1577,14 +1625,38 @@ paths = [
   "Dockerfile",
   "Dockerfile.release",
   "winget/manifests/e/EffortlessMetrics/tokmd/1.3.1/**",
+  "xtask/src/tasks/publish.rs",
+  "xtask/src/tasks/publish_surface.rs",
   "xtask/src/tasks/version_consistency.rs",
+  "xtask/tests/publish_w71.rs",
 ]
 proof = [
+  "cargo test -p xtask --test publish_w71 --all-features",
   "cargo xtask version-consistency",
   "cargo xtask publish-surface --json --verify-publish",
   "cargo xtask docs --check",
 ]
-reason = "CHANGELOG, citation metadata, release workflow, release runtime Dockerfile, Dockerfile toolchain pin, and the version-consistency task itself are release artifacts; proof routes to version consistency, publish-surface verification, and docs checks."
+reason = "CHANGELOG, citation metadata, release workflow, release runtime Dockerfile, Dockerfile toolchain pin, and the release xtask owner code/tests are release artifacts; proof routes to version consistency, publish-surface verification, and docs checks."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "release_preflight"
+kind = "rust"
+paths = [
+  ".github/workflows/release-preflight.yml",
+  "xtask/src/cli.rs",
+  "xtask/src/main.rs",
+  "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/release_preflight.rs",
+  "xtask/tests/release_preflight_workflow_w105.rs",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test -p xtask release_preflight --verbose",
+  "cargo xtask proof-policy --check",
+]
+reason = "The exact-source release-preflight workflow and its Rust-owned receipt aggregator form one governed release-proof surface; affected planning must route both files to the same focused proof."
 mutation = false
 coverage = false
 
