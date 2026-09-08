@@ -56,7 +56,9 @@ and `xtask/src/tasks/changelog.rs`. Changes to `changesDir`, `unreleasedDir`,
 components, or kind keys must update both surfaces together; a focused test
 checks that the committed configuration and validator agree.
 
-Fragments are direct `.yaml` or `.yml` children of that directory. Custom
+Fragments are direct `.yaml` children of that directory. The pinned tool does
+not discover `.yml` or uppercase extensions, so creation and staged validation
+reject them, including when a valid sibling fragment is staged. Custom
 `--output` values cannot be absolute, traverse parents, select nested paths,
 or contain colons/control characters. Creation rejects symlink or junction
 directories. Contents are written and synced in a temporary file in the same

@@ -136,7 +136,12 @@ fn validate_staged(root: &Path, paths: &[String]) -> Result<()> {
     }
     let mut fragments = Vec::new();
     let mut deleted_fragment = false;
-    for path in paths.iter().filter(|path| is_fragment(path)) {
+    // Inspect every staged candidate so an ignored extension cannot hide beside
+    // a valid fragment. Deleting an invalid candidate remains repairable.
+    for path in paths.iter().filter(|path| {
+        let normalized = path.replace('\\', "/");
+        fragment_name(&normalized).is_some_and(|name| name != ".gitkeep")
+    }) {
         match read_index_file(root, path)? {
             Some(content) => {
                 validate_fragment(path, &content)?;
@@ -206,8 +211,7 @@ fn is_explicitly_exempt(path: &str) -> bool {
 
 fn is_fragment(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
-    fragment_name(&normalized).is_some()
-        && (normalized.ends_with(".yaml") || normalized.ends_with(".yml"))
+    fragment_name(&normalized).is_some() && normalized.ends_with(".yaml")
 }
 
 fn fragment_name(path: &str) -> Option<&str> {
@@ -225,8 +229,8 @@ fn validate_fragment(path: &str, content: &str) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow::anyhow!("fragment path has no valid filename: {path}"))?;
-    if file_name == ".gitkeep" {
-        bail!("invalid unreleased fragment filename: {path}");
+    if !file_name.ends_with(".yaml") {
+        bail!("fragment must have a .yaml extension for pinned Changie discovery: {path}");
     }
     let fields = fragment_fields(content).with_context(|| {
         format!("invalid fragment {path}; use `cargo change` to create a fragment")
@@ -414,8 +418,8 @@ fn fragment_output_path(root: &Path, output: &Path) -> Result<(String, PathBuf)>
     {
         bail!("fragment output must be directly in .changes/unreleased/: {relative}");
     }
-    if !fragment_name.ends_with(".yaml") && !fragment_name.ends_with(".yml") {
-        bail!("fragment output must have a .yaml or .yml extension: {relative}");
+    if !fragment_name.ends_with(".yaml") {
+        bail!("fragment output must have a .yaml extension: {relative}");
     }
     let path = root.join(output_path);
     Ok((relative, path))
@@ -652,6 +656,34 @@ fn run_git_checked<const N: usize>(root: &Path, args: [&str; N]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ignored_extensions_cannot_be_created_or_hidden_beside_valid_staged_fragments() -> Result<()>
+    {
+        let root = tempfile::tempdir()?;
+        let content = "component: Release\nkind: fixed\nbody: visible release note\n";
+        for extension in ["yml", "YAML", "YML"] {
+            let path = format!(".changes/unreleased/ignored.{extension}");
+            if write_fragment(root.path(), Path::new(&path), content).is_ok()
+                || validate_fragment(&path, content).is_ok()
+                || is_fragment(&path)
+            {
+                bail!("pinned Changie cannot discover extension {extension}");
+            }
+        }
+        run_git_checked(root.path(), ["init", "--quiet"])?;
+        let valid = ".changes/unreleased/valid.yaml";
+        write_fragment(root.path(), Path::new(valid), content)?;
+        let ignored = ".changes/unreleased/ignored.yml";
+        std::fs::write(root.path().join(ignored), content)?;
+        run_git_checked(root.path(), ["add", "--", valid, ignored])?;
+        if validate_staged(root.path(), &staged_paths(root.path())?).is_ok() {
+            bail!("a valid sibling fragment concealed an ignored staged release note");
+        }
+        run_git_checked(root.path(), ["rm", "--cached", "--", ignored])?;
+        validate_staged(root.path(), &staged_paths(root.path())?)?;
+        Ok(())
+    }
 
     #[cfg(unix)]
     #[test]
