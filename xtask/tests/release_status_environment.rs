@@ -7,7 +7,10 @@ use std::process::Command;
 
 fn fixture_git(root: &Path, args: &[&str]) -> Result<String> {
     let mut command = Command::new("git");
-    command.current_dir(root).args(args);
+    command
+        .current_dir(root)
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
+        .args(args);
     for name in [
         "GIT_DIR",
         "GIT_WORK_TREE",
