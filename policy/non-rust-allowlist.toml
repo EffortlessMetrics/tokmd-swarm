@@ -530,7 +530,7 @@ owner = "release/notes"
 surface = "release"
 classification = "config"
 reason = "Changelog header template and staged release-note intent; not publication evidence."
-covered_by = ["cargo test --locked -p xtask changelog", "cargo xtask docs --check"]
+covered_by = ["cargo test --locked -p xtask changelog", "cargo --locked xtask docs --check"]
 
 [[allow]]
 glob = "contracts/**"
