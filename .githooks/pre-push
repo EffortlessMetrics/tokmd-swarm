@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-echo "pre-push: cargo xtask gate --check"
-cargo xtask gate --check
+echo "pre-push: cargo --locked xtask gate --check"
+cargo --locked xtask gate --check

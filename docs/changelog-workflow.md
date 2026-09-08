@@ -43,7 +43,11 @@ requires a fragment for user-visible or unknown paths, reports explicit
 test/generated-only exemptions, and rejects invalid staged fragments. It
 does not create fragments or edit the index. Optional `cargo --locked xtask hooks
 install` adds the check to the existing local hook workflow described in
-[CONTRIBUTING.md](../CONTRIBUTING.md#local-hooks).
+[CONTRIBUTING.md](../CONTRIBUTING.md#local-hooks). The pre-commit launcher runs
+only this staged validator, preserving partial staging without lint fixes or
+automatic restaging. The installer validates both managed hooks and prepares
+their executable modes on Unix before configuring Git. An unrelated effective
+hook configuration is preserved and reported as an error.
 
 ### Pinned layout and creation boundary
 
@@ -83,8 +87,10 @@ Publishing, tagging, alias promotion, and release creation remain governed by
 the [canonical release checklist](releases/release-checklist.md).
 
 The 1.15 section of `CHANGELOG.md` is normalized into one stable entry and
-compact release-candidate history, while the 1.14-and-earlier tail is
-preserved. That checked-in changelog remains the source baseline until its
+compact release-candidate history, while the 1.14-and-earlier release text is
+preserved. The stable 1.15 comparison links to the previous stable release, and
+Unreleased starts at 1.15.0; older comparison references remain unchanged.
+That checked-in changelog remains the source baseline until its
 lossless Changie round-trip is landed under
 [issue #530](https://github.com/EffortlessMetrics/tokmd-swarm/issues/530).
 The configuration and staged-input slice does not manufacture historical

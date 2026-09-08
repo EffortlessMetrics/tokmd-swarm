@@ -58,8 +58,8 @@ If you want cache hits across multiple worktrees or checkout roots, use `cargo x
 
 ### Local Hooks
 
-Enable the project's git hooks for staged release-note checks, automated
-lint-fix, and quality gating:
+Enable the project's git hooks for staged release-note checks and a pre-push
+quality gate:
 
 ```bash
 cargo --locked xtask hooks install
@@ -67,8 +67,8 @@ cargo --locked xtask hooks install
 
 This is a one-time setup. Two hooks are provided:
 
-- **pre-commit** — Runs `cargo precommit` against staged paths, then runs `cargo xtask lint-fix` (fmt + clippy --fix + clippy verify) and `typos --diff` (if installed) for Rust-relevant staged files. User-visible or unknown changes require a staged Changie fragment; create one with `cargo change --kind fixed --component CLI --body "..."`.
-- **pre-push** — Runs `cargo xtask gate --check` (fmt check + cargo check + clippy + test compile-only) to catch issues before they reach CI.
+- **pre-commit** — Runs only `cargo precommit` against staged paths. It preserves both partial staging and unstaged edits; it does not format, run Clippy, or restage files. User-visible or unknown changes require a staged Changie fragment; create one with `cargo change --kind fixed --component CLI --body "..."`.
+- **pre-push** — Runs `cargo --locked xtask gate --check` (fmt check + cargo check + clippy + test compile-only) to catch issues before they reach CI.
 
 `cargo precommit` inspects only the Git index, never unstaged working-tree
 noise. It does not create fragments silently, run the full workspace gate, or
@@ -156,7 +156,7 @@ cargo test -p xtask --all-features
 
 The workspace manifest excludes `xtask` and `fuzz` from `default-members`.
 Accordingly, root `cargo test` commands do not test `xtask`. The required
-`Tokmd Rust Result` runs `cargo xtask gate --check`, the two commands above,
+`Tokmd Rust Result` runs `cargo --locked xtask gate --check`, the two commands above,
 and `cargo xtask proof-policy --check` serially. It does not claim that
 libFuzzer campaigns, conditional platform jobs, or deeper scheduled lanes ran.
 
@@ -325,12 +325,12 @@ exclude_re = ["impl.*Display", "fn main\\("]
 
 ## Code Style
 
--   Run `cargo xtask lint-fix` to auto-fix formatting and clippy issues.
+-   Run `cargo --locked xtask lint-fix` to auto-fix formatting and clippy issues.
 -   Run `cargo fmt-fix` for a fast, Windows-safe fmt-only fix.
 -   Run `cargo fmt-check` to verify formatting only.
--   Run `cargo xtask gate --check` to verify the full quality gate locally.
--   `cargo xtask gate --check` now uses a disposable temp `CARGO_TARGET_DIR` and forces `CARGO_INCREMENTAL=0` unless you override `CARGO_TARGET_DIR` yourself, so repeated gate runs do not leave a huge `target/` tree behind.
--   On Unix-like systems, `cargo xtask gate --check` also refuses to start when free disk drops below the `TOKMD_MIN_FREE_GB` threshold.
+-   Run `cargo --locked xtask gate --check` to verify the full quality gate locally.
+-   `cargo --locked xtask gate --check` now uses a disposable temp `CARGO_TARGET_DIR` and forces `CARGO_INCREMENTAL=0` unless you override `CARGO_TARGET_DIR` yourself, so repeated gate runs do not leave a huge `target/` tree behind.
+-   On Unix-like systems, `cargo --locked xtask gate --check` also refuses to start when free disk drops below the `TOKMD_MIN_FREE_GB` threshold.
 -   The gate first prunes stale `tokmd-gate-target-*` temp dirs left by earlier killed/cancelled runs (older than `TOKMD_GATE_STALE_HOURS`, default `3`) so accumulated orphan target trees do not trip that guard on long-lived self-hosted runners (issue #309).
 -   Run `cargo trim-target --check` to inspect reclaimable `target/debug` footprint.
 -   Run `cargo trim-target` to drop Windows PDBs and incremental state from `target/debug` without a full `cargo clean`.

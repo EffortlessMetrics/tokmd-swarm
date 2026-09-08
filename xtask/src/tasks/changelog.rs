@@ -81,6 +81,10 @@ pub fn run_hooks(args: HooksArgs) -> Result<()> {
 
 fn install_hooks(root: &Path) -> Result<()> {
     let configured = git_config(root, "--get", "core.hooksPath")?;
+    prepare_and_enable_hooks(root, configured.as_deref())
+}
+
+fn prepare_and_enable_hooks(root: &Path, configured: Option<&str>) -> Result<()> {
     if let Some(path) = configured {
         let normalized = path.trim().trim_end_matches('/').trim_end_matches('\\');
         if normalized != ".githooks" && normalized != "./.githooks" {
@@ -89,34 +93,37 @@ fn install_hooks(root: &Path) -> Result<()> {
                 path.trim()
             );
         }
-    } else {
-        run_git_checked(root, ["config", "--local", "core.hooksPath", ".githooks"])?;
     }
 
-    let hook = root.join(".githooks/pre-commit");
-    let content = std::fs::read_to_string(&hook)
-        .with_context(|| format!("read repository pre-commit hook {}", hook.display()))?;
-    if !content.contains("cargo --locked xtask precommit --staged") {
-        bail!(
-            "repository pre-commit hook does not invoke `cargo --locked xtask precommit --staged`; refusing to overwrite it"
-        );
+    #[cfg(unix)]
+    let mut permission_updates = Vec::new();
+    for (name, command) in [
+        ("pre-commit", "cargo --locked xtask precommit --staged"),
+        ("pre-push", "cargo --locked xtask gate --check"),
+    ] {
+        let hook = root.join(".githooks").join(name);
+        let metadata = std::fs::symlink_metadata(&hook)
+            .with_context(|| format!("inspect repository {name} hook {}", hook.display()))?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            bail!("repository {name} hook must be a regular file");
+        }
+        let content = std::fs::read_to_string(&hook)
+            .with_context(|| format!("read repository {name} hook {}", hook.display()))?;
+        if !content.lines().any(|line| line.trim() == command) {
+            bail!("repository {name} hook does not invoke `{command}`; refusing to overwrite it");
+        }
+        #[cfg(unix)]
+        permission_updates.push((hook, metadata.permissions()));
     }
     #[cfg(unix)]
-    {
-        let metadata = std::fs::metadata(&hook).with_context(|| {
-            format!(
-                "read repository pre-commit hook metadata {}",
-                hook.display()
-            )
-        })?;
-        let mut permissions = metadata.permissions();
+    for (hook, mut permissions) in permission_updates {
         permissions.set_mode(permissions.mode() | 0o111);
-        std::fs::set_permissions(&hook, permissions).with_context(|| {
-            format!(
-                "make repository pre-commit hook executable {}",
-                hook.display()
-            )
-        })?;
+        std::fs::set_permissions(&hook, permissions)
+            .with_context(|| format!("make repository hook executable {}", hook.display()))?;
+    }
+    // Validate both hooks and prepare their modes before redirecting Git.
+    if configured.is_none() {
+        run_git_checked(root, ["config", "--local", "core.hooksPath", ".githooks"])?;
     }
     println!("Git hooks are configured at .githooks (idempotent)");
     Ok(())
@@ -607,12 +614,18 @@ fn read_index_file(root: &Path, path: &str) -> Result<Option<String>> {
 }
 
 fn git_config(root: &Path, first: &str, second: &str) -> Result<Option<String>> {
-    let output = run_git(root, ["config", "--local", first, second])?;
+    // Respect inherited hook configuration as well as repository-local values.
+    let output = run_git(root, ["config", first, second])?;
     if output.status.success() {
         let value = String::from_utf8(output.stdout).context("Git config value is not UTF-8")?;
         Ok(Some(value.trim().to_string()))
-    } else {
+    } else if output.status.code() == Some(1) {
         Ok(None)
+    } else {
+        bail!(
+            "read Git configuration failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
 }
 
@@ -639,6 +652,119 @@ fn run_git_checked<const N: usize>(root: &Path, args: [&str; N]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_launcher_preserves_partial_staging_and_propagates_verdict() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        run_git_checked(root.path(), ["init", "--quiet"])?;
+        run_git_checked(root.path(), ["config", "core.autocrlf", "false"])?;
+        let source = root.path().join("sample.rs");
+        std::fs::write(&source, "fn staged() {}\n")?;
+        run_git_checked(root.path(), ["add", "--", "sample.rs"])?;
+        let staged = run_git(root.path(), ["show", ":sample.rs"])?;
+        if !staged.status.success() {
+            bail!("could not capture fixture index contents");
+        }
+        let working = "fn unstaged() {} // preserve partial staging\n";
+        std::fs::write(&source, working)?;
+        let hook = root.path().join("pre-commit");
+        std::fs::write(&hook, include_str!("../../../.githooks/pre-commit"))?;
+        let log = root.path().join("cargo.log");
+        // Record the command boundary without running Cargo or changing the index.
+        let driver = r#"cargo() { printf '%s\n' "$*" >> "$TOKMD_TEST_CARGO_LOG"; return "$TOKMD_TEST_CARGO_STATUS"; }
+export -f cargo
+bash "$1"
+"#;
+        for status in [0, 7] {
+            std::fs::write(&log, "")?;
+            let output = Command::new("bash")
+                .current_dir(root.path())
+                .args(["-c", driver, "hook-fixture"])
+                .arg(&hook)
+                .env("TOKMD_TEST_CARGO_LOG", &log)
+                .env("TOKMD_TEST_CARGO_STATUS", status.to_string())
+                .output()
+                .context("execute the checked-in pre-commit launcher")?;
+            if output.status.code() != Some(status) {
+                bail!("hook did not propagate validator exit {status}: {output:?}");
+            }
+            if std::fs::read_to_string(&log)? != "--locked xtask precommit --staged\n" {
+                bail!("pre-commit ran additional or unexpected Cargo work");
+            }
+            let after = run_git(root.path(), ["show", ":sample.rs"])?;
+            if !after.status.success()
+                || after.stdout != staged.stdout
+                || std::fs::read_to_string(&source)? != working
+            {
+                bail!("pre-commit changed the index or unstaged working-tree contents");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn hook_preparation_precedes_configuration_and_install_is_idempotent() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        run_git_checked(root.path(), ["init", "--quiet"])?;
+        let config = root.path().join(".git/config");
+        let original = std::fs::read(&config)?;
+        std::fs::create_dir(root.path().join(".githooks"))?;
+        std::fs::write(
+            root.path().join(".githooks/pre-commit"),
+            include_str!("../../../.githooks/pre-commit"),
+        )?;
+        if prepare_and_enable_hooks(root.path(), None).is_ok()
+            || std::fs::read(&config)? != original
+        {
+            bail!("missing pre-push hook changed Git configuration");
+        }
+        std::fs::write(
+            root.path().join(".githooks/pre-push"),
+            include_str!("../../../.githooks/pre-push"),
+        )?;
+        prepare_and_enable_hooks(root.path(), None)?;
+        let installed = std::fs::read(&config)?;
+        install_hooks(root.path())?;
+        if std::fs::read(&config)? != installed {
+            bail!("repeated hook installation changed Git configuration");
+        }
+        run_git_checked(
+            root.path(),
+            ["config", "--local", "core.hooksPath", "unrelated-hooks"],
+        )?;
+        let unrelated = std::fs::read(&config)?;
+        if install_hooks(root.path()).is_ok() || std::fs::read(&config)? != unrelated {
+            bail!("hook installation replaced unrelated configuration");
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hook_installation_makes_both_managed_hooks_executable() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        run_git_checked(root.path(), ["init", "--quiet"])?;
+        std::fs::create_dir(root.path().join(".githooks"))?;
+        for (name, content) in [
+            ("pre-commit", include_str!("../../../.githooks/pre-commit")),
+            ("pre-push", include_str!("../../../.githooks/pre-push")),
+        ] {
+            let hook = root.path().join(".githooks").join(name);
+            std::fs::write(&hook, content)?;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o640))?;
+        }
+        prepare_and_enable_hooks(root.path(), None)?;
+        for name in ["pre-commit", "pre-push"] {
+            let mode = std::fs::metadata(root.path().join(".githooks").join(name))?
+                .permissions()
+                .mode();
+            if mode & 0o777 != 0o751 {
+                bail!("{name} execute bits or prior permissions were not preserved");
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn parses_added_modified_deleted_and_rename_records() -> Result<()> {

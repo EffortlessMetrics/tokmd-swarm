@@ -1371,15 +1371,19 @@ coverage = false
 
 [[scope]]
 name = "release_note_workflow"
-kind = "non_rust"
+kind = "rust"
 paths = [
   ".changes/**",
   ".changie-version",
   ".changie.yaml",
   ".cargo/config.toml",
   ".githooks/pre-commit",
+  ".githooks/pre-push",
+  "xtask/src/tasks/changelog.rs",
+  "xtask/src/tasks/lint_fix.rs",
   "docs/changelog-workflow.md",
 ]
+packages = ["xtask"]
 proof = ["cargo test --locked -p xtask changelog", "cargo xtask docs --check"]
 reason = "Changie configuration and fragments share a pinned contract with the staged validator; focused fixtures check canonical keys, layout drift, index isolation, and safe creation, while docs checks cover the workflow guide."
 mutation = false
