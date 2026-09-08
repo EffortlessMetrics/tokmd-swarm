@@ -26,6 +26,12 @@ the serialized structure and state-dependent fields; the command additionally
 checks tag/version relationships, commit identity and the exact completion
 calculation. Schema validity alone does not authenticate imported evidence.
 
+This first slice derives completion only for stable semver tags. RC and other
+prerelease tags can be inspected, but always remain incomplete: stable alias
+promotion is not an RC requirement. Policy-aware RC completion and explicit
+non-promotion evidence are tracked in
+[#634](https://github.com/EffortlessMetrics/tokmd-swarm/issues/634).
+
 ## Commands
 
 Inspect the local source and tag facts:
@@ -58,6 +64,12 @@ executable or an extracted workspace without Git metadata therefore still
 produces an incomplete receipt. A confirmed absent tag or unborn HEAD remains
 `missing`; a version mismatch and a tag/HEAD commit mismatch are reported
 separately. Invalid tag names and invalid fixture input remain command errors.
+
+A matching tag/HEAD also requires clean tracked source. Staged or unstaged
+tracked modifications fail the source fact; a failed status query is
+`unavailable`. The status query disables optional Git index writes. Untracked
+files are outside this source-identity check, including requested receipt
+outputs; this is not a hermetic build or consumer-execution claim.
 
 Local Git subprocesses discard inherited repository, object-store, discovery,
 and command-config overrides, so source and tag facts refer to the discovered
@@ -100,9 +112,9 @@ the local inspector, which leaves remote surfaces `not_run`. A fixture surface
 marked `not_supported` keeps `complete` false, just like other non-passed
 states. No adapter capability is inferred from the presence of that enum value.
 
-`complete` is derived, not trusted from prose: it is true only when every
-release surface is `passed`, publication has exactly two parents, and both
-repository graph counters are zero. The source/tag SHA and publication merge
+`complete` is derived, not trusted from prose: it is true only for a stable
+semver tag when every release surface is `passed`, publication has exactly two
+parents, and both repository graph counters are zero. The source/tag SHA and publication merge
 SHA must identify the same commit (hexadecimal letter case is insignificant).
 Fixtures that mark both surfaces passed while naming different commits are
 rejected even if they claim `complete: false`. A status receipt can therefore be useful
@@ -115,6 +127,12 @@ all supplied facts satisfy this receipt contract, not that the fixture itself
 proves its evidence came from a trusted release system. The registry, hosted
 Release, publication graph, alias, and consumer receipt adapters remain the
 authoritative follow-up seams.
+
+JSON output uses a synced temporary file in the destination directory before
+atomic replacement. Preparation failures preserve a previous receipt and clean
+up the temporary file. Abrupt termination can leave a temporary file; directory
+metadata crash durability is not claimed. Fixture reads are capped during the
+read, including when the input file grows concurrently.
 
 ## Compatibility
 
@@ -136,7 +154,11 @@ does not replace or reinterpret them. A future schema revision must preserve
   diagnostics. Tag validation has valid/invalid reference controls.
 - An executable-level test must inspect one tagged workspace while inheriting
   another repository's Git overrides and retain the workspace's source SHA.
-- Release completion must remain false unless every required surface is
+- Executable fixtures reject staged and unstaged tracked changes at a matching
+  tag and preserve source contents. Full receipt bytes match a checked-in golden
+  fixture, and injected output failure preserves the previous valid receipt.
+- Release completion must remain false for prerelease or non-semver tags, or
+  unless every required surface is
   `passed`, source and publication identify the same commit, publication has
   two parents, and graph ahead/behind is `0/0`.
 - Serialized complete/incomplete receipts must satisfy the formal schema;

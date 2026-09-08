@@ -328,6 +328,15 @@ reason = "Documentation is a first-class tokmd product surface."
 covered_by = ["cargo xtask docs --check"]
 
 [[allow]]
+glob = "xtask/tests/fixtures/release-status-complete.json"
+kind = "test_fixture"
+owner = "release/control-plane"
+surface = "test"
+classification = "test_fixture"
+reason = "Pins the full deterministic release-status serialization contract."
+covered_by = ["cargo test --locked -p xtask release_status"]
+
+[[allow]]
 glob = "docs/release-status.schema.json"
 kind = "schema"
 owner = "release/control-plane"

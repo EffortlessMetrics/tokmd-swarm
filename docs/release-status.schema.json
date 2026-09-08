@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://tokmd.dev/schemas/release-status.v1.json",
   "title": "tokmd release status receipt v1",
-  "description": "Read-only release facts and offline fixture structure. The release-status validator additionally enforces tag/version consistency, source/publication commit identity and exact completion calculation. Schema validity does not authenticate imported evidence.",
+  "description": "Read-only release facts and offline fixture structure. Completion in this slice is stable-only; RC inspection remains incomplete pending policy-aware non-promotion evidence. The release-status validator additionally enforces tag/version consistency, source/publication commit identity and exact completion calculation. Schema validity does not authenticate imported evidence.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -97,6 +97,9 @@
       },
       "then": {
         "properties": {
+          "tag": {
+            "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+          },
           "source": {
             "properties": {
               "state": {

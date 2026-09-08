@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -156,11 +157,19 @@ fn inspect_local_with_git(
             None
         }
     };
-    let source_matches = matches!(
-        (&workspace_version, &tag_sha, &head_sha),
-        (Some(version), Some(tag_sha), Some(head_sha))
-            if source_matches_tag_commit(version, &expected_version, tag_sha, head_sha)
-    );
+    let tracked_changes = match local_has_tracked_changes(workspace_root, git) {
+        Ok(changed) => changed,
+        Err(error) => {
+            unavailable.push(format!("tracked source status unavailable: {error:#}"));
+            false
+        }
+    };
+    let source_matches = !tracked_changes
+        && matches!(
+            (&workspace_version, &tag_sha, &head_sha),
+            (Some(version), Some(tag_sha), Some(head_sha))
+                if source_matches_tag_commit(version, &expected_version, tag_sha, head_sha)
+        );
     let source_state = match (&workspace_version, &tag_sha, &head_sha) {
         _ if !unavailable.is_empty() => ReleaseState::Unavailable,
         (Some(_), Some(_), Some(_)) if source_matches => ReleaseState::Passed,
@@ -172,7 +181,7 @@ fn inspect_local_with_git(
     let source_detail = match (&workspace_version, &tag_sha, &head_sha) {
         _ if !unavailable.is_empty() => Some(unavailable.join("; ")),
         (Some(_), Some(_), Some(_)) if source_matches => Some(
-            "workspace version matches the inspected tag and HEAD resolves to its commit"
+            "workspace version matches the inspected tag, HEAD resolves to its commit, and tracked source is clean"
                 .to_string(),
         ),
         (Some(_), Some(_), None) => {
@@ -190,6 +199,9 @@ fn inspect_local_with_git(
                     "current HEAD {head_sha} does not match tag {tag} commit {tag_sha}"
                 ));
             }
+            if tracked_changes {
+                mismatches.push("tracked changes differ from the tagged source".to_string());
+            }
             Some(mismatches.join("; "))
         }
         (Some(_), None, _) => Some("tag does not exist in the local repository".to_string()),
@@ -203,7 +215,7 @@ fn inspect_local_with_git(
         expected_version,
         sha: tag_sha.clone(),
         detail: source_detail,
-        evidence: Some("local git tag and workspace Cargo.toml".to_string()),
+        evidence: Some("local git tag, tracked status and workspace Cargo.toml".to_string()),
     };
 
     let receipt = ReleaseStatusReceipt {
@@ -230,20 +242,20 @@ fn inspect_local_with_git(
 }
 
 fn load_fixture(path: &Path, expected_tag: &str) -> Result<ReleaseStatusReceipt> {
-    let size = fs::metadata(path)
-        .with_context(|| format!("inspect release status fixture {}", path.display()))?
-        .len();
-    if size > MAX_FIXTURE_BYTES {
+    let mut content = Vec::new();
+    fs::File::open(path)
+        .with_context(|| format!("open release status fixture {}", path.display()))?
+        .take(MAX_FIXTURE_BYTES + 1)
+        .read_to_end(&mut content)
+        .with_context(|| format!("read release status fixture {}", path.display()))?;
+    if content.len() as u64 > MAX_FIXTURE_BYTES {
         bail!(
-            "release status fixture {} is {} bytes; maximum supported size is {} bytes",
+            "release status fixture {} exceeds maximum supported size of {} bytes",
             path.display(),
-            size,
             MAX_FIXTURE_BYTES
         );
     }
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("read release status fixture {}", path.display()))?;
-    let receipt: ReleaseStatusReceipt = serde_json::from_str(&content)
+    let receipt: ReleaseStatusReceipt = serde_json::from_slice(&content)
         .with_context(|| format!("parse release status fixture {}", path.display()))?;
     validate_fixture(&receipt, expected_tag, path)?;
     Ok(receipt)
@@ -370,7 +382,10 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
 }
 
 fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
-    receipt.source.state == ReleaseState::Passed
+    // This slice models stable completion. RC non-promotion evidence is #634.
+    semver::Version::parse(receipt.tag.strip_prefix('v').unwrap_or(&receipt.tag))
+        .is_ok_and(|version| version.pre.is_empty())
+        && receipt.source.state == ReleaseState::Passed
         && receipt.publication.state == ReleaseState::Passed
         && publication_graph_is_aligned(&receipt.publication)
         && source_and_publication_match(receipt)
@@ -491,6 +506,27 @@ fn local_head_sha(workspace_root: &Path, git: &OsStr) -> Result<Option<String>> 
             .trim()
             .to_string(),
     ))
+}
+
+fn local_has_tracked_changes(workspace_root: &Path, git: &OsStr) -> Result<bool> {
+    let output = local_git_command(workspace_root, git)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .args([
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=no",
+            "--ignore-submodules=none",
+        ])
+        .output()
+        .context("inspect tracked Git source")?;
+    if !output.status.success() {
+        bail!(
+            "tracked Git status failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(!output.stdout.is_empty())
 }
 
 fn is_unresolved_head_error(stderr: &str) -> bool {
@@ -618,15 +654,32 @@ fn state_name(state: ReleaseState) -> &'static str {
 }
 
 fn write_json(path: &Path, receipt: &ReleaseStatusReceipt) -> Result<()> {
-    if let Some(parent) = path
+    replace_receipt(path, |file| {
+        serde_json::to_writer_pretty(&mut *file, receipt).context("serialize release status")?;
+        file.write_all(b"\n")
+            .context("finish release status JSON")?;
+        Ok(())
+    })
+}
+
+fn replace_receipt(path: &Path, write: impl FnOnce(&mut fs::File) -> Result<()>) -> Result<()> {
+    let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
-    }
-    let json = serde_json::to_string_pretty(receipt).context("serialize release status")?;
-    fs::write(path, format!("{json}\n"))
-        .with_context(|| format!("write release status {}", path.display()))?;
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    let mut pending = tempfile::Builder::new()
+        .prefix(".tokmd-release-status-")
+        .tempfile_in(parent)
+        .context("prepare release status temporary file")?;
+    write(pending.as_file_mut())?;
+    pending
+        .as_file()
+        .sync_all()
+        .context("sync release status")?;
+    pending
+        .persist(path)
+        .with_context(|| format!("install release status {}", path.display()))?;
     Ok(())
 }
 
@@ -768,6 +821,56 @@ mod tests {
 
     fn passed(detail: &str) -> StateFact {
         state_fact(ReleaseState::Passed, detail, Some("fixture".to_string()))
+    }
+
+    #[test]
+    fn json_output_matches_golden_and_failed_preparation_preserves_previous_receipt() -> Result<()>
+    {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("status.json");
+        let fixture = complete_fixture();
+        write_json(&path, &fixture)?;
+        let original = fs::read(&path)?;
+        let golden = include_str!("../../tests/fixtures/release-status-complete.json");
+        ensure!(original == golden.replace("\r\n", "\n").as_bytes());
+        ensure!(load_fixture(&path, "v1.15.1")? == fixture);
+        let failure = replace_receipt(&path, |file| {
+            file.write_all(b"partial new receipt")?;
+            bail!("injected write failure")
+        });
+        ensure!(failure.is_err(), "injected write failure must be reported");
+        ensure!(
+            fs::read(&path)? == original,
+            "previous receipt changed after failure"
+        );
+        ensure!(
+            fs::read_dir(temp.path())?.count() == 1,
+            "failed preparation leaked temporary files"
+        );
+        let mut incomplete = fixture;
+        incomplete.finalization = not_run("not finalized");
+        incomplete.complete = false;
+        write_json(&path, &incomplete)?;
+        ensure!(load_fixture(&path, "v1.15.1")? == incomplete);
+        Ok(())
+    }
+
+    #[test]
+    fn completion_is_limited_to_stable_release_tags() -> Result<()> {
+        for version in ["1.15.1-rc.1", "1.15.1-beta.2", "nightly"] {
+            let mut fixture = complete_fixture();
+            fixture.tag = format!("v{version}");
+            fixture.source.expected_version = version.to_string();
+            fixture.source.workspace_version = Some(version.to_string());
+            ensure!(
+                !is_complete(&fixture),
+                "stable completion leaked to {version}"
+            );
+            ensure!(validate_fixture(&fixture, &fixture.tag, Path::new("fixture.json")).is_err());
+            fixture.complete = false;
+            validate_fixture(&fixture, &fixture.tag, Path::new("fixture.json"))?;
+        }
+        Ok(())
     }
 
     fn complete_fixture() -> ReleaseStatusReceipt {

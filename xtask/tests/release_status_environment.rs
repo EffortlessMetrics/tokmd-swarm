@@ -106,3 +106,44 @@ fn release_status_ignores_ambient_repository_overrides() -> Result<()> {
     ensure!(receipt.get("complete").and_then(serde_json::Value::as_bool) == Some(false));
     Ok(())
 }
+
+#[test]
+fn release_status_rejects_staged_and_unstaged_source_changes_at_the_tag() -> Result<()> {
+    for staged in [false, true] {
+        let temp = tempfile::tempdir()?;
+        let workspace = temp.path().join("workspace");
+        tagged_workspace(&workspace, "clean tagged source")?;
+        std::fs::write(workspace.join("identity.txt"), "modified source")?;
+        if staged {
+            fixture_git(&workspace, &["add", "--", "identity.txt"])?;
+        }
+        let before = fixture_git(&workspace, &["diff", "HEAD", "--", "identity.txt"])?;
+        let receipt_path = temp.path().join("status.json");
+        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .current_dir(&workspace)
+            .args(["release-status", "--tag", "v1.15.1", "--json"])
+            .arg(&receipt_path)
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "status inspection failed: {output:?}"
+        );
+        let receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(receipt_path)?)?;
+        ensure!(
+            receipt
+                .pointer("/source/state")
+                .and_then(serde_json::Value::as_str)
+                == Some("failed"),
+            "dirty source (staged={staged}) must not pass: {receipt}"
+        );
+        ensure!(
+            receipt
+                .pointer("/source/detail")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|detail| detail.contains("tracked changes")),
+            "dirty source needs a specific diagnostic"
+        );
+        ensure!(fixture_git(&workspace, &["diff", "HEAD", "--", "identity.txt"])? == before);
+    }
+    Ok(())
+}
