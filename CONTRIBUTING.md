@@ -62,7 +62,7 @@ Enable the project's git hooks for staged release-note checks, automated
 lint-fix, and quality gating:
 
 ```bash
-cargo xtask hooks install
+cargo --locked xtask hooks install
 ```
 
 This is a one-time setup. Two hooks are provided:

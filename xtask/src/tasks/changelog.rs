@@ -51,13 +51,14 @@ pub fn run_change(args: ChangeArgs) -> Result<()> {
         bail!("--body must not be empty");
     }
 
-    let output = match args.output {
-        Some(output) => output,
-        None => default_fragment_path(&component, &kind),
-    };
     let encoded_body = to_string(body).context("encode fragment body")?;
     let content = format!("component: {component}\nkind: {kind}\nbody: {encoded_body}\n");
-    let relative = write_fragment(&root, &output, &content)?;
+    let relative = match args.output {
+        Some(output) => write_fragment(&root, &output, &content)?,
+        None => {
+            write_generated_fragment(&root, &default_fragment_path(&component, &kind), &content)?
+        }
+    };
     println!("created {relative}");
     println!("stage it with: git add -- {relative}");
     Ok(())
@@ -95,9 +96,9 @@ fn install_hooks(root: &Path) -> Result<()> {
     let hook = root.join(".githooks/pre-commit");
     let content = std::fs::read_to_string(&hook)
         .with_context(|| format!("read repository pre-commit hook {}", hook.display()))?;
-    if !content.contains("cargo xtask precommit --staged") {
+    if !content.contains("cargo --locked xtask precommit --staged") {
         bail!(
-            "repository pre-commit hook does not invoke `cargo xtask precommit --staged`; refusing to overwrite it"
+            "repository pre-commit hook does not invoke `cargo --locked xtask precommit --staged`; refusing to overwrite it"
         );
     }
     #[cfg(unix)]
@@ -236,6 +237,30 @@ fn validate_fragment(path: &str, content: &str) -> Result<()> {
     validate_kind(kind)?;
     if body.trim().is_empty() {
         bail!("fragment {path} has an empty body");
+    }
+    if let Some(time) = fields.get("time") {
+        validate_fragment_time(time).with_context(|| format!("invalid time in fragment {path}"))?;
+    }
+    Ok(())
+}
+
+fn validate_fragment_time(value: &str) -> Result<()> {
+    let parsed = chrono::DateTime::parse_from_rfc3339(value)
+        .context("time must be an RFC3339 timestamp, for example 2026-09-07T00:00:00Z")?;
+    // Go's time.Time consumer requires a four-digit year and uppercase T/Z;
+    // unlike Chrono it does not represent leap seconds.
+    if !value.is_ascii()
+        || value.as_bytes().get(10) != Some(&b'T')
+        || !value
+            .as_bytes()
+            .get(..4)
+            .is_some_and(|year| year.iter().all(u8::is_ascii_digit))
+        || value.ends_with('z')
+        || value.contains(',')
+        || value.chars().any(char::is_whitespace)
+        || parsed.timestamp_subsec_nanos() >= 1_000_000_000
+    {
+        bail!("time must use Changie-compatible RFC3339 syntax without leap seconds");
     }
     Ok(())
 }
@@ -390,23 +415,66 @@ fn fragment_output_path(root: &Path, output: &Path) -> Result<(String, PathBuf)>
 }
 
 fn write_fragment(root: &Path, output: &Path, content: &str) -> Result<String> {
+    write_fragment_with(root, output, content, |file, bytes| file.write_all(bytes))
+}
+
+fn write_generated_fragment(root: &Path, output: &Path, content: &str) -> Result<String> {
+    let stem = output
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .context("generated fragment has no UTF-8 filename stem")?;
+    for attempt in 0..100 {
+        let candidate = if attempt == 0 {
+            output.to_path_buf()
+        } else {
+            output.with_file_name(format!("{stem}-{attempt}.yaml"))
+        };
+        match write_fragment(root, &candidate, content) {
+            Ok(relative) => return Ok(relative),
+            Err(error)
+                if error
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::AlreadyExists) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    bail!("could not allocate a fragment filename; retry or select a new --output path")
+}
+
+fn write_fragment_with(
+    root: &Path,
+    output: &Path,
+    content: &str,
+    write: impl FnOnce(&mut std::fs::File, &[u8]) -> std::io::Result<()>,
+) -> Result<String> {
     let root = root
         .canonicalize()
         .with_context(|| format!("canonicalize repository root {}", root.display()))?;
     let (relative, path) = fragment_output_path(&root, output)?;
     prepare_fragment_directory(&root)?;
 
-    // Exclusive creation rejects existing files and leaf symlinks, including
-    // dangling links, without following or overwriting them.
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .with_context(|| {
-            format!("create new fragment {relative}; existing outputs are never overwritten")
-        })?;
-    file.write_all(content.as_bytes())
+    // Stage the complete contents in the same directory. Ordinary write
+    // failures drop only our temporary file; the destination remains absent.
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".tokmd-change-")
+        .suffix(".tmp")
+        .tempfile_in(root.join(FRAGMENT_DIRECTORY))
+        .with_context(|| format!("stage fragment {relative}"))?;
+    write(temporary.as_file_mut(), content.as_bytes())
         .with_context(|| format!("write fragment {relative}"))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .with_context(|| format!("sync staged fragment {relative}"))?;
+    // No-clobber installation refuses existing files and leaf symlinks. Drop
+    // the returned temporary file immediately on failure, retaining the IO
+    // error kind so generated-name collisions can retry safely.
+    temporary
+        .persist_noclobber(&path)
+        .map_err(|error| error.error)
+        .with_context(|| {
+            format!("install new fragment {relative}; existing outputs are never overwritten")
+        })?;
     Ok(relative)
 }
 
@@ -712,6 +780,78 @@ mod tests {
             .collect::<Vec<_>>();
         if components != COMPONENTS || kinds != KINDS {
             bail!("Changie vocabulary differs from the fragment validator");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_fragments_reject_invalid_optional_times() -> Result<()> {
+        for time in [
+            "yesterday",
+            "2026-99-07T00:00:00Z",
+            "2026-09-07T00:00:60Z",
+            "2026-09-07t00:00:00z",
+        ] {
+            let content = format!("component: CLI\nkind: fixed\nbody: valid\ntime: {time}\n");
+            if validate_fragment(".changes/unreleased/invalid-time.yaml", &content).is_ok() {
+                bail!("invalid timestamp accepted: {time}");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_fragments_accept_quoted_and_generated_times() -> Result<()> {
+        for time in ["2026-09-07T00:00:00Z", "2026-08-08T06:11:22.8530286-04:00"] {
+            for encoded in [time.to_owned(), to_string(time)?] {
+                let content =
+                    format!("component: CLI\nkind: fixed\nbody: valid\ntime: {encoded}\n");
+                validate_fragment(".changes/unreleased/time.yaml", &content)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn generated_fragment_collisions_preserve_both_contents() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let output = default_fragment_path("CLI", "fixed");
+        // Reuse the identical timestamp to force the collision independently
+        // of clock resolution or test scheduling.
+        let first = write_generated_fragment(root.path(), &output, "first")?;
+        let second = write_generated_fragment(root.path(), &output, "second")?;
+        if first == second
+            || std::fs::read_to_string(root.path().join(first))? != "first"
+            || std::fs::read_to_string(root.path().join(second))? != "second"
+        {
+            bail!("generated fragment collision lost or overwrote contents");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn failed_fragment_write_leaves_no_destination_or_temporary_file() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let output = Path::new(".changes/unreleased/failed.yaml");
+        let result = write_fragment_with(root.path(), output, "complete", |file, _| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("injected write failure"))
+        });
+        if result.is_ok()
+            || root.path().join(output).try_exists()?
+            || root
+                .path()
+                .join(FRAGMENT_DIRECTORY)
+                .read_dir()?
+                .next()
+                .transpose()?
+                .is_some()
+        {
+            bail!("failed fragment write retained partial output");
+        }
+        write_fragment(root.path(), output, "complete")?;
+        if std::fs::read_to_string(root.path().join(output))? != "complete" {
+            bail!("retry after failed fragment write did not install complete contents");
         }
         Ok(())
     }

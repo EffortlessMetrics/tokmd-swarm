@@ -68,10 +68,14 @@ and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issue
 programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
 and [depguard#24](https://github.com/EffortlessMetrics/depguard/issues/24).
 
-Optional git hooks:
+Before committing, capture required release-note intent with `cargo change`
+and run `cargo precommit` to validate the staged diff. See
+`docs/changelog-workflow.md` for the fragment contract and exemptions.
+
+Optional git hooks (the installer preserves unrelated hook configuration):
 
 ```bash
-git config core.hooksPath .githooks
+cargo --locked xtask hooks install
 ```
 
 ## Dual-Repo Workbench Boundary

@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-echo "pre-commit: cargo xtask precommit --staged"
-cargo xtask precommit --staged
+echo "pre-commit: cargo --locked xtask precommit --staged"
+cargo --locked xtask precommit --staged
 
 # Fast exit if no Rust-relevant files staged
 if ! git diff --cached --name-only --diff-filter=ACMR \

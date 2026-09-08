@@ -26,6 +26,8 @@ YAML punctuation, comments, or newlines; duplicate/unknown fields, collections,
 block scalars, and other YAML syntax are rejected with creation guidance. Blank
 lines and standalone comments are allowed. The hook validates this pinned
 fragment format; it does not implement a general YAML parser.
+Optional `time` values use RFC3339 with a four-digit year, uppercase `T`/`Z`
+and no leap seconds; quoted timestamps are accepted.
 The `documentation` and `internal` kinds are intentionally `auto: none`: a
 batch containing only those kinds must use an explicit version, never
 `batch auto`.
@@ -39,7 +41,7 @@ cargo precommit
 This checks the Git index, so unstaged edits do not change its verdict. It
 requires a fragment for user-visible or unknown paths, reports explicit
 test/generated-only exemptions, and rejects invalid staged fragments. It
-does not create fragments or edit the index. Optional `cargo xtask hooks
+does not create fragments or edit the index. Optional `cargo --locked xtask hooks
 install` adds the check to the existing local hook workflow described in
 [CONTRIBUTING.md](../CONTRIBUTING.md#local-hooks).
 
@@ -53,9 +55,14 @@ checks that the committed configuration and validator agree.
 Fragments are direct `.yaml` or `.yml` children of that directory. Custom
 `--output` values cannot be absolute, traverse parents, select nested paths,
 or contain colons/control characters. Creation rejects symlink or junction
-directories and uses exclusive creation to preserve existing output files
-and leaf symlinks. These checks assume repository directories are not being
-replaced concurrently by another process.
+directories. Contents are written and synced in a temporary file in the same
+directory before installation without overwriting existing files or leaf
+symlinks. Ordinary write failures discard the temporary file; abrupt process
+termination can leave a `.tokmd-change-*.tmp` file, but no partial fragment is
+installed. Generated filename collisions retry with a numbered suffix;
+explicit `--output` collisions remain errors. These checks assume repository
+directories and temporary files are not being replaced concurrently by another
+process, and do not claim crash-durable directory metadata.
 
 ## Prepare a release
 

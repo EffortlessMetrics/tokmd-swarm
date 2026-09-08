@@ -32,13 +32,16 @@ Windows MSVC builds in this repo default to line-table debuginfo to keep `target
 If you need full local symbols for a debugging session, use `$env:RUSTFLAGS='-C debuginfo=2'; cargo test ...`.
 For cross-worktree cache reuse, use `cargo xtask sccache --basedir <PATH> -- <cargo args>` so the wrapper can set `SCCACHE_BASEDIRS` explicitly.
 
+Run `cargo precommit` before committing; use `cargo change` for required
+release-note fragments. See `docs/changelog-workflow.md`.
+
 Optional git hooks:
 
 ```bash
-git config core.hooksPath .githooks
+cargo --locked xtask hooks install
 ```
 
-- `pre-commit`: `cargo xtask lint-fix` + restage + typos
+- `pre-commit`: staged fragment validation, then `cargo xtask lint-fix` + restage + typos
 - `pre-push`: `cargo xtask gate --check`
 
 ## Schema Version Sync
