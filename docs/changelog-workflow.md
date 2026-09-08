@@ -19,6 +19,13 @@ this step. The CLI accepts case-insensitive component/kind input and writes
 canonical values. Staged fragments must already use the exact configured
 component spelling (`CLI`, `Release`, `Browser/WASM`, and so on) and lowercase
 kind keys (`added`, `changed`, `fixed`, `security`, `documentation`, `internal`).
+The staged format is a flat mapping with one `field: value` per line: required
+`component`, `kind`, and `body`, plus optional `time`. Values are plain single-line
+strings or JSON-quoted strings, as emitted by `cargo change`. Quote bodies with
+YAML punctuation, comments, or newlines; duplicate/unknown fields, collections,
+block scalars, and other YAML syntax are rejected with creation guidance. Blank
+lines and standalone comments are allowed. The hook validates this pinned
+fragment format; it does not implement a general YAML parser.
 The `documentation` and `internal` kinds are intentionally `auto: none`: a
 batch containing only those kinds must use an explicit version, never
 `batch auto`.

@@ -4,6 +4,7 @@ use crate::cli::{ChangeArgs, HooksArgs, HooksCommand, PrecommitArgs};
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use serde_json::to_string;
+use std::collections::BTreeMap;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -219,17 +220,80 @@ fn validate_fragment(path: &str, content: &str) -> Result<()> {
     if file_name == ".gitkeep" {
         bail!("invalid unreleased fragment filename: {path}");
     }
-    let component = yaml_field(content, "component")?;
-    let kind = yaml_field(content, "kind")?;
-    let body = yaml_field(content, "body")?;
-    validate_component(&component)?;
-    validate_kind(&kind)?;
+    let fields = fragment_fields(content).with_context(|| {
+        format!("invalid fragment {path}; use `cargo change` to create a fragment")
+    })?;
+    let required = |name| {
+        fields
+            .get(name)
+            .map(String::as_str)
+            .ok_or_else(|| anyhow::anyhow!("fragment {path} is missing `{name}:`"))
+    };
+    let component = required("component")?;
+    let kind = required("kind")?;
+    let body = required("body")?;
+    validate_component(component)?;
+    validate_kind(kind)?;
     if body.trim().is_empty() {
         bail!("fragment {path} has an empty body");
     }
     Ok(())
 }
 
+fn fragment_fields(content: &str) -> Result<BTreeMap<&str, String>> {
+    let mut fields = BTreeMap::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if line.trim_start() != line {
+            bail!("fragment fields must be top-level, one per line");
+        }
+        let (name, value) = line
+            .split_once(':')
+            .ok_or_else(|| anyhow::anyhow!("fragment line must have `field: value` form"))?;
+        if !matches!(name, "component" | "kind" | "body" | "time") {
+            bail!("unsupported fragment field `{name}`");
+        }
+        if !value.starts_with(char::is_whitespace) {
+            bail!("fragment field `{name}` needs whitespace after its colon");
+        }
+        let value = fragment_string(value.trim())
+            .with_context(|| format!("decode fragment field `{name}`"))?;
+        if fields.insert(name, value).is_some() {
+            bail!("duplicate fragment field `{name}`");
+        }
+    }
+    Ok(fields)
+}
+
+fn fragment_string(value: &str) -> Result<String> {
+    if value.starts_with('"') {
+        return serde_json::from_str(value).context("expected a JSON-quoted string");
+    }
+    // Accept the flat plain scalars emitted by our pinned fragments. Rich YAML
+    // syntax must be quoted instead of being silently mistaken for a string.
+    if value.is_empty()
+        || value.starts_with([
+            '[', ']', '{', '}', '&', '*', '!', '|', '>', '\'', '%', '@', '`', ',', '-', '?', ':',
+            '#',
+        ])
+        || value.contains(": ")
+        || value.contains(":\t")
+        || value.ends_with(':')
+        || value.contains(" #")
+        || value.contains("\t#")
+        || value.chars().any(char::is_control)
+        || value == "~"
+        || value.eq_ignore_ascii_case("null")
+    {
+        bail!("unsupported plain YAML value; use a JSON-quoted string");
+    }
+    Ok(value.to_owned())
+}
+
+#[cfg(test)]
 fn yaml_field(content: &str, field: &str) -> Result<String> {
     let prefix = format!("{field}:");
     let line = content
@@ -648,6 +712,49 @@ mod tests {
             .collect::<Vec<_>>();
         if components != COMPONENTS || kinds != KINDS {
             bail!("Changie vocabulary differs from the fragment validator");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_fragments_reject_malformed_yaml_and_non_string_bodies() -> Result<()> {
+        for content in [
+            "component: CLI\nkind: fixed\nbody: []\n",
+            "component: CLI\nkind: fixed\nbody: # only a comment\n",
+            "component: CLI\nkind: fixed\nbody: first\nbody: second\n",
+            "component: CLI\nkind: fixed\nbody: broken: mapping\n",
+            "component: CLI\nkind: fixed\nbody: first\nthis is not a mapping\n",
+            "component: CLI\nkind: fixed\nbody: null\n",
+            "component: CLI\nkind: fixed\nbody: >-\n  hidden body\n",
+            "component: CLI\nkind: fixed\nbody: fine\nextra: unsupported\n",
+        ] {
+            if validate_fragment(".changes/unreleased/invalid.yaml", content).is_ok() {
+                bail!("malformed fragment was accepted: {content}");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staged_fragments_accept_generated_strings_and_the_pinned_time_field() -> Result<()> {
+        let path = ".changes/unreleased/valid.yaml";
+        validate_fragment(
+            path,
+            include_str!("../../../.changes/unreleased/Release-internal-20260808-061122.yaml"),
+        )?;
+        for body in [
+            "plain words",
+            "nested: value # text",
+            "line one\nline two",
+            "[]",
+            "null",
+            "Unicode: λ 🦀",
+        ] {
+            let content = format!("component: CLI\nkind: fixed\nbody: {}\n", to_string(body)?);
+            validate_fragment(path, &content)?;
+            if fragment_fields(&content)?.get("body").map(String::as_str) != Some(body) {
+                bail!("quoted fragment body did not round-trip");
+            }
         }
         Ok(())
     }
