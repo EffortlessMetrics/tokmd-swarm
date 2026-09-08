@@ -204,7 +204,10 @@ fn inspect_local_with_git(
             }
             Some(mismatches.join("; "))
         }
-        (Some(_), None, _) => Some("tag does not exist in the local repository".to_string()),
+        (Some(_), None, None) => Some(
+            "tag does not exist and HEAD cannot be resolved; source cannot be verified".to_string(),
+        ),
+        (Some(_), None, Some(_)) => Some("tag does not exist in the local repository".to_string()),
         (None, _, _) => Some(
             "workspace version could not be read; local source status is unavailable".to_string(),
         ),
@@ -1054,7 +1057,7 @@ mod tests {
     }
 
     #[test]
-    fn load_fixture_rejects_oversized_input_before_reading() -> Result<()> {
+    fn load_fixture_rejects_input_exceeding_the_read_bound() -> Result<()> {
         let temp = tempfile::NamedTempFile::new()?;
         let oversized = vec![b' '; (MAX_FIXTURE_BYTES + 1) as usize];
         fs::write(temp.path(), oversized)?;
@@ -1272,6 +1275,12 @@ mod tests {
                 receipt.source.state
             );
         }
+        ensure!(
+            receipt.source.detail.as_deref().is_some_and(|detail| {
+                detail.contains("tag does not exist") && detail.contains("HEAD cannot be resolved")
+            }),
+            "both missing source facts must remain visible"
+        );
         Ok(())
     }
 
