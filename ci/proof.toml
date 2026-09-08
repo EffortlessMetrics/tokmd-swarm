@@ -62,6 +62,18 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "dependency_update_policy"
+kind = "non_rust"
+paths = [".github/dependabot.yml"]
+proof = [
+  "cargo xtask check-file-policy",
+  "cargo xtask proof-policy --check",
+]
+reason = "Dependabot configuration controls automated dependency mutation; route it through explicit non-Rust ownership and proof-policy checks without selecting product-code proof."
+mutation = false
+coverage = false
+
+[[scope]]
 name = "vendored_home_patch"
 kind = "rust"
 paths = [
@@ -1357,6 +1369,7 @@ paths = [
   "docs/requirements.md",
   "docs/sensor-report-v1.md",
   "docs/source-of-truth.md",
+  "docs/spec-style.md",
   "docs/specs/**",
   "docs/specification.md",
   "docs/templates/**",
