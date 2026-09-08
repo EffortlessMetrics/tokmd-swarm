@@ -1,10 +1,9 @@
 //! Read-only, fail-closed release state inspection.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-#[cfg(test)]
-use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -103,22 +102,67 @@ pub fn run(args: ReleaseStatusArgs) -> Result<()> {
 }
 
 fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
-    let workspace_root = find_workspace_root()?;
+    let directory = std::env::current_dir().context("read current directory")?;
+    inspect_local_from(&directory, tag)
+}
+
+fn inspect_local_from(directory: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
+    let workspace_root = find_workspace_root(directory)?;
     inspect_local_at(&workspace_root, tag)
 }
 
 fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
+    inspect_local_with_git(workspace_root, tag, OsStr::new("git"))
+}
+
+fn inspect_local_with_git(
+    workspace_root: &Path,
+    tag: &str,
+    git: &OsStr,
+) -> Result<ReleaseStatusReceipt> {
     validate_tag(tag)?;
     let expected_version = tag.strip_prefix('v').unwrap_or(tag).to_string();
-    let workspace_version = workspace_version(workspace_root)?;
-    let tag_sha = local_tag_sha(workspace_root, tag)?;
-    let head_sha = local_head_sha(workspace_root)?;
+    let mut unavailable = Vec::new();
+    let workspace_version = match workspace_version(workspace_root) {
+        Ok(version) => version,
+        Err(error) => {
+            unavailable.push(format!("workspace version unavailable: {error:#}"));
+            None
+        }
+    };
+    let (tag_sha, git_tag) = match local_tag_sha(workspace_root, tag, git) {
+        Ok(sha) => {
+            let fact = state_fact(
+                if sha.is_some() {
+                    ReleaseState::Passed
+                } else {
+                    ReleaseState::Missing
+                },
+                "local git tag inspection",
+                Some(format!("git tag {tag}")),
+            );
+            (sha, fact)
+        }
+        Err(error) => {
+            let detail = format!("local Git tag unavailable: {error:#}");
+            unavailable.push(detail.clone());
+            (None, state_fact(ReleaseState::Unavailable, &detail, None))
+        }
+    };
+    let head_sha = match local_head_sha(workspace_root, git) {
+        Ok(sha) => sha,
+        Err(error) => {
+            unavailable.push(format!("current Git HEAD unavailable: {error:#}"));
+            None
+        }
+    };
     let source_matches = matches!(
         (&workspace_version, &tag_sha, &head_sha),
         (Some(version), Some(tag_sha), Some(head_sha))
             if source_matches_tag_commit(version, &expected_version, tag_sha, head_sha)
     );
     let source_state = match (&workspace_version, &tag_sha, &head_sha) {
+        _ if !unavailable.is_empty() => ReleaseState::Unavailable,
         (Some(_), Some(_), Some(_)) if source_matches => ReleaseState::Passed,
         (Some(_), Some(_), Some(_)) => ReleaseState::Failed,
         (Some(_), Some(_), None) => ReleaseState::Missing,
@@ -126,6 +170,7 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
         (None, _, _) => ReleaseState::Unavailable,
     };
     let source_detail = match (&workspace_version, &tag_sha, &head_sha) {
+        _ if !unavailable.is_empty() => Some(unavailable.join("; ")),
         (Some(_), Some(_), Some(_)) if source_matches => Some(
             "workspace version matches the inspected tag and HEAD resolves to its commit"
                 .to_string(),
@@ -133,9 +178,20 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
         (Some(_), Some(_), None) => {
             Some("tag exists but HEAD cannot be resolved; source cannot be verified".to_string())
         }
-        (Some(version), Some(_), Some(_)) => Some(format!(
-            "workspace version {version} or current HEAD does not match inspected tag {expected_version}"
-        )),
+        (Some(version), Some(tag_sha), Some(head_sha)) => {
+            let mut mismatches = Vec::new();
+            if version != &expected_version {
+                mismatches.push(format!(
+                    "workspace version {version} does not match tag-derived version {expected_version}"
+                ));
+            }
+            if tag_sha != head_sha {
+                mismatches.push(format!(
+                    "current HEAD {head_sha} does not match tag {tag} commit {tag_sha}"
+                ));
+            }
+            Some(mismatches.join("; "))
+        }
         (Some(_), None, _) => Some("tag does not exist in the local repository".to_string()),
         (None, _, _) => Some(
             "workspace version could not be read; local source status is unavailable".to_string(),
@@ -156,15 +212,7 @@ fn inspect_local_at(workspace_root: &Path, tag: &str) -> Result<ReleaseStatusRec
         tag: tag.to_string(),
         source,
         publication: not_run_publication("publication receipt not supplied"),
-        git_tag: state_fact(
-            if tag_sha.is_some() {
-                ReleaseState::Passed
-            } else {
-                ReleaseState::Missing
-            },
-            "local git tag inspection",
-            Some(format!("git tag {tag}")),
-        ),
+        git_tag,
         github_release: not_run("GitHub Release receipt not supplied"),
         assets: not_run("release asset receipt not supplied"),
         registry: not_run("registry inventory receipt not supplied"),
@@ -351,14 +399,16 @@ fn workspace_version(workspace_root: &Path) -> Result<Option<String>> {
         .map(str::to_string))
 }
 
-fn find_workspace_root() -> Result<PathBuf> {
-    let mut directory = std::env::current_dir().context("read current directory")?;
+fn find_workspace_root(start: &Path) -> Result<PathBuf> {
+    let mut directory = start.to_path_buf();
     loop {
         let cargo_toml = directory.join("Cargo.toml");
         if cargo_toml.is_file() {
             let content = fs::read_to_string(&cargo_toml)
                 .with_context(|| format!("read workspace candidate {}", cargo_toml.display()))?;
-            if content.contains("[workspace]") {
+            let manifest: toml::Value = toml::from_str(&content)
+                .with_context(|| format!("parse workspace candidate {}", cargo_toml.display()))?;
+            if manifest.get("workspace").is_some_and(toml::Value::is_table) {
                 return Ok(directory);
             }
         }
@@ -368,12 +418,42 @@ fn find_workspace_root() -> Result<PathBuf> {
     }
 }
 
-fn local_head_sha(workspace_root: &Path) -> Result<Option<String>> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--verify", "HEAD^{commit}"])
+fn local_git_command(workspace_root: &Path, git: &OsStr) -> Command {
+    let mut command = Command::new(git);
+    command
         .current_dir(workspace_root)
         .env("LC_ALL", "C")
-        .env("LANG", "C")
+        .env("LANG", "C");
+    // Git hooks and other callers can carry repository-local overrides. The
+    // receipt must inspect the discovered workspace, not the caller's repo.
+    for name in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_GRAFT_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_PREFIX",
+        "GIT_SHALLOW_FILE",
+        "GIT_NAMESPACE",
+        "GIT_CEILING_DIRECTORIES",
+        "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    ] {
+        command.env_remove(name);
+    }
+    command
+}
+
+fn local_head_sha(workspace_root: &Path, git: &OsStr) -> Result<Option<String>> {
+    let output = local_git_command(workspace_root, git)
+        .args(["rev-parse", "--verify", "HEAD^{commit}"])
         .output()
         .context("resolve current Git HEAD")?;
     if !output.status.success() {
@@ -429,11 +509,10 @@ fn validate_passed_state_fact(name: &str, fact: &StateFact) -> Result<()> {
     Ok(())
 }
 
-fn local_tag_sha(workspace_root: &Path, tag: &str) -> Result<Option<String>> {
+fn local_tag_sha(workspace_root: &Path, tag: &str, git: &OsStr) -> Result<Option<String>> {
     let reference = format!("refs/tags/{tag}");
-    let output = Command::new("git")
+    let output = local_git_command(workspace_root, git)
         .args(["show-ref", "--verify", "--quiet", &reference])
-        .current_dir(workspace_root)
         .output()
         .context("inspect local Git tag")?;
     if !output.status.success() {
@@ -447,9 +526,8 @@ fn local_tag_sha(workspace_root: &Path, tag: &str) -> Result<Option<String>> {
         );
     }
     let commit_reference = format!("{reference}^{{commit}}");
-    let output = Command::new("git")
+    let output = local_git_command(workspace_root, git)
         .args(["rev-parse", "--verify", &commit_reference])
-        .current_dir(workspace_root)
         .output()
         .context("resolve local Git tag commit")?;
     if !output.status.success() {
@@ -463,19 +541,24 @@ fn local_tag_sha(workspace_root: &Path, tag: &str) -> Result<Option<String>> {
 }
 
 fn validate_tag(tag: &str) -> Result<()> {
-    if tag.is_empty() || tag.chars().any(char::is_whitespace) || tag.contains('\0') {
+    // Validate the suffix of refs/tags/<tag> without invoking Git: unavailable
+    // Git must remain reportable, and fixture validation must work offline.
+    // See git-check-ref-format's refname rules; retain the existing stricter
+    // rejection of Unicode whitespace in the operator-supplied tag.
+    if tag.is_empty()
+        || tag.ends_with('.')
+        || tag.contains("..")
+        || tag.contains("@{")
+        || tag.chars().any(|character| {
+            character.is_whitespace()
+                || character.is_ascii_control()
+                || matches!(character, '~' | '^' | ':' | '?' | '*' | '[' | '\\')
+        })
+        || tag.split('/').any(|component| {
+            component.is_empty() || component.starts_with('.') || component.ends_with(".lock")
+        })
+    {
         bail!("release tag must be a non-empty single Git reference name");
-    }
-    let reference = format!("refs/tags/{tag}");
-    let output = Command::new("git")
-        .args(["check-ref-format", "--allow-onelevel", &reference])
-        .output()
-        .context("validate Git tag reference")?;
-    if !output.status.success() {
-        bail!(
-            "invalid Git tag `{tag}`: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
     }
     Ok(())
 }
@@ -532,96 +615,135 @@ fn write_json(path: &Path, receipt: &ReleaseStatusReceipt) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    static CURRENT_DIR_LOCK: Mutex<()> = Mutex::new(());
-
-    struct CurrentDirGuard {
-        original: PathBuf,
-    }
-
-    impl CurrentDirGuard {
-        fn enter(directory: &Path) -> Result<Self> {
-            let original = std::env::current_dir()?;
-            std::env::set_current_dir(directory)?;
-            Ok(Self { original })
-        }
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.original);
-        }
-    }
-
-    fn inspect_local_from(directory: &Path, tag: &str) -> Result<ReleaseStatusReceipt> {
-        let _current_dir_lock = CURRENT_DIR_LOCK
-            .lock()
-            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
-        let _current_dir = CurrentDirGuard::enter(directory)?;
-        inspect_local(tag)
-    }
-
-    fn current_dir_scope(directory: &Path) -> Result<()> {
-        let _current_dir = CurrentDirGuard::enter(directory)?;
-        Err(anyhow::anyhow!("synthetic current-directory scope failure"))
-    }
+    use anyhow::ensure;
 
     #[test]
-    fn current_directory_guard_restores_after_scope() -> Result<()> {
-        let _current_dir_lock = CURRENT_DIR_LOCK
-            .lock()
-            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
-        let original = std::env::current_dir()?;
+    fn workspace_discovery_ignores_comments_and_strings_without_changing_cwd() -> Result<()> {
+        let original_directory = std::env::current_dir()?;
         let temp = tempfile::tempdir()?;
-        {
-            let _current_dir = CurrentDirGuard::enter(temp.path())?;
-            if std::env::current_dir()? != temp.path() {
-                bail!("current-directory guard did not enter its target");
-            }
-        }
-        if std::env::current_dir()? != original {
-            bail!("current-directory guard did not restore the original directory");
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"1.15.1\"\n",
+        )?;
+        let member = temp.path().join("member");
+        fs::create_dir(&member)?;
+        for manifest in [
+            "# [workspace] is declared in the parent\n[package]\nname = \"member\"\n",
+            "[package]\nname = \"member\"\ndescription = \"see [workspace]\"\n",
+        ] {
+            fs::write(member.join("Cargo.toml"), manifest)?;
+            ensure!(find_workspace_root(&member)? == temp.path());
+            ensure!(std::env::current_dir()? == original_directory);
         }
         Ok(())
     }
 
     #[test]
-    fn current_directory_guard_restores_after_error() -> Result<()> {
-        let _current_dir_lock = CURRENT_DIR_LOCK
-            .lock()
-            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
-        let original = std::env::current_dir()?;
+    fn workspace_discovery_reports_invalid_manifests_without_changing_cwd() -> Result<()> {
+        let original_directory = std::env::current_dir()?;
         let temp = tempfile::tempdir()?;
+        fs::write(temp.path().join("Cargo.toml"), "[workspace\n")?;
+        ensure!(find_workspace_root(temp.path()).is_err());
+        ensure!(std::env::current_dir()? == original_directory);
+        Ok(())
+    }
 
-        if current_dir_scope(temp.path()).is_ok() {
-            bail!("synthetic scope failure should be propagated");
+    #[test]
+    fn tag_validation_matches_git_ref_rules_without_requiring_git() -> Result<()> {
+        for tag in [
+            "v1.15.1",
+            "v1.15.1-rc.1",
+            "release/v1.15.1",
+            "étiquette",
+            "@",
+            "-tag",
+        ] {
+            validate_tag(tag)?;
+            let status = Command::new("git")
+                .args(["check-ref-format", &format!("refs/tags/{tag}")])
+                .status()?;
+            ensure!(status.success(), "Git rejected accepted tag {tag:?}");
         }
-        if std::env::current_dir()? != original {
-            bail!("current-directory guard did not restore after an error");
+        for tag in [
+            "",
+            "v1..2",
+            "v1~1",
+            "v1^{}",
+            "v1:other",
+            "v1?",
+            "v1*",
+            "v1[",
+            "v1\\other",
+            "v1@{1}",
+            "/v1",
+            "v1/",
+            "release//v1",
+            ".v1",
+            "v1.",
+            "v1.lock",
+            "v1.lock/child",
+            "release/.hidden",
+            "v1\n",
+            "v1\0",
+            "v1\u{7f}",
+        ] {
+            ensure!(validate_tag(tag).is_err(), "invalid tag accepted: {tag:?}");
         }
         Ok(())
     }
 
     #[test]
-    fn current_directory_guard_restores_after_unwind() -> Result<()> {
-        let _current_dir_lock = CURRENT_DIR_LOCK
-            .lock()
-            .map_err(|_| anyhow::anyhow!("current-directory test lock poisoned"))?;
-        let original = std::env::current_dir()?;
+    fn inspect_local_records_missing_git_as_unavailable() -> Result<()> {
         let temp = tempfile::tempdir()?;
-        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _current_dir = match CurrentDirGuard::enter(temp.path()) {
-                Ok(guard) => guard,
-                Err(error) => std::panic::resume_unwind(Box::new(error)),
-            };
-            std::panic::panic_any("synthetic current-directory unwind");
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"1.15.1\"\n",
+        )?;
+        let missing_git = temp.path().join("does-not-exist-git");
+        let receipt = inspect_local_with_git(temp.path(), "v1.15.1", missing_git.as_os_str())?;
+        ensure!(receipt.source.state == ReleaseState::Unavailable);
+        ensure!(receipt.git_tag.state == ReleaseState::Unavailable);
+        ensure!(receipt.source.workspace_version.as_deref() == Some("1.15.1"));
+        ensure!(!receipt.complete);
+        ensure!(receipt.source.detail.as_deref().is_some_and(|detail| {
+            detail.contains("local Git tag unavailable")
+                && detail.contains("current Git HEAD unavailable")
         }));
+        let output = temp.path().join("receipt.json");
+        write_json(&output, &receipt)?;
+        ensure!(load_fixture(&output, "v1.15.1")? == receipt);
+        Ok(())
+    }
 
-        if unwind.is_ok() {
-            bail!("synthetic scope should unwind");
-        }
-        if std::env::current_dir()? != original {
-            bail!("current-directory guard did not restore after an unwind");
+    #[test]
+    fn inspect_local_records_non_repository_as_unavailable() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(temp.path().join("Cargo.toml"), "[workspace]\n")?;
+        let receipt = inspect_local_from(temp.path(), "v1.15.1")?;
+        ensure!(receipt.source.state == ReleaseState::Unavailable);
+        ensure!(receipt.git_tag.state == ReleaseState::Unavailable);
+        ensure!(!receipt.complete);
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_local_records_unreadable_workspace_version_as_unavailable() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        run_git(temp.path(), &["init"])?;
+        for content in [None, Some("[workspace\n")] {
+            if let Some(content) = content {
+                fs::write(temp.path().join("Cargo.toml"), content)?;
+            }
+            let receipt = inspect_local_at(temp.path(), "v1.15.1")?;
+            ensure!(receipt.source.state == ReleaseState::Unavailable);
+            ensure!(receipt.git_tag.state == ReleaseState::Missing);
+            ensure!(
+                receipt
+                    .source
+                    .detail
+                    .as_deref()
+                    .is_some_and(|detail| { detail.contains("workspace version unavailable") })
+            );
         }
         Ok(())
     }
@@ -875,6 +997,34 @@ mod tests {
                 receipt.source.state
             );
         }
+        let detail = receipt.source.detail.context("post-tag source detail")?;
+        ensure!(
+            detail.contains("current HEAD") && detail.contains("does not match tag v1.15.1 commit")
+        );
+        ensure!(!detail.contains("workspace version"));
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_local_distinguishes_version_mismatch_from_head_mismatch() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            temp.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"1.15.2\"\n",
+        )?;
+        run_git(temp.path(), &["init"])?;
+        run_git(temp.path(), &["config", "user.email", "test@example.com"])?;
+        run_git(temp.path(), &["config", "user.name", "Release Test"])?;
+        run_git(temp.path(), &["add", "."])?;
+        run_git(temp.path(), &["commit", "-m", "mismatched version"])?;
+        run_git(temp.path(), &["tag", "v1.15.1"])?;
+        let receipt = inspect_local_at(temp.path(), "v1.15.1")?;
+        ensure!(receipt.source.state == ReleaseState::Failed);
+        let detail = receipt
+            .source
+            .detail
+            .context("version mismatch source detail")?;
+        ensure!(detail == "workspace version 1.15.2 does not match tag-derived version 1.15.1");
         Ok(())
     }
 
@@ -971,11 +1121,16 @@ mod tests {
         fixture.assets.state = ReleaseState::Failed;
         fixture.registry.state = ReleaseState::Unavailable;
         fixture.consumer_proof.state = ReleaseState::NotRun;
+        fixture.wasm.state = ReleaseState::NotSupported;
         fixture.complete = false;
         validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json"))?;
         if is_complete(&fixture) {
             bail!("incomplete fixture states must not produce a complete receipt");
         }
+        let encoded = serde_json::to_vec(&fixture)?;
+        let decoded: ReleaseStatusReceipt = serde_json::from_slice(&encoded)?;
+        ensure!(decoded.wasm.state == ReleaseState::NotSupported);
+        ensure!(!decoded.complete);
         Ok(())
     }
 

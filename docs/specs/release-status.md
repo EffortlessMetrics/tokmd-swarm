@@ -5,7 +5,7 @@
 - Related ADRs: `docs/adr/0005-release-train-and-rc-semantics.md`
 - Related proof scopes: `release_metadata`, `workspace_dependency_graph`
 
-`cargo xtask release-status` is a read-only inspection surface for release
+`cargo --locked xtask release-status` is a read-only inspection surface for release
 state. It does not publish crates, create or edit GitHub Releases, move tags,
 change GHCR aliases, or move the Action `v1` ref.
 
@@ -27,13 +27,13 @@ states rather than trusting an imported boolean.
 Inspect the local source and tag facts:
 
 ```text
-cargo xtask release-status --tag v1.15.1 --json target/release/status.json
+cargo --locked xtask release-status --tag v1.15.1 --json target/release/status.json
 ```
 
 Validate an offline receipt assembled from release-system evidence:
 
 ```text
-cargo xtask release-status \
+cargo --locked xtask release-status \
   --tag v1.15.1 \
   --fixture target/release/status-fixture.json \
   --json target/release/status-checked.json
@@ -43,6 +43,26 @@ The current first slice reads the workspace version and local Git tag. Remote
 surfaces are recorded as `not_run` until their authoritative receipts are
 provided through `--fixture`; prose, missing artifacts, and upstream job
 success are never promoted to `passed`.
+
+Local inspection discovers the workspace from the current directory using the
+parsed `workspace` table in `Cargo.toml`. A comment or string mentioning
+`[workspace]` does not identify a workspace. Failure to locate or parse a
+workspace candidate remains a command error because the inspection root cannot
+be established. After a root is established, version-read failures and Git
+query failures become `unavailable` facts with diagnostic context. A missing Git
+executable or an extracted workspace without Git metadata therefore still
+produces an incomplete receipt. A confirmed absent tag or unborn HEAD remains
+`missing`; a version mismatch and a tag/HEAD commit mismatch are reported
+separately. Invalid tag names and invalid fixture input remain command errors.
+
+Local Git subprocesses discard inherited repository, object-store, discovery,
+and command-config overrides, so source and tag facts refer to the discovered
+workspace even when invoked from a Git hook carrying another repository's
+environment.
+
+Tag-name validation does not launch Git, so offline fixture validation does not
+require Git to be installed. It follows the Git refname rules for
+`refs/tags/<tag>` and also rejects Unicode whitespace in the supplied tag.
 
 ## Contract
 
@@ -69,6 +89,12 @@ Each surface uses one of these states:
 | `unavailable` | The authoritative source could not be queried. |
 | `not_supported` | The surface is outside the current inspection capability. |
 | `not_run` | No evidence was supplied or the check was intentionally not executed. |
+
+The vocabulary applies to supplied fixtures as well as local inspection. In
+this slice, `not_supported` can be supplied by a fixture; it is not emitted by
+the local inspector, which leaves remote surfaces `not_run`. A fixture surface
+marked `not_supported` keeps `complete` false, just like other non-passed
+states. No adapter capability is inferred from the presence of that enum value.
 
 `complete` is derived, not trusted from prose: it is true only when every
 release surface is `passed`, publication has exactly two parents, and both
@@ -98,6 +124,11 @@ does not replace or reinterpret them. A future schema revision must preserve
 - Fixture validation must reject stale completion claims and tag/schema
   mismatches.
 - Local checks must prove deterministic formatting and JSON field ordering.
+- Local-source tests cover subdirectory discovery without changing process cwd,
+  unavailable Git/version queries, missing refs, and distinct source mismatch
+  diagnostics. Tag validation has valid/invalid reference controls.
+- An executable-level test must inspect one tagged workspace while inheriting
+  another repository's Git overrides and retain the workspace's source SHA.
 - Release completion must remain false unless every required surface is
   `passed`, publication has two parents, and graph ahead/behind is `0/0`.
 
