@@ -23,7 +23,10 @@ const REQUIRED_MARKERS: &[&str] = &[
     "dtolnay/rust-toolchain",
     "Swatinem/rust-cache@v2",
     "Fast precontext and launch core gate",
-    "cargo xtask gate --check",
+    // Matched without the `cargo ` prefix so the reference fixture and the
+    // live workflow's locked launcher (`cargo --locked xtask gate --check`)
+    // both satisfy the shape contract.
+    "xtask gate --check",
     "core_exit",
     "Assert core gate verdict",
     "UB Review (advisory)",
