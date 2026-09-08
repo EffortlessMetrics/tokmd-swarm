@@ -353,6 +353,12 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
     {
         bail!("passed publication evidence must include a non-empty detail field");
     }
+    if receipt.source.state == ReleaseState::Passed
+        && receipt.publication.state == ReleaseState::Passed
+        && !source_and_publication_match(receipt)
+    {
+        bail!("passed source and publication evidence must name the same commit");
+    }
     let computed = is_complete(receipt);
     if receipt.complete != computed {
         bail!(
@@ -367,6 +373,7 @@ fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
     receipt.source.state == ReleaseState::Passed
         && receipt.publication.state == ReleaseState::Passed
         && publication_graph_is_aligned(&receipt.publication)
+        && source_and_publication_match(receipt)
         && receipt.git_tag.state == ReleaseState::Passed
         && receipt.github_release.state == ReleaseState::Passed
         && receipt.assets.state == ReleaseState::Passed
@@ -385,6 +392,17 @@ fn publication_graph_is_aligned(publication: &PublicationFact) -> bool {
     publication.parent_count == Some(2)
         && publication.publication_ahead == Some(0)
         && publication.swarm_ahead == Some(0)
+}
+
+fn source_and_publication_match(receipt: &ReleaseStatusReceipt) -> bool {
+    receipt
+        .source
+        .sha
+        .as_deref()
+        .zip(receipt.publication.merge_sha.as_deref())
+        .is_some_and(|(source, publication)| {
+            !source.is_empty() && source.eq_ignore_ascii_case(publication)
+        })
 }
 
 fn workspace_version(workspace_root: &Path) -> Result<Option<String>> {
@@ -767,7 +785,7 @@ mod tests {
             },
             publication: PublicationFact {
                 state: ReleaseState::Passed,
-                merge_sha: Some("b".repeat(40)),
+                merge_sha: Some("a".repeat(40)),
                 parent_count: Some(2),
                 publication_ahead: Some(0),
                 swarm_ahead: Some(0),
@@ -788,6 +806,111 @@ mod tests {
             finalization: passed("finalization"),
             complete: true,
         }
+    }
+
+    #[test]
+    fn matching_commit_identity_accepts_hex_case_without_accepting_missing_shas() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.publication.merge_sha = Some("A".repeat(40));
+        if !is_complete(&fixture) {
+            bail!("hex letter case must not change commit identity");
+        }
+        validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json"))?;
+        fixture.source.sha = None;
+        fixture.publication.merge_sha = None;
+        if is_complete(&fixture) {
+            bail!("absent commit identities cannot prove completion");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_status_formal_schema_accepts_receipts_and_rejects_shape_drift() -> Result<()> {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../../docs/release-status.schema.json"))?;
+        let validator =
+            jsonschema::validator_for(&schema).context("compile release-status schema")?;
+        let valid = serde_json::to_value(complete_fixture())?;
+        if !validator.is_valid(&valid) {
+            bail!("complete serialized receipt does not satisfy its formal schema");
+        }
+        let mut unavailable = complete_fixture();
+        unavailable.source.state = ReleaseState::Unavailable;
+        unavailable.source.workspace_version = None;
+        unavailable.source.sha = None;
+        unavailable.publication = not_run_publication("no publication evidence");
+        unavailable.complete = false;
+        if !validator.is_valid(&serde_json::to_value(unavailable)?) {
+            bail!("nullable unavailable receipt does not satisfy its formal schema");
+        }
+        for state in [
+            ReleaseState::Missing,
+            ReleaseState::Pending,
+            ReleaseState::Failed,
+            ReleaseState::Unavailable,
+            ReleaseState::NotSupported,
+            ReleaseState::NotRun,
+        ] {
+            let mut fixture = complete_fixture();
+            fixture.registry = state_fact(state, "not complete", None);
+            fixture.complete = false;
+            if !validator.is_valid(&serde_json::to_value(fixture)?) {
+                bail!("incomplete state {state:?} does not satisfy the schema");
+            }
+        }
+        for (pointer, replacement) in [
+            ("/schema_version", serde_json::json!(2)),
+            ("/source/sha", serde_json::json!("not-a-sha")),
+            ("/registry/state", serde_json::json!("unknown")),
+            ("/registry/detail", serde_json::Value::Null),
+            ("/publication/parent_count", serde_json::json!("two")),
+            ("/publication/swarm_ahead", serde_json::json!(1)),
+            ("/action_alias/state", serde_json::json!("pending")),
+        ] {
+            let mut invalid = valid.clone();
+            *invalid
+                .pointer_mut(pointer)
+                .context("fixture pointer missing")? = replacement;
+            if validator.is_valid(&invalid) {
+                bail!("formal schema accepted invalid field {pointer}");
+            }
+        }
+        for pointer in ["", "/source", "/publication", "/registry"] {
+            let mut invalid = valid.clone();
+            invalid
+                .pointer_mut(pointer)
+                .and_then(serde_json::Value::as_object_mut)
+                .context("fixture object missing")?
+                .insert("unexpected".to_owned(), serde_json::json!(true));
+            if validator.is_valid(&invalid) {
+                bail!("formal schema accepted unknown fields at {pointer}");
+            }
+        }
+        let mut missing = valid;
+        missing
+            .as_object_mut()
+            .context("fixture root missing")?
+            .remove("tag");
+        if validator.is_valid(&missing) {
+            bail!("formal schema accepted a missing tag");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn completion_rejects_different_source_and_publication_commits() -> Result<()> {
+        let mut fixture = complete_fixture();
+        fixture.publication.merge_sha = Some("b".repeat(40));
+        if is_complete(&fixture) {
+            bail!("different source and publication commits must remain incomplete");
+        }
+        for complete in [true, false] {
+            fixture.complete = complete;
+            if validate_fixture(&fixture, "v1.15.1", Path::new("fixture.json")).is_ok() {
+                bail!("contradictory passed commit identities were accepted");
+            }
+        }
+        Ok(())
     }
 
     #[test]

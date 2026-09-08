@@ -328,6 +328,15 @@ reason = "Documentation is a first-class tokmd product surface."
 covered_by = ["cargo xtask docs --check"]
 
 [[allow]]
+glob = "docs/release-status.schema.json"
+kind = "schema"
+owner = "release/control-plane"
+surface = "contract"
+classification = "production"
+reason = "Versioned read-only release-status receipt structure; semantic identity checks remain in xtask."
+covered_by = ["cargo test --locked -p xtask release_status"]
+
+[[allow]]
 glob = "docs/capabilities/*.json"
 kind = "capability_contract"
 owner = "product/contracts"

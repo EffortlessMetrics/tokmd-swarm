@@ -2,6 +2,7 @@
 
 - Status: active
 - Schema family: `tokmd.release_status.v1`
+- Formal schema: [release-status.schema.json](../release-status.schema.json)
 - Related ADRs: `docs/adr/0005-release-train-and-rc-semantics.md`
 - Related proof scopes: `release_metadata`, `workspace_dependency_graph`
 
@@ -20,7 +21,10 @@ fixture's provenance or independently re-run remote release checks.
 
 The command writes the `tokmd.release_status.v1` receipt described below. It
 reports each release surface independently and derives `complete` from those
-states rather than trusting an imported boolean.
+states rather than trusting an imported boolean. The formal JSON Schema binds
+the serialized structure and state-dependent fields; the command additionally
+checks tag/version relationships, commit identity and the exact completion
+calculation. Schema validity alone does not authenticate imported evidence.
 
 ## Commands
 
@@ -98,7 +102,10 @@ states. No adapter capability is inferred from the presence of that enum value.
 
 `complete` is derived, not trusted from prose: it is true only when every
 release surface is `passed`, publication has exactly two parents, and both
-repository graph counters are zero. A status receipt can therefore be useful
+repository graph counters are zero. The source/tag SHA and publication merge
+SHA must identify the same commit (hexadecimal letter case is insignificant).
+Fixtures that mark both surfaces passed while naming different commits are
+rejected even if they claim `complete: false`. A status receipt can therefore be useful
 for diagnosing an incomplete release without claiming that the release is
 complete.
 
@@ -130,7 +137,12 @@ does not replace or reinterpret them. A future schema revision must preserve
 - An executable-level test must inspect one tagged workspace while inheriting
   another repository's Git overrides and retain the workspace's source SHA.
 - Release completion must remain false unless every required surface is
-  `passed`, publication has two parents, and graph ahead/behind is `0/0`.
+  `passed`, source and publication identify the same commit, publication has
+  two parents, and graph ahead/behind is `0/0`.
+- Serialized complete/incomplete receipts must satisfy the formal schema;
+  fixtures cover unknown fields/states, invalid types, missing required fields
+  and passed-state prerequisites. Semantic tests separately reject mixed commit
+  identities and stale completion claims.
 
 ## Open Questions
 
