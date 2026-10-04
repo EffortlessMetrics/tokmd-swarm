@@ -49,7 +49,7 @@ pub use config::{
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    let config_ctx = config::load_config();
+    let config_ctx = config::load_config_checked()?;
     let profile_name = config::get_profile_name(cli.profile.as_ref());
     let resolved = config::resolve_config(&config_ctx, profile_name.as_deref());
     if cli.show_config {

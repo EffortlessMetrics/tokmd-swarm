@@ -91,7 +91,7 @@ fn malformed_explicit_config_does_not_fall_back_to_local_config() -> TestResult 
     let tmp = tempfile::tempdir()?;
     let selected = tmp.path().join("selected.toml");
     std::fs::write(&selected, "[scan\n")?;
-    std::fs::write(tmp.path().join("tokmd.toml"), "[lang]\ntop = 3\n")?;
+    std::fs::write(tmp.path().join("tokmd.toml"), "")?;
 
     tokmd_in(tmp.path())
         .env("TOKMD_CONFIG", &selected)
@@ -100,5 +100,22 @@ fn malformed_explicit_config_does_not_fall_back_to_local_config() -> TestResult 
         .failure()
         .stdout(predicate::str::is_empty())
         .stderr(predicate::str::contains("selected.toml"));
+    Ok(())
+}
+
+#[test]
+fn missing_explicit_config_does_not_fall_back_to_local_config() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let selected = tmp.path().join("missing.toml");
+    std::fs::write(tmp.path().join("tokmd.toml"), "")?;
+
+    tokmd_in(tmp.path())
+        .env("TOKMD_CONFIG", &selected)
+        .args(["--format", "json"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("TOKMD_CONFIG"))
+        .stderr(predicate::str::contains("missing.toml"));
     Ok(())
 }

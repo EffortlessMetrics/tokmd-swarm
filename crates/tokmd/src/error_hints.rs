@@ -264,7 +264,7 @@ fn suggestions(err: &Error) -> Vec<String> {
     if haystack.contains("toml") && (haystack.contains("parse") || haystack.contains("invalid")) {
         push_hint(
             &mut out,
-            "Check `tokmd.toml` syntax and key names, or regenerate with `tokmd init --force`.",
+            "Check TOML syntax and key names in the file named above, then retry.",
         );
     }
 
@@ -513,7 +513,8 @@ mod tests {
     fn toml_parse_failure_does_not_get_receipt_hint() {
         let err = anyhow!("invalid TOML: failed to parse key at line 3");
         let hints = suggestions(&err);
-        assert!(hints.iter().any(|h| h.contains("tokmd.toml")));
+        assert!(hints.iter().any(|h| h.contains("TOML syntax")));
+        assert!(!hints.iter().any(|h| h.contains("init --force")));
         assert!(
             !hints.iter().any(|h| h.contains("tokmd JSON receipt")),
             "TOML parse errors must not get the JSON receipt hint, got: {hints:?}"
