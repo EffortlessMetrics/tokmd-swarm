@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result, bail};
 use tokmd_settings::{Profile, TomlConfig, UserConfig, ViewProfile};
 
 pub mod explain;
@@ -42,9 +43,10 @@ impl ConfigContext {
     }
 }
 
-/// Load all configuration sources.
+/// Load configuration on a best-effort basis for existing library callers.
+/// The CLI uses `load_config_checked` so a selected invalid file is reported.
 pub fn load_config() -> ConfigContext {
-    let toml_result = discover_toml_config();
+    let toml_result = discover_toml_config(false).ok().flatten();
     let json = load_json_config();
 
     ConfigContext {
@@ -52,6 +54,17 @@ pub fn load_config() -> ConfigContext {
         toml_path: toml_result.map(|(_, path)| path),
         json,
     }
+}
+
+/// CLI configuration loading: a present but unreadable or malformed file is an
+/// error, not permission to silently use lower-precedence defaults.
+pub(crate) fn load_config_checked() -> Result<ConfigContext> {
+    let toml_result = discover_toml_config(true)?;
+    Ok(ConfigContext {
+        toml: toml_result.as_ref().map(|(config, _)| config.clone()),
+        toml_path: toml_result.map(|(_, path)| path),
+        json: load_json_config(),
+    })
 }
 
 fn sanitize_selector(value: &str) -> Option<String> {
@@ -68,14 +81,17 @@ fn sanitize_selector(value: &str) -> Option<String> {
 /// 2. ./tokmd.toml (current directory)
 /// 3. Parent directories up to root
 /// 4. ~/.config/tokmd/tokmd.toml (user config)
-fn discover_toml_config() -> Option<(TomlConfig, PathBuf)> {
+fn discover_toml_config(strict: bool) -> Result<Option<(TomlConfig, PathBuf)>> {
     // 1. Check TOKMD_CONFIG environment variable
     if let Ok(config_path) = std::env::var("TOKMD_CONFIG")
         && let Some(config_path) = sanitize_selector(&config_path)
     {
         let path = PathBuf::from(&config_path);
-        if let Some(result) = try_load_toml(&path) {
-            return Some(result);
+        if let Some(result) = try_load_toml(&path, strict)? {
+            return Ok(Some(result));
+        }
+        if strict {
+            bail!("TOKMD_CONFIG points to a missing file: {}", path.display());
         }
     }
 
@@ -84,8 +100,8 @@ fn discover_toml_config() -> Option<(TomlConfig, PathBuf)> {
         let mut dir = Some(cwd.as_path());
         while let Some(d) = dir {
             let config_path = d.join("tokmd.toml");
-            if let Some(result) = try_load_toml(&config_path) {
-                return Some(result);
+            if let Some(result) = try_load_toml(&config_path, strict)? {
+                return Ok(Some(result));
             }
             dir = d.parent();
         }
@@ -94,22 +110,22 @@ fn discover_toml_config() -> Option<(TomlConfig, PathBuf)> {
     // 3. Check user config directory
     if let Some(config_dir) = dirs::config_dir() {
         let user_config_path = config_dir.join("tokmd").join("tokmd.toml");
-        if let Some(result) = try_load_toml(&user_config_path) {
-            return Some(result);
+        if let Some(result) = try_load_toml(&user_config_path, strict)? {
+            return Ok(Some(result));
         }
     }
 
-    None
+    Ok(None)
 }
 
 /// Try to load a TOML config file if it exists.
-fn try_load_toml(path: &std::path::Path) -> Option<(TomlConfig, PathBuf)> {
-    if path.exists() {
-        TomlConfig::from_file(path)
-            .ok()
-            .map(|config| (config, path.to_path_buf()))
-    } else {
-        None
+fn try_load_toml(path: &Path, strict: bool) -> Result<Option<(TomlConfig, PathBuf)>> {
+    match TomlConfig::from_file(path) {
+        Ok(config) => Ok(Some((config, path.to_path_buf()))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) if strict => Err(error)
+            .with_context(|| format!("Failed to load TOML config from {}", path.display())),
+        Err(_) => Ok(None),
     }
 }
 

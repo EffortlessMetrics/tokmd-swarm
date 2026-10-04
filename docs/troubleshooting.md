@@ -305,15 +305,22 @@ Settings in `tokmd.toml` aren't being applied.
 
 **Check file location**:
 `tokmd` looks for configuration in this order:
-1. `./tokmd.toml` (current directory)
-2. Parent directories (walking up to root)
-3. `~/.config/tokmd/tokmd.toml` (user config)
+1. The file named by `TOKMD_CONFIG`, if set
+2. `./tokmd.toml` (current directory)
+3. Parent directories (walking up to root)
+4. User config: `~/.config/tokmd/tokmd.toml` on Unix, or
+   `%APPDATA%\tokmd\tokmd.toml` on Windows
 
 **Verify TOML syntax**:
 ```bash
 # Check for syntax errors
 cat tokmd.toml | python -c "import sys, tomllib; tomllib.loads(sys.stdin.read())"
 ```
+
+If an existing `tokmd.toml` is malformed or unreadable, the CLI reports the
+selected file and exits before producing a receipt. Fix that file and retry;
+`tokmd init --force` is not a configuration repair command. If you set
+`TOKMD_CONFIG`, check that the selected file exists and is readable first.
 
 ### Common Issues
 
