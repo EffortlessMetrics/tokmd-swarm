@@ -69,3 +69,36 @@ fn normal_run_does_not_print_config_report() -> TestResult {
         .stdout(predicate::str::contains("tokmd configuration").not());
     Ok(())
 }
+
+#[test]
+fn malformed_local_config_fails_before_machine_output() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    std::fs::write(tmp.path().join("tokmd.toml"), "[scan\n")?;
+    std::fs::write(tmp.path().join("sample.rs"), "fn main() {}\n")?;
+
+    tokmd_in(tmp.path())
+        .args(["--format", "json"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("tokmd.toml"))
+        .stderr(predicate::str::contains("TOML"));
+    Ok(())
+}
+
+#[test]
+fn malformed_explicit_config_does_not_fall_back_to_local_config() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let selected = tmp.path().join("selected.toml");
+    std::fs::write(&selected, "[scan\n")?;
+    std::fs::write(tmp.path().join("tokmd.toml"), "[lang]\ntop = 3\n")?;
+
+    tokmd_in(tmp.path())
+        .env("TOKMD_CONFIG", &selected)
+        .arg("--show-config")
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("selected.toml"));
+    Ok(())
+}
