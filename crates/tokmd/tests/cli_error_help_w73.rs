@@ -130,10 +130,10 @@ fn help_config_mode_points_to_tokmd_config_for_file_paths() {
     let config_help = stdout
         .split("--config <MODE>")
         .nth(1)
-        .expect("root help must list --config")
+        .unwrap_or_default()
         .split("--hidden")
         .next()
-        .expect("config help must have a following option");
+        .unwrap_or_default();
 
     assert!(config_help.contains("tokei.toml"), "{config_help}");
     assert!(
