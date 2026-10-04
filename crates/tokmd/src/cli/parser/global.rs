@@ -23,6 +23,7 @@ pub struct GlobalArgs {
     pub excluded: Vec<String>,
 
     /// Whether to load scan config files (`tokei.toml` / `.tokeirc`).
+    /// `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path.
     #[arg(long, value_enum, value_name = "MODE", default_value_t = ConfigMode::Auto, global = true)]
     pub config: ConfigMode,
 

@@ -9,7 +9,7 @@ These arguments apply when you invoke `tokmd` directly without an explicit subco
 | Flag | Description |
 | :--- | :--- |
 | `--exclude <PATTERN>` | Glob pattern to exclude (e.g., `*.lock`, `vendor/`). Can be used multiple times. |
-| `--config <MODE>` | Scan config strategy: `auto` (default, reads `tokei.toml`/`.tokeirc`) or `none`. |
+| `--config <MODE>` | Scan config strategy: `auto` (default, reads `tokei.toml`/`.tokeirc`) or `none`. `tokmd.toml` is discovered separately; `TOKMD_CONFIG` overrides its path. |
 | `--hidden` | Count hidden files and directories (start with `.`). |
 | `--no-ignore` | Disable all ignore files (`.gitignore`, `.ignore`, `.tokeignore`). |
 | `--no-ignore-parent` | Do not traverse parent directories for ignore files. |
@@ -62,11 +62,11 @@ Options:
           - json: JSON (compact)
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -172,11 +172,11 @@ Options:
           - json: JSON (compact)
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -282,11 +282,11 @@ Options:
           - cyclonedx: CycloneDX 1.6 JSON SBOM format
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -410,11 +410,11 @@ Options:
           Output directory for artifacts (defaults to `.runs/tokmd` inside the repo, or system temp if not possible)
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -550,11 +550,11 @@ Options:
           - fun:          Eco-label and novelty-oriented outputs.
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -763,11 +763,11 @@ Options:
           [default: .tokmd/baseline.json]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -864,11 +864,11 @@ Options:
           [possible values: lines, tokens, bytes, doc, blank, hotspot]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -987,11 +987,11 @@ Options:
           Base receipt/run or git ref to compare from
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1101,11 +1101,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1222,11 +1222,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1422,11 +1422,11 @@ Options:
           [default: 128k]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1603,11 +1603,11 @@ Options:
           Show verbose output with rule sources
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1698,11 +1698,11 @@ Options:
           [default: jsonschema]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -1796,11 +1796,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2013,11 +2013,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2146,11 +2146,11 @@ Options:
           [default: 1048576]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2261,11 +2261,11 @@ Options:
           [default: origin/main]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2384,11 +2384,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2482,11 +2482,11 @@ Options:
           Packet bundle directory containing `tokmd-packets.json`
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2590,11 +2590,11 @@ Options:
           When provided, gate will evaluate ratchet rules comparing current metrics against the baseline values.
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 
@@ -2845,11 +2845,11 @@ Options:
           [alias: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
 
           [default: auto]
 

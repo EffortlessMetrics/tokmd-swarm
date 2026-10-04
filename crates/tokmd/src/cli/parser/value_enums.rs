@@ -78,7 +78,7 @@ pub enum ConfigMode {
     /// Read scan config files (`tokei.toml` / `.tokeirc`) if present.
     #[default]
     Auto,
-    /// Ignore config files.
+    /// Ignore scan config files (`tokei.toml` / `.tokeirc`).
     None,
 }
 
