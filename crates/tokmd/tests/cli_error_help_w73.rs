@@ -123,6 +123,31 @@ fn help_root_mentions_version_flag() {
         .stdout(predicate::str::contains("--version").or(predicate::str::contains("-V")));
 }
 
+#[test]
+fn help_config_mode_points_to_tokmd_config_for_file_paths() {
+    let assert = tokmd_cmd().arg("--help").assert().success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let config_help = stdout
+        .split("--config <MODE>")
+        .nth(1)
+        .unwrap_or_default()
+        .split("--hidden")
+        .next()
+        .unwrap_or_default();
+
+    assert!(config_help.contains("tokei.toml"), "{config_help}");
+    assert!(
+        config_help.contains("Ignore scan config files"),
+        "{config_help}"
+    );
+    assert!(
+        config_help.contains("discovered separately"),
+        "{config_help}"
+    );
+    assert!(config_help.contains("TOKMD_CONFIG"), "{config_help}");
+    assert!(config_help.contains("tokmd.toml"), "{config_help}");
+}
+
 // =========================================================================
 // 2. Help output – subcommands
 // =========================================================================

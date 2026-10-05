@@ -41,11 +41,11 @@ Options:
           [aliases: --ignore]
 
       --config <MODE>
-          Whether to load scan config files (`tokei.toml` / `.tokeirc`)
+          Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
 
           Possible values:
           - auto: Read scan config files (`tokei.toml` / `.tokeirc`) if present
-          - none: Ignore config files
+          - none: Ignore scan config files (`tokei.toml` / `.tokeirc`)
           
           [default: auto]
 
