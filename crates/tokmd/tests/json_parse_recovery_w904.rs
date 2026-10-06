@@ -131,3 +131,45 @@ fn selected_toml_config_named_json_can_be_repaired_and_retried() -> anyhow::Resu
     anyhow::ensure!(result["passed"] == true);
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn missing_policy_with_parse_marker_in_path_can_be_created_and_retried() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let receipt = dir.path().join("receipt.json");
+    std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+    for (index, flag) in ["--policy", "--ratchet-config"].into_iter().enumerate() {
+        let parent = dir.path().join(format!("inputs-{index}: invalid TOML:"));
+        let config = parent.join("policy.toml");
+        let mut command = gate(dir.path(), &receipt);
+        command.arg(flag).arg(&config);
+        if flag == "--ratchet-config" {
+            command.arg("--baseline").arg(&receipt);
+        }
+        command
+            .assert()
+            .code(2)
+            .stdout("")
+            .stderr(predicate::str::contains(config.display().to_string()))
+            .stderr(predicate::str::contains(
+                "Verify the input path exists and is readable.",
+            ))
+            .stderr(predicate::str::contains(
+                "Use an absolute path to avoid working-directory confusion.",
+            ))
+            .stderr(predicate::str::contains("Check TOML syntax").not())
+            .stderr(predicate::str::contains("regenerate the receipt").not());
+
+        std::fs::create_dir(&parent)?;
+        std::fs::write(&config, "rules = []\n")?;
+        let mut retry = gate(dir.path(), &receipt);
+        retry.arg(flag).arg(&config);
+        if flag == "--ratchet-config" {
+            retry.arg("--baseline").arg(&receipt);
+        }
+        let output = retry.assert().success().get_output().stdout.clone();
+        let result: serde_json::Value = serde_json::from_slice(&output)?;
+        anyhow::ensure!(result["passed"] == true);
+    }
+    Ok(())
+}
