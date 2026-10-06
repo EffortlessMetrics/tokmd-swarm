@@ -159,7 +159,15 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
     }
 
-    if haystack.contains("path not found")
+    // OS error messages vary by platform and locale. Inspect the error chain
+    // before falling back to legacy string-only missing-path diagnostics.
+    let missing_file = err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    });
+    if missing_file
+        || haystack.contains("path not found")
         || haystack.contains("input path does not exist")
         || haystack.contains("no such file or directory")
     {
@@ -167,13 +175,16 @@ fn suggestions(err: &Error) -> Vec<String> {
 
         let mut extracted_bad_path = None;
 
-        // Check for common typoed subcommands in "Path not found: <bad>"
-        if haystack.contains("path not found") {
+        // Only an explicit missing bare path can be a typoed subcommand.
+        if haystack.contains("path not found") || haystack.contains("input path does not exist") {
             // Find the original path string from the chain
             for e in err.chain() {
                 let e_str = e.to_string();
-                if e_str.starts_with("Path not found: ") {
-                    let bad_path = e_str.trim_start_matches("Path not found: ").trim();
+                if let Some(bad_path) = e_str
+                    .strip_prefix("Path not found: ")
+                    .or_else(|| e_str.strip_prefix("Input path does not exist: "))
+                {
+                    let bad_path = bad_path.trim();
                     extracted_bad_path = Some(bad_path.to_string());
                     if looks_like_bare_subcommand_token(bad_path) {
                         let known = known_subcommands();
@@ -203,22 +214,15 @@ fn suggestions(err: &Error) -> Vec<String> {
             }
         }
 
-        if !did_you_mean {
-            if let Some(bp) = extracted_bad_path {
-                if looks_like_bare_subcommand_token(&bp) {
-                    push_hint(
-                        &mut out,
-                        "Run `tokmd --help` to see a list of available subcommands.",
-                    );
-                    return out;
-                }
-            } else {
-                push_hint(
-                    &mut out,
-                    "Run `tokmd --help` to see a list of available subcommands.",
-                );
-                return out;
-            }
+        if !did_you_mean
+            && let Some(bp) = extracted_bad_path
+            && looks_like_bare_subcommand_token(&bp)
+        {
+            push_hint(
+                &mut out,
+                "Run `tokmd --help` to see a list of available subcommands.",
+            );
+            return out;
         }
 
         if did_you_mean {
@@ -360,6 +364,24 @@ mod tests {
         let hints = super::suggestions(&err);
         anyhow::ensure!(hints.iter().any(|h| h.contains("input path exists")));
         anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn alternate_missing_path_prefix_preserves_path_and_typo_guidance() -> anyhow::Result<()> {
+        let path_error = anyhow!("Input path does not exist: receipts/current.json");
+        let path_hints = super::suggestions(&path_error);
+        anyhow::ensure!(path_hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!path_hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+
+        let typo_error = anyhow!("Input path does not exist: anolyze");
+        let typo_hints = super::suggestions(&typo_error);
+        anyhow::ensure!(
+            typo_hints
+                .iter()
+                .any(|h| h.contains("Did you mean the subcommand `analyze`?"))
+        );
+        anyhow::ensure!(!typo_hints.iter().any(|h| h.contains("input path exists")));
         Ok(())
     }
 
