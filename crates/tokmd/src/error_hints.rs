@@ -367,6 +367,80 @@ mod tests {
     use anyhow::anyhow;
 
     #[test]
+    fn json_receipt_parse_guidance_ignores_toml_in_paths() -> anyhow::Result<()> {
+        for context in [
+            "Failed to parse JSON from configs/toml/receipt.json",
+            "Failed to parse baseline JSON from configs/toml/baseline.json",
+            "Failed to parse lang receipt",
+            "Failed to parse run receipt",
+            "Failed to parse export rows",
+        ] {
+            let cause = serde_json::from_str::<serde_json::Value>("{broken")
+                .err()
+                .ok_or_else(|| anyhow!("malformed JSON unexpectedly parsed"))?;
+            let err = anyhow::Error::new(cause).context(context);
+            let hints = super::suggestions(&err);
+            anyhow::ensure!(
+                hints
+                    == vec![
+                        "Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
+                        "If it was hand-edited or truncated, regenerate the receipt and retry.",
+                    ],
+                "wrong guidance for {context}: {hints:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn toml_policy_and_config_parse_guidance_stays_distinct() -> anyhow::Result<()> {
+        for message in [
+            "Failed to load policy from json/receipt-policy.json: Failed to parse policy TOML: expected a key",
+            "Failed to load ratchet config from json/receipt-ratchet.json: Failed to parse policy TOML: expected a key",
+            "Failed to load TOML config from json/receipt-config.json: invalid TOML: expected a key",
+            "invalid TOML: failed to parse key at line 3",
+        ] {
+            let hints = super::suggestions(&anyhow!(message));
+            anyhow::ensure!(
+                hints
+                    == vec!["Check TOML syntax and key names in the file named above, then retry."],
+                "wrong guidance for {message}: {hints:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn format_words_in_io_paths_do_not_add_parse_guidance() -> anyhow::Result<()> {
+        for (kind, context, expected) in [
+            (
+                std::io::ErrorKind::NotFound,
+                "Failed to read baseline from invalid-toml/receipt.json",
+                vec![
+                    "Verify the input path exists and is readable.",
+                    "Use an absolute path to avoid working-directory confusion.",
+                ],
+            ),
+            (
+                std::io::ErrorKind::NotFound,
+                "Failed to write badge to invalid-toml/badge.svg",
+                vec!["Create the parent directory for the output path named above, then retry."],
+            ),
+            (
+                std::io::ErrorKind::PermissionDenied,
+                "Failed to read baseline from invalid-toml/receipt.json",
+                vec![],
+            ),
+        ] {
+            let err = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+                .context(context);
+            let hints = super::suggestions(&err);
+            anyhow::ensure!(hints == expected, "wrong guidance for {context}: {hints:?}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn contextual_not_found_gets_file_recovery_in_any_locale() -> anyhow::Result<()> {
         let err = anyhow::Error::new(std::io::Error::new(
             std::io::ErrorKind::NotFound,
