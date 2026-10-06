@@ -83,8 +83,52 @@ fn error_analyze_invalid_preset() {
         .stderr(predicate::str::contains("invalid value"));
 }
 
+#[test]
+fn error_missing_gate_baseline_has_file_guidance_and_recovers() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let config = dir.path().join("tokmd.toml");
+    std::fs::write(&config, "")?;
+    std::fs::write(dir.path().join("current.json"), r#"{"metric": 100}"#)?;
+    std::fs::write(dir.path().join("policy.toml"), "rules = []\n")?;
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    command
+        .current_dir(dir.path())
+        .env("TOKMD_CONFIG", &config)
+        .args([
+            "gate",
+            "current.json",
+            "--policy",
+            "policy.toml",
+            "--baseline",
+            "missing-baseline",
+            "--format",
+            "json",
+        ]);
+    command
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "Failed to read baseline from missing-baseline",
+        ))
+        .stderr(predicate::str::contains(
+            "Verify the input path exists and is readable.",
+        ))
+        .stderr(predicate::str::contains("Use an absolute path"))
+        .stderr(predicate::str::contains("Run `tokmd --help`").not())
+        .stderr(predicate::str::contains("Unrecognized subcommand").not());
+
+    std::fs::write(dir.path().join("missing-baseline"), r#"{"metric": 100}"#)?;
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"passed\": true"));
+    Ok(())
+}
+
 // =========================================================================
-// 2. Help output – root
+// 2. Help output - root
 // =========================================================================
 
 #[test]

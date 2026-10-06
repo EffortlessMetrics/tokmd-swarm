@@ -338,6 +338,77 @@ fn levenshtein(a: &str, b: &str) -> usize {
 mod tests {
     use anyhow::anyhow;
 
+    #[test]
+    fn contextual_not_found_gets_file_recovery_in_any_locale() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to read baseline from missing-baseline");
+        let rendered = super::format(&err);
+        anyhow::ensure!(rendered.contains("Failed to read baseline from missing-baseline"));
+        anyhow::ensure!(rendered.contains("Verify the input path exists and is readable."));
+        anyhow::ensure!(rendered.contains("Use an absolute path"));
+        anyhow::ensure!(!rendered.contains("Run `tokmd --help`"));
+        anyhow::ensure!(!rendered.contains("Unrecognized subcommand"));
+        Ok(())
+    }
+
+    #[test]
+    fn contextual_unix_not_found_does_not_suggest_subcommand_help() -> anyhow::Result<()> {
+        let err = anyhow!("Failed to read baseline from baseline.json: No such file or directory");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn contextual_not_found_preserves_diff_recovery() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to load diff source 'receipts/before.json'");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(
+            hints
+                .iter()
+                .any(|h| h.contains("ensure they both exist locally"))
+        );
+        anyhow::ensure!(
+            hints
+                .iter()
+                .any(|h| h.contains("ensure the branch, tag, or commit exists"))
+        );
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn permission_denied_does_not_get_missing_file_guidance() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "access denied",
+        ))
+        .context("Failed to read baseline from baseline.json");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_json_does_not_get_missing_file_guidance() -> anyhow::Result<()> {
+        let err = anyhow!("Failed to parse baseline JSON from baseline.json: expected value");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("tokmd JSON receipt")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
     use super::{format, suggestions};
 
     #[test]
