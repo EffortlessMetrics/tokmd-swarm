@@ -22,6 +22,18 @@ badge, create the output file's parent directory and retry the same command.
 The error names the output path, and its recovery hint concerns that directory.
 The input can already exist. A missing output directory produces no SVG stdout.
 
+## Malformed Receipt or Gate Policy Files
+
+For `Failed to parse JSON from ...` or a receipt/baseline parse error, inspect
+the file named above and regenerate a truncated or hand-edited receipt with
+`tokmd run`, `tokmd export`, or `tokmd analyze`, then retry. A directory named
+`toml` does not change the receipt's JSON format.
+
+Gate `--policy` and `--ratchet-config` files use TOML, even when their filenames
+end in `.json`. For `Failed to parse policy TOML`, fix the selected file's TOML
+syntax and key names, then retry. Regenerating the input receipt does not repair
+these policy files. Parse failures produce no gate JSON on stdout.
+
 ## Files Not Appearing in Scans
 
 ### Symptom

@@ -93,3 +93,41 @@ fn policy_and_ratchet_files_named_json_keep_toml_recovery() -> anyhow::Result<()
     }
     Ok(())
 }
+
+#[test]
+fn selected_toml_config_named_json_can_be_repaired_and_retried() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let config = dir.path().join("receipt-config.json");
+    let receipt = dir.path().join("receipt.json");
+    let policy = dir.path().join("policy.toml");
+    std::fs::write(&config, "broken = [")?;
+    std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+    std::fs::write(&policy, "rules = []\n")?;
+    gate(dir.path(), &receipt)
+        .env("TOKMD_CONFIG", &config)
+        .arg("--policy")
+        .arg(&policy)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicate::str::contains(config.display().to_string()))
+        .stderr(predicate::str::contains("Failed to load TOML config"))
+        .stderr(predicate::str::contains(
+            "Check TOML syntax and key names in the file named above, then retry.",
+        ))
+        .stderr(predicate::str::contains("regenerate the receipt").not());
+
+    std::fs::write(&config, "")?;
+    let output = gate(dir.path(), &receipt)
+        .env("TOKMD_CONFIG", &config)
+        .arg("--policy")
+        .arg(&policy)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let result: serde_json::Value = serde_json::from_slice(&output)?;
+    anyhow::ensure!(result["passed"] == true);
+    Ok(())
+}
