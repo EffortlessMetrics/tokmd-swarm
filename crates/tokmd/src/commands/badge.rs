@@ -1,5 +1,5 @@
 use crate::cli;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokmd_analysis as analysis;
 use tokmd_format::badge_svg;
 
@@ -117,7 +117,8 @@ pub(crate) fn handle(args: cli::BadgeArgs, global: &cli::GlobalArgs) -> Result<(
     let svg = badge_svg(label, &value);
 
     if let Some(output) = args.output {
-        std::fs::write(output, svg)?;
+        std::fs::write(&output, svg)
+            .with_context(|| format!("Failed to write badge to {}", output.display()))?;
     } else {
         print!("{}", svg);
     }

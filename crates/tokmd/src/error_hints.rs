@@ -159,7 +159,15 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
     }
 
-    if haystack.contains("path not found")
+    // OS error messages vary by platform and locale. Inspect the error chain
+    // before falling back to legacy string-only missing-path diagnostics.
+    let missing_file = err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    });
+    if missing_file
+        || haystack.contains("path not found")
         || haystack.contains("input path does not exist")
         || haystack.contains("no such file or directory")
     {
@@ -167,13 +175,16 @@ fn suggestions(err: &Error) -> Vec<String> {
 
         let mut extracted_bad_path = None;
 
-        // Check for common typoed subcommands in "Path not found: <bad>"
-        if haystack.contains("path not found") {
+        // Only an explicit missing bare path can be a typoed subcommand.
+        if haystack.contains("path not found") || haystack.contains("input path does not exist") {
             // Find the original path string from the chain
             for e in err.chain() {
                 let e_str = e.to_string();
-                if e_str.starts_with("Path not found: ") {
-                    let bad_path = e_str.trim_start_matches("Path not found: ").trim();
+                if let Some(bad_path) = e_str
+                    .strip_prefix("Path not found: ")
+                    .or_else(|| e_str.strip_prefix("Input path does not exist: "))
+                {
+                    let bad_path = bad_path.trim();
                     extracted_bad_path = Some(bad_path.to_string());
                     if looks_like_bare_subcommand_token(bad_path) {
                         let known = known_subcommands();
@@ -203,33 +214,50 @@ fn suggestions(err: &Error) -> Vec<String> {
             }
         }
 
-        if !did_you_mean {
-            if let Some(bp) = extracted_bad_path {
-                if looks_like_bare_subcommand_token(&bp) {
-                    push_hint(
-                        &mut out,
-                        "Run `tokmd --help` to see a list of available subcommands.",
-                    );
-                    return out;
-                }
-            } else {
-                push_hint(
-                    &mut out,
-                    "Run `tokmd --help` to see a list of available subcommands.",
-                );
-                return out;
-            }
+        if !did_you_mean
+            && let Some(bp) = extracted_bad_path.as_deref()
+            && looks_like_bare_subcommand_token(bp)
+        {
+            push_hint(
+                &mut out,
+                "Run `tokmd --help` to see a list of available subcommands.",
+            );
+            return out;
         }
 
         if did_you_mean {
             return out;
         }
 
-        push_hint(&mut out, "Verify the input path exists and is readable.");
-        push_hint(
-            &mut out,
-            "Use an absolute path to avoid working-directory confusion.",
-        );
+        let output_context = chain.iter().any(|message| {
+            let message = message.to_ascii_lowercase();
+            message.starts_with("failed to write")
+                || message.starts_with("failed to create output")
+                || message.starts_with("failed to create baseline file")
+                || message.starts_with("failed to create bundle")
+        });
+        let input_context = extracted_bad_path.is_some()
+            || chain.iter().any(|message| {
+                let message = message.to_ascii_lowercase();
+                message.starts_with("failed to read") || message.starts_with("failed to load")
+            });
+        if output_context {
+            push_hint(
+                &mut out,
+                "Create the parent directory for the output path named above, then retry.",
+            );
+        } else if input_context {
+            push_hint(&mut out, "Verify the input path exists and is readable.");
+            push_hint(
+                &mut out,
+                "Use an absolute path to avoid working-directory confusion.",
+            );
+        } else {
+            push_hint(
+                &mut out,
+                "Check the path for the failed operation; for output files, ensure the parent directory exists.",
+            );
+        }
     }
 
     if haystack.contains("base ref") && haystack.contains("not found") {
@@ -337,6 +365,124 @@ fn levenshtein(a: &str, b: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
+
+    #[test]
+    fn contextual_not_found_gets_file_recovery_in_any_locale() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to read baseline from missing-baseline");
+        let rendered = super::format(&err);
+        anyhow::ensure!(rendered.contains("Failed to read baseline from missing-baseline"));
+        anyhow::ensure!(rendered.contains("Verify the input path exists and is readable."));
+        anyhow::ensure!(rendered.contains("Use an absolute path"));
+        anyhow::ensure!(!rendered.contains("Run `tokmd --help`"));
+        anyhow::ensure!(!rendered.contains("Unrecognized subcommand"));
+        Ok(())
+    }
+
+    #[test]
+    fn contextual_unix_not_found_does_not_suggest_subcommand_help() -> anyhow::Result<()> {
+        let err = anyhow!("Failed to read baseline from baseline.json: No such file or directory");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn alternate_missing_path_prefix_preserves_path_and_typo_guidance() -> anyhow::Result<()> {
+        let path_error = anyhow!("Input path does not exist: receipts/current.json");
+        let path_hints = super::suggestions(&path_error);
+        anyhow::ensure!(path_hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!path_hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+
+        let typo_error = anyhow!("Input path does not exist: anolyze");
+        let typo_hints = super::suggestions(&typo_error);
+        anyhow::ensure!(
+            typo_hints
+                .iter()
+                .any(|h| h.contains("Did you mean the subcommand `analyze`?"))
+        );
+        anyhow::ensure!(!typo_hints.iter().any(|h| h.contains("input path exists")));
+        Ok(())
+    }
+
+    #[test]
+    fn contextual_not_found_preserves_diff_recovery() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to load diff source 'receipts/before.json'");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(
+            hints
+                .iter()
+                .any(|h| h.contains("ensure they both exist locally"))
+        );
+        anyhow::ensure!(
+            hints
+                .iter()
+                .any(|h| h.contains("ensure the branch, tag, or commit exists"))
+        );
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn permission_denied_does_not_get_missing_file_guidance() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "access denied",
+        ))
+        .context("Failed to read baseline from baseline.json");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn output_not_found_gets_parent_directory_recovery() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to write badge to missing-output/badge.svg");
+        let rendered = super::format(&err);
+        anyhow::ensure!(rendered.contains("missing-output/badge.svg"));
+        anyhow::ensure!(rendered.contains("Create the parent directory for the output path"));
+        anyhow::ensure!(!rendered.contains("input path exists"));
+        anyhow::ensure!(!rendered.contains("Use an absolute path"));
+        anyhow::ensure!(!rendered.contains("Run `tokmd --help`"));
+        Ok(())
+    }
+
+    #[test]
+    fn unclassified_not_found_does_not_assume_an_input_read() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ));
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("for output files")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_json_does_not_get_missing_file_guidance() -> anyhow::Result<()> {
+        let err = anyhow!("Failed to parse baseline JSON from baseline.json: expected value");
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("tokmd JSON receipt")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
 
     use super::{format, suggestions};
 

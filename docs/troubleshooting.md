@@ -2,6 +2,26 @@
 
 This guide covers common issues when using `tokmd` and how to resolve them.
 
+## Missing Receipt or Baseline Files
+
+If a command reports `Failed to read baseline from ...` or another missing-file
+error, check the file named in the error and the current working directory.
+An explicit CLI path such as `--baseline baseline.json` is relative to that
+directory. Correct the path or pass an absolute path, then retry the same
+command. A missing file produces an error before gate JSON is written to stdout.
+
+The file-recovery hints also recognize operating-system `NotFound` errors on
+Windows and in other locales. A missing file inside a command does not imply
+that the command name was misspelled; subcommand suggestions apply to explicit
+missing bare-path tokens instead.
+
+## Missing Output Directories
+
+If `tokmd badge --metric lines --output path/to/badge.svg` reports that it could not write the
+badge, create the output file's parent directory and retry the same command.
+The error names the output path, and its recovery hint concerns that directory.
+The input can already exist. A missing output directory produces no SVG stdout.
+
 ## Files Not Appearing in Scans
 
 ### Symptom
