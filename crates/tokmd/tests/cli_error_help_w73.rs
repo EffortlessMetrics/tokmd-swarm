@@ -127,6 +127,45 @@ fn error_missing_gate_baseline_has_file_guidance_and_recovers() -> anyhow::Resul
     Ok(())
 }
 
+#[test]
+fn error_missing_badge_output_directory_has_output_guidance_and_recovers() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let config = dir.path().join("tokmd.toml");
+    std::fs::write(&config, "")?;
+    std::fs::write(dir.path().join("main.rs"), "fn main() {}\n")?;
+    let output_dir = dir.path().join("missing-output");
+    let output_path = output_dir.join("badge.svg");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    command
+        .current_dir(dir.path())
+        .env("TOKMD_CONFIG", &config)
+        .args(["badge", ".", "--metric", "lines", "--no-git", "--output"])
+        .arg(&output_path);
+    command
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("Failed to write badge to"))
+        .stderr(predicate::str::contains(
+            output_path.to_string_lossy().into_owned(),
+        ))
+        .stderr(predicate::str::contains(
+            "Create the parent directory for the output path",
+        ))
+        .stderr(predicate::str::contains("input path exists").not())
+        .stderr(predicate::str::contains("Use an absolute path").not())
+        .stderr(predicate::str::contains("Run `tokmd --help`").not());
+
+    std::fs::create_dir(&output_dir)?;
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty());
+    anyhow::ensure!(std::fs::read_to_string(output_path)?.contains("<svg"));
+    Ok(())
+}
+
 // =========================================================================
 // 2. Help output - root
 // =========================================================================

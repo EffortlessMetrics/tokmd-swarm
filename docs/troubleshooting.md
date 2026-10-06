@@ -15,6 +15,13 @@ Windows and in other locales. A missing file inside a command does not imply
 that the command name was misspelled; subcommand suggestions apply to explicit
 missing bare-path tokens instead.
 
+## Missing Output Directories
+
+If `tokmd badge --output path/to/badge.svg` reports that it could not write the
+badge, create the output file's parent directory and retry the same command.
+The error names the output path, and its recovery hint concerns that directory.
+The input can already exist. A missing output directory produces no SVG stdout.
+
 ## Files Not Appearing in Scans
 
 ### Symptom

@@ -215,8 +215,8 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
 
         if !did_you_mean
-            && let Some(bp) = extracted_bad_path
-            && looks_like_bare_subcommand_token(&bp)
+            && let Some(bp) = extracted_bad_path.as_deref()
+            && looks_like_bare_subcommand_token(bp)
         {
             push_hint(
                 &mut out,
@@ -229,11 +229,35 @@ fn suggestions(err: &Error) -> Vec<String> {
             return out;
         }
 
-        push_hint(&mut out, "Verify the input path exists and is readable.");
-        push_hint(
-            &mut out,
-            "Use an absolute path to avoid working-directory confusion.",
-        );
+        let output_context = chain.iter().any(|message| {
+            let message = message.to_ascii_lowercase();
+            message.starts_with("failed to write")
+                || message.starts_with("failed to create output")
+                || message.starts_with("failed to create baseline file")
+                || message.starts_with("failed to create bundle")
+        });
+        let input_context = extracted_bad_path.is_some()
+            || chain.iter().any(|message| {
+                let message = message.to_ascii_lowercase();
+                message.starts_with("failed to read") || message.starts_with("failed to load")
+            });
+        if output_context {
+            push_hint(
+                &mut out,
+                "Create the parent directory for the output path named above, then retry.",
+            );
+        } else if input_context {
+            push_hint(&mut out, "Verify the input path exists and is readable.");
+            push_hint(
+                &mut out,
+                "Use an absolute path to avoid working-directory confusion.",
+            );
+        } else {
+            push_hint(
+                &mut out,
+                "Check the path for the failed operation; for output files, ensure the parent directory exists.",
+            );
+        }
     }
 
     if haystack.contains("base ref") && haystack.contains("not found") {
@@ -416,6 +440,35 @@ mod tests {
         ))
         .context("Failed to read baseline from baseline.json");
         let hints = super::suggestions(&err);
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
+        anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
+        Ok(())
+    }
+
+    #[test]
+    fn output_not_found_gets_parent_directory_recovery() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ))
+        .context("Failed to write badge to missing-output/badge.svg");
+        let rendered = super::format(&err);
+        anyhow::ensure!(rendered.contains("missing-output/badge.svg"));
+        anyhow::ensure!(rendered.contains("Create the parent directory for the output path"));
+        anyhow::ensure!(!rendered.contains("input path exists"));
+        anyhow::ensure!(!rendered.contains("Use an absolute path"));
+        anyhow::ensure!(!rendered.contains("Run `tokmd --help`"));
+        Ok(())
+    }
+
+    #[test]
+    fn unclassified_not_found_does_not_assume_an_input_read() -> anyhow::Result<()> {
+        let err = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "fichier introuvable",
+        ));
+        let hints = super::suggestions(&err);
+        anyhow::ensure!(hints.iter().any(|h| h.contains("for output files")));
         anyhow::ensure!(!hints.iter().any(|h| h.contains("input path exists")));
         anyhow::ensure!(!hints.iter().any(|h| h.contains("Run `tokmd --help`")));
         Ok(())
