@@ -35,6 +35,14 @@ use crate::config::ResolvedConfig;
 #[derive(Debug)]
 pub(crate) struct UsageError(String);
 
+impl UsageError {
+    /// Mark a usage error without discarding its typed causes.
+    #[cfg(any(feature = "analysis", test))]
+    pub(crate) fn context(error: Error, message: &'static str) -> Error {
+        error.context(Self(message.to_string()))
+    }
+}
+
 impl std::fmt::Display for UsageError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(&self.0)

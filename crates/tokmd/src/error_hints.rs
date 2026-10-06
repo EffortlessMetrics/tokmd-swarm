@@ -290,8 +290,8 @@ fn suggestions(err: &Error) -> Vec<String> {
     }
 
     // Match producer context, not arbitrary format words in resource paths.
-    // Gate usage errors flatten their cause chain, so retain the explicit
-    // policy/config parse markers as well as individual chain entries.
+    // Gate usage contexts preserve their causes, so inspect each producer
+    // entry without searching across a pathname and its flattened causes.
     let unparsed_io = missing_file
         || err.chain().any(|cause| {
             cause
@@ -320,8 +320,6 @@ fn suggestions(err: &Error) -> Vec<String> {
             message.starts_with("invalid toml:")
                 || message.starts_with("toml parse error")
                 || message.starts_with("failed to parse policy toml")
-                || message.contains(": invalid toml:")
-                || message.contains(": failed to parse policy toml:")
         });
     if toml_parse {
         push_hint(
@@ -421,18 +419,66 @@ mod tests {
 
     #[test]
     fn toml_policy_and_config_parse_guidance_stays_distinct() -> anyhow::Result<()> {
-        for message in [
-            "Failed to load policy from json/receipt-policy.json: Failed to parse policy TOML: expected a key",
-            "Failed to load ratchet config from json/receipt-ratchet.json: Failed to parse policy TOML: expected a key",
-            "Failed to load TOML config from json/receipt-config.json: invalid TOML: expected a key",
-            "invalid TOML: failed to parse key at line 3",
+        for (context, usage_context) in [
+            (
+                "Failed to load policy from json/receipt-policy.json",
+                "Invalid gate policy",
+            ),
+            (
+                "Failed to load ratchet config from json/receipt-ratchet.json",
+                "Invalid ratchet config",
+            ),
         ] {
-            let hints = super::suggestions(&anyhow!(message));
+            let cause = tokmd_gate::PolicyConfig::from_toml("{broken")
+                .err()
+                .ok_or_else(|| anyhow!("malformed policy unexpectedly parsed"))?;
+            let err = crate::commands::UsageError::context(
+                anyhow::Error::new(cause).context(context),
+                usage_context,
+            );
+            let hints = super::suggestions(&err);
             anyhow::ensure!(
                 hints
                     == vec!["Check TOML syntax and key names in the file named above, then retry."],
-                "wrong guidance for {message}: {hints:?}"
+                "wrong guidance for {context}: {hints:?}"
             );
+            anyhow::ensure!(crate::exit_code(&err) == 2);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_usage_context_retains_localized_io_cause_and_recovery() -> anyhow::Result<()> {
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            for usage_context in ["Invalid gate policy", "Invalid ratchet config"] {
+                let cause = tokmd_gate::GateError::IoError(std::io::Error::new(
+                    kind,
+                    "operation impossible",
+                ));
+                let err = crate::commands::UsageError::context(
+                    anyhow::Error::new(cause)
+                        .context("Failed to load policy from inputs: invalid TOML: config.json"),
+                    usage_context,
+                );
+                anyhow::ensure!(crate::exit_code(&err) == 2);
+                anyhow::ensure!(err.chain().any(|cause| {
+                    cause
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|error| error.kind() == kind)
+                }));
+                let expected = if kind == std::io::ErrorKind::NotFound {
+                    vec![
+                        "Verify the input path exists and is readable.",
+                        "Use an absolute path to avoid working-directory confusion.",
+                    ]
+                } else {
+                    vec![]
+                };
+                anyhow::ensure!(super::suggestions(&err) == expected);
+            }
         }
         Ok(())
     }

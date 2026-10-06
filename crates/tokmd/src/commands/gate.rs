@@ -43,7 +43,7 @@ pub(crate) fn handle(
 
     // Load policy from file, CLI args, or config (may be None if only ratchet is used)
     let policy = policy::load_policy(&args, resolved)
-        .map_err(|error| anyhow::Error::new(super::UsageError(format!("{error:#}"))))?;
+        .map_err(|error| super::UsageError::context(error, "Invalid gate policy"))?;
 
     // Load baseline if provided
     let baseline = policy::load_baseline(&args, resolved)?;
@@ -51,7 +51,7 @@ pub(crate) fn handle(
     // Load selected ratchet rules even when the baseline is absent so an
     // explicitly requested control cannot be silently skipped.
     let ratchet_config = policy::load_ratchet_config(&args, resolved)
-        .map_err(|error| anyhow::Error::new(super::UsageError(format!("{error:#}"))))?;
+        .map_err(|error| super::UsageError::context(error, "Invalid ratchet config"))?;
     if ratchet_config.is_some() && baseline.is_none() {
         bail!("Ratchet rules require a baseline receipt");
     }
