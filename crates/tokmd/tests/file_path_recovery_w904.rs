@@ -667,3 +667,201 @@ fn missing_context_timeout_root_can_be_created_and_bundled() -> anyhow::Result<(
 fn missing_context_base_ref_root_can_be_created_and_bundled() -> anyhow::Result<()> {
     missing_context_root_can_be_created_and_bundled("base ref/missing_root")
 }
+
+// Baseline decoding fails before JSON parsing. Empty policy rules and minimal
+// JSON isolate decoding, parser acceptance, and recovery; they do not establish
+// receipt schema validity or exercise ratchet evaluation.
+fn gate_with_fixture_environment(
+    dir: &Path,
+    receipt: &Path,
+    policy: &Path,
+    baseline: &Path,
+) -> Command {
+    let fixture_command = check_ignore(dir, "environment-probe.rs");
+    let mut command = gate(dir, receipt, policy, baseline);
+    for (name, value) in fixture_command.get_envs() {
+        match value {
+            Some(value) => {
+                command.env(name, value);
+            }
+            None => {
+                command.env_remove(name);
+            }
+        }
+    }
+    command
+}
+
+fn invalid_utf8_baseline_can_be_rewritten_and_retried(selected_path: &str) -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    std::fs::write(dir.path().join("tokmd.toml"), "")?;
+    let receipt = dir.path().join("receipt.json");
+    let policy = dir.path().join("policy.toml");
+    let baseline = dir.path().join(selected_path);
+    let parent = baseline
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("owned baseline fixture must have a parent directory"))?;
+    std::fs::create_dir_all(parent)?;
+    std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+    std::fs::write(&policy, "rules = []\n")?;
+    std::fs::write(&baseline, [0xff_u8])?;
+    anyhow::ensure!(baseline.is_file(), "corrupt baseline fixture is missing");
+
+    let failure = gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
+    let stderr = std::str::from_utf8(&failure.stderr)?;
+    anyhow::ensure!(
+        failure.status.code() == Some(1),
+        "expected baseline decoding error code 1, got {}: {stderr}",
+        failure.status
+    );
+    anyhow::ensure!(
+        failure.stdout.is_empty(),
+        "baseline decoding failure emitted stdout"
+    );
+    anyhow::ensure!(
+        stderr.contains(&format!(
+            "Failed to read baseline from {}",
+            baseline.display()
+        )),
+        "missing selected baseline read context: {stderr}"
+    );
+    anyhow::ensure!(
+        !stderr.contains("Failed to parse baseline JSON"),
+        "invalid UTF-8 reached JSON parser recovery: {stderr}"
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints == vec!["- Save the baseline file named above as valid UTF-8 text, then retry."],
+        "wrong baseline encoding recovery for {selected_path}: {hints:?}"
+    );
+
+    // Rewrite the same selected file and create a fresh child with identical
+    // arguments. No selector or policy change can account for recovery.
+    std::fs::write(&baseline, r#"{"schema_version":2}"#)?;
+    let retry = gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
+    anyhow::ensure!(
+        retry.status.code() == Some(0),
+        "rewritten-baseline retry failed: {}",
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    anyhow::ensure!(retry.stderr.is_empty(), "baseline retry emitted stderr");
+    let result: serde_json::Value = serde_json::from_slice(&retry.stdout)?;
+    anyhow::ensure!(
+        result.get("passed").and_then(serde_json::Value::as_bool) == Some(true),
+        "recovered gate did not pass: {result}"
+    );
+    Ok(())
+}
+
+#[test]
+fn invalid_utf8_baseline_rate_limit_file_can_be_rewritten_and_retried() -> anyhow::Result<()> {
+    invalid_utf8_baseline_can_be_rewritten_and_retried("rate_limit/baseline.json")
+}
+
+#[test]
+fn invalid_utf8_baseline_timeout_file_can_be_rewritten_and_retried() -> anyhow::Result<()> {
+    invalid_utf8_baseline_can_be_rewritten_and_retried("timeout/baseline.json")
+}
+
+#[test]
+fn invalid_utf8_baseline_base_ref_file_can_be_rewritten_and_retried() -> anyhow::Result<()> {
+    invalid_utf8_baseline_can_be_rewritten_and_retried("base ref/not found.json")
+}
+
+#[test]
+fn localized_invalid_data_baseline_reads_keep_only_encoding_recovery() -> anyhow::Result<()> {
+    for context in [
+        "Failed to read baseline from rate_limit/baseline.json",
+        "Failed to read baseline from timeout/baseline.json",
+        "Failed to read baseline from base ref/not found.json",
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "fichier inaccessible",
+        ))
+        .context(context);
+        let hints = hint_lines(&error);
+        anyhow::ensure!(
+            hints == vec!["- Save the baseline file named above as valid UTF-8 text, then retry."],
+            "wrong localized baseline encoding recovery for {context}: {hints:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn invalid_data_outside_baseline_reads_keeps_http_recovery() -> anyhow::Result<()> {
+    for context in [
+        "Failed to load remote manifest: HTTP 429",
+        "Remote manifest: Failed to read baseline from cache.json: HTTP 429",
+        "Failed to read remote manifest: HTTP 429 (Failed to read baseline from cache.json)",
+        "Failed to read baseline from: remote manifest HTTP 429",
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "fichier inaccessible",
+        ))
+        .context(context);
+        let hints = hint_lines(&error);
+        anyhow::ensure!(
+            hints
+                == vec![
+                    "- The upstream service is limiting requests. Wait briefly, then retry.",
+                    "- Honor provider retry windows such as `Retry-After` when available.",
+                    "- Use a smaller input scope if this command contacts a remote service.",
+                ],
+            "lost remote recovery or gained baseline advice for {context}: {hints:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn baseline_encoding_recovery_requires_invalid_data_cause() -> anyhow::Result<()> {
+    let untyped = anyhow::anyhow!("Failed to read baseline from baseline.json: fichier inaccessible");
+    let hints = hint_lines(&untyped);
+    anyhow::ensure!(
+        hints.is_empty(),
+        "untyped baseline read gained encoding advice: {hints:?}"
+    );
+
+    let timeout = anyhow::Error::new(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "request timed out",
+    ))
+    .context("Failed to read baseline from receipts/baseline.json");
+    let hints = hint_lines(&timeout);
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- This looks transient. Retry with backoff after network or service health recovers.",
+                "- Check network, VPN, or proxy settings if retries keep failing.",
+            ],
+        "lost typed timeout recovery or gained encoding advice: {hints:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn invalid_data_toml_parse_cause_keeps_syntax_recovery() -> anyhow::Result<()> {
+    let parse_error = match tokmd_settings::TomlConfig::parse("broken = [") {
+        Ok(_) => anyhow::bail!("invalid TOML control unexpectedly parsed"),
+        Err(error) => error,
+    };
+    // Match TomlConfig::from_file's actual error wrapping without filesystem
+    // dependence. InvalidData alone does not mean a baseline encoding error.
+    let error = anyhow::Error::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        parse_error,
+    ))
+    .context("Failed to load TOML config from tokmd.toml");
+    let hints = hint_lines(&error);
+    anyhow::ensure!(
+        hints == vec!["- Check TOML syntax and key names in the file named above, then retry."],
+        "lost TOML syntax recovery or gained baseline encoding advice: {hints:?}"
+    );
+    Ok(())
+}
