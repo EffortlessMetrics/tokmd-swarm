@@ -287,7 +287,7 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
             &mut out,
             "Replace the non-directory output parent with a directory, then retry.",
         ),
-        LocalRecovery::OutputOther => {},
+        LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);
