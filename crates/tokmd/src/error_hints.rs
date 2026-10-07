@@ -178,7 +178,43 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     // A typed local file-creation error takes precedence over provider words
     // that happen to appear in the selected output pathname.
     if output_create && native_io {
-        return Some(LocalRecovery::OutputOther);
+        // Inspect only the native cause; the output pathname can contain words
+        // such as "timeout" or "rate_limit" without a remote failure.
+        let transient_cause = err
+            .chain()
+            .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+            .any(|cause| {
+                if matches!(
+                    cause.kind(),
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionRefused
+                        | std::io::ErrorKind::BrokenPipe
+                ) {
+                    return true;
+                }
+                let message = cause.to_string().to_ascii_lowercase();
+                [
+                    "timed out",
+                    "timeout",
+                    "temporary",
+                    "temporarily",
+                    "connection reset",
+                    "connection refused",
+                    "broken pipe",
+                    "dns",
+                    "network error",
+                    "service unavailable",
+                    "http 503",
+                    "status 503",
+                ]
+                .iter()
+                .any(|signal| message.contains(signal))
+            });
+        return Some(if transient_cause {
+            LocalRecovery::Transient
+        } else {
+            LocalRecovery::OutputOther
+        });
     }
     if !native_io
         && json_receipt_context(chain)
