@@ -19,14 +19,241 @@ fn known_subcommands() -> Vec<String> {
         .collect()
 }
 
-/// Typed context for a failed baseline read whose path is a directory.
-#[derive(Debug)]
-pub(crate) struct BaselineDirectoryRead;
+/// Known UTF-8 JSON reader roles; file loading adds positive directory evidence.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum FileRole {
+    Baseline,
+    Receipt,
+}
 
-impl std::fmt::Display for BaselineDirectoryRead {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("Expected a baseline JSON file, but found a directory")
+impl FileRole {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Baseline => "baseline",
+            Self::Receipt => "receipt",
+        }
     }
+}
+
+/// Typed context added after a failed read and positive directory metadata.
+#[derive(Debug)]
+pub(crate) struct DirectoryRead(pub(crate) FileRole);
+
+impl std::fmt::Display for DirectoryRead {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Expected a {} JSON file, but found a directory",
+            self.0.name()
+        )
+    }
+}
+
+enum LocalRecovery {
+    Directory(FileRole),
+    Encoding(FileRole),
+    Missing,
+    Denied,
+    Json,
+    Toml,
+    Transient,
+}
+
+fn has_context(chain: &[String], prefixes: &[&str]) -> bool {
+    chain.iter().any(|message| {
+        let message = message.to_ascii_lowercase();
+        prefixes.iter().any(|prefix| message.starts_with(prefix))
+    })
+}
+
+fn local_file_context(chain: &[String]) -> bool {
+    has_context(
+        chain,
+        &[
+            "failed to access path ",
+            "failed to read ",
+            "failed to open ",
+            "failed to resolve scan root ",
+            "failed to resolve bounded path ",
+            "failed to load policy from ",
+            "failed to load ratchet config from ",
+            "failed to load toml config from ",
+            "failed to write ",
+            "failed to create ",
+        ],
+    )
+}
+
+fn explicit_missing_path(chain: &[String]) -> bool {
+    has_context(
+        chain,
+        &[
+            "path not found: ",
+            "input path does not exist: ",
+            "bounded path not found: ",
+        ],
+    )
+}
+
+fn json_receipt_context(chain: &[String]) -> bool {
+    has_context(
+        chain,
+        &[
+            "failed to parse json from ",
+            "failed to parse baseline json",
+            "failed to parse lang receipt",
+            "failed to parse language receipt",
+            "failed to parse run receipt",
+            "failed to parse run language receipt",
+            "failed to parse export rows",
+        ],
+    )
+}
+
+fn io_kind(err: &Error, kind: std::io::ErrorKind) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == kind)
+            || cause
+                .downcast_ref::<serde_json::Error>()
+                .is_some_and(|error| error.io_error_kind() == Some(kind))
+    })
+}
+
+// Select one authoritative recovery before examining arbitrary pathname text.
+// String-only legacy and remote errors retain the fallback heuristics below.
+fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
+    if let Some(directory) = err.downcast_ref::<DirectoryRead>() {
+        return Some(LocalRecovery::Directory(directory.0));
+    }
+    if io_kind(err, std::io::ErrorKind::TimedOut) {
+        return Some(LocalRecovery::Transient);
+    }
+    let git_subprocess = has_context(chain, &["failed to spawn git worktree for "]);
+    if local_file_context(chain) && !git_subprocess {
+        if io_kind(err, std::io::ErrorKind::NotFound) {
+            return Some(LocalRecovery::Missing);
+        }
+        if io_kind(err, std::io::ErrorKind::PermissionDenied) {
+            return Some(LocalRecovery::Denied);
+        }
+    }
+    if explicit_missing_path(chain) {
+        return Some(LocalRecovery::Missing);
+    }
+    if io_kind(err, std::io::ErrorKind::InvalidData) {
+        if has_context(chain, &["failed to read baseline from "]) {
+            return Some(LocalRecovery::Encoding(FileRole::Baseline));
+        }
+        if has_context(chain, &["failed to read receipt from "]) {
+            return Some(LocalRecovery::Encoding(FileRole::Receipt));
+        }
+    }
+
+    let native_io = err
+        .chain()
+        .any(|cause| cause.downcast_ref::<std::io::Error>().is_some());
+    if !native_io
+        && json_receipt_context(chain)
+        && err.chain().any(|cause| {
+            cause
+                .downcast_ref::<serde_json::Error>()
+                .is_some_and(|error| !error.is_io())
+        })
+    {
+        return Some(LocalRecovery::Json);
+    }
+
+    let toml_source = err.chain().any(|cause| {
+        cause.downcast_ref::<toml::de::Error>().is_some()
+            || cause
+                .downcast_ref::<std::io::Error>()
+                .filter(|error| error.kind() == std::io::ErrorKind::InvalidData)
+                .and_then(std::io::Error::get_ref)
+                .is_some_and(|source| source.downcast_ref::<toml::de::Error>().is_some())
+    });
+    if toml_source
+        && has_context(
+            chain,
+            &[
+                "failed to load policy from ",
+                "failed to load ratchet config from ",
+                "failed to load toml config from ",
+                "failed to parse policy toml",
+            ],
+        )
+    {
+        return Some(LocalRecovery::Toml);
+    }
+    None
+}
+
+fn diff_hints(out: &mut Vec<String>) {
+    push_hint(out, "If you meant to compare files, ensure they both exist locally.");
+    push_hint(out, "If you meant to compare git refs, ensure the branch, tag, or commit exists.");
+}
+
+fn json_hints(out: &mut Vec<String>) {
+    push_hint(
+        out,
+        "Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
+    );
+    push_hint(out, "If it was hand-edited or truncated, regenerate the receipt and retry.");
+}
+
+fn transient_hints(out: &mut Vec<String>) {
+    push_hint(
+        out,
+        "This looks transient. Retry with backoff after network or service health recovers.",
+    );
+    push_hint(out, "Check network, VPN, or proxy settings if retries keep failing.");
+}
+
+fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let diff = has_context(chain, &["failed to load diff source "]);
+    match recovery {
+        LocalRecovery::Directory(role) => push_hint(
+            &mut out,
+            &format!(
+                "The {} path is a directory. Select a JSON file, then retry.",
+                role.name()
+            ),
+        ),
+        LocalRecovery::Encoding(role) => push_hint(
+            &mut out,
+            &format!(
+                "Save the {} file named above as valid UTF-8 text, then retry.",
+                role.name()
+            ),
+        ),
+        LocalRecovery::Missing => {
+            if missing_path_hints(chain, &mut out) {
+                return out;
+            }
+            if diff {
+                diff_hints(&mut out);
+            }
+        }
+        LocalRecovery::Denied => {
+            if diff {
+                diff_hints(&mut out);
+            }
+        }
+        LocalRecovery::Json => {
+            if diff {
+                diff_hints(&mut out);
+            }
+            json_hints(&mut out);
+        }
+        LocalRecovery::Toml => push_hint(
+            &mut out,
+            "Check TOML syntax and key names in the file named above, then retry.",
+        ),
+        LocalRecovery::Transient => transient_hints(&mut out),
+    }
+    out
 }
 
 pub(crate) fn format(err: &Error) -> String {
@@ -85,76 +312,15 @@ fn suggestions(err: &Error) -> Vec<String> {
     let haystack = chain.join(" | ").to_ascii_lowercase();
     let mut out: Vec<String> = Vec::new();
 
-    if err.downcast_ref::<BaselineDirectoryRead>().is_some() {
-        push_hint(
-            &mut out,
-            "The baseline path is a directory. Select a JSON file, then retry.",
-        );
-        return out;
+    if let Some(recovery) = classify_recovery(err, &chain) {
+        return authoritative_hints(recovery, &chain);
     }
 
-    // Stable file failures can carry network keywords in their resource paths.
-    // Match typed causes and local producer context, or explicit path markers,
-    // before considering the text-only remote-service recovery hints.
-    let missing_file = err.chain().any(|cause| {
-        cause
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-    });
-    let unparsed_io = missing_file
-        || err.chain().any(|cause| {
-            cause
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
-        });
-    let local_file_context = chain.iter().any(|message| {
-        let message = message.to_ascii_lowercase();
-        [
-            "failed to access path ",
-            "failed to read ",
-            "failed to open ",
-            "failed to resolve scan root ",
-            "failed to resolve bounded path ",
-            "failed to load policy from ",
-            "failed to load ratchet config from ",
-            "failed to load toml config from ",
-            "failed to write ",
-            "failed to create ",
-        ]
-        .iter()
-        .any(|prefix| message.starts_with(prefix))
-    });
-    let explicit_missing_path = chain.iter().any(|message| {
-        let message = message.to_ascii_lowercase();
-        [
-            "path not found: ",
-            "input path does not exist: ",
-            "bounded path not found: ",
-        ]
-        .iter()
-        .any(|prefix| message.starts_with(prefix))
-    });
-    // Baselines are read as UTF-8 before JSON parsing. InvalidData in other
-    // producers can represent parser failures, so keep this context specific.
-    let invalid_baseline_data = err.chain().any(|cause| {
-        cause
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::InvalidData)
-    }) && chain.iter().any(|message| {
-        message
-            .to_ascii_lowercase()
-            .starts_with("failed to read baseline from ")
-    });
+    // Unclassified and legacy string-only failures retain their original advice.
+    let missing_file = io_kind(err, std::io::ErrorKind::NotFound);
+    let unparsed_io = missing_file || io_kind(err, std::io::ErrorKind::PermissionDenied);
     let stable_local_failure =
-        (unparsed_io && local_file_context) || explicit_missing_path || invalid_baseline_data;
-
-    if invalid_baseline_data {
-        push_hint(
-            &mut out,
-            "Save the baseline file named above as valid UTF-8 text, then retry.",
-        );
-        return out;
-    }
+        (unparsed_io && local_file_context(&chain)) || explicit_missing_path(&chain);
 
     if haystack.contains("git is not available on path")
         || haystack.contains("requires the 'git' feature")
@@ -209,14 +375,7 @@ fn suggestions(err: &Error) -> Vec<String> {
             || haystack.contains("http 503")
             || haystack.contains("status 503"))
     {
-        push_hint(
-            &mut out,
-            "This looks transient. Retry with backoff after network or service health recovers.",
-        );
-        push_hint(
-            &mut out,
-            "Check network, VPN, or proxy settings if retries keep failing.",
-        );
+        transient_hints(&mut out);
     }
 
     if haystack.contains("parent traversal")
@@ -244,100 +403,13 @@ fn suggestions(err: &Error) -> Vec<String> {
 
     // OS error messages vary by platform and locale. Use the typed cause before
     // falling back to legacy string-only missing-path diagnostics.
-    if missing_file
+    if (missing_file
         || haystack.contains("path not found")
         || haystack.contains("input path does not exist")
-        || haystack.contains("no such file or directory")
+        || haystack.contains("no such file or directory"))
+        && missing_path_hints(&chain, &mut out)
     {
-        let mut did_you_mean = false;
-
-        let mut extracted_bad_path = None;
-
-        // Only an explicit missing bare path can be a typoed subcommand.
-        if haystack.contains("path not found") || haystack.contains("input path does not exist") {
-            // Find the original path string from the chain
-            for e in err.chain() {
-                let e_str = e.to_string();
-                if let Some(bad_path) = e_str
-                    .strip_prefix("Path not found: ")
-                    .or_else(|| e_str.strip_prefix("Input path does not exist: "))
-                {
-                    let bad_path = bad_path.trim();
-                    extracted_bad_path = Some(bad_path.to_string());
-                    if looks_like_bare_subcommand_token(bad_path) {
-                        let known = known_subcommands();
-
-                        let mut best_match = None;
-                        let mut best_dist = usize::MAX;
-
-                        for k in &known {
-                            let d = levenshtein(bad_path, k);
-                            if d < best_dist {
-                                best_dist = d;
-                                best_match = Some(k.as_str());
-                            }
-                        }
-
-                        if let Some(m) = best_match {
-                            // Max distance 2 for a typo, or proportional to length
-                            let threshold = std::cmp::max(2, m.len() / 3);
-                            if best_dist <= threshold && best_dist > 0 {
-                                push_hint(&mut out, &format!("Did you mean the subcommand `{m}`?"));
-                                did_you_mean = true;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
-        if !did_you_mean
-            && let Some(bp) = extracted_bad_path.as_deref()
-            && looks_like_bare_subcommand_token(bp)
-        {
-            push_hint(
-                &mut out,
-                "Run `tokmd --help` to see a list of available subcommands.",
-            );
-            return out;
-        }
-
-        if did_you_mean {
-            return out;
-        }
-
-        let output_context = chain.iter().any(|message| {
-            let message = message.to_ascii_lowercase();
-            message.starts_with("failed to write")
-                || message.starts_with("failed to create output")
-                || message.starts_with("failed to create baseline file")
-                || message.starts_with("failed to create bundle")
-        });
-        let input_context = extracted_bad_path.is_some()
-            || chain.iter().any(|message| {
-                let message = message.to_ascii_lowercase();
-                message.starts_with("failed to access path ")
-                    || message.starts_with("failed to read")
-                    || message.starts_with("failed to load")
-            });
-        if output_context {
-            push_hint(
-                &mut out,
-                "Create the parent directory for the output path named above, then retry.",
-            );
-        } else if input_context {
-            push_hint(&mut out, "Verify the input path exists and is readable.");
-            push_hint(
-                &mut out,
-                "Use an absolute path to avoid working-directory confusion.",
-            );
-        } else {
-            push_hint(
-                &mut out,
-                "Check the path for the failed operation; for output files, ensure the parent directory exists.",
-            );
-        }
+        return out;
     }
 
     if !stable_local_failure && haystack.contains("base ref") && haystack.contains("not found") {
@@ -352,14 +424,7 @@ fn suggestions(err: &Error) -> Vec<String> {
     }
 
     if haystack.contains("failed to load diff source") || haystack.contains("invalid reference") {
-        push_hint(
-            &mut out,
-            "If you meant to compare files, ensure they both exist locally.",
-        );
-        push_hint(
-            &mut out,
-            "If you meant to compare git refs, ensure the branch, tag, or commit exists.",
-        );
+        diff_hints(&mut out);
     }
 
     if haystack.contains("unknown metric/finding key") {
@@ -372,21 +437,7 @@ fn suggestions(err: &Error) -> Vec<String> {
     // Match producer context, not arbitrary format words in resource paths.
     // Gate usage contexts preserve their causes, so inspect each producer
     // entry without searching across a pathname and its flattened causes.
-    let json_receipt_parse = !unparsed_io
-        && chain.iter().any(|message| {
-            let message = message.to_ascii_lowercase();
-            [
-                "failed to parse json from ",
-                "failed to parse baseline json",
-                "failed to parse lang receipt",
-                "failed to parse language receipt",
-                "failed to parse run receipt",
-                "failed to parse run language receipt",
-                "failed to parse export rows",
-            ]
-            .iter()
-            .any(|prefix| message.starts_with(prefix))
-        });
+    let json_receipt_parse = !unparsed_io && json_receipt_context(&chain);
     let toml_parse = !unparsed_io
         && !json_receipt_parse
         && chain.iter().any(|message| {
@@ -405,17 +456,93 @@ fn suggestions(err: &Error) -> Vec<String> {
     // JSON receipt / baseline failures retain receipt recovery even under a
     // directory named `toml`. Unrelated JSON evidence/config is not a receipt.
     if json_receipt_parse {
-        push_hint(
-            &mut out,
-            "Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
-        );
-        push_hint(
-            &mut out,
-            "If it was hand-edited or truncated, regenerate the receipt and retry.",
-        );
+        json_hints(&mut out);
     }
 
     out
+}
+
+fn missing_path_hints(chain: &[String], out: &mut Vec<String>) -> bool {
+    let mut did_you_mean = false;
+
+    let mut extracted_bad_path = None;
+
+    // Only an explicit missing bare path can be a typoed subcommand.
+    if has_context(chain, &["path not found: ", "input path does not exist: "]) {
+        // Find the original path string from the chain
+        for e_str in chain {
+            if let Some(bad_path) = e_str
+                .strip_prefix("Path not found: ")
+                .or_else(|| e_str.strip_prefix("Input path does not exist: "))
+            {
+                let bad_path = bad_path.trim();
+                extracted_bad_path = Some(bad_path.to_string());
+                if looks_like_bare_subcommand_token(bad_path) {
+                    let known = known_subcommands();
+
+                    let mut best_match = None;
+                    let mut best_dist = usize::MAX;
+
+                    for k in &known {
+                        let d = levenshtein(bad_path, k);
+                        if d < best_dist {
+                            best_dist = d;
+                            best_match = Some(k.as_str());
+                        }
+                    }
+
+                    if let Some(m) = best_match {
+                        // Max distance 2 for a typo, or proportional to length
+                        let threshold = std::cmp::max(2, m.len() / 3);
+                        if best_dist <= threshold && best_dist > 0 {
+                            push_hint(out, &format!("Did you mean the subcommand `{m}`?"));
+                            did_you_mean = true;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    if !did_you_mean
+        && let Some(bp) = extracted_bad_path.as_deref()
+        && looks_like_bare_subcommand_token(bp)
+    {
+        push_hint(out, "Run `tokmd --help` to see a list of available subcommands.");
+        return true;
+    }
+
+    if did_you_mean {
+        return true;
+    }
+
+    let output_context = chain.iter().any(|message| {
+        let message = message.to_ascii_lowercase();
+        message.starts_with("failed to write")
+            || message.starts_with("failed to create output")
+            || message.starts_with("failed to create baseline file")
+            || message.starts_with("failed to create bundle")
+    });
+    let input_context = extracted_bad_path.is_some()
+        || chain.iter().any(|message| {
+            let message = message.to_ascii_lowercase();
+            message.starts_with("failed to access path ")
+                || message.starts_with("failed to read")
+                || message.starts_with("failed to load")
+        });
+    if output_context {
+        push_hint(out, "Create the parent directory for the output path named above, then retry.");
+    } else if input_context {
+        push_hint(out, "Verify the input path exists and is readable.");
+        push_hint(out, "Use an absolute path to avoid working-directory confusion.");
+    } else {
+        push_hint(
+            out,
+            "Check the path for the failed operation; for output files, ensure the parent directory exists.",
+        );
+    }
+    false
 }
 
 fn push_hint(out: &mut Vec<String>, hint: &str) {

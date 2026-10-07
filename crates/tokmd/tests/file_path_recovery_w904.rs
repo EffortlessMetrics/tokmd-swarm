@@ -1111,8 +1111,7 @@ fn empty_baseline_file_keeps_json_parse_recovery_and_can_be_rewritten() -> anyho
     Ok(())
 }
 
-const HOSTILE_GATE_INPUT_W904: &str =
-    "rate_limit/timeout/git is not available on PATH/requires the 'git' feature/not inside a git repository/base ref/not found.json";
+const HOSTILE_GATE_INPUT_W904: &str = "rate_limit/timeout/git is not available on PATH/requires the 'git' feature/not inside a git repository/base ref/not found.json";
 
 #[derive(Clone, Copy, Debug)]
 enum GateRecoveryRoleW904 {
@@ -1250,7 +1249,10 @@ fn matrix_gate_journey_w904(
         }
         _ => format!("Failed to read baseline from {}", selected.display()),
     };
-    eprintln!("matrix {state:?}/{role:?}: BEGIN selected={}", selected.display());
+    eprintln!(
+        "matrix {state:?}/{role:?}: BEGIN selected={}",
+        selected.display()
+    );
     let failure =
         matrix_gate_command_w904(role, dir.path(), &selected, &receipt, &policy).output()?;
     eprintln!(
@@ -1284,7 +1286,11 @@ fn matrix_gate_journey_w904(
 
     eprintln!(
         "matrix {state:?}/{role:?}: FAILURE_ORACLE={}",
-        if failure_check.is_ok() { "PASS" } else { "FAIL" }
+        if failure_check.is_ok() {
+            "PASS"
+        } else {
+            "FAIL"
+        }
     );
 
     // Failure-oracle mismatches do not skip the independent repair/retry phase.
@@ -1298,7 +1304,8 @@ fn matrix_gate_journey_w904(
         std::fs::remove_dir(&selected)?;
     }
     std::fs::write(&selected, r#"{"schema_version":2}"#)?;
-    let retry = matrix_gate_command_w904(role, dir.path(), &selected, &receipt, &policy).output()?;
+    let retry =
+        matrix_gate_command_w904(role, dir.path(), &selected, &receipt, &policy).output()?;
     eprintln!(
         "matrix {state:?}/{role:?}: retry code={:?} stdout={} stderr={}",
         retry.status.code(),
@@ -1437,7 +1444,10 @@ fn nested_diff_causes_preserve_local_and_json_recovery_order() -> anyhow::Result
         Ok(_) => anyhow::bail!("malformed diff artifact unexpectedly parsed"),
         Err(error) => error,
     };
-    anyhow::ensure!(!parse_error.is_io(), "diff syntax fixture became an IO error");
+    anyhow::ensure!(
+        !parse_error.is_io(),
+        "diff syntax fixture became an IO error"
+    );
     let malformed = anyhow::Error::new(parse_error)
         .context("Failed to parse lang receipt")
         .context(format!("Failed to load diff source '{}'", source.display()));
@@ -1483,8 +1493,9 @@ fn typed_native_and_json_reader_timeouts_keep_transient_recovery() -> anyhow::Re
                 && parse_error.io_error_kind() == Some(std::io::ErrorKind::TimedOut),
             "reader did not preserve its real timeout: {parse_error}"
         );
-        let json_reader = anyhow::Error::new(parse_error)
-            .context(format!("Failed to parse baseline JSON from {selected_path}"));
+        let json_reader = anyhow::Error::new(parse_error).context(format!(
+            "Failed to parse baseline JSON from {selected_path}"
+        ));
         for (origin, error) in [("native", native), ("JSON reader", json_reader)] {
             let hints = hint_lines(&error);
             anyhow::ensure!(
@@ -1510,11 +1521,82 @@ fn native_toml_parser_under_hostile_path_keeps_only_syntax_recovery() -> anyhow:
         std::io::ErrorKind::InvalidData,
         parse_error,
     ))
-    .context(format!("Failed to load TOML config from {HOSTILE_GATE_INPUT_W904}"));
+    .context(format!(
+        "Failed to load TOML config from {HOSTILE_GATE_INPUT_W904}"
+    ));
     let hints = hint_lines(&error);
     anyhow::ensure!(
         hints == vec!["- Check TOML syntax and key names in the file named above, then retry."],
         "native TOML parser gained filename or receipt advice: {hints:?}"
     );
+    Ok(())
+}
+
+#[test]
+fn git_spawn_and_local_temp_failures_keep_operation_precedence() -> anyhow::Result<()> {
+    for kind in [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied,
+    ] {
+        let spawn = anyhow::Error::new(std::io::Error::new(kind, "git is not available on PATH"))
+        .context("Failed to spawn git worktree for main")
+        .context("Failed to create worktree for 'main'")
+        .context("Failed to load diff source 'main'");
+        let mut expected = vec![
+            "- Install git and verify it with `git --version`.",
+            "- If git metrics are optional, disable them with `--no-git`.",
+        ];
+        if kind == std::io::ErrorKind::NotFound {
+            expected.extend([
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]);
+        }
+        expected.extend([
+            "- If you meant to compare files, ensure they both exist locally.",
+            "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+        ]);
+        anyhow::ensure!(
+            hint_lines(&spawn) == expected,
+            "typed Git subprocess lost legacy operation recovery"
+        );
+
+        let local = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+            .context(format!("Failed to create temp dir {HOSTILE_GATE_INPUT_W904}"))
+            .context("Failed to create worktree for 'main'")
+            .context("Failed to load diff source 'main'");
+        let mut expected = Vec::new();
+        if kind == std::io::ErrorKind::NotFound {
+            expected.extend([
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]);
+        }
+        expected.extend([
+            "- If you meant to compare files, ensure they both exist locally.",
+            "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+        ]);
+        anyhow::ensure!(
+            hint_lines(&local) == expected,
+            "local temp-directory failure inherited Git filename advice"
+        );
+
+        let filename = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+            .context(format!(
+                "Failed to read {HOSTILE_GATE_INPUT_W904}/Failed to spawn git worktree for main"
+            ));
+        let expected = if kind == std::io::ErrorKind::NotFound {
+            vec![
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]
+        } else {
+            Vec::new()
+        };
+        anyhow::ensure!(
+            hint_lines(&filename) == expected,
+            "a filename was mistaken for a Git subprocess producer"
+        );
+    }
     Ok(())
 }

@@ -86,23 +86,8 @@ pub(super) fn load_baseline(
     Ok(None)
 }
 
-// Preserve the native read error, adding directory evidence only afterward.
-// Metadata describes the current path; it is not atomic with the failed read.
 fn read_baseline_text(path: &std::path::Path) -> Result<String> {
-    std::fs::read_to_string(path)
-        .map_err(|error| {
-            let directory = matches!(
-                error.kind(),
-                std::io::ErrorKind::IsADirectory | std::io::ErrorKind::PermissionDenied
-            ) && std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir());
-            let error = anyhow::Error::new(error);
-            if directory {
-                error.context(crate::error_hints::BaselineDirectoryRead)
-            } else {
-                error
-            }
-        })
-        .with_context(|| format!("Failed to read baseline from {}", path.display()))
+    super::receipt::read_json_text(path, crate::error_hints::FileRole::Baseline)
 }
 
 /// Load ratchet config from file or TOML config.
