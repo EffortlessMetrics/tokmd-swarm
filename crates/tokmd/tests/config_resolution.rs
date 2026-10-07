@@ -671,3 +671,95 @@ fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Resul
     );
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn ordinary_export_nonfile_output_paths_keep_local_recovery() -> anyhow::Result<()> {
+    for parent_is_file in [false, true] {
+        let dir = tempfile::tempdir()?;
+        let selected_config = dir.path().join("selected.toml");
+        let source = dir.path().join("sample.rs");
+        std::fs::write(&selected_config, "")?;
+        std::fs::write(&source, "pub fn export_fixture() {}\n")?;
+
+        let rate_limit = dir.path().join("rate_limit");
+        let parent = rate_limit.join("timeout");
+        let output_path = parent.join("inventory.json");
+        std::fs::create_dir(&rate_limit)?;
+        if parent_is_file {
+            std::fs::write(&parent, "occupied")?;
+        } else {
+            std::fs::create_dir(&parent)?;
+            std::fs::create_dir(&output_path)?;
+        }
+
+        let run = || {
+            let mut command = first_use_command(dir.path(), &selected_config);
+            command
+                .args(["export", "--format", "json", "--output"])
+                .arg(&output_path)
+                .arg(&source);
+            command.output()
+        };
+        let failure = run()?;
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        anyhow::ensure!(
+            failure.status.code() == Some(1) && failure.stdout.is_empty(),
+            "non-file output must fail without stdout: {}: {stderr}",
+            failure.status
+        );
+        anyhow::ensure!(
+            stderr.starts_with(&format!(
+                "Error: Failed to create output file {}",
+                output_path.display()
+            )),
+            "non-file output error omitted selected path: {stderr}"
+        );
+        let expected_hint = if parent_is_file {
+            "- Replace the non-directory output parent with a directory, then retry."
+        } else {
+            "- The output path is a directory. Select a file path, then retry."
+        };
+        let hints = stderr
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == [expected_hint],
+            "non-file output received wrong recovery hints: {hints:?}: {stderr}"
+        );
+
+        if parent_is_file {
+            anyhow::ensure!(
+                std::fs::read_to_string(&parent)? == "occupied",
+                "owned parent-file fixture changed"
+            );
+            std::fs::remove_file(&parent)?;
+            std::fs::create_dir(&parent)?;
+        } else {
+            anyhow::ensure!(
+                output_path.is_dir() && std::fs::read_dir(&output_path)?.next().is_none(),
+                "owned output-directory fixture changed"
+            );
+            std::fs::remove_dir(&output_path)?;
+        }
+        let success = run()?;
+        anyhow::ensure!(
+            success.status.code() == Some(0)
+                && success.stdout.is_empty()
+                && success.stderr.is_empty(),
+            "same-argv non-file repair failed: {}: {}",
+            success.status,
+            String::from_utf8_lossy(&success.stderr)
+        );
+        let receipt: tokmd_types::ExportReceipt =
+            serde_json::from_slice(&std::fs::read(&output_path)?)?;
+        anyhow::ensure!(
+            receipt.mode == "export"
+                && receipt.status == tokmd_types::ScanStatus::Complete
+                && receipt.data.rows.len() == 1,
+            "non-file repair did not write export JSON receipt: {receipt:?}"
+        );
+    }
+    Ok(())
+}
