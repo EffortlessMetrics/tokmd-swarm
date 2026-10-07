@@ -606,3 +606,67 @@ fn analysis_commands_without_feature_preserve_error() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    let source = dir.path().join("sample.rs");
+    std::fs::write(&selected_config, "")?;
+    std::fs::write(&source, "pub fn export_fixture() {}\n")?;
+
+    // These names must never turn a local output failure into provider advice.
+    let parent = dir.path().join("rate_limit").join("timeout");
+    let output_path = parent.join("inventory.json");
+    anyhow::ensure!(!parent.exists(), "missing output parent fixture already exists");
+    let run = || {
+        let mut command = first_use_command(dir.path(), &selected_config);
+        command
+            .args(["export", "--format", "json", "--output"])
+            .arg(&output_path)
+            .arg(&source);
+        command.output()
+    };
+
+    let failure = run()?;
+    let stderr = std::str::from_utf8(&failure.stderr)?;
+    anyhow::ensure!(
+        failure.status.code() == Some(1) && failure.stdout.is_empty() && !output_path.exists(),
+        "missing-parent export must fail without output: {}: {stderr}",
+        failure.status
+    );
+    anyhow::ensure!(
+        stderr.starts_with(&format!(
+            "Error: Failed to create output file {}",
+            output_path.display()
+        )),
+        "export error omitted the selected output path: {stderr}"
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints == ["- Create the parent directory for the output path named above, then retry."],
+        "export output failure gave wrong recovery hints: {hints:?}"
+    );
+
+    std::fs::create_dir_all(&parent)?;
+    let success = run()?;
+    anyhow::ensure!(
+        success.status.code() == Some(0)
+            && success.stdout.is_empty()
+            && success.stderr.is_empty(),
+        "same-argv export retry failed or emitted console output: {}: {}",
+        success.status,
+        String::from_utf8_lossy(&success.stderr)
+    );
+    let receipt: tokmd_types::ExportReceipt = serde_json::from_slice(&std::fs::read(&output_path)?)?;
+    anyhow::ensure!(
+        receipt.mode == "export"
+            && receipt.status == tokmd_types::ScanStatus::Complete
+            && receipt.data.rows.len() == 1,
+        "recovered export file has wrong receipt content: {receipt:?}"
+    );
+    Ok(())
+}
