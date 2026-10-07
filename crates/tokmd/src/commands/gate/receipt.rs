@@ -18,8 +18,7 @@ pub(super) fn load_or_compute_receipt(
     let input = args.input.clone().unwrap_or_else(|| ".".into());
 
     if input.extension().map(|e| e == "json").unwrap_or(false) && input.exists() {
-        let content = std::fs::read_to_string(&input)
-            .with_context(|| format!("Failed to read receipt from {}", input.display()))?;
+        let content = read_json_text(&input, crate::error_hints::FileRole::Receipt)?;
         return serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse JSON from {}", input.display()));
     }
@@ -32,6 +31,25 @@ pub(super) fn load_or_compute_receipt(
         }
     });
     compute_receipt(&input, preset, global)
+}
+
+// Preserve native read errors; metadata describes the current path and is not
+// atomic with the failed read. Successful reads never require a metadata probe.
+pub(super) fn read_json_text(path: &Path, role: crate::error_hints::FileRole) -> Result<String> {
+    std::fs::read_to_string(path)
+        .map_err(|error| {
+            let directory = matches!(
+                error.kind(),
+                std::io::ErrorKind::IsADirectory | std::io::ErrorKind::PermissionDenied
+            ) && std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir());
+            let error = anyhow::Error::new(error);
+            if directory {
+                error.context(crate::error_hints::DirectoryRead(role))
+            } else {
+                error
+            }
+        })
+        .with_context(|| format!("Failed to read {} from {}", role.name(), path.display()))
 }
 
 fn compute_receipt(

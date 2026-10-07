@@ -1110,3 +1110,495 @@ fn empty_baseline_file_keeps_json_parse_recovery_and_can_be_rewritten() -> anyho
     );
     Ok(())
 }
+
+const HOSTILE_GATE_INPUT_W904: &str = "rate_limit/timeout/git is not available on PATH/requires the 'git' feature/not inside a git repository/base ref/not found.json";
+
+#[derive(Clone, Copy, Debug)]
+enum GateRecoveryRoleW904 {
+    CliBaseline,
+    ConfigBaseline,
+    Receipt,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum GateRecoveryStateW904 {
+    Missing,
+    Directory,
+    InvalidUtf8,
+    MalformedJson,
+}
+
+fn matrix_gate_command_w904(
+    role: GateRecoveryRoleW904,
+    dir: &Path,
+    selected: &Path,
+    receipt: &Path,
+    policy: &Path,
+) -> Command {
+    let fixture_command = check_ignore(dir, "environment-probe.rs");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    command
+        .current_dir(dir)
+        .args(["--no-progress", "gate", "--format", "json"]);
+    match role {
+        GateRecoveryRoleW904::Receipt => {
+            command.arg(selected);
+        }
+        GateRecoveryRoleW904::CliBaseline | GateRecoveryRoleW904::ConfigBaseline => {
+            command.arg(receipt);
+        }
+    }
+    command.arg("--policy").arg(policy);
+    if matches!(role, GateRecoveryRoleW904::CliBaseline) {
+        command.arg("--baseline").arg(selected);
+    }
+    for (name, value) in fixture_command.get_envs() {
+        match value {
+            Some(value) => {
+                command.env(name, value);
+            }
+            None => {
+                command.env_remove(name);
+            }
+        }
+    }
+    command
+}
+
+fn matrix_gate_hints_w904(
+    role: GateRecoveryRoleW904,
+    state: GateRecoveryStateW904,
+) -> Vec<&'static str> {
+    match (role, state) {
+        (_, GateRecoveryStateW904::Missing) => vec![
+            "- Verify the input path exists and is readable.",
+            "- Use an absolute path to avoid working-directory confusion.",
+        ],
+        (GateRecoveryRoleW904::Receipt, GateRecoveryStateW904::Directory) => {
+            vec!["- The receipt path is a directory. Select a JSON file, then retry."]
+        }
+        (_, GateRecoveryStateW904::Directory) => {
+            vec!["- The baseline path is a directory. Select a JSON file, then retry."]
+        }
+        (GateRecoveryRoleW904::Receipt, GateRecoveryStateW904::InvalidUtf8) => {
+            vec!["- Save the receipt file named above as valid UTF-8 text, then retry."]
+        }
+        (_, GateRecoveryStateW904::InvalidUtf8) => {
+            vec!["- Save the baseline file named above as valid UTF-8 text, then retry."]
+        }
+        (_, GateRecoveryStateW904::MalformedJson) => vec![
+            "- Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
+            "- If it was hand-edited or truncated, regenerate the receipt and retry.",
+        ],
+    }
+}
+
+fn matrix_gate_journey_w904(
+    role: GateRecoveryRoleW904,
+    state: GateRecoveryStateW904,
+) -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected = dir.path().join(HOSTILE_GATE_INPUT_W904);
+    let parent = selected
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("owned selected input must have a parent directory"))?;
+    std::fs::create_dir_all(parent)?;
+    let receipt = dir.path().join("current.json");
+    let policy = dir.path().join("policy.toml");
+    std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+    std::fs::write(&policy, "rules = []\n")?;
+    let config = if matches!(role, GateRecoveryRoleW904::ConfigBaseline) {
+        let selected_text = selected
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("selected fixture path must be UTF-8"))?;
+        format!(
+            "[gate]\nbaseline = {}\n",
+            serde_json::to_string(selected_text)?
+        )
+    } else {
+        String::new()
+    };
+    std::fs::write(dir.path().join("tokmd.toml"), config)?;
+    match state {
+        GateRecoveryStateW904::Missing => {
+            anyhow::ensure!(!selected.exists(), "missing input fixture already exists");
+        }
+        GateRecoveryStateW904::Directory => {
+            std::fs::create_dir(&selected)?;
+        }
+        GateRecoveryStateW904::InvalidUtf8 => {
+            std::fs::write(&selected, [0xff_u8])?;
+        }
+        GateRecoveryStateW904::MalformedJson => {
+            std::fs::write(&selected, "{broken")?;
+        }
+    }
+
+    let context = match (role, state) {
+        (GateRecoveryRoleW904::Receipt, GateRecoveryStateW904::Missing) => {
+            format!("Path not found: {}", selected.display())
+        }
+        (GateRecoveryRoleW904::Receipt, GateRecoveryStateW904::MalformedJson) => {
+            format!("Failed to parse JSON from {}", selected.display())
+        }
+        (GateRecoveryRoleW904::Receipt, _) => {
+            format!("Failed to read receipt from {}", selected.display())
+        }
+        (_, GateRecoveryStateW904::MalformedJson) => {
+            format!("Failed to parse baseline JSON from {}", selected.display())
+        }
+        _ => format!("Failed to read baseline from {}", selected.display()),
+    };
+    eprintln!(
+        "matrix {state:?}/{role:?}: BEGIN selected={}",
+        selected.display()
+    );
+    let failure =
+        matrix_gate_command_w904(role, dir.path(), &selected, &receipt, &policy).output()?;
+    eprintln!(
+        "matrix {state:?}/{role:?}: failure code={:?} stdout_bytes={} stderr={}",
+        failure.status.code(),
+        failure.stdout.len(),
+        String::from_utf8_lossy(&failure.stderr)
+    );
+    let failure_check = (|| -> anyhow::Result<()> {
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        anyhow::ensure!(
+            failure.status.code() == Some(1),
+            "expected input failure code 1, got {}: {stderr}",
+            failure.status
+        );
+        anyhow::ensure!(failure.stdout.is_empty(), "input failure emitted stdout");
+        anyhow::ensure!(
+            stderr.contains(&format!("Error: {context}")),
+            "missing full selected-path primary context {context:?}: {stderr}"
+        );
+        let hints = stderr
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == matrix_gate_hints_w904(role, state),
+            "wrong entire input recovery vector: {hints:?}"
+        );
+        Ok(())
+    })();
+
+    eprintln!(
+        "matrix {state:?}/{role:?}: FAILURE_ORACLE={}",
+        if failure_check.is_ok() {
+            "PASS"
+        } else {
+            "FAIL"
+        }
+    );
+
+    // Failure-oracle mismatches do not skip the independent repair/retry phase.
+    // The directory removal is nonrecursive and restricted to an empty fixture.
+    if matches!(state, GateRecoveryStateW904::Directory) {
+        anyhow::ensure!(selected.is_dir(), "owned directory fixture changed type");
+        anyhow::ensure!(
+            std::fs::read_dir(&selected)?.next().is_none(),
+            "owned directory fixture must remain empty"
+        );
+        std::fs::remove_dir(&selected)?;
+    }
+    std::fs::write(&selected, r#"{"schema_version":2}"#)?;
+    let retry =
+        matrix_gate_command_w904(role, dir.path(), &selected, &receipt, &policy).output()?;
+    eprintln!(
+        "matrix {state:?}/{role:?}: retry code={:?} stdout={} stderr={}",
+        retry.status.code(),
+        String::from_utf8_lossy(&retry.stdout),
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    let retry_check = (|| -> anyhow::Result<()> {
+        anyhow::ensure!(
+            retry.status.code() == Some(0),
+            "same-argv retry failed: {}",
+            String::from_utf8_lossy(&retry.stderr)
+        );
+        anyhow::ensure!(retry.stderr.is_empty(), "same-argv retry emitted stderr");
+        let result: serde_json::Value = serde_json::from_slice(&retry.stdout)?;
+        anyhow::ensure!(
+            result.get("passed").and_then(serde_json::Value::as_bool) == Some(true),
+            "same-argv retry did not pass: {result}"
+        );
+        Ok(())
+    })();
+
+    eprintln!(
+        "matrix {state:?}/{role:?}: RETRY_ORACLE={}",
+        if retry_check.is_ok() { "PASS" } else { "FAIL" }
+    );
+
+    let mut errors = Vec::new();
+    if let Err(error) = failure_check {
+        errors.push(format!("failure oracle: {error:#}"));
+    }
+    if let Err(error) = retry_check {
+        errors.push(format!("retry oracle: {error:#}"));
+    }
+    anyhow::ensure!(errors.is_empty(), "{}", errors.join("\n"));
+    Ok(())
+}
+
+fn matrix_gate_state_w904(state: GateRecoveryStateW904) -> anyhow::Result<()> {
+    let mut errors = Vec::new();
+    for role in [
+        GateRecoveryRoleW904::CliBaseline,
+        GateRecoveryRoleW904::ConfigBaseline,
+        GateRecoveryRoleW904::Receipt,
+    ] {
+        match matrix_gate_journey_w904(role, state) {
+            Ok(()) => eprintln!("matrix {state:?}/{role:?}: PASS"),
+            Err(error) => {
+                eprintln!("matrix {state:?}/{role:?}: FAIL {error:#}");
+                errors.push(format!("{state:?}/{role:?}: {error:#}"));
+            }
+        }
+    }
+    anyhow::ensure!(
+        errors.is_empty(),
+        "input recovery matrix failed:\n{}",
+        errors.join("\n")
+    );
+    Ok(())
+}
+
+#[test]
+fn missing_gate_inputs_keep_causal_recovery_and_same_argv_retry() -> anyhow::Result<()> {
+    matrix_gate_state_w904(GateRecoveryStateW904::Missing)
+}
+
+#[test]
+fn directory_gate_inputs_keep_causal_recovery_and_same_argv_retry() -> anyhow::Result<()> {
+    matrix_gate_state_w904(GateRecoveryStateW904::Directory)
+}
+
+#[test]
+fn invalid_utf8_gate_inputs_keep_causal_recovery_and_same_argv_retry() -> anyhow::Result<()> {
+    matrix_gate_state_w904(GateRecoveryStateW904::InvalidUtf8)
+}
+
+#[test]
+fn malformed_json_gate_inputs_keep_causal_recovery_and_same_argv_retry() -> anyhow::Result<()> {
+    matrix_gate_state_w904(GateRecoveryStateW904::MalformedJson)
+}
+
+#[test]
+fn localized_denied_gate_inputs_do_not_gain_filename_advice() -> anyhow::Result<()> {
+    for prefix in [
+        "Failed to read baseline from ",
+        "Failed to read receipt from ",
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "fichier inaccessible",
+        ))
+        .context(format!("{prefix}{HOSTILE_GATE_INPUT_W904}"));
+        let hints = hint_lines(&error);
+        let expected: Vec<String> = vec![];
+        anyhow::ensure!(
+            hints == expected,
+            "denied input gained filename advice for {prefix:?}: {hints:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn nested_diff_causes_preserve_local_and_json_recovery_order() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let source = dir.path().join(HOSTILE_GATE_INPUT_W904);
+    std::fs::create_dir_all(&source)?;
+    let lang_path = source.join("lang.json");
+    // An existing diff directory selects lang.json; its missing artifact is a
+    // real native read failure beneath the actual two producer context shapes.
+    let native = match std::fs::read_to_string(&lang_path) {
+        Ok(_) => anyhow::bail!("missing diff artifact unexpectedly read"),
+        Err(error) => error,
+    };
+    anyhow::ensure!(
+        native.kind() == std::io::ErrorKind::NotFound,
+        "diff artifact fixture produced the wrong native error: {native:?}"
+    );
+    let missing = anyhow::Error::new(native)
+        .context(format!("Failed to read {}", lang_path.display()))
+        .context(format!("Failed to load diff source '{}'", source.display()));
+    let hints = hint_lines(&missing);
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+                "- If you meant to compare files, ensure they both exist locally.",
+                "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+            ],
+        "nested diff read lost local/formal recovery ordering: {hints:?}"
+    );
+
+    std::fs::write(&lang_path, "{broken")?;
+    let content = std::fs::read_to_string(&lang_path)?;
+    let parse_error = match serde_json::from_str::<tokmd_types::LangReceipt>(&content) {
+        Ok(_) => anyhow::bail!("malformed diff artifact unexpectedly parsed"),
+        Err(error) => error,
+    };
+    anyhow::ensure!(
+        !parse_error.is_io(),
+        "diff syntax fixture became an IO error"
+    );
+    let malformed = anyhow::Error::new(parse_error)
+        .context("Failed to parse lang receipt")
+        .context(format!("Failed to load diff source '{}'", source.display()));
+    let hints = hint_lines(&malformed);
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- If you meant to compare files, ensure they both exist locally.",
+                "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+                "- Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
+                "- If it was hand-edited or truncated, regenerate the receipt and retry.",
+            ],
+        "nested diff parse lost formal/JSON recovery ordering: {hints:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn typed_native_and_json_reader_timeouts_keep_transient_recovery() -> anyhow::Result<()> {
+    struct TimedOutInput;
+
+    impl std::io::Read for TimedOutInput {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "operation impossible",
+            ))
+        }
+    }
+
+    for selected_path in ["receipts/baseline.json", HOSTILE_GATE_INPUT_W904] {
+        let native = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "operation impossible",
+        ))
+        .context(format!("Failed to read baseline from {selected_path}"));
+        let parse_error = match serde_json::from_reader::<_, serde_json::Value>(TimedOutInput) {
+            Ok(_) => anyhow::bail!("timed-out JSON reader unexpectedly parsed"),
+            Err(error) => error,
+        };
+        anyhow::ensure!(
+            parse_error.is_io()
+                && parse_error.io_error_kind() == Some(std::io::ErrorKind::TimedOut),
+            "reader did not preserve its real timeout: {parse_error}"
+        );
+        let json_reader = anyhow::Error::new(parse_error).context(format!(
+            "Failed to parse baseline JSON from {selected_path}"
+        ));
+        for (origin, error) in [("native", native), ("JSON reader", json_reader)] {
+            let hints = hint_lines(&error);
+            anyhow::ensure!(
+                hints
+                    == vec![
+                        "- This looks transient. Retry with backoff after network or service health recovers.",
+                        "- Check network, VPN, or proxy settings if retries keep failing.",
+                    ],
+                "typed {origin} timeout gained filename/parser advice: {hints:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_toml_parser_under_hostile_path_keeps_only_syntax_recovery() -> anyhow::Result<()> {
+    let parse_error = match tokmd_settings::TomlConfig::parse("broken = [") {
+        Ok(_) => anyhow::bail!("malformed TOML fixture unexpectedly parsed"),
+        Err(error) => error,
+    };
+    let error = anyhow::Error::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        parse_error,
+    ))
+    .context(format!(
+        "Failed to load TOML config from {HOSTILE_GATE_INPUT_W904}"
+    ));
+    let hints = hint_lines(&error);
+    anyhow::ensure!(
+        hints == vec!["- Check TOML syntax and key names in the file named above, then retry."],
+        "native TOML parser gained filename or receipt advice: {hints:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn git_spawn_and_local_temp_failures_keep_operation_precedence() -> anyhow::Result<()> {
+    for kind in [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied,
+    ] {
+        let spawn = anyhow::Error::new(std::io::Error::new(kind, "git is not available on PATH"))
+            .context("Failed to spawn git worktree for main")
+            .context("Failed to create worktree for 'main'")
+            .context("Failed to load diff source 'main'");
+        let mut expected = vec![
+            "- Install git and verify it with `git --version`.",
+            "- If git metrics are optional, disable them with `--no-git`.",
+        ];
+        if kind == std::io::ErrorKind::NotFound {
+            expected.extend([
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]);
+        }
+        expected.extend([
+            "- If you meant to compare files, ensure they both exist locally.",
+            "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+        ]);
+        anyhow::ensure!(
+            hint_lines(&spawn) == expected,
+            "typed Git subprocess lost legacy operation recovery"
+        );
+
+        let local = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+            .context(format!(
+                "Failed to create temp dir {HOSTILE_GATE_INPUT_W904}"
+            ))
+            .context("Failed to create worktree for 'main'")
+            .context("Failed to load diff source 'main'");
+        let mut expected = Vec::new();
+        if kind == std::io::ErrorKind::NotFound {
+            expected.extend([
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]);
+        }
+        expected.extend([
+            "- If you meant to compare files, ensure they both exist locally.",
+            "- If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+        ]);
+        anyhow::ensure!(
+            hint_lines(&local) == expected,
+            "local temp-directory failure inherited Git filename advice"
+        );
+
+        let filename = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+            .context(format!(
+                "Failed to read {HOSTILE_GATE_INPUT_W904}/Failed to spawn git worktree for main"
+            ));
+        let expected = if kind == std::io::ErrorKind::NotFound {
+            vec![
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]
+        } else {
+            Vec::new()
+        };
+        anyhow::ensure!(
+            hint_lines(&filename) == expected,
+            "a filename was mistaken for a Git subprocess producer"
+        );
+    }
+    Ok(())
+}
