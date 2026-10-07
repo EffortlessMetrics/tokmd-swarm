@@ -606,3 +606,216 @@ fn analysis_commands_without_feature_preserve_error() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    let source = dir.path().join("sample.rs");
+    std::fs::write(&selected_config, "")?;
+    std::fs::write(&source, "pub fn export_fixture() {}\n")?;
+
+    // These names must never turn a local output failure into provider advice.
+    let parent = dir.path().join("rate_limit").join("timeout");
+    let output_path = parent.join("inventory.json");
+    anyhow::ensure!(
+        !parent.exists(),
+        "missing output parent fixture already exists"
+    );
+    let run = || {
+        let mut command = first_use_command(dir.path(), &selected_config);
+        command
+            .args(["export", "--format", "json", "--output"])
+            .arg(&output_path)
+            .arg(&source);
+        command.output()
+    };
+
+    let failure = run()?;
+    let stderr = std::str::from_utf8(&failure.stderr)?;
+    anyhow::ensure!(
+        failure.status.code() == Some(1) && failure.stdout.is_empty() && !output_path.exists(),
+        "missing-parent export must fail without output: {}: {stderr}",
+        failure.status
+    );
+    anyhow::ensure!(
+        stderr.starts_with(&format!(
+            "Error: Failed to create output file {}",
+            output_path.display()
+        )),
+        "export error omitted the selected output path: {stderr}"
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints == ["- Create the parent directory for the output path named above, then retry."],
+        "export output failure gave wrong recovery hints: {hints:?}"
+    );
+
+    std::fs::create_dir_all(&parent)?;
+    let success = run()?;
+    anyhow::ensure!(
+        success.status.code() == Some(0) && success.stdout.is_empty() && success.stderr.is_empty(),
+        "same-argv export retry failed or emitted console output: {}: {}",
+        success.status,
+        String::from_utf8_lossy(&success.stderr)
+    );
+    let receipt: tokmd_types::ExportReceipt =
+        serde_json::from_slice(&std::fs::read(&output_path)?)?;
+    anyhow::ensure!(
+        receipt.mode == "export"
+            && receipt.status == tokmd_types::ScanStatus::Complete
+            && receipt.data.rows.len() == 1,
+        "recovered export file has wrong receipt content: {receipt:?}"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn ordinary_export_nonfile_output_paths_keep_local_recovery() -> anyhow::Result<()> {
+    for parent_is_file in [false, true] {
+        let dir = tempfile::tempdir()?;
+        let selected_config = dir.path().join("selected.toml");
+        let source = dir.path().join("sample.rs");
+        std::fs::write(&selected_config, "")?;
+        std::fs::write(&source, "pub fn export_fixture() {}\n")?;
+
+        let rate_limit = dir.path().join("rate_limit");
+        let parent = rate_limit.join("timeout");
+        let output_path = parent.join("inventory.json");
+        std::fs::create_dir(&rate_limit)?;
+        if parent_is_file {
+            std::fs::write(&parent, "occupied")?;
+        } else {
+            std::fs::create_dir(&parent)?;
+            std::fs::create_dir(&output_path)?;
+        }
+
+        let run = || {
+            let mut command = first_use_command(dir.path(), &selected_config);
+            command
+                .args(["export", "--format", "json", "--output"])
+                .arg(&output_path)
+                .arg(&source);
+            command.output()
+        };
+        let failure = run()?;
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        anyhow::ensure!(
+            failure.status.code() == Some(1) && failure.stdout.is_empty(),
+            "non-file output must fail without stdout: {}: {stderr}",
+            failure.status
+        );
+        anyhow::ensure!(
+            stderr.starts_with(&format!(
+                "Error: Failed to create output file {}",
+                output_path.display()
+            )),
+            "non-file output error omitted selected path: {stderr}"
+        );
+        let expected_hint = if parent_is_file {
+            "- Replace the non-directory output parent with a directory, then retry."
+        } else {
+            "- The output path is a directory. Select a file path, then retry."
+        };
+        let hints = stderr
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == [expected_hint],
+            "non-file output received wrong recovery hints: {hints:?}: {stderr}"
+        );
+
+        if parent_is_file {
+            anyhow::ensure!(
+                std::fs::read_to_string(&parent)? == "occupied",
+                "owned parent-file fixture changed"
+            );
+            std::fs::remove_file(&parent)?;
+            std::fs::create_dir(&parent)?;
+        } else {
+            anyhow::ensure!(
+                output_path.is_dir() && std::fs::read_dir(&output_path)?.next().is_none(),
+                "owned output-directory fixture changed"
+            );
+            std::fs::remove_dir(&output_path)?;
+        }
+        let success = run()?;
+        anyhow::ensure!(
+            success.status.code() == Some(0)
+                && success.stdout.is_empty()
+                && success.stderr.is_empty(),
+            "same-argv non-file repair failed: {}: {}",
+            success.status,
+            String::from_utf8_lossy(&success.stderr)
+        );
+        let receipt: tokmd_types::ExportReceipt =
+            serde_json::from_slice(&std::fs::read(&output_path)?)?;
+        anyhow::ensure!(
+            receipt.mode == "export"
+                && receipt.status == tokmd_types::ScanStatus::Complete
+                && receipt.data.rows.len() == 1,
+            "non-file repair did not write export JSON receipt: {receipt:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_export_output_timeout_stays_transient_without_filename_advice() -> anyhow::Result<()> {
+    let context = "Failed to create output file rate_limit/timeout/inventory.json";
+    for (kind, expected) in [
+        (
+            std::io::ErrorKind::TimedOut,
+            vec![
+                "- This looks transient. Retry with backoff after network or service health recovers.",
+                "- Check network, VPN, or proxy settings if retries keep failing.",
+            ],
+        ),
+        (std::io::ErrorKind::StorageFull, vec![]),
+    ] {
+        let error =
+            anyhow::Error::new(std::io::Error::new(kind, "operation impossible")).context(context);
+        let rendered = tokmd::format_error(&error);
+        let hints = rendered
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == expected,
+            "wrong typed export output recovery for {kind:?}: {hints:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_export_output_connection_causes_keep_transient_recovery() -> anyhow::Result<()> {
+    let context = "Failed to create output file rate_limit/timeout/inventory.json";
+    for native in [
+        std::io::Error::from(std::io::ErrorKind::ConnectionReset),
+        std::io::Error::from(std::io::ErrorKind::ConnectionRefused),
+        std::io::Error::from(std::io::ErrorKind::BrokenPipe),
+        std::io::Error::other("network error"),
+    ] {
+        let kind = native.kind();
+        let rendered = tokmd::format_error(&anyhow::Error::new(native).context(context));
+        let hints = rendered
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints
+                == [
+                    "- This looks transient. Retry with backoff after network or service health recovers.",
+                    "- Check network, VPN, or proxy settings if retries keep failing.",
+                ],
+            "genuine output-creation connection cause {kind:?} lost transient recovery: {hints:?}"
+        );
+    }
+    Ok(())
+}

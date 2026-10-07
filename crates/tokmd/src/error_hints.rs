@@ -65,6 +65,9 @@ enum LocalRecovery {
     Encoding(FileRole),
     Missing,
     Denied,
+    OutputDirectory,
+    OutputParentNotDirectory,
+    OutputOther,
     Json,
     Toml,
     Transient,
@@ -141,6 +144,13 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     if io_kind(err, std::io::ErrorKind::TimedOut) {
         return Some(LocalRecovery::Transient);
     }
+    let output_create = has_context(chain, &["failed to create output file "]);
+    if output_create && io_kind(err, std::io::ErrorKind::IsADirectory) {
+        return Some(LocalRecovery::OutputDirectory);
+    }
+    if output_create && io_kind(err, std::io::ErrorKind::NotADirectory) {
+        return Some(LocalRecovery::OutputParentNotDirectory);
+    }
     let git_subprocess = has_context(chain, &["failed to spawn git worktree for "]);
     if local_file_context(chain) && !git_subprocess {
         if io_kind(err, std::io::ErrorKind::NotFound) {
@@ -165,6 +175,47 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     let native_io = err
         .chain()
         .any(|cause| cause.downcast_ref::<std::io::Error>().is_some());
+    // A typed local file-creation error takes precedence over provider words
+    // that happen to appear in the selected output pathname.
+    if output_create && native_io {
+        // Inspect only the native cause; the output pathname can contain words
+        // such as "timeout" or "rate_limit" without a remote failure.
+        let transient_cause = err
+            .chain()
+            .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+            .any(|cause| {
+                if matches!(
+                    cause.kind(),
+                    std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionRefused
+                        | std::io::ErrorKind::BrokenPipe
+                ) {
+                    return true;
+                }
+                let message = cause.to_string().to_ascii_lowercase();
+                [
+                    "timed out",
+                    "timeout",
+                    "temporary",
+                    "temporarily",
+                    "connection reset",
+                    "connection refused",
+                    "broken pipe",
+                    "dns",
+                    "network error",
+                    "service unavailable",
+                    "http 503",
+                    "status 503",
+                ]
+                .iter()
+                .any(|signal| message.contains(signal))
+            });
+        return Some(if transient_cause {
+            LocalRecovery::Transient
+        } else {
+            LocalRecovery::OutputOther
+        });
+    }
     if !native_io
         && json_receipt_context(chain)
         && err.chain().any(|cause| {
@@ -264,6 +315,15 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
                 diff_hints(&mut out);
             }
         }
+        LocalRecovery::OutputDirectory => push_hint(
+            &mut out,
+            "The output path is a directory. Select a file path, then retry.",
+        ),
+        LocalRecovery::OutputParentNotDirectory => push_hint(
+            &mut out,
+            "Replace the non-directory output parent with a directory, then retry.",
+        ),
+        LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);
