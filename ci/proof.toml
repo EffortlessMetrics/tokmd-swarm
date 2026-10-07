@@ -1123,6 +1123,7 @@ proof = [
   "cargo test -p tokmd --test packet_generate_integration --verbose",
   "cargo test -p tokmd --test render_packets_integration --verbose",
   "cargo test -p tokmd --test ub_review_packet_consumer --verbose",
+  "cargo test -p tokmd --test file_path_recovery_w904 --features analysis --locked --verbose",
 ]
 mutation = true
 coverage = true

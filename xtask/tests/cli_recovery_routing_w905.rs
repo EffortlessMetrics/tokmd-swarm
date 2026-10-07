@@ -129,6 +129,12 @@ fn expect_json(actual: &Value, expected: Value, label: &str) -> Result<()> {
     Ok(())
 }
 
+fn json_field<'a>(value: &'a Value, key: &str) -> Result<&'a Value> {
+    value
+        .get(key)
+        .with_context(|| format!("JSON object is missing required field {key}"))
+}
+
 fn array<'a>(report: &'a Value, key: &str) -> Result<&'a [Value]> {
     report
         .get(key)
@@ -138,21 +144,29 @@ fn array<'a>(report: &'a Value, key: &str) -> Result<&'a [Value]> {
 }
 
 fn expect_single_scope(report: &Value, name: &str, changed_path: &str) -> Result<()> {
-    expect_json(&report["schema"], json!("tokmd.affected.v1"), "schema")?;
-    expect_json(&report["ok"], json!(true), "routing result")?;
     expect_json(
-        &report["changed_files"],
+        json_field(report, "schema")?,
+        json!("tokmd.affected.v1"),
+        "schema",
+    )?;
+    expect_json(json_field(report, "ok")?, json!(true), "routing result")?;
+    expect_json(
+        json_field(report, "changed_files")?,
         json!([changed_path]),
         "changed files",
     )?;
-    expect_json(&report["unknown_files"], json!([]), "unknown files")?;
+    expect_json(
+        json_field(report, "unknown_files")?,
+        json!([]),
+        "unknown files",
+    )?;
     let scopes = array(report, "scopes")?;
     ensure!(scopes.len() == 1, "expected one scope, got {scopes:?}");
     let scope = scopes.first().context("one routed scope must exist")?;
-    expect_json(&scope["name"], json!(name), "scope name")?;
-    expect_json(&scope["kind"], json!("rust"), "scope kind")?;
+    expect_json(json_field(scope, "name")?, json!(name), "scope name")?;
+    expect_json(json_field(scope, "kind")?, json!("rust"), "scope kind")?;
     expect_json(
-        &scope["matched_files"],
+        json_field(scope, "matched_files")?,
         json!([changed_path]),
         "scope files",
     )
@@ -194,8 +208,8 @@ fn write_passed_observation(repo: &Path, routing: &Value) -> Result<PathBuf> {
             "status": "passed",
             "exit_code": 0
         }],
-        "changed_files": routing["changed_files"],
-        "unknown_files": routing["unknown_files"]
+        "changed_files": json_field(routing, "changed_files")?,
+        "unknown_files": json_field(routing, "unknown_files")?
     });
     let path = repo.join("passed-observation.json");
     fs::write(&path, serde_json::to_vec_pretty(&observation)?)
@@ -241,26 +255,38 @@ fn proof_plan_cli_recovery_path_plans_exact_cli_coverage_command() -> Result<()>
     expect_exit(&output, 0)?;
     let report = output_json(&output)?;
     expect_json(
-        &report["schema"],
+        json_field(&report, "schema")?,
         json!("tokmd.proof_plan.v1"),
         "plan schema",
     )?;
-    expect_json(&report["ok"], json!(true), "plan result")?;
-    expect_json(&report["profile"], json!("affected"), "plan profile")?;
+    expect_json(json_field(&report, "ok")?, json!(true), "plan result")?;
     expect_json(
-        &report["changed_files"],
+        json_field(&report, "profile")?,
+        json!("affected"),
+        "plan profile",
+    )?;
+    expect_json(
+        json_field(&report, "changed_files")?,
         json!([CLI_RECOVERY_PATH]),
         "changed files",
     )?;
-    expect_json(&report["unknown_files"], json!([]), "unknown files")?;
+    expect_json(
+        json_field(&report, "unknown_files")?,
+        json!([]),
+        "unknown files",
+    )?;
     let commands = array(&report, "commands")?;
     ensure!(!commands.is_empty(), "mapped path must plan commands");
     for command in commands {
-        expect_json(&command["scope"], json!("tokmd_cli"), "command scope")?;
+        expect_json(
+            json_field(command, "scope")?,
+            json!("tokmd_cli"),
+            "command scope",
+        )?;
     }
     let coverage = commands
         .iter()
-        .filter(|command| command["kind"] == "coverage")
+        .filter(|command| command.get("kind").and_then(Value::as_str) == Some("coverage"))
         .cloned()
         .collect::<Vec<_>>();
     expect_json(
@@ -282,7 +308,7 @@ fn proof_plan_cli_recovery_routing_allows_complete_passed_observation_collection
     expect_exit(&routing_output, 0)?;
     let routing = output_json(&routing_output)?;
     expect_json(
-        &routing["changed_files"],
+        json_field(&routing, "changed_files")?,
         json!([CLI_RECOVERY_PATH]),
         "changed files",
     )?;
@@ -290,21 +316,25 @@ fn proof_plan_cli_recovery_routing_allows_complete_passed_observation_collection
     let output = collect_observation(temp.path(), &observation)?;
     expect_exit(&output, 0)?;
     let report = output_json(&output)?;
-    expect_json(&routing["unknown_files"], json!([]), "routed unknown files")?;
     expect_json(
-        &report["schema"],
+        json_field(&routing, "unknown_files")?,
+        json!([]),
+        "routed unknown files",
+    )?;
+    expect_json(
+        json_field(&report, "schema")?,
         json!("tokmd.proof_executor_observation_collection.v1"),
         "collection schema",
     )?;
-    expect_json(&report["ok"], json!(true), "collection result")?;
+    expect_json(json_field(&report, "ok")?, json!(true), "collection result")?;
     expect_json(
-        &report["counts"],
+        json_field(&report, "counts")?,
         json!({"observations": 1, "selected": 1, "executed": 1,
             "passed": 1, "failed": 0, "artifacts": 1}),
         "collection counts",
     )?;
     expect_json(
-        &report["scopes"],
+        json_field(&report, "scopes")?,
         json!([{"name": "tokmd_cli", "kind": "coverage", "family": "coverage",
             "observations": 1, "executed": 1, "artifacts": 1}]),
         "collection scopes",
@@ -332,39 +362,55 @@ fn proof_plan_unknown_rust_path_is_preserved_and_strict_collector_rejects_it() -
     expect_exit(&output, 0)?;
     let report = output_json(&output)?;
     expect_json(
-        &report["schema"],
+        json_field(&report, "schema")?,
         json!("tokmd.affected.v1"),
         "routing schema",
     )?;
-    expect_json(&report["ok"], json!(true), "unknown Rust routing result")?;
     expect_json(
-        &report["changed_files"],
+        json_field(&report, "ok")?,
+        json!(true),
+        "unknown Rust routing result",
+    )?;
+    expect_json(
+        json_field(&report, "changed_files")?,
         json!([UNKNOWN_RUST_PATH]),
         "changed files",
     )?;
     expect_json(
-        &report["unknown_files"],
+        json_field(&report, "unknown_files")?,
         json!([UNKNOWN_RUST_PATH]),
         "unknown Rust path",
     )?;
-    expect_json(&report["scopes"], json!([]), "unknown Rust scopes")?;
+    expect_json(
+        json_field(&report, "scopes")?,
+        json!([]),
+        "unknown Rust scopes",
+    )?;
     let plan_output = routing_output(temp.path(), true)?;
     expect_exit(&plan_output, 0)?;
     let plan = output_json(&plan_output)?;
-    expect_json(&plan["schema"], json!("tokmd.proof_plan.v1"), "plan schema")?;
-    expect_json(&plan["ok"], json!(true), "unknown Rust plan result")?;
     expect_json(
-        &plan["changed_files"],
+        json_field(&plan, "schema")?,
+        json!("tokmd.proof_plan.v1"),
+        "plan schema",
+    )?;
+    expect_json(
+        json_field(&plan, "ok")?,
+        json!(true),
+        "unknown Rust plan result",
+    )?;
+    expect_json(
+        json_field(&plan, "changed_files")?,
         json!([UNKNOWN_RUST_PATH]),
         "planned changed files",
     )?;
     expect_json(
-        &plan["unknown_files"],
+        json_field(&plan, "unknown_files")?,
         json!([UNKNOWN_RUST_PATH]),
         "planned unknown Rust path",
     )?;
     expect_json(
-        &plan["commands"],
+        json_field(&plan, "commands")?,
         json!([]),
         "unknown Rust planned commands",
     )?;
@@ -390,26 +436,30 @@ fn proof_plan_unknown_non_rust_path_is_preserved_and_affected_fails() -> Result<
     expect_exit(&output, 1)?;
     let report = output_json(&output)?;
     expect_json(
-        &report["schema"],
+        json_field(&report, "schema")?,
         json!("tokmd.affected.v1"),
         "routing schema",
     )?;
     expect_json(
-        &report["ok"],
+        json_field(&report, "ok")?,
         json!(false),
         "unknown non-Rust routing result",
     )?;
     expect_json(
-        &report["changed_files"],
+        json_field(&report, "changed_files")?,
         json!([UNKNOWN_NON_RUST_PATH]),
         "changed files",
     )?;
     expect_json(
-        &report["unknown_files"],
+        json_field(&report, "unknown_files")?,
         json!([UNKNOWN_NON_RUST_PATH]),
         "unknown non-Rust path",
     )?;
-    expect_json(&report["scopes"], json!([]), "unknown non-Rust scopes")?;
+    expect_json(
+        json_field(&report, "scopes")?,
+        json!([]),
+        "unknown non-Rust scopes",
+    )?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     ensure!(
         stderr.contains("affected proof scope discovery found 1 unknown file(s)"),
@@ -497,4 +547,62 @@ fn proof_plan_child_git_environment_keeps_fixture_repository_isolated() -> Resul
         "outer fixture config must remain unchanged"
     );
     Ok(())
+}
+
+#[test]
+fn proof_plan_cli_recovery_path_requires_analysis_enabled_locked_recovery_test() -> Result<()> {
+    let temp = changed_path_fixture(CLI_RECOVERY_PATH)?;
+    let output = routing_output(temp.path(), true)?;
+    expect_exit(&output, 0)?;
+    let report = output_json(&output)?;
+    expect_json(
+        json_field(&report, "schema")?,
+        json!("tokmd.proof_plan.v1"),
+        "plan schema",
+    )?;
+    expect_json(json_field(&report, "ok")?, json!(true), "plan result")?;
+    expect_json(
+        json_field(&report, "profile")?,
+        json!("affected"),
+        "plan profile",
+    )?;
+    expect_json(
+        json_field(&report, "changed_files")?,
+        json!([CLI_RECOVERY_PATH]),
+        "changed files",
+    )?;
+    expect_json(
+        json_field(&report, "unknown_files")?,
+        json!([]),
+        "unknown files",
+    )?;
+    let commands = array(&report, "commands")?;
+    ensure!(!commands.is_empty(), "mapped path must plan commands");
+    for command in commands {
+        expect_json(
+            json_field(command, "scope")?,
+            json!("tokmd_cli"),
+            "command scope",
+        )?;
+    }
+    // This literal enables the recovery target's crate-level analysis gate.
+    // Its required proof row must remain distinct from advisory coverage.
+    let recovery_commands = commands
+        .iter()
+        .filter(|command| {
+            command.get("command").and_then(Value::as_str)
+                == Some("cargo test -p tokmd --test file_path_recovery_w904 --features analysis --locked --verbose")
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    expect_json(
+        &json!(recovery_commands),
+        json!([{
+            "scope": "tokmd_cli",
+            "kind": "proof",
+            "required": true,
+            "command": "cargo test -p tokmd --test file_path_recovery_w904 --features analysis --locked --verbose"
+        }]),
+        "required recovery proof command",
+    )
 }
