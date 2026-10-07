@@ -934,3 +934,176 @@ fn genuine_git_failures_keep_existing_recovery() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+// Directory reads can surface as EISDIR on Unix or access denial on Windows.
+// Exercise the selected input type without depending on OS error text or kind.
+fn baseline_directory_can_be_replaced_and_retried(configured: bool) -> anyhow::Result<()> {
+    for selected_path in [
+        "rate_limit/timeout/git is not available on PATH/requires the 'git' feature/not inside a git repository/base ref/not found.json",
+        "baseline.json",
+    ] {
+        let dir = tempfile::tempdir()?;
+        let config = if configured {
+            format!("[gate]\nbaseline = {selected_path:?}\n")
+        } else {
+            String::new()
+        };
+        std::fs::write(dir.path().join("tokmd.toml"), config)?;
+        let receipt = dir.path().join("receipt.json");
+        let policy = dir.path().join("policy.toml");
+        let baseline = dir.path().join(selected_path);
+        std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+        std::fs::write(&policy, "rules = []\n")?;
+        std::fs::create_dir_all(&baseline)?;
+        anyhow::ensure!(baseline.is_dir(), "selected directory fixture is missing");
+        anyhow::ensure!(
+            std::fs::read_dir(&baseline)?.next().is_none(),
+            "owned baseline directory must be empty"
+        );
+
+        let run_gate = || {
+            if !configured {
+                return gate_with_fixture_environment(
+                    dir.path(),
+                    &receipt,
+                    &policy,
+                    Path::new(selected_path),
+                );
+            }
+            let fixture_command = check_ignore(dir.path(), "environment-probe.rs");
+            let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+            command
+                .current_dir(dir.path())
+                .args(["gate", "--format", "json"])
+                .arg(&receipt)
+                .arg("--policy")
+                .arg(&policy);
+            // Copy only child-local environment isolation; no `--baseline` CLI
+            // argument can override the baseline selected by fixture TOML.
+            for (name, value) in fixture_command.get_envs() {
+                match value {
+                    Some(value) => {
+                        command.env(name, value);
+                    }
+                    None => {
+                        command.env_remove(name);
+                    }
+                }
+            }
+            command
+        };
+
+        let failure = run_gate().output()?;
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        anyhow::ensure!(
+            failure.status.code() == Some(1),
+            "expected baseline directory error code 1, got {}: {stderr}",
+            failure.status
+        );
+        anyhow::ensure!(
+            failure.stdout.is_empty(),
+            "baseline directory failure emitted stdout"
+        );
+        anyhow::ensure!(
+            stderr.contains(&format!("Failed to read baseline from {selected_path}")),
+            "missing selected baseline read context: {stderr}"
+        );
+        anyhow::ensure!(
+            !stderr.contains("Failed to parse baseline JSON"),
+            "baseline directory reached JSON parser recovery: {stderr}"
+        );
+        let hints = stderr
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == vec!["- The baseline path is a directory. Select a JSON file, then retry."],
+            "wrong directory recovery for {selected_path} (configured={configured}): {hints:?}"
+        );
+
+        // Remove only this owned empty directory, then put valid JSON at the
+        // identical selected path. A fresh child receives unchanged arguments.
+        std::fs::remove_dir(&baseline)?;
+        std::fs::write(&baseline, r#"{"schema_version":2}"#)?;
+        let retry = run_gate().output()?;
+        anyhow::ensure!(
+            retry.status.code() == Some(0),
+            "directory-to-file retry failed: {}",
+            String::from_utf8_lossy(&retry.stderr)
+        );
+        anyhow::ensure!(retry.stderr.is_empty(), "baseline retry emitted stderr");
+        let result: serde_json::Value = serde_json::from_slice(&retry.stdout)?;
+        anyhow::ensure!(
+            result.get("passed").and_then(serde_json::Value::as_bool) == Some(true),
+            "recovered gate did not pass: {result}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn baseline_directory_cli_selector_can_be_replaced_and_retried() -> anyhow::Result<()> {
+    baseline_directory_can_be_replaced_and_retried(false)
+}
+
+#[test]
+fn baseline_directory_config_selector_can_be_replaced_and_retried() -> anyhow::Result<()> {
+    baseline_directory_can_be_replaced_and_retried(true)
+}
+
+#[test]
+fn empty_baseline_file_keeps_json_parse_recovery_and_can_be_rewritten() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    std::fs::write(dir.path().join("tokmd.toml"), "")?;
+    let receipt = dir.path().join("receipt.json");
+    let policy = dir.path().join("policy.toml");
+    let baseline = dir.path().join("baseline.json");
+    std::fs::write(&receipt, r#"{"schema_version":2}"#)?;
+    std::fs::write(&policy, "rules = []\n")?;
+    std::fs::write(&baseline, "")?;
+    anyhow::ensure!(baseline.is_file(), "empty baseline file fixture is missing");
+
+    let failure =
+        gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
+    let stderr = std::str::from_utf8(&failure.stderr)?;
+    anyhow::ensure!(
+        failure.status.code() == Some(1),
+        "expected empty baseline JSON error code 1, got {}: {stderr}",
+        failure.status
+    );
+    anyhow::ensure!(failure.stdout.is_empty(), "empty baseline emitted stdout");
+    anyhow::ensure!(
+        stderr.contains(&format!(
+            "Failed to parse baseline JSON from {}",
+            baseline.display()
+        )),
+        "missing selected baseline parse context: {stderr}"
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
+                "- If it was hand-edited or truncated, regenerate the receipt and retry.",
+            ],
+        "empty file lost JSON recovery or gained directory advice: {hints:?}"
+    );
+
+    std::fs::write(&baseline, r#"{"schema_version":2}"#)?;
+    let retry = gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
+    anyhow::ensure!(
+        retry.status.code() == Some(0),
+        "normal baseline file retry failed: {}",
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    anyhow::ensure!(retry.stderr.is_empty(), "normal baseline retry emitted stderr");
+    let result: serde_json::Value = serde_json::from_slice(&retry.stdout)?;
+    anyhow::ensure!(
+        result.get("passed").and_then(serde_json::Value::as_bool) == Some(true),
+        "normal baseline file did not load: {result}"
+    );
+    Ok(())
+}
