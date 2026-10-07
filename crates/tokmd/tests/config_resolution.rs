@@ -791,3 +791,30 @@ fn typed_export_output_timeout_stays_transient_without_filename_advice() -> anyh
     }
     Ok(())
 }
+
+#[test]
+fn typed_export_output_connection_causes_keep_transient_recovery() -> anyhow::Result<()> {
+    let context = "Failed to create output file rate_limit/timeout/inventory.json";
+    for native in [
+        std::io::Error::from(std::io::ErrorKind::ConnectionReset),
+        std::io::Error::from(std::io::ErrorKind::ConnectionRefused),
+        std::io::Error::from(std::io::ErrorKind::BrokenPipe),
+        std::io::Error::new(std::io::ErrorKind::Other, "network error"),
+    ] {
+        let kind = native.kind();
+        let rendered = tokmd::format_error(&anyhow::Error::new(native).context(context));
+        let hints = rendered
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints
+                == [
+                    "- This looks transient. Retry with backoff after network or service health recovers.",
+                    "- Check network, VPN, or proxy settings if retries keep failing.",
+                ],
+            "genuine output-creation connection cause {kind:?} lost transient recovery: {hints:?}"
+        );
+    }
+    Ok(())
+}
