@@ -25,10 +25,35 @@ fn checked_in_policy() -> Result<PathBuf> {
     Ok(policy)
 }
 
-fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(repo)
+fn scrub_git_repository_env(command: &mut Command) {
+    // Git's repository-local environment can override current_dir. Remove it
+    // only from this child; the caller's environment remains untouched.
+    for name in [
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_GRAFT_FILE",
+        "GIT_INDEX_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_PREFIX",
+        "GIT_SHALLOW_FILE",
+        "GIT_COMMON_DIR",
+    ] {
+        command.env_remove(name);
+    }
+}
+
+fn run_git(repo: &Path, args: &[&str]) -> Result<Output> {
+    let mut command = Command::new("git");
+    command.args(args).current_dir(repo);
+    scrub_git_repository_env(&mut command);
+    let output = command
         .output()
         .with_context(|| format!("run fixture git {}", args.join(" ")))?;
     ensure!(
@@ -37,7 +62,7 @@ fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
         args.join(" "),
         String::from_utf8_lossy(&output.stderr)
     );
-    Ok(())
+    Ok(output)
 }
 
 fn changed_path_fixture(changed_path: &str) -> Result<TempDir> {
@@ -72,9 +97,9 @@ fn routing_output(repo: &Path, plan: bool) -> Result<Output> {
     command
         .args(["--base", "HEAD^", "--head", "HEAD", "--policy"])
         .arg(checked_in_policy()?)
-        .current_dir(repo)
-        .output()
-        .context("run routing executable")
+        .current_dir(repo);
+    scrub_git_repository_env(&mut command);
+    command.output().context("run routing executable")
 }
 
 fn expect_exit(output: &Output, code: i32) -> Result<()> {
@@ -179,7 +204,8 @@ fn write_passed_observation(repo: &Path, routing: &Value) -> Result<PathBuf> {
 }
 
 fn collect_observation(repo: &Path, observation: &Path) -> Result<Output> {
-    Command::new(env!("CARGO_BIN_EXE_xtask"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_xtask"));
+    command
         .args(["proof-execution-observations-summary", "--observation"])
         .arg(observation)
         .args([
@@ -192,7 +218,9 @@ fn collect_observation(repo: &Path, observation: &Path) -> Result<Output> {
             "--min-artifacts",
             "1",
         ])
-        .current_dir(repo)
+        .current_dir(repo);
+    scrub_git_repository_env(&mut command);
+    command
         .output()
         .context("run observation collector executable")
 }
@@ -386,6 +414,87 @@ fn proof_plan_unknown_non_rust_path_is_preserved_and_affected_fails() -> Result<
     ensure!(
         stderr.contains("affected proof scope discovery found 1 unknown file(s)"),
         "expected unknown-file discovery failure, got {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn proof_plan_child_git_environment_keeps_fixture_repository_isolated() -> Result<()> {
+    let outer = changed_path_fixture("outer_fixture_w905.rs")?;
+    let inner = changed_path_fixture("xtask/src/tasks/affected.rs")?;
+    let outer_git = outer.path().join(".git");
+    let marker = "isolation_marker_w905.rs";
+    // Both repositories have this untracked name, so a misplaced Git add can
+    // succeed while modifying the wrong index. The contents distinguish them.
+    fs::write(outer.path().join(marker), "outer marker\n")
+        .context("write outer isolation marker")?;
+    fs::write(inner.path().join(marker), "inner marker\n")
+        .context("write inner isolation marker")?;
+    let outer_head = run_git(outer.path(), &["rev-parse", "HEAD"])?.stdout;
+    let outer_index = fs::read(outer_git.join("index")).context("read outer fixture index")?;
+    let outer_config = fs::read(outer_git.join("config")).context("read outer fixture config")?;
+
+    let mut add = Command::new("git");
+    add.args(["add", "--force", "--", marker]);
+    let mut locate = Command::new("git");
+    locate.args(["rev-parse", "--show-toplevel"]);
+    let mut affected = Command::new(env!("CARGO_BIN_EXE_xtask"));
+    affected
+        .args([
+            "affected", "--json", "--base", "HEAD^", "--head", "HEAD", "--policy",
+        ])
+        .arg(checked_in_policy()?);
+    for command in [&mut add, &mut locate, &mut affected] {
+        command
+            .current_dir(inner.path())
+            .env("GIT_DIR", &outer_git)
+            .env("GIT_WORK_TREE", outer.path())
+            .env("GIT_INDEX_FILE", outer_git.join("index"))
+            .env("GIT_OBJECT_DIRECTORY", outer_git.join("objects"))
+            .env("GIT_COMMON_DIR", &outer_git)
+            .env("GIT_CONFIG", outer_git.join("config"));
+        scrub_git_repository_env(command);
+    }
+    let added = add.output().context("run isolated child Git add")?;
+    expect_exit(&added, 0)?;
+    let located = locate
+        .output()
+        .context("locate isolated child Git repository")?;
+    expect_exit(&located, 0)?;
+    let located_root = String::from_utf8(located.stdout).context("decode isolated Git root")?;
+    ensure!(
+        fs::canonicalize(located_root.trim()).context("canonicalize located Git root")?
+            == fs::canonicalize(inner.path()).context("canonicalize inner fixture")?,
+        "child Git must locate the inner fixture, got {located_root}"
+    );
+    let tracked = run_git(inner.path(), &["ls-files", "--error-unmatch", "--", marker])?;
+    ensure!(
+        String::from_utf8(tracked.stdout)
+            .context("decode staged marker")?
+            .trim()
+            == "isolation_marker_w905.rs",
+        "child Git add must stage the marker in the inner fixture"
+    );
+    let routed = affected
+        .output()
+        .context("run isolated child affected planner")?;
+    expect_exit(&routed, 0)?;
+    expect_single_scope(
+        &output_json(&routed)?,
+        "proof_control_plane",
+        "xtask/src/tasks/affected.rs",
+    )?;
+    ensure!(
+        run_git(outer.path(), &["rev-parse", "HEAD"])?.stdout == outer_head,
+        "outer fixture HEAD must remain unchanged"
+    );
+    ensure!(
+        fs::read(outer_git.join("index")).context("reread outer fixture index")? == outer_index,
+        "outer fixture index must remain unchanged"
+    );
+    ensure!(
+        fs::read(outer_git.join("config")).context("reread outer fixture config")? == outer_config,
+        "outer fixture config must remain unchanged"
     );
     Ok(())
 }

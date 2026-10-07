@@ -187,6 +187,7 @@ paths = [
   "scripts/publish-release-crates.sh",
   "xtask/src/tasks/workspace.rs",
   "xtask/tests/affected_w91.rs",
+  "xtask/tests/cli_recovery_routing_w905.rs",
   "xtask/tests/ci_actuals_w96.rs",
   "xtask/tests/coverage_receipt_w95.rs",
   "xtask/tests/deep_w71.rs",
@@ -1108,6 +1109,7 @@ paths = [
   "crates/tokmd/tests/show_config.rs",
   "crates/tokmd/tests/error_handling.rs",
   "crates/tokmd/tests/error_handling_w70.rs",
+  "crates/tokmd/tests/file_path_recovery_w904.rs",
   "docs/reference-cli.md",
 ]
 packages = ["tokmd"]
