@@ -1539,9 +1539,9 @@ fn git_spawn_and_local_temp_failures_keep_operation_precedence() -> anyhow::Resu
         std::io::ErrorKind::PermissionDenied,
     ] {
         let spawn = anyhow::Error::new(std::io::Error::new(kind, "git is not available on PATH"))
-        .context("Failed to spawn git worktree for main")
-        .context("Failed to create worktree for 'main'")
-        .context("Failed to load diff source 'main'");
+            .context("Failed to spawn git worktree for main")
+            .context("Failed to create worktree for 'main'")
+            .context("Failed to load diff source 'main'");
         let mut expected = vec![
             "- Install git and verify it with `git --version`.",
             "- If git metrics are optional, disable them with `--no-git`.",
@@ -1562,7 +1562,9 @@ fn git_spawn_and_local_temp_failures_keep_operation_precedence() -> anyhow::Resu
         );
 
         let local = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
-            .context(format!("Failed to create temp dir {HOSTILE_GATE_INPUT_W904}"))
+            .context(format!(
+                "Failed to create temp dir {HOSTILE_GATE_INPUT_W904}"
+            ))
             .context("Failed to create worktree for 'main'")
             .context("Failed to load diff source 'main'");
         let mut expected = Vec::new();

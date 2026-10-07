@@ -49,6 +49,17 @@ impl std::fmt::Display for DirectoryRead {
     }
 }
 
+// Derive the concrete parser error from a nonoptional settings interface.
+trait ResultError {
+    type Error;
+}
+
+impl<T, E> ResultError for Result<T, E> {
+    type Error = E;
+}
+
+type SettingsTomlError = <tokmd_settings::TomlResult<()> as ResultError>::Error;
+
 enum LocalRecovery {
     Directory(FileRole),
     Encoding(FileRole),
@@ -166,12 +177,12 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     }
 
     let toml_source = err.chain().any(|cause| {
-        cause.downcast_ref::<toml::de::Error>().is_some()
+        cause.downcast_ref::<SettingsTomlError>().is_some()
             || cause
                 .downcast_ref::<std::io::Error>()
                 .filter(|error| error.kind() == std::io::ErrorKind::InvalidData)
                 .and_then(std::io::Error::get_ref)
-                .is_some_and(|source| source.downcast_ref::<toml::de::Error>().is_some())
+                .is_some_and(|source| source.downcast_ref::<SettingsTomlError>().is_some())
     });
     if toml_source
         && has_context(
@@ -190,8 +201,14 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
 }
 
 fn diff_hints(out: &mut Vec<String>) {
-    push_hint(out, "If you meant to compare files, ensure they both exist locally.");
-    push_hint(out, "If you meant to compare git refs, ensure the branch, tag, or commit exists.");
+    push_hint(
+        out,
+        "If you meant to compare files, ensure they both exist locally.",
+    );
+    push_hint(
+        out,
+        "If you meant to compare git refs, ensure the branch, tag, or commit exists.",
+    );
 }
 
 fn json_hints(out: &mut Vec<String>) {
@@ -199,7 +216,10 @@ fn json_hints(out: &mut Vec<String>) {
         out,
         "Ensure the file is a tokmd JSON receipt (produced by `tokmd run`, `tokmd export`, or `tokmd analyze`).",
     );
-    push_hint(out, "If it was hand-edited or truncated, regenerate the receipt and retry.");
+    push_hint(
+        out,
+        "If it was hand-edited or truncated, regenerate the receipt and retry.",
+    );
 }
 
 fn transient_hints(out: &mut Vec<String>) {
@@ -207,7 +227,10 @@ fn transient_hints(out: &mut Vec<String>) {
         out,
         "This looks transient. Retry with backoff after network or service health recovers.",
     );
-    push_hint(out, "Check network, VPN, or proxy settings if retries keep failing.");
+    push_hint(
+        out,
+        "Check network, VPN, or proxy settings if retries keep failing.",
+    );
 }
 
 fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String> {
@@ -509,7 +532,10 @@ fn missing_path_hints(chain: &[String], out: &mut Vec<String>) -> bool {
         && let Some(bp) = extracted_bad_path.as_deref()
         && looks_like_bare_subcommand_token(bp)
     {
-        push_hint(out, "Run `tokmd --help` to see a list of available subcommands.");
+        push_hint(
+            out,
+            "Run `tokmd --help` to see a list of available subcommands.",
+        );
         return true;
     }
 
@@ -532,10 +558,16 @@ fn missing_path_hints(chain: &[String], out: &mut Vec<String>) -> bool {
                 || message.starts_with("failed to load")
         });
     if output_context {
-        push_hint(out, "Create the parent directory for the output path named above, then retry.");
+        push_hint(
+            out,
+            "Create the parent directory for the output path named above, then retry.",
+        );
     } else if input_context {
         push_hint(out, "Verify the input path exists and is readable.");
-        push_hint(out, "Use an absolute path to avoid working-directory confusion.");
+        push_hint(
+            out,
+            "Use an absolute path to avoid working-directory confusion.",
+        );
     } else {
         push_hint(
             out,
