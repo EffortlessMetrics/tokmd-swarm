@@ -819,3 +819,75 @@ fn typed_export_output_connection_causes_keep_transient_recovery() -> anyhow::Re
     }
     Ok(())
 }
+
+#[test]
+fn ordinary_handoff_file_output_reports_directory_repair_and_recovers() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    let source = dir.path().join("sample.rs");
+    std::fs::write(&selected_config, "")?;
+    std::fs::write(&source, "pub fn handoff_fixture() {}\n")?;
+
+    // A local pathname must not become provider advice.
+    let parent = dir.path().join("rate_limit").join("timeout");
+    std::fs::create_dir_all(&parent)?;
+    let output_path = parent.join("handoff");
+    std::fs::write(&output_path, "occupied")?;
+    let run = |force: bool| {
+        let mut command = first_use_command(dir.path(), &selected_config);
+        command.args(["handoff", "--no-git", "--preset", "minimal", "--output-dir"]);
+        command.arg(&output_path).arg(&source);
+        if force {
+            command.arg("--force");
+        }
+        command.output()
+    };
+
+    for force in [false, true] {
+        let failure = run(force)?;
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        anyhow::ensure!(
+            failure.status.code() == Some(1) && failure.stdout.is_empty(),
+            "file-valued handoff output must fail without stdout: {}: {stderr}",
+            failure.status
+        );
+        anyhow::ensure!(
+            stderr.starts_with(&format!(
+                "Error: Handoff output path is a file: {}",
+                output_path.display()
+            )),
+            "handoff error omitted the file-valued output path: {stderr}"
+        );
+        let hints = stderr
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == ["- Select a directory path for handoff output, then retry."],
+            "handoff file output gave wrong recovery hints: {hints:?}: {stderr}"
+        );
+        anyhow::ensure!(
+            std::fs::read_to_string(&output_path)? == "occupied",
+            "file-valued handoff output was changed"
+        );
+    }
+
+    std::fs::remove_file(&output_path)?;
+    std::fs::create_dir(&output_path)?;
+    let success = run(false)?;
+    anyhow::ensure!(
+        success.status.code() == Some(0) && success.stdout.is_empty(),
+        "same-argv handoff retry failed: {}: {}",
+        success.status,
+        String::from_utf8_lossy(&success.stderr)
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(output_path.join("manifest.json"))?)?;
+    anyhow::ensure!(
+        manifest["mode"] == "handoff"
+            && output_path.join("work-order.md").is_file()
+            && output_path.join("code.txt").is_file(),
+        "recovered handoff output has missing or wrong artifacts: {manifest:?}"
+    );
+    Ok(())
+}
