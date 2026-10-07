@@ -763,3 +763,31 @@ fn ordinary_export_nonfile_output_paths_keep_local_recovery() -> anyhow::Result<
     }
     Ok(())
 }
+
+#[test]
+fn typed_export_output_timeout_stays_transient_without_filename_advice() -> anyhow::Result<()> {
+    let context = "Failed to create output file rate_limit/timeout/inventory.json";
+    for (kind, expected) in [
+        (
+            std::io::ErrorKind::TimedOut,
+            vec![
+                "- This looks transient. Retry with backoff after network or service health recovers.",
+                "- Check network, VPN, or proxy settings if retries keep failing.",
+            ],
+        ),
+        (std::io::ErrorKind::StorageFull, vec![]),
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
+            .context(context);
+        let rendered = tokmd::format_error(&error);
+        let hints = rendered
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints == expected,
+            "wrong typed export output recovery for {kind:?}: {hints:?}"
+        );
+    }
+    Ok(())
+}

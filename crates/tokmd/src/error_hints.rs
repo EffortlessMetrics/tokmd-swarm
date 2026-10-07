@@ -65,6 +65,9 @@ enum LocalRecovery {
     Encoding(FileRole),
     Missing,
     Denied,
+    OutputDirectory,
+    OutputParentNotDirectory,
+    OutputOther,
     Json,
     Toml,
     Transient,
@@ -141,6 +144,13 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     if io_kind(err, std::io::ErrorKind::TimedOut) {
         return Some(LocalRecovery::Transient);
     }
+    let output_create = has_context(chain, &["failed to create output file "]);
+    if output_create && io_kind(err, std::io::ErrorKind::IsADirectory) {
+        return Some(LocalRecovery::OutputDirectory);
+    }
+    if output_create && io_kind(err, std::io::ErrorKind::NotADirectory) {
+        return Some(LocalRecovery::OutputParentNotDirectory);
+    }
     let git_subprocess = has_context(chain, &["failed to spawn git worktree for "]);
     if local_file_context(chain) && !git_subprocess {
         if io_kind(err, std::io::ErrorKind::NotFound) {
@@ -165,6 +175,11 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     let native_io = err
         .chain()
         .any(|cause| cause.downcast_ref::<std::io::Error>().is_some());
+    // A typed local file-creation error takes precedence over provider words
+    // that happen to appear in the selected output pathname.
+    if output_create && native_io {
+        return Some(LocalRecovery::OutputOther);
+    }
     if !native_io
         && json_receipt_context(chain)
         && err.chain().any(|cause| {
@@ -264,6 +279,15 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
                 diff_hints(&mut out);
             }
         }
+        LocalRecovery::OutputDirectory => push_hint(
+            &mut out,
+            "The output path is a directory. Select a file path, then retry.",
+        ),
+        LocalRecovery::OutputParentNotDirectory => push_hint(
+            &mut out,
+            "Replace the non-directory output parent with a directory, then retry.",
+        ),
+        LocalRecovery::OutputOther => {},
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);
