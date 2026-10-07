@@ -160,7 +160,7 @@ pub(crate) fn write_head_tail<W: Write>(
     compress: bool,
 ) -> anyhow::Result<()> {
     let content = std::fs::read_to_string(path)
-        .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", path.display(), e))?;
+        .with_context(|| format!("Failed to read {}", path.display()))?;
 
     let all_lines: Vec<&str> = content.lines().collect();
     let total_lines = all_lines.len();
