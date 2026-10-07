@@ -661,7 +661,8 @@ fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Resul
         success.status,
         String::from_utf8_lossy(&success.stderr)
     );
-    let receipt: tokmd_types::ExportReceipt = serde_json::from_slice(&std::fs::read(&output_path)?)?;
+    let receipt: tokmd_types::ExportReceipt =
+        serde_json::from_slice(&std::fs::read(&output_path)?)?;
     anyhow::ensure!(
         receipt.mode == "export"
             && receipt.status == tokmd_types::ScanStatus::Complete
