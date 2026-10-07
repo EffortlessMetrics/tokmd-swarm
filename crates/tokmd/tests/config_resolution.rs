@@ -800,7 +800,7 @@ fn typed_export_output_connection_causes_keep_transient_recovery() -> anyhow::Re
         std::io::Error::from(std::io::ErrorKind::ConnectionReset),
         std::io::Error::from(std::io::ErrorKind::ConnectionRefused),
         std::io::Error::from(std::io::ErrorKind::BrokenPipe),
-        std::io::Error::new(std::io::ErrorKind::Other, "network error"),
+        std::io::Error::other("network error"),
     ] {
         let kind = native.kind();
         let rendered = tokmd::format_error(&anyhow::Error::new(native).context(context));
