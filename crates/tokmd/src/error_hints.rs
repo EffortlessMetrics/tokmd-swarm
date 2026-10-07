@@ -75,6 +75,48 @@ fn suggestions(err: &Error) -> Vec<String> {
     let haystack = chain.join(" | ").to_ascii_lowercase();
     let mut out: Vec<String> = Vec::new();
 
+    // Stable file failures can carry network keywords in their resource paths.
+    // Match typed causes and local producer context, or explicit path markers,
+    // before considering the text-only remote-service recovery hints.
+    let missing_file = err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    });
+    let unparsed_io = missing_file
+        || err.chain().any(|cause| {
+            cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+        });
+    let local_file_context = chain.iter().any(|message| {
+        let message = message.to_ascii_lowercase();
+        [
+            "failed to read ",
+            "failed to open ",
+            "failed to resolve scan root ",
+            "failed to resolve bounded path ",
+            "failed to load policy from ",
+            "failed to load ratchet config from ",
+            "failed to load toml config from ",
+            "failed to write ",
+            "failed to create ",
+        ]
+        .iter()
+        .any(|prefix| message.starts_with(prefix))
+    });
+    let explicit_missing_path = chain.iter().any(|message| {
+        let message = message.to_ascii_lowercase();
+        [
+            "path not found: ",
+            "input path does not exist: ",
+            "bounded path not found: ",
+        ]
+        .iter()
+        .any(|prefix| message.starts_with(prefix))
+    });
+    let stable_local_failure = (unparsed_io && local_file_context) || explicit_missing_path;
+
     if haystack.contains("git is not available on path")
         || haystack.contains("requires the 'git' feature")
     {
@@ -93,11 +135,12 @@ fn suggestions(err: &Error) -> Vec<String> {
         push_hint(&mut out, "Initialize git first if needed: `git init`.");
     }
 
-    if haystack.contains("rate limit")
-        || haystack.contains("rate_limit")
-        || haystack.contains("too many requests")
-        || haystack.contains("http 429")
-        || haystack.contains("status 429")
+    if !stable_local_failure
+        && (haystack.contains("rate limit")
+            || haystack.contains("rate_limit")
+            || haystack.contains("too many requests")
+            || haystack.contains("http 429")
+            || haystack.contains("status 429"))
     {
         push_hint(
             &mut out,
@@ -113,18 +156,19 @@ fn suggestions(err: &Error) -> Vec<String> {
         );
     }
 
-    if haystack.contains("timed out")
-        || haystack.contains("timeout")
-        || haystack.contains("temporary")
-        || haystack.contains("temporarily")
-        || haystack.contains("connection reset")
-        || haystack.contains("connection refused")
-        || haystack.contains("broken pipe")
-        || haystack.contains("dns")
-        || haystack.contains("network error")
-        || haystack.contains("service unavailable")
-        || haystack.contains("http 503")
-        || haystack.contains("status 503")
+    if !stable_local_failure
+        && (haystack.contains("timed out")
+            || haystack.contains("timeout")
+            || haystack.contains("temporary")
+            || haystack.contains("temporarily")
+            || haystack.contains("connection reset")
+            || haystack.contains("connection refused")
+            || haystack.contains("broken pipe")
+            || haystack.contains("dns")
+            || haystack.contains("network error")
+            || haystack.contains("service unavailable")
+            || haystack.contains("http 503")
+            || haystack.contains("status 503"))
     {
         push_hint(
             &mut out,
@@ -159,13 +203,8 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
     }
 
-    // OS error messages vary by platform and locale. Inspect the error chain
-    // before falling back to legacy string-only missing-path diagnostics.
-    let missing_file = err.chain().any(|cause| {
-        cause
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-    });
+    // OS error messages vary by platform and locale. Use the typed cause before
+    // falling back to legacy string-only missing-path diagnostics.
     if missing_file
         || haystack.contains("path not found")
         || haystack.contains("input path does not exist")
@@ -292,12 +331,6 @@ fn suggestions(err: &Error) -> Vec<String> {
     // Match producer context, not arbitrary format words in resource paths.
     // Gate usage contexts preserve their causes, so inspect each producer
     // entry without searching across a pathname and its flattened causes.
-    let unparsed_io = missing_file
-        || err.chain().any(|cause| {
-            cause
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
-        });
     let json_receipt_parse = !unparsed_io
         && chain.iter().any(|message| {
             let message = message.to_ascii_lowercase();

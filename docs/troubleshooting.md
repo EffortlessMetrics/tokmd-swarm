@@ -15,6 +15,11 @@ Windows and in other locales. A missing file inside a command does not imply
 that the command name was misspelled; subcommand suggestions apply to explicit
 missing bare-path tokens instead.
 
+Names such as `rate_limit` or `timeout` in a missing or inaccessible local file
+path do not call for provider retries or network backoff. Correct the selected
+path or restore read/write access, then retry the same command. Genuine service
+rate limits and transient network failures retain their network recovery hints.
+
 ## Missing Output Directories
 
 If `tokmd badge --metric lines --output path/to/badge.svg` reports that it could not write the

@@ -11,7 +11,7 @@ fn gate(dir: &Path, receipt: &Path, policy: &Path, baseline: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
     command
         .current_dir(dir)
-        .env_remove("TOKMD_CONFIG")
+        .env("TOKMD_CONFIG", dir.join("tokmd.toml"))
         .env_remove("TOKMD_PROFILE")
         .args(["gate", "--format", "json"])
         .arg(receipt)
@@ -24,6 +24,7 @@ fn gate(dir: &Path, receipt: &Path, policy: &Path, baseline: &Path) -> Command {
 
 fn missing_baseline_recovers_without_network_advice(directory_name: &str) -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
+    std::fs::write(dir.path().join("tokmd.toml"), "")?;
     let receipt = dir.path().join("receipt.json");
     let policy = dir.path().join("policy.toml");
     let parent = dir.path().join(directory_name);
@@ -141,7 +142,7 @@ fn localized_permission_denied_reads_have_no_network_hints() -> anyhow::Result<(
     ] {
         let error = anyhow::Error::new(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "acces refuse",
+            "fichier inaccessible",
         ))
         .context(context);
         let hints = hint_lines(&error);
@@ -259,6 +260,39 @@ fn textual_remote_read_and_load_failures_keep_network_recovery() -> anyhow::Resu
             hints == expected,
             "lost remote recovery for {message}: {hints:?}"
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn localized_open_create_and_resolve_failures_keep_existing_local_guidance() -> anyhow::Result<()> {
+    for context in [
+        "Failed to open file: rate_limit/timeout/input.rs",
+        "Failed to open rate_limit/timeout/input.rs",
+        "Failed to create rate_limit/timeout/output.json",
+        "Failed to create directory rate_limit/timeout/output",
+        "Failed to resolve scan root rate_limit/timeout: fichier inaccessible",
+        "Failed to resolve bounded path rate_limit/timeout/input.rs: fichier inaccessible",
+    ] {
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let error = anyhow::Error::new(std::io::Error::new(kind, "fichier inaccessible"))
+                .context(context);
+            let hints = hint_lines(&error);
+            let expected = if kind == std::io::ErrorKind::NotFound {
+                vec![
+                    "- Check the path for the failed operation; for output files, ensure the parent directory exists.",
+                ]
+            } else {
+                vec![]
+            };
+            anyhow::ensure!(
+                hints == expected,
+                "wrong local open/create/resolve recovery for {context} ({kind:?}): {hints:?}"
+            );
+        }
     }
     Ok(())
 }
