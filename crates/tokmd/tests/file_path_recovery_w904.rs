@@ -482,3 +482,50 @@ fn genuine_typed_timeout_under_check_ignore_access_keeps_transient_recovery() ->
     );
     Ok(())
 }
+
+#[test]
+fn missing_check_ignore_base_ref_path_can_be_created_and_retried() -> anyhow::Result<()> {
+    missing_check_ignore_path_can_be_created_and_retried("base ref/missing.rs")
+}
+
+#[test]
+fn genuine_missing_git_base_ref_keeps_ref_recovery() -> anyhow::Result<()> {
+    let error = anyhow::anyhow!("base ref 'origin/missing' not found and no fallback resolved");
+    let hints = hint_lines(&error);
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- Fetch refs (`git fetch --tags --prune`) and retry with `--base <ref>`.",
+                "- You can also set `TOKMD_GIT_BASE_REF` to a valid default base ref.",
+            ],
+        "lost genuine Git-base recovery: {hints:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn localized_stable_access_base_ref_paths_keep_only_local_recovery() -> anyhow::Result<()> {
+    // Both phrase triggers live in the filename, so localization of the IO
+    // cause cannot hide a false Git-base classification.
+    for kind in [
+        std::io::ErrorKind::NotFound,
+        std::io::ErrorKind::PermissionDenied,
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(kind, "fichier inaccessible"))
+            .context("failed to access path 'base ref/not found.rs'");
+        let hints = hint_lines(&error);
+        let expected = if kind == std::io::ErrorKind::NotFound {
+            vec![
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ]
+        } else {
+            vec![]
+        };
+        anyhow::ensure!(
+            hints == expected,
+            "wrong localized local base-ref recovery for {kind:?}: {hints:?}"
+        );
+    }
+    Ok(())
+}
