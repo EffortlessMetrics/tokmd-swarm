@@ -21,6 +21,7 @@ pub(crate) mod module;
 pub(crate) mod packet;
 #[cfg(feature = "analysis")]
 pub(crate) mod render;
+#[cfg(feature = "analysis")]
 pub(crate) mod run;
 pub(crate) mod sensor;
 #[cfg(feature = "ast")]
@@ -94,6 +95,7 @@ pub(crate) fn dispatch(cli: cli::Cli, resolved: &ResolvedConfig) -> Result<()> {
         #[cfg(feature = "ast")]
         cli::Commands::Syntax(args) => syntax::handle(args, global),
         cli::Commands::EvidencePacket(args) => evidence_packet::handle(args),
+        #[cfg(feature = "analysis")]
         cli::Commands::Render(args) => render::handle(args),
         #[cfg(feature = "analysis")]
         cli::Commands::Packet(args) => packet::handle(args, global),
