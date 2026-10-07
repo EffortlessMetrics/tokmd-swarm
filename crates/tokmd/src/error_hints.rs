@@ -116,7 +116,26 @@ fn suggestions(err: &Error) -> Vec<String> {
         .iter()
         .any(|prefix| message.starts_with(prefix))
     });
-    let stable_local_failure = (unparsed_io && local_file_context) || explicit_missing_path;
+    // Baselines are read as UTF-8 before JSON parsing. InvalidData in other
+    // producers can represent parser failures, so keep this context specific.
+    let invalid_baseline_data = err.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::InvalidData)
+    }) && chain.iter().any(|message| {
+        message
+            .to_ascii_lowercase()
+            .starts_with("failed to read baseline from ")
+    });
+    let stable_local_failure =
+        (unparsed_io && local_file_context) || explicit_missing_path || invalid_baseline_data;
+
+    if invalid_baseline_data {
+        push_hint(
+            &mut out,
+            "Save the baseline file named above as valid UTF-8 text, then retry.",
+        );
+    }
 
     if haystack.contains("git is not available on path")
         || haystack.contains("requires the 'git' feature")
