@@ -135,6 +135,7 @@ fn suggestions(err: &Error) -> Vec<String> {
             &mut out,
             "Save the baseline file named above as valid UTF-8 text, then retry.",
         );
+        return out;
     }
 
     if haystack.contains("git is not available on path")

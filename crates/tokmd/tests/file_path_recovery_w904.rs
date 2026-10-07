@@ -707,7 +707,8 @@ fn invalid_utf8_baseline_can_be_rewritten_and_retried(selected_path: &str) -> an
     std::fs::write(&baseline, [0xff_u8])?;
     anyhow::ensure!(baseline.is_file(), "corrupt baseline fixture is missing");
 
-    let failure = gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
+    let failure =
+        gate_with_fixture_environment(dir.path(), &receipt, &policy, &baseline).output()?;
     let stderr = std::str::from_utf8(&failure.stderr)?;
     anyhow::ensure!(
         failure.status.code() == Some(1),
@@ -821,7 +822,8 @@ fn invalid_data_outside_baseline_reads_keeps_http_recovery() -> anyhow::Result<(
 
 #[test]
 fn baseline_encoding_recovery_requires_invalid_data_cause() -> anyhow::Result<()> {
-    let untyped = anyhow::anyhow!("Failed to read baseline from baseline.json: fichier inaccessible");
+    let untyped =
+        anyhow::anyhow!("Failed to read baseline from baseline.json: fichier inaccessible");
     let hints = hint_lines(&untyped);
     anyhow::ensure!(
         hints.is_empty(),
