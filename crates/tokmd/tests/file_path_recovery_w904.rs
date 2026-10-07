@@ -865,3 +865,70 @@ fn invalid_data_toml_parse_cause_keeps_syntax_recovery() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn invalid_utf8_baseline_git_keyword_files_can_be_rewritten_and_retried() -> anyhow::Result<()> {
+    for selected_path in [
+        "not inside a git repository/baseline.json",
+        "git is not available on PATH/baseline.json",
+        "requires the 'git' feature/baseline.json",
+    ] {
+        invalid_utf8_baseline_can_be_rewritten_and_retried(selected_path)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn localized_invalid_data_baseline_git_paths_keep_only_encoding_recovery() -> anyhow::Result<()> {
+    for context in [
+        "Failed to read baseline from git is not available on PATH/baseline.json",
+        "Failed to read baseline from requires the 'git' feature/baseline.json",
+        "Failed to read baseline from not inside a git repository/baseline.json",
+    ] {
+        let error = anyhow::Error::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "fichier inaccessible",
+        ))
+        .context(context);
+        let hints = hint_lines(&error);
+        anyhow::ensure!(
+            hints == vec!["- Save the baseline file named above as valid UTF-8 text, then retry."],
+            "baseline filename gained Git recovery for {context}: {hints:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn genuine_git_failures_keep_existing_recovery() -> anyhow::Result<()> {
+    for (message, expected) in [
+        (
+            "git is not available on PATH",
+            vec![
+                "- Install git and verify it with `git --version`.",
+                "- If git metrics are optional, disable them with `--no-git`.",
+            ],
+        ),
+        (
+            "operation requires the 'git' feature",
+            vec![
+                "- Install git and verify it with `git --version`.",
+                "- If git metrics are optional, disable them with `--no-git`.",
+            ],
+        ),
+        (
+            "not inside a git repository",
+            vec![
+                "- Run the command from a git repository, or disable git-dependent behavior.",
+                "- Initialize git first if needed: `git init`.",
+            ],
+        ),
+    ] {
+        let hints = hint_lines(&anyhow::anyhow!(message));
+        anyhow::ensure!(
+            hints == expected,
+            "lost genuine Git recovery for {message}: {hints:?}"
+        );
+    }
+    Ok(())
+}
