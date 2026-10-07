@@ -646,8 +646,8 @@ jobs:
           import time
 
           started = time.monotonic()
-          # Reserve 20s inside the aggregate 15m ceiling for shutdown and receipts.
-          deadline = started + 880
+          # Reserve 60s inside the aggregate 15m ceiling for shutdown and receipts.
+          deadline = started + 840
           commands = [
               ["cargo", "build", "--locked", "-p", "tokmd", "--bin", "tokmd", "--no-default-features"],
               ["cargo", "test", "--locked", "-p", "tokmd", "--no-default-features", "--test", "config_resolution", "--verbose"],
