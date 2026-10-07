@@ -269,4 +269,121 @@ mod tests {
 
         assert!(output.contains("|src/big.rs|src|Rust|31753|31753|full|2370|"));
     }
+
+    fn recovery_row(path: &Path) -> ContextFileRow {
+        let mut row = context_row(InclusionPolicy::HeadTail);
+        row.path = path.display().to_string();
+        row.tokens = 10;
+        row.effective_tokens = Some(4);
+        row.lines = 10;
+        row.code = 10;
+        row.bytes = 40;
+        row
+    }
+
+    fn missing_head_tail_can_be_created_and_retried(directory: &str) -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let parent = dir.path().join(directory);
+        let path = parent.join("input.rs");
+        let row = recovery_row(&path);
+        anyhow::ensure!(!path.exists(), "missing renderer fixture already exists");
+        let mut output = Vec::new();
+        let error = match write_head_tail(&mut output, &path, &row, false) {
+            Ok(()) => anyhow::bail!("missing head-tail file unexpectedly rendered"),
+            Err(error) => error,
+        };
+        let cause = error.downcast_ref::<std::io::Error>().ok_or_else(|| {
+            anyhow::anyhow!("renderer discarded the original IO cause: {error:#}")
+        })?;
+        anyhow::ensure!(
+            cause.kind() == std::io::ErrorKind::NotFound,
+            "wrong missing renderer IO kind: {:?}",
+            cause.kind()
+        );
+        anyhow::ensure!(output.is_empty(), "failed renderer emitted content");
+        let rendered = crate::format_error(&error);
+        anyhow::ensure!(
+            rendered.starts_with(&format!("Error: Failed to read {}:", path.display())),
+            "missing selected renderer path context: {rendered}"
+        );
+        let hints = rendered
+            .lines()
+            .filter(|line| line.starts_with("- "))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            hints
+                == vec![
+                    "- Verify the input path exists and is readable.",
+                    "- Use an absolute path to avoid working-directory confusion.",
+                ],
+            "wrong renderer recovery for {directory}: {hints:?}"
+        );
+        std::fs::create_dir(&parent)?;
+        std::fs::write(
+            &path,
+            "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+        )?;
+        let mut retry = Vec::new();
+        write_head_tail(&mut retry, &path, &row, false)?;
+        let retry = std::str::from_utf8(&retry)?;
+        anyhow::ensure!(
+            retry == "one\ntwo\nthree\n// ... [6 lines omitted] ...\nten\n",
+            "wrong recovered head-tail output: {retry:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn head_tail_missing_rate_limit_path_preserves_io_and_recovers() -> anyhow::Result<()> {
+        missing_head_tail_can_be_created_and_retried("rate_limit")
+    }
+
+    #[test]
+    fn head_tail_missing_timeout_path_preserves_io_and_recovers() -> anyhow::Result<()> {
+        missing_head_tail_can_be_created_and_retried("timeout")
+    }
+
+    #[test]
+    fn head_tail_missing_base_ref_path_preserves_io_and_recovers() -> anyhow::Result<()> {
+        missing_head_tail_can_be_created_and_retried("base ref")
+    }
+
+    #[test]
+    fn head_tail_invalid_utf8_preserves_invalid_data_cause() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("invalid_utf8.rs");
+        std::fs::write(&path, [0xff])?;
+        let row = recovery_row(&path);
+        let mut output = Vec::new();
+        let error = match write_head_tail(&mut output, &path, &row, false) {
+            Ok(()) => anyhow::bail!("invalid UTF8 head-tail file unexpectedly rendered"),
+            Err(error) => error,
+        };
+        let cause = error
+            .downcast_ref::<std::io::Error>()
+            .ok_or_else(|| anyhow::anyhow!("renderer discarded InvalidData cause: {error:#}"))?;
+        anyhow::ensure!(
+            cause.kind() == std::io::ErrorKind::InvalidData,
+            "wrong UTF8 IO kind: {:?}",
+            cause.kind()
+        );
+        anyhow::ensure!(output.is_empty(), "invalid UTF8 renderer emitted content");
+        anyhow::ensure!(
+            crate::format_error(&error)
+                .starts_with(&format!("Error: Failed to read {}:", path.display())),
+            "missing invalid UTF8 selected-path context"
+        );
+        std::fs::write(
+            &path,
+            "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+        )?;
+        let mut retry = Vec::new();
+        write_head_tail(&mut retry, &path, &row, false)?;
+        let retry = std::str::from_utf8(&retry)?;
+        anyhow::ensure!(
+            retry == "one\ntwo\nthree\n// ... [6 lines omitted] ...\nten\n",
+            "wrong recovered UTF8 head-tail output: {retry:?}"
+        );
+        Ok(())
+    }
 }
