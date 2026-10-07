@@ -529,3 +529,141 @@ fn localized_stable_access_base_ref_paths_keep_only_local_recovery() -> anyhow::
     }
     Ok(())
 }
+
+fn context_bundle_command(dir: &Path, selected_root: &str, mode: &str) -> Command {
+    // Reuse only the fixture-local environment from the existing helper; its
+    // check-ignore argv is not copied to this separate context command.
+    let fixture_command = check_ignore(dir, selected_root);
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    for (name, value) in fixture_command.get_envs() {
+        if let Some(value) = value {
+            command.env(name, value);
+        } else {
+            command.env_remove(name);
+        }
+    }
+    command
+        .current_dir(dir)
+        .args([
+            "--no-progress",
+            "context",
+            "--mode",
+            mode,
+            "--no-git",
+            "--budget",
+            "1000",
+            "--max-file-tokens",
+            "40",
+            "--no-smart-exclude",
+        ])
+        .arg(selected_root);
+    command
+}
+
+fn context_head_tail_fixture() -> String {
+    (1..=20)
+        .map(|line| format!("pub fn line_{line:02}() {{}}\n"))
+        .collect()
+}
+
+fn prove_context_head_tail_selection(dir: &Path, selected_root: &str) -> anyhow::Result<()> {
+    let output = context_bundle_command(dir, selected_root, "json").output()?;
+    anyhow::ensure!(
+        output.status.code() == Some(0) && output.stderr.is_empty(),
+        "context selection failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let files = receipt
+        .get("files")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("context receipt must have files: {receipt}"))?;
+    anyhow::ensure!(
+        files.len() == 1,
+        "expected one selected context file: {receipt}"
+    );
+    let file = files
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("selected file must exist"))?;
+    let expected_path = format!("{selected_root}/input.rs");
+    anyhow::ensure!(
+        file.get("path").and_then(serde_json::Value::as_str) == Some(expected_path.as_str()),
+        "wrong selected context path: {file}"
+    );
+    anyhow::ensure!(
+        file.get("policy").and_then(serde_json::Value::as_str) == Some("head_tail")
+            && file.get("lines").and_then(serde_json::Value::as_u64) == Some(20)
+            && file.get("tokens").and_then(serde_json::Value::as_u64) == Some(200)
+            && file
+                .get("effective_tokens")
+                .and_then(serde_json::Value::as_u64)
+                == Some(40),
+        "fixture must select twenty short lines at 200 tokens with a 40-token head-tail cap: {file}"
+    );
+    Ok(())
+}
+
+fn missing_context_root_can_be_created_and_bundled(selected_root: &str) -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    std::fs::write(dir.path().join("tokmd.toml"), "")?;
+    let root = dir.path().join(selected_root);
+    anyhow::ensure!(!root.exists(), "missing context root already exists");
+    let failure = context_bundle_command(dir.path(), selected_root, "bundle").output()?;
+    let stderr = std::str::from_utf8(&failure.stderr)?;
+    anyhow::ensure!(
+        failure.status.code() == Some(1) && failure.stdout.is_empty(),
+        "missing-root bundle must fail with code1 and empty stdout: {}: {stderr}",
+        failure.status
+    );
+    anyhow::ensure!(
+        stderr.contains(&format!("Path not found: {selected_root}")),
+        "missing selected scan-root diagnostic: {stderr}"
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints
+            == vec![
+                "- Verify the input path exists and is readable.",
+                "- Use an absolute path to avoid working-directory confusion.",
+            ],
+        "wrong missing scan-root recovery: {hints:?}"
+    );
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("input.rs"), context_head_tail_fixture())?;
+    // This is a scan-root recovery control, not a missing-renderer regression.
+    // Prove the actual selection before retrying the original bundle argv.
+    prove_context_head_tail_selection(dir.path(), selected_root)?;
+    let retry = context_bundle_command(dir.path(), selected_root, "bundle").output()?;
+    anyhow::ensure!(
+        retry.status.code() == Some(0) && retry.stderr.is_empty(),
+        "recovered context bundle failed: {}",
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    let stdout = std::str::from_utf8(&retry.stdout)?;
+    let expected = format!(
+        "// === {selected_root}/input.rs ===\npub fn line_01() {{}}\npub fn line_02() {{}}\npub fn line_03() {{}}\n// ... [16 lines omitted] ...\npub fn line_20() {{}}\n\n"
+    );
+    anyhow::ensure!(
+        stdout == expected,
+        "wrong recovered head-tail bundle: {stdout:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn missing_context_rate_limit_root_can_be_created_and_bundled() -> anyhow::Result<()> {
+    missing_context_root_can_be_created_and_bundled("rate_limit/missing_root")
+}
+
+#[test]
+fn missing_context_timeout_root_can_be_created_and_bundled() -> anyhow::Result<()> {
+    missing_context_root_can_be_created_and_bundled("timeout/missing_root")
+}
+
+#[test]
+fn missing_context_base_ref_root_can_be_created_and_bundled() -> anyhow::Result<()> {
+    missing_context_root_can_be_created_and_bundled("base ref/missing_root")
+}
