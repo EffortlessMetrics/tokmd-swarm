@@ -1099,7 +1099,10 @@ fn empty_baseline_file_keeps_json_parse_recovery_and_can_be_rewritten() -> anyho
         "normal baseline file retry failed: {}",
         String::from_utf8_lossy(&retry.stderr)
     );
-    anyhow::ensure!(retry.stderr.is_empty(), "normal baseline retry emitted stderr");
+    anyhow::ensure!(
+        retry.stderr.is_empty(),
+        "normal baseline retry emitted stderr"
+    );
     let result: serde_json::Value = serde_json::from_slice(&retry.stdout)?;
     anyhow::ensure!(
         result.get("passed").and_then(serde_json::Value::as_bool) == Some(true),
