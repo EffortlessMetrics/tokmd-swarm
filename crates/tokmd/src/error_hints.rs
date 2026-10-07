@@ -19,6 +19,16 @@ fn known_subcommands() -> Vec<String> {
         .collect()
 }
 
+/// Typed context for a failed baseline read whose path is a directory.
+#[derive(Debug)]
+pub(crate) struct BaselineDirectoryRead;
+
+impl std::fmt::Display for BaselineDirectoryRead {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Expected a baseline JSON file, but found a directory")
+    }
+}
+
 pub(crate) fn format(err: &Error) -> String {
     let mut out = if let Some(token) = missing_path_as_unrecognized_subcommand(err) {
         format!("Error: Unrecognized subcommand '{token}'")
@@ -74,6 +84,14 @@ fn suggestions(err: &Error) -> Vec<String> {
     let chain: Vec<String> = err.chain().map(|e| e.to_string()).collect();
     let haystack = chain.join(" | ").to_ascii_lowercase();
     let mut out: Vec<String> = Vec::new();
+
+    if err.downcast_ref::<BaselineDirectoryRead>().is_some() {
+        push_hint(
+            &mut out,
+            "The baseline path is a directory. Select a JSON file, then retry.",
+        );
+        return out;
+    }
 
     // Stable file failures can carry network keywords in their resource paths.
     // Match typed causes and local producer context, or explicit path markers,

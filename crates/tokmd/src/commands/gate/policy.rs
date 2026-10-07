@@ -63,8 +63,7 @@ pub(super) fn load_baseline(
     resolved: &ResolvedConfig,
 ) -> Result<Option<serde_json::Value>> {
     if let Some(baseline_path) = &args.baseline {
-        let content = std::fs::read_to_string(baseline_path)
-            .with_context(|| format!("Failed to read baseline from {}", baseline_path.display()))?;
+        let content = read_baseline_text(baseline_path)?;
         let value: serde_json::Value = serde_json::from_str(&content).with_context(|| {
             format!(
                 "Failed to parse baseline JSON from {}",
@@ -78,14 +77,32 @@ pub(super) fn load_baseline(
         && let Some(baseline_path) = &toml.gate.baseline
     {
         let path = std::path::PathBuf::from(baseline_path);
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read baseline from {}", path.display()))?;
+        let content = read_baseline_text(&path)?;
         let value: serde_json::Value = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse baseline JSON from {}", path.display()))?;
         return Ok(Some(value));
     }
 
     Ok(None)
+}
+
+// Preserve the native read error, adding directory evidence only afterward.
+// Metadata describes the current path; it is not atomic with the failed read.
+fn read_baseline_text(path: &std::path::Path) -> Result<String> {
+    std::fs::read_to_string(path)
+        .map_err(|error| {
+            let directory = matches!(
+                error.kind(),
+                std::io::ErrorKind::IsADirectory | std::io::ErrorKind::PermissionDenied
+            ) && std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir());
+            let error = anyhow::Error::new(error);
+            if directory {
+                error.context(crate::error_hints::BaselineDirectoryRead)
+            } else {
+                error
+            }
+        })
+        .with_context(|| format!("Failed to read baseline from {}", path.display()))
 }
 
 /// Load ratchet config from file or TOML config.
@@ -224,5 +241,48 @@ mod tests {
         assert_eq!(parse_level(None), RuleLevel::Error);
         assert_eq!(parse_level(Some("warning")), RuleLevel::Warn);
         assert_eq!(parse_level(Some("audit")), RuleLevel::Error);
+    }
+
+    #[test]
+    fn baseline_directory_read_preserves_native_io_cause() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let baseline = dir.path().join("baseline.json");
+        std::fs::create_dir(&baseline)?;
+
+        let native = match std::fs::read_to_string(&baseline) {
+            Ok(_) => anyhow::bail!("native directory read unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        let error = match super::read_baseline_text(&baseline) {
+            Ok(_) => anyhow::bail!("baseline directory helper unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        let preserved = error
+            .downcast_ref::<std::io::Error>()
+            .ok_or_else(|| anyhow::anyhow!("baseline read lost its native IO cause: {error:#}"))?;
+        anyhow::ensure!(
+            preserved.kind() == native.kind(),
+            "baseline helper changed native IO kind: {preserved:?} versus {native:?}"
+        );
+        anyhow::ensure!(
+            preserved.raw_os_error() == native.raw_os_error(),
+            "baseline helper changed native OS error: {preserved:?} versus {native:?}"
+        );
+        anyhow::ensure!(
+            preserved.to_string() == native.to_string(),
+            "baseline helper changed native cause text: {preserved} versus {native}"
+        );
+
+        let context = format!("Failed to read baseline from {}", baseline.display());
+        anyhow::ensure!(
+            error.to_string() == context,
+            "baseline helper lost full selected-path outer context: {error:#}"
+        );
+        let rendered = format!("{error:#}");
+        anyhow::ensure!(
+            rendered.contains(&native.to_string()),
+            "baseline error chain hid native directory-read details: {rendered}"
+        );
+        Ok(())
     }
 }
