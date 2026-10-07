@@ -618,7 +618,10 @@ fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Resul
     // These names must never turn a local output failure into provider advice.
     let parent = dir.path().join("rate_limit").join("timeout");
     let output_path = parent.join("inventory.json");
-    anyhow::ensure!(!parent.exists(), "missing output parent fixture already exists");
+    anyhow::ensure!(
+        !parent.exists(),
+        "missing output parent fixture already exists"
+    );
     let run = || {
         let mut command = first_use_command(dir.path(), &selected_config);
         command
@@ -654,9 +657,7 @@ fn ordinary_export_missing_parent_reports_output_and_recovers() -> anyhow::Resul
     std::fs::create_dir_all(&parent)?;
     let success = run()?;
     anyhow::ensure!(
-        success.status.code() == Some(0)
-            && success.stdout.is_empty()
-            && success.stderr.is_empty(),
+        success.status.code() == Some(0) && success.stdout.is_empty() && success.stderr.is_empty(),
         "same-argv export retry failed or emitted console output: {}: {}",
         success.status,
         String::from_utf8_lossy(&success.stderr)
@@ -777,8 +778,8 @@ fn typed_export_output_timeout_stays_transient_without_filename_advice() -> anyh
         ),
         (std::io::ErrorKind::StorageFull, vec![]),
     ] {
-        let error = anyhow::Error::new(std::io::Error::new(kind, "operation impossible"))
-            .context(context);
+        let error =
+            anyhow::Error::new(std::io::Error::new(kind, "operation impossible")).context(context);
         let rendered = tokmd::format_error(&error);
         let hints = rendered
             .lines()
