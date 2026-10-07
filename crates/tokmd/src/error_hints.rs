@@ -63,6 +63,8 @@ impl std::fmt::Display for HandoffOutputFile {
     }
 }
 
+impl std::error::Error for HandoffOutputFile {}
+
 // Derive the concrete parser error from a nonoptional settings interface.
 trait ResultError {
     type Error;
