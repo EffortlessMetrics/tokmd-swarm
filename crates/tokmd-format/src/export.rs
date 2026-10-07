@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use tokmd_settings::ScanOptions;
 use tokmd_types::{ExportArgs, ExportData, ExportFormat, RedactMode};
@@ -27,7 +27,8 @@ pub use jsonl::write_export_jsonl_to_file;
 pub fn write_export(export: &ExportData, global: &ScanOptions, args: &ExportArgs) -> Result<()> {
     match &args.output {
         Some(path) => {
-            let file = File::create(path)?;
+            let file = File::create(path)
+                .with_context(|| format!("Failed to create output file {}", path.display()))?;
             let mut out = BufWriter::new(file);
             write_export_to(&mut out, export, global, args)?;
             out.flush()?;
