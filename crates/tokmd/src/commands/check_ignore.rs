@@ -68,7 +68,11 @@ fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<Ch
     // keeps access errors distinct from true missing paths.
     match path.try_exists() {
         Ok(true) => {}
-        Ok(false) => return Err(anyhow::anyhow!("Path '{}' does not exist", path_str)),
+        Ok(false) => {
+            return Err(std::io::Error::from(std::io::ErrorKind::NotFound)).with_context(|| {
+                format!("Failed to access path '{}': path does not exist", path_str)
+            });
+        }
         Err(err) => {
             return Err(err).with_context(|| format!("failed to access path '{}'", path_str));
         }
