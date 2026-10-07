@@ -570,7 +570,7 @@ fn ordinary_lang_invalid_format_returns_argument_exit() -> anyhow::Result<()> {
 
 #[cfg(not(feature = "analysis"))]
 #[test]
-fn render_without_analysis_preserves_feature_error() -> anyhow::Result<()> {
+fn analysis_commands_without_feature_preserve_error() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let selected_config = dir.path().join("selected.toml");
     std::fs::write(&selected_config, "")?;
@@ -584,6 +584,25 @@ fn render_without_analysis_preserves_feature_error() -> anyhow::Result<()> {
     anyhow::ensure!(
         stderr == "Error: analysis feature is not enabled\n" && !bundle.exists(),
         "disabled Render must retain the feature fallback without reading a bundle: {stderr}"
+    );
+
+    let source = dir.path().join("absent-source.rs");
+    let output_dir = dir.path().join("absent-run-output");
+    anyhow::ensure!(
+        !source.exists() && !output_dir.exists(),
+        "disabled Run input and output must begin absent"
+    );
+    let output = first_use_command(dir.path(), &selected_config)
+        .args(["run", "--output-dir"])
+        .arg(&output_dir)
+        .arg(&source)
+        .output()?;
+    let stderr = first_use_failure(&output, &[])?;
+    anyhow::ensure!(
+        stderr == "Error: analysis feature is not enabled\n"
+            && !source.exists()
+            && !output_dir.exists(),
+        "disabled Run must retain the feature fallback without creating artifacts: {stderr}"
     );
     Ok(())
 }
