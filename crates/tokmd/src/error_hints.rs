@@ -49,6 +49,20 @@ impl std::fmt::Display for DirectoryRead {
     }
 }
 
+/// Positive file metadata for a handoff output destination.
+#[derive(Debug)]
+pub(crate) struct HandoffOutputFile(pub(crate) std::path::PathBuf);
+
+impl std::fmt::Display for HandoffOutputFile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Handoff output path is a file: {}",
+            self.0.display()
+        )
+    }
+}
+
 // Derive the concrete parser error from a nonoptional settings interface.
 trait ResultError {
     type Error;
@@ -67,6 +81,7 @@ enum LocalRecovery {
     Denied,
     OutputDirectory,
     OutputParentNotDirectory,
+    HandoffFileOutput,
     OutputOther,
     Json,
     Toml,
@@ -140,6 +155,9 @@ fn io_kind(err: &Error, kind: std::io::ErrorKind) -> bool {
 fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     if let Some(directory) = err.downcast_ref::<DirectoryRead>() {
         return Some(LocalRecovery::Directory(directory.0));
+    }
+    if err.downcast_ref::<HandoffOutputFile>().is_some() {
+        return Some(LocalRecovery::HandoffFileOutput);
     }
     if io_kind(err, std::io::ErrorKind::TimedOut) {
         return Some(LocalRecovery::Transient);
@@ -322,6 +340,10 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
         LocalRecovery::OutputParentNotDirectory => push_hint(
             &mut out,
             "Replace the non-directory output parent with a directory, then retry.",
+        ),
+        LocalRecovery::HandoffFileOutput => push_hint(
+            &mut out,
+            "Select a directory path for handoff output, then retry.",
         ),
         LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {

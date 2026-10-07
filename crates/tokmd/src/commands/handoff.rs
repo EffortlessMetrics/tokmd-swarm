@@ -46,6 +46,9 @@ pub(crate) fn handle(args: cli::HandoffArgs, global: &cli::GlobalArgs) -> Result
 
     // Check output directory
     if args.out_dir.exists() {
+        if args.out_dir.is_file() {
+            return Err(crate::error_hints::HandoffOutputFile(args.out_dir.clone()).into());
+        }
         let is_empty = args
             .out_dir
             .read_dir()

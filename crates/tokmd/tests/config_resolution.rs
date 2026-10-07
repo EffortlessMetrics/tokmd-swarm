@@ -884,7 +884,7 @@ fn ordinary_handoff_file_output_reports_directory_repair_and_recovers() -> anyho
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(output_path.join("manifest.json"))?)?;
     anyhow::ensure!(
-        manifest["mode"] == "handoff"
+        manifest.get("mode").and_then(|value| value.as_str()) == Some("handoff")
             && output_path.join("work-order.md").is_file()
             && output_path.join("code.txt").is_file(),
         "recovered handoff output has missing or wrong artifacts: {manifest:?}"
