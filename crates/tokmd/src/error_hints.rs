@@ -302,7 +302,7 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
     }
 
-    if haystack.contains("base ref") && haystack.contains("not found") {
+    if !stable_local_failure && haystack.contains("base ref") && haystack.contains("not found") {
         push_hint(
             &mut out,
             "Fetch refs (`git fetch --tags --prune`) and retry with `--base <ref>`.",
