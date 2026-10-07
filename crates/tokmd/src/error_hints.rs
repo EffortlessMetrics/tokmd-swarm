@@ -92,6 +92,7 @@ fn suggestions(err: &Error) -> Vec<String> {
     let local_file_context = chain.iter().any(|message| {
         let message = message.to_ascii_lowercase();
         [
+            "failed to access path ",
             "failed to read ",
             "failed to open ",
             "failed to resolve scan root ",
@@ -278,7 +279,9 @@ fn suggestions(err: &Error) -> Vec<String> {
         let input_context = extracted_bad_path.is_some()
             || chain.iter().any(|message| {
                 let message = message.to_ascii_lowercase();
-                message.starts_with("failed to read") || message.starts_with("failed to load")
+                message.starts_with("failed to access path ")
+                    || message.starts_with("failed to read")
+                    || message.starts_with("failed to load")
             });
         if output_context {
             push_hint(
@@ -299,7 +302,7 @@ fn suggestions(err: &Error) -> Vec<String> {
         }
     }
 
-    if haystack.contains("base ref") && haystack.contains("not found") {
+    if !stable_local_failure && haystack.contains("base ref") && haystack.contains("not found") {
         push_hint(
             &mut out,
             "Fetch refs (`git fetch --tags --prune`) and retry with `--base <ref>`.",
