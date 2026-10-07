@@ -632,6 +632,100 @@ jobs:
       - name: Guard analysis microcrate boundaries
         run: cargo xtask boundaries-check
 
+      - name: Qualify no-UI CLI builds and recovery (shared 15m)
+        timeout-minutes: 15
+        env:
+          CI: true
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import os
+          import signal
+          import subprocess
+          import sys
+          import time
+
+          started = time.monotonic()
+          # Reserve 20s inside the aggregate 15m ceiling for shutdown and receipts.
+          deadline = started + 880
+          commands = [
+              ["cargo", "build", "--locked", "-p", "tokmd", "--bin", "tokmd", "--no-default-features"],
+              ["cargo", "test", "--locked", "-p", "tokmd", "--no-default-features", "--test", "config_resolution", "--verbose"],
+              ["cargo", "build", "--locked", "-p", "tokmd", "--bin", "tokmd", "--no-default-features", "--features", "analysis"],
+              ["cargo", "test", "--locked", "-p", "tokmd", "--no-default-features", "--features", "analysis", "--test", "file_path_recovery_w904", "--verbose"],
+          ]
+
+          def utc_now():
+              return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+          def observe_resources(label):
+              print(f"Resource snapshot {label} {utc_now()} (current/available, not peak)", flush=True)
+              target = os.environ.get("CARGO_TARGET_DIR") or "target"
+              for args in (["df", "-k", "."], ["free", "-m"], ["du", "-sk", target]):
+                  try:
+                      subprocess.run(args, check=False, timeout=2)
+                  except (OSError, subprocess.TimeoutExpired) as error:
+                      print(f"Resource observation unavailable: {args[0]}: {error}", flush=True)
+
+          def signal_group(process, value):
+              try:
+                  os.killpg(process.pid, value)
+              except ProcessLookupError:
+                  pass
+
+          status = 1
+          observe_resources("before")
+          try:
+              for args in commands:
+                  remaining = deadline - time.monotonic()
+                  if remaining <= 0:
+                      status = 124
+                      print("Qualification deadline exhausted before the next command.", flush=True)
+                      break
+                  command_started = time.monotonic()
+                  label = " ".join(args)
+                  print(f"::group::{label} (shared 15m stage)", flush=True)
+                  print(f"started {utc_now()} remaining={remaining:.3f}s", flush=True)
+                  try:
+                      process = subprocess.Popen(args, stdin=subprocess.DEVNULL, start_new_session=True)
+                      try:
+                          status = process.wait(timeout=remaining)
+                      except subprocess.TimeoutExpired:
+                          status = 124
+                          signal_group(process, signal.SIGTERM)
+                          try:
+                              process.wait(timeout=5)
+                          except subprocess.TimeoutExpired:
+                              pass
+                          # The leader exiting does not prove its descendants exited.
+                          signal_group(process, signal.SIGKILL)
+                          try:
+                              process.wait(timeout=5)
+                          except subprocess.TimeoutExpired:
+                              print("Timed-out command leader was not reaped within the reserve.", flush=True)
+                          print("Command exceeded the shared qualification deadline.", flush=True)
+                      if status < 0:
+                          status = 128 - status
+                  except OSError as error:
+                      if status != 124:
+                          status = 127 if isinstance(error, FileNotFoundError) else 126
+                      print(f"Command runner failed: {error}", flush=True)
+                  elapsed = time.monotonic() - command_started
+                  print(f"finished {utc_now()} elapsed={elapsed:.3f}s exit={status}", flush=True)
+                  print("::endgroup::", flush=True)
+                  if status != 0:
+                      break
+          except Exception as error:
+              if status == 0:
+                  status = 1
+              print(f"Qualification runner failed: {type(error).__name__}: {error}", flush=True)
+          finally:
+              observe_resources("after")
+              elapsed = time.monotonic() - started
+              print(f"Qualification finished {utc_now()} elapsed={elapsed:.3f}s exit={status}", flush=True)
+          sys.exit(status)
+          PY
+
   affected-plan:
     name: Affected Proof Plan
     if: github.event_name == 'pull_request'

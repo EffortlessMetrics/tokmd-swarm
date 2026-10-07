@@ -383,3 +383,207 @@ fn test_resolve_lang_with_config_precedence() {
     assert!(!fallback_resolved.files);
     assert_eq!(fallback_resolved.children, ChildrenMode::Separate);
 }
+
+// Exercise the real CLI on an owned ordinary directory, without
+// requiring analysis, UI, Git, or any caller-wide environment changes.
+fn first_use_command(
+    repo: &std::path::Path,
+    selected_config: &std::path::Path,
+) -> assert_cmd::Command {
+    let mut command = assert_cmd::Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    command
+        .current_dir(repo)
+        .env("TOKMD_CONFIG", selected_config)
+        .env_remove("TOKMD_PROFILE")
+        .env_remove("TOKMD_PROGRESS_EVENTS")
+        .args(["--no-progress", "--config", "none"]);
+    command
+}
+
+fn first_use_lang_command(
+    repo: &std::path::Path,
+    selected_config: &std::path::Path,
+    source: &std::path::Path,
+    format: &str,
+) -> assert_cmd::Command {
+    let mut command = first_use_command(repo, selected_config);
+    command
+        .args(["lang", "--format", format, "--files"])
+        .arg(source);
+    command
+}
+
+fn first_use_json(output: &std::process::Output) -> anyhow::Result<serde_json::Value> {
+    anyhow::ensure!(
+        output.status.code() == Some(0) && output.stderr.is_empty(),
+        "ordinary lang failed or emitted stderr: {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: tokmd_types::LangReceipt = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(
+        receipt.schema_version == tokmd_types::SCHEMA_VERSION
+            && receipt.mode == "lang"
+            && receipt.status == tokmd_types::ScanStatus::Complete
+            && receipt.warnings.is_empty()
+            && receipt.args.format == "json"
+            && receipt.args.with_files
+            && receipt.scan.config == tokmd_types::ConfigMode::None,
+        "ordinary lang receipt has wrong machine metadata: {receipt:?}"
+    );
+    let row = receipt
+        .report
+        .rows
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("ordinary lang must report the selected Rust source"))?;
+    anyhow::ensure!(
+        receipt.report.rows.len() == 1
+            && row.lang == "Rust"
+            && row.code == 2
+            && row.lines == 2
+            && row.files == 1
+            && receipt.report.total.code == 2
+            && receipt.report.total.lines == 2
+            && receipt.report.total.files == 1,
+        "ordinary lang did not inventory the two-line Rust fixture: {receipt:?}"
+    );
+    let mut semantic: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let object = semantic
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("ordinary lang receipt must be a JSON object"))?;
+    anyhow::ensure!(
+        object
+            .remove("generated_at_ms")
+            .is_some_and(|value| value.is_number()),
+        "ordinary lang receipt must have a numeric generated_at_ms"
+    );
+    Ok(semantic)
+}
+
+fn first_use_failure(
+    output: &std::process::Output,
+    expected_hints: &[&str],
+) -> anyhow::Result<String> {
+    let stderr = std::str::from_utf8(&output.stderr)?;
+    anyhow::ensure!(
+        output.status.code() == Some(1) && output.stdout.is_empty(),
+        "CLI failure must return code1 with empty stdout: {}: {stderr}",
+        output.status
+    );
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        hints.as_slice() == expected_hints,
+        "wrong entire ordinary lang recovery vector: {hints:?}"
+    );
+    Ok(stderr.to_string())
+}
+
+#[test]
+fn ordinary_non_git_json_journey_recovers_config_and_source() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    std::fs::create_dir(&repo)?;
+    let selected_config = dir.path().join("selected.toml");
+    let source = repo.join("sample.rs");
+    let content = "pub fn first_use_one() {}\npub fn first_use_two() {}\n";
+    std::fs::write(&selected_config, "")?;
+    std::fs::write(&source, content)?;
+    anyhow::ensure!(
+        source.is_absolute() && !repo.join(".git").exists(),
+        "fixture must be an ordinary non-Git directory with an absolute source path"
+    );
+
+    let run = || first_use_lang_command(&repo, &selected_config, &source, "json").output();
+    let original = first_use_json(&run()?)?;
+    anyhow::ensure!(
+        first_use_json(&run()?)? == original,
+        "repeated ordinary lang receipt changed beyond its timestamp"
+    );
+
+    std::fs::write(&selected_config, "[scan\n")?;
+    let malformed = first_use_failure(
+        &run()?,
+        &["- Check TOML syntax and key names in the file named above, then retry."],
+    )?;
+    anyhow::ensure!(
+        malformed.starts_with(&format!(
+            "Error: Failed to load TOML config from {}",
+            selected_config.display()
+        )),
+        "malformed selected config lost its primary path: {malformed}"
+    );
+    std::fs::write(&selected_config, "")?;
+    anyhow::ensure!(
+        first_use_json(&run()?)? == original,
+        "rewritten selected config did not restore the same-argv receipt"
+    );
+
+    anyhow::ensure!(
+        std::fs::read_to_string(&source)? == content,
+        "owned source fixture changed before removal"
+    );
+    std::fs::remove_file(&source)?;
+    let missing = first_use_failure(
+        &run()?,
+        &[
+            "- Verify the input path exists and is readable.",
+            "- Use an absolute path to avoid working-directory confusion.",
+        ],
+    )?;
+    anyhow::ensure!(
+        missing.starts_with(&format!("Error: Path not found: {}", source.display())),
+        "missing positional source lost its primary path: {missing}"
+    );
+    std::fs::write(&source, content)?;
+    anyhow::ensure!(
+        first_use_json(&run()?)? == original && first_use_json(&run()?)? == original,
+        "recreated positional source did not restore repeated same-argv receipts"
+    );
+    Ok(())
+}
+
+#[test]
+fn ordinary_lang_invalid_format_returns_argument_exit() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::write(&selected_config, "")?;
+    let output = first_use_lang_command(
+        dir.path(),
+        &selected_config,
+        &dir.path().join("sample.rs"),
+        "invalid_format",
+    )
+    .output()?;
+    let stderr = std::str::from_utf8(&output.stderr)?;
+    anyhow::ensure!(
+        output.status.code() == Some(2)
+            && output.stdout.is_empty()
+            && stderr.contains("invalid value 'invalid_format'"),
+        "invalid lang format must fail during argument parsing with code2: {}: {stderr}",
+        output.status
+    );
+    Ok(())
+}
+
+#[cfg(not(feature = "analysis"))]
+#[test]
+fn render_without_analysis_preserves_feature_error() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::write(&selected_config, "")?;
+    let bundle = dir.path().join("absent-bundle");
+    let output = first_use_command(dir.path(), &selected_config)
+        .args(["render", "--from-packets"])
+        .arg(&bundle)
+        .args(["--preset", "bun-ub-handoff"])
+        .output()?;
+    let stderr = first_use_failure(&output, &[])?;
+    anyhow::ensure!(
+        stderr == "Error: analysis feature is not enabled\n" && !bundle.exists(),
+        "disabled Render must retain the feature fallback without reading a bundle: {stderr}"
+    );
+    Ok(())
+}
