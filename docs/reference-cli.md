@@ -3121,8 +3121,8 @@ redact = "all"
 Profiles (also called views) let you save common option combinations:
 
 ```bash
-# Use a named profile
-tokmd --profile llm
+# Use a named profile with a compatible command
+tokmd --profile llm export
 tokmd --view ci
 
 # Profile specified via environment variable
