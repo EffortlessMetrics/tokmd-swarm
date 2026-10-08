@@ -123,7 +123,6 @@ fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::R
     Ok(())
 }
 
-
 #[test]
 fn run_with_output_equal_to_scan_root_keeps_source_files() -> anyhow::Result<()> {
     let dir = tempdir()?;

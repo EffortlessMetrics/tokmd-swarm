@@ -24,8 +24,9 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
             .canonicalize()
             .context("Failed to resolve output directory")?;
         let normalized = scan::normalize_slashes(&output_dir.to_string_lossy());
-        let absolute_pattern = globset::escape(&normalized);
-        let absolute_pattern = absolute_pattern.trim_end_matches('/');
+        let escaped = globset::escape(&normalized);
+        // Tokei consumes one leading slash as a gitignore anchor.
+        let anchored = format!("/{}", escaped.trim_end_matches('/'));
         let output_contains_input = args.paths.iter().any(|path| {
             path.canonicalize()
                 .is_ok_and(|root| root.starts_with(&output_dir))
@@ -41,12 +42,12 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
             ] {
                 effective_scan_opts
                     .excluded
-                    .push(format!("{absolute_pattern}/{name}"));
+                    .push(format!("{anchored}/{name}"));
             }
         } else {
             effective_scan_opts
                 .excluded
-                .push(format!("{absolute_pattern}/**"));
+                .push(format!("{anchored}/**"));
         }
     }
     let languages = scan::scan(&args.paths, &effective_scan_opts)?;
