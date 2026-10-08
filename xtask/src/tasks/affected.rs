@@ -470,6 +470,30 @@ coverage = false
     }
 
     #[test]
+    fn run_diff_maps_to_cli_without_hiding_unknown_rust() -> anyhow::Result<()> {
+        let policy = parse_policy_str(include_str!("../../../ci/proof.toml"))?;
+        let run_diff = "crates/tokmd/tests/run_diff.rs";
+        let mapped = affected_report(&policy, "base", "head", vec![run_diff.to_owned()])?;
+
+        assert!(mapped.ok);
+        assert!(mapped.unknown_files.is_empty());
+        assert_eq!(mapped.scopes.len(), 1);
+        let cli = mapped
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "tokmd_cli")
+            .ok_or_else(|| anyhow::anyhow!("run_diff.rs must map to tokmd_cli"))?;
+        assert_eq!(cli.matched_files, vec![run_diff.to_owned()]);
+
+        let other = "crates/tokmd/tests/unmapped_scope_sentinel.rs";
+        let unknown = affected_report(&policy, "base", "head", vec![other.to_owned()])?;
+        assert!(unknown.ok);
+        assert!(unknown.scopes.is_empty());
+        assert_eq!(unknown.unknown_files, vec![other.to_owned()]);
+        Ok(())
+    }
+
+    #[test]
     fn path_normalization_uses_forward_slashes() {
         assert_eq!(
             normalize_path("crates\\tokmd\\src\\main.rs"),

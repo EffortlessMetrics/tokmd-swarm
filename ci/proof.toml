@@ -1110,6 +1110,7 @@ paths = [
   "crates/tokmd/tests/error_handling.rs",
   "crates/tokmd/tests/error_handling_w70.rs",
   "crates/tokmd/tests/file_path_recovery_w904.rs",
+  "crates/tokmd/tests/run_diff.rs",
   "docs/reference-cli.md",
 ]
 packages = ["tokmd"]
