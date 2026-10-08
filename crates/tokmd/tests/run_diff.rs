@@ -45,6 +45,146 @@ fn test_run_generates_artifacts() {
 }
 
 #[test]
+fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let repo_name = if cfg!(windows) {
+        "ordinary[repo]"
+    } else {
+        "ordinary[repo]\\literal"
+    };
+    let repo = dir.path().join(repo_name);
+    fs::create_dir(&repo)?;
+    fs::write(
+        repo.join("source.rs"),
+        "pub fn first() {}\npub fn second() {}\n",
+    )?;
+    let selected_config = dir.path().join("selected.toml");
+    fs::write(&selected_config, "")?;
+    let nested_artifacts = repo.join("nested/artifacts");
+    fs::create_dir_all(&nested_artifacts)?;
+    fs::write(nested_artifacts.join("keep.rs"), "pub fn keep() {}\n")?;
+    let artifacts = repo.join("artifacts");
+
+    let run = || -> anyhow::Result<tokmd_types::LangReceipt> {
+        let mut command = cargo_bin_cmd!("tokmd");
+        command
+            .current_dir(&repo)
+            .env("TOKMD_CONFIG", &selected_config)
+            .env_remove("TOKMD_PROFILE")
+            .env_remove("TOKMD_PROGRESS_EVENTS")
+            .args([
+                "--no-progress",
+                "--config",
+                "none",
+                "run",
+                ".",
+                "--output-dir",
+                "artifacts",
+            ]);
+        let output = command.output()?;
+        anyhow::ensure!(
+            output.status.success() && output.stderr.is_empty(),
+            "run failed: {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        anyhow::ensure!(
+            artifacts.join("lang.json").is_file()
+                && artifacts.join("module.json").is_file()
+                && artifacts.join("export.jsonl").is_file()
+                && artifacts.join("receipt.json").is_file(),
+            "run did not retain its normal artifact set"
+        );
+        Ok(serde_json::from_slice(&fs::read(
+            artifacts.join("lang.json"),
+        )?)?)
+    };
+
+    let first = run()?;
+    let source_row = first
+        .report
+        .rows
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("first run has no language rows"))?;
+    anyhow::ensure!(
+        first.mode == "lang"
+            && first.scan.excluded.is_empty()
+            && first.report.total.files == 2
+            && first.report.total.code == 3
+            && first.report.rows.len() == 1
+            && source_row.lang == "Rust"
+            && source_row.files == 2
+            && source_row.code == 3,
+        "first run must count both Rust fixtures: {first:?}"
+    );
+    let second = run()?;
+    anyhow::ensure!(
+        second.scan.excluded.is_empty()
+            && second.report.total.files == 2
+            && second.report.rows == first.report.rows
+            && second.report.total == first.report.total,
+        "same-argv retry counted retained artifacts or changed inventory: first={first:?}, second={second:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn run_with_output_equal_to_scan_root_keeps_source_files() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    fs::create_dir(&repo)?;
+    fs::write(repo.join("source.rs"), "pub fn source() {}\n")?;
+    let selected_config = dir.path().join("selected.toml");
+    fs::write(&selected_config, "")?;
+
+    let run = || -> anyhow::Result<tokmd_types::LangReceipt> {
+        let mut command = cargo_bin_cmd!("tokmd");
+        command
+            .current_dir(&repo)
+            .env("TOKMD_CONFIG", &selected_config)
+            .env_remove("TOKMD_PROFILE")
+            .env_remove("TOKMD_PROGRESS_EVENTS")
+            .args([
+                "--no-progress",
+                "--config",
+                "none",
+                "run",
+                ".",
+                "--output-dir",
+                ".",
+            ]);
+        let output = command.output()?;
+        anyhow::ensure!(
+            output.status.success() && output.stderr.is_empty(),
+            "run failed: {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_slice(&fs::read(repo.join("lang.json"))?)?)
+    };
+
+    for receipt in [run()?, run()?] {
+        let row = receipt
+            .report
+            .rows
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("run has no language rows"))?;
+        anyhow::ensure!(
+            receipt.mode == "lang"
+                && receipt.scan.excluded.is_empty()
+                && receipt.report.total.files == 1
+                && receipt.report.total.code == 1
+                && receipt.report.rows.len() == 1
+                && row.lang == "Rust"
+                && row.files == 1
+                && row.code == 1,
+            "output root must not hide source files or count retained artifacts: {receipt:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn test_diff_identical_runs() {
     let dir = tempdir().unwrap();
     let run1_dir = dir.path().join("run1");

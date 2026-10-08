@@ -38,6 +38,8 @@ Feature flags:
 tokmd = { workspace = true, features = ["git", "content"] }
 ```
 
+When an existing `--output-dir` is inside the scanned tree, TokMD skips that output directory while scanning. If the output directory contains a requested scan root, TokMD skips only its own generated run files, so source files remain in scope.
+
 Use `tokmd-core` instead when you need the same workflows embedded in Rust or FFI without the CLI layer.
 
 ## Go deeper

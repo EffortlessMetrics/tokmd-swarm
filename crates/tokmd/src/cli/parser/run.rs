@@ -19,6 +19,7 @@ pub struct RunArgs {
     pub paths: Vec<PathBuf>,
 
     /// Output directory for artifacts (defaults to `.runs/tokmd` inside the repo, or system temp if not possible).
+    /// Existing output contents are excluded from scans unless they contain a scan root.
     #[arg(long)]
     pub output_dir: Option<PathBuf>,
 
