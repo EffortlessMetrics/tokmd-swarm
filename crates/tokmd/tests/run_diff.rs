@@ -45,6 +45,77 @@ fn test_run_generates_artifacts() {
 }
 
 #[test]
+fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    fs::create_dir(&repo)?;
+    fs::write(
+        repo.join("source.rs"),
+        "pub fn first() {}\npub fn second() {}\n",
+    )?;
+    let selected_config = dir.path().join("selected.toml");
+    fs::write(&selected_config, "")?;
+    let artifacts = repo.join("artifacts");
+
+    let run = || -> anyhow::Result<tokmd_types::LangReceipt> {
+        let mut command = cargo_bin_cmd!("tokmd");
+        command
+            .current_dir(&repo)
+            .env("TOKMD_CONFIG", &selected_config)
+            .env_remove("TOKMD_PROFILE")
+            .args([
+                "--no-progress",
+                "--config",
+                "none",
+                "run",
+                ".",
+                "--output-dir",
+                "artifacts",
+            ]);
+        let output = command.output()?;
+        anyhow::ensure!(
+            output.status.success() && output.stderr.is_empty(),
+            "run failed: {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        anyhow::ensure!(
+            artifacts.join("lang.json").is_file()
+                && artifacts.join("module.json").is_file()
+                && artifacts.join("export.jsonl").is_file()
+                && artifacts.join("receipt.json").is_file(),
+            "run did not retain its normal artifact set"
+        );
+        Ok(serde_json::from_slice(&fs::read(artifacts.join("lang.json"))?)?)
+    };
+
+    let first = run()?;
+    let source_row = first
+        .report
+        .rows
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("first run has no language rows"))?;
+    anyhow::ensure!(
+        first.mode == "lang"
+            && first.report.total.files == 1
+            && first.report.total.code == 2
+            && first.report.rows.len() == 1
+            && source_row.lang == "Rust"
+            && source_row.files == 1
+            && source_row.code == 2,
+        "first run must count only the Rust fixture: {first:?}"
+    );
+    let second = run()?;
+    anyhow::ensure!(
+        second.report.total.files == 1
+            && second.report.rows == first.report.rows
+            && second.report.total == first.report.total,
+        "same-argv retry counted retained artifacts or changed inventory: first={first:?}, second={second:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn test_diff_identical_runs() {
     let dir = tempdir().unwrap();
     let run1_dir = dir.path().join("run1");
