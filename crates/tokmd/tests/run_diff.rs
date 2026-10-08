@@ -63,6 +63,7 @@ fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::R
             .current_dir(&repo)
             .env("TOKMD_CONFIG", &selected_config)
             .env_remove("TOKMD_PROFILE")
+            .env_remove("TOKMD_PROGRESS_EVENTS")
             .args([
                 "--no-progress",
                 "--config",
@@ -86,7 +87,9 @@ fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::R
                 && artifacts.join("receipt.json").is_file(),
             "run did not retain its normal artifact set"
         );
-        Ok(serde_json::from_slice(&fs::read(artifacts.join("lang.json"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            artifacts.join("lang.json"),
+        )?)?)
     };
 
     let first = run()?;
