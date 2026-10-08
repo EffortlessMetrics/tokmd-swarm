@@ -156,7 +156,9 @@ fn run_with_output_equal_to_scan_root_keeps_source_files() -> anyhow::Result<()>
             output.status,
             String::from_utf8_lossy(&output.stderr)
         );
-        Ok(serde_json::from_slice(&fs::read(repo.join("lang.json"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            repo.join("lang.json"),
+        )?)?)
     };
 
     for receipt in [run()?, run()?] {
