@@ -577,7 +577,10 @@ fn selected_profile_lang_format_recovers_by_override_or_config_repair() -> anyho
     std::fs::create_dir_all(&config_dir)?;
     let selected_config = config_dir.join("selected.toml");
     let source = repo.join("sample.rs");
-    std::fs::write(&source, "pub fn first_use_one() {}\npub fn first_use_two() {}\n")?;
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
     std::fs::write(&selected_config, "[view.ci]\nformat = \"jsno\"\n")?;
 
     let run = |override_format: Option<&str>| -> anyhow::Result<std::process::Output> {

@@ -65,6 +65,18 @@ impl std::fmt::Display for HandoffOutputFile {
 
 impl std::error::Error for HandoffOutputFile {}
 
+/// A selected lang format has no valid fallback and already names its local repair.
+#[derive(Debug)]
+pub(crate) struct InvalidLangProfileFormat(pub(crate) String);
+
+impl std::fmt::Display for InvalidLangProfileFormat {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for InvalidLangProfileFormat {}
+
 // Derive the concrete parser error from a nonoptional settings interface.
 trait ResultError {
     type Error;
@@ -84,6 +96,7 @@ enum LocalRecovery {
     OutputDirectory,
     OutputParentNotDirectory,
     HandoffFileOutput,
+    InvalidLangProfileFormat,
     OutputOther,
     Json,
     Toml,
@@ -155,6 +168,9 @@ fn io_kind(err: &Error, kind: std::io::ErrorKind) -> bool {
 // Select one authoritative recovery before examining arbitrary pathname text.
 // String-only legacy and remote errors retain the fallback heuristics below.
 fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
+    if err.downcast_ref::<InvalidLangProfileFormat>().is_some() {
+        return Some(LocalRecovery::InvalidLangProfileFormat);
+    }
     if let Some(directory) = err.downcast_ref::<DirectoryRead>() {
         return Some(LocalRecovery::Directory(directory.0));
     }
@@ -347,7 +363,7 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
             &mut out,
             "Select a directory path for handoff output, then retry.",
         ),
-        LocalRecovery::OutputOther => {}
+        LocalRecovery::InvalidLangProfileFormat | LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);

@@ -30,9 +30,11 @@ pub(crate) fn handle(
         } else {
             "the selected profile".to_string()
         };
-        return Err(anyhow::Error::new(super::UsageError(format!(
-            "Invalid lang format {value:?} in {source}; expected md, tsv, json. Fix the selected profile or pass --format json."
-        ))));
+        return Err(anyhow::Error::new(
+            crate::error_hints::InvalidLangProfileFormat(format!(
+                "Invalid lang format {value:?} in {source}; expected md, tsv, json. Fix the selected profile or pass --format json."
+            )),
+        ));
     }
 
     let args = config::resolve_lang_with_config(&cli_args, resolved);

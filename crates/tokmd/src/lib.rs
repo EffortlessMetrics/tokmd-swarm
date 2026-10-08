@@ -74,7 +74,11 @@ pub fn format_error(err: &anyhow::Error) -> String {
 
 /// Return the process exit code for a CLI error.
 pub fn exit_code(err: &anyhow::Error) -> i32 {
-    if err.downcast_ref::<commands::UsageError>().is_some() {
+    if err.downcast_ref::<commands::UsageError>().is_some()
+        || err
+            .downcast_ref::<error_hints::InvalidLangProfileFormat>()
+            .is_some()
+    {
         2
     } else {
         1
