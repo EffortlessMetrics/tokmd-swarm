@@ -2503,6 +2503,7 @@ dependencies = [
  "console",
  "dialoguer",
  "dirs",
+ "globset",
  "indicatif",
  "insta",
  "jsonschema",

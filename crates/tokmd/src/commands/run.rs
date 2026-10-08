@@ -18,7 +18,38 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
     // 1. Scan once
     progress.set_message("Scanning codebase...");
     let scan_opts = ScanOptions::from(global);
-    let languages = scan::scan(&args.paths, &scan_opts)?;
+    let mut effective_scan_opts = scan_opts.clone();
+    if let Some(output_dir) = args.output_dir.as_ref().filter(|path| path.is_dir()) {
+        let output_dir = output_dir
+            .canonicalize()
+            .context("Failed to resolve output directory")?;
+        let normalized = scan::normalize_slashes(&output_dir.to_string_lossy());
+        let absolute_pattern = globset::escape(&normalized);
+        let absolute_pattern = absolute_pattern.trim_end_matches('/');
+        let output_contains_input = args.paths.iter().any(|path| {
+            path.canonicalize()
+                .is_ok_and(|root| root.starts_with(&output_dir))
+        });
+        if output_contains_input {
+            for name in [
+                "lang.json",
+                "module.json",
+                "export.jsonl",
+                "receipt.json",
+                "analysis.md",
+                "analysis.json",
+            ] {
+                effective_scan_opts
+                    .excluded
+                    .push(format!("{absolute_pattern}/{name}"));
+            }
+        } else {
+            effective_scan_opts
+                .excluded
+                .push(format!("{absolute_pattern}/**"));
+        }
+    }
+    let languages = scan::scan(&args.paths, &effective_scan_opts)?;
 
     // 2. Determine output directory
     let output_dir = if let Some(d) = args.output_dir {
