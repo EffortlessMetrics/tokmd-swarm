@@ -23,7 +23,12 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
         let output_dir = output_dir
             .canonicalize()
             .context("Failed to resolve output directory")?;
-        let normalized = scan::normalize_slashes(&output_dir.to_string_lossy());
+        let normalized = if cfg!(windows) {
+            scan::normalize_slashes(&output_dir.to_string_lossy())
+        } else {
+            // Unix backslashes are filename characters and need glob escaping.
+            output_dir.to_string_lossy().replace('\\', r"\\")
+        };
         let escaped = globset::escape(&normalized);
         // Tokei consumes one leading slash as a gitignore anchor.
         let anchored = format!("/{}", escaped.trim_end_matches('/'));
@@ -45,9 +50,7 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
                     .push(format!("{anchored}/{name}"));
             }
         } else {
-            effective_scan_opts
-                .excluded
-                .push(format!("{anchored}/**"));
+            effective_scan_opts.excluded.push(format!("{anchored}/**"));
         }
     }
     let languages = scan::scan(&args.paths, &effective_scan_opts)?;

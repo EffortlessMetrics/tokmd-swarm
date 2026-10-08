@@ -47,7 +47,12 @@ fn test_run_generates_artifacts() {
 #[test]
 fn run_with_in_tree_output_preserves_inventory_on_identical_retry() -> anyhow::Result<()> {
     let dir = tempdir()?;
-    let repo = dir.path().join("ordinary[repo]");
+    let repo_name = if cfg!(windows) {
+        "ordinary[repo]"
+    } else {
+        "ordinary[repo]\\literal"
+    };
+    let repo = dir.path().join(repo_name);
     fs::create_dir(&repo)?;
     fs::write(
         repo.join("source.rs"),
@@ -155,9 +160,7 @@ fn run_with_output_equal_to_scan_root_keeps_source_files() -> anyhow::Result<()>
             output.status,
             String::from_utf8_lossy(&output.stderr)
         );
-        Ok(serde_json::from_slice(&fs::read(
-            repo.join("lang.json"),
-        )?)?)
+        Ok(serde_json::from_slice(&fs::read(repo.join("lang.json"))?)?)
     };
 
     for receipt in [run()?, run()?] {

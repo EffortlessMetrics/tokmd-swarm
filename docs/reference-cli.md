@@ -407,7 +407,7 @@ Options:
           [alias: --ignore]
 
       --output-dir <OUTPUT_DIR>
-          Output directory for artifacts (defaults to `.runs/tokmd` inside the repo, or system temp if not possible)
+          Output directory for artifacts (defaults to `.runs/tokmd` inside the repo, or system temp if not possible). Existing output contents are excluded from scans unless they contain a scan root
 
       --config <MODE>
           Whether to load scan config files (`tokei.toml` / `.tokeirc`). `tokmd.toml` is discovered separately; set `TOKMD_CONFIG` to override its path
