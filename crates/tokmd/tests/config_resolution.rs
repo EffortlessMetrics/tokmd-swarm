@@ -568,6 +568,60 @@ fn ordinary_lang_invalid_format_returns_argument_exit() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn selected_profile_lang_format_recovers_by_override_or_config_repair() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    std::fs::create_dir(&repo)?;
+    let config_dir = dir.path().join("rate_limit").join("timeout");
+    std::fs::create_dir_all(&config_dir)?;
+    let selected_config = config_dir.join("selected.toml");
+    let source = repo.join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(&selected_config, "[view.ci]\nformat = \"jsno\"\n")?;
+
+    let run = |override_format: Option<&str>| -> anyhow::Result<std::process::Output> {
+        let mut command = first_use_command(&repo, &selected_config);
+        command.args(["--profile", "ci", "lang"]);
+        if let Some(format) = override_format {
+            command.args(["--format", format]);
+        }
+        command.arg("--files").arg(&source);
+        Ok(command.output()?)
+    };
+
+    let invalid = run(None)?;
+    let stderr = std::str::from_utf8(&invalid.stderr)?;
+    let selected_path = selected_config.display().to_string();
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        invalid.status.code() == Some(2)
+            && invalid.stdout.is_empty()
+            && stderr.contains(selected_path.as_str())
+            && stderr.contains("format")
+            && stderr.contains("jsno")
+            && stderr.contains("md, tsv, json")
+            && stderr.contains("--format")
+            && hints.is_empty(),
+        "invalid selected lang format must fail with local repair guidance and no remote hints: {}: {stderr}; hints={hints:?}",
+        invalid.status
+    );
+
+    let overridden = first_use_json(&run(Some("json"))?)?;
+    std::fs::write(&selected_config, "[view.ci]\nformat = \"json\"\n")?;
+    anyhow::ensure!(
+        first_use_json(&run(None)?)? == overridden && first_use_json(&run(None)?)? == overridden,
+        "profile repair did not restore repeatable same-argv JSON receipts"
+    );
+    Ok(())
+}
+
 #[cfg(not(feature = "analysis"))]
 #[test]
 fn analysis_commands_without_feature_preserve_error() -> anyhow::Result<()> {
