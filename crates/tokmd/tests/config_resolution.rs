@@ -573,7 +573,9 @@ fn selected_profile_lang_format_recovers_by_override_or_config_repair() -> anyho
     let dir = tempfile::tempdir()?;
     let repo = dir.path().join("ordinary-repo");
     std::fs::create_dir(&repo)?;
-    let selected_config = dir.path().join("selected.toml");
+    let config_dir = dir.path().join("rate_limit").join("timeout");
+    std::fs::create_dir_all(&config_dir)?;
+    let selected_config = config_dir.join("selected.toml");
     let source = repo.join("sample.rs");
     std::fs::write(&source, "pub fn first_use_one() {}\npub fn first_use_two() {}\n")?;
     std::fs::write(&selected_config, "[view.ci]\nformat = \"jsno\"\n")?;
@@ -591,6 +593,10 @@ fn selected_profile_lang_format_recovers_by_override_or_config_repair() -> anyho
     let invalid = run(None)?;
     let stderr = std::str::from_utf8(&invalid.stderr)?;
     let selected_path = selected_config.display().to_string();
+    let hints = stderr
+        .lines()
+        .filter(|line| line.starts_with("- "))
+        .collect::<Vec<_>>();
     anyhow::ensure!(
         invalid.status.code() == Some(2)
             && invalid.stdout.is_empty()
@@ -598,8 +604,9 @@ fn selected_profile_lang_format_recovers_by_override_or_config_repair() -> anyho
             && stderr.contains("format")
             && stderr.contains("jsno")
             && stderr.contains("md, tsv, json")
-            && stderr.contains("--format"),
-        "invalid selected lang format must fail with local repair guidance: {}: {stderr}",
+            && stderr.contains("--format")
+            && hints.is_empty(),
+        "invalid selected lang format must fail with local repair guidance and no remote hints: {}: {stderr}; hints={hints:?}",
         invalid.status
     );
 
