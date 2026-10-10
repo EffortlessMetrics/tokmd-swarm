@@ -151,6 +151,19 @@ class PublicationWorkflowTests(unittest.TestCase):
         caps = [int(value) for value in re.findall(r"timeout-minutes: (\d+)", self.job)]
         self.assertLess(sum(caps[1:]), caps[0], "step ceilings leave no job finalization margin")
 
+    def test_release_download_excludes_publisher_receipts_on_rerun(self):
+        workflow = Path(__file__).resolve().parents[1] / ".github/workflows/release.yml"
+        source = workflow.read_text(encoding="utf-8")
+        job = source.split("  create-release:\n", 1)[1].split("  publish-crates:\n", 1)[0]
+        download = job.split("      - name: Download Artifacts\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("pattern: tokmd-*", download)
+        self.assertIn("path: artifacts", download)
+        from fnmatch import fnmatchcase
+        for artifact in ("release-publish-" + "a" * 40 + "-1", "consumer-smoke-final"):
+            self.assertFalse(fnmatchcase(artifact, "tokmd-*"))
+        for artifact in ("tokmd-linux-amd64", "tokmd-windows-amd64.exe", "tokmd-wasm-v1.15.1"):
+            self.assertTrue(fnmatchcase(artifact, "tokmd-*"))
+
     def test_identity_uses_locked_metadata_and_writes_observation(self):
         result = self.run_step("Verify committed publication identity")
         self.assertEqual(result.returncode, 0, result.stderr)

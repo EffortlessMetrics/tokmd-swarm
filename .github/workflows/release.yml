@@ -154,6 +154,8 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v8
         with:
+          # Reruns must not attach publication/consumer receipts as release assets.
+          pattern: tokmd-*
           path: artifacts
 
       - name: Display structure of downloaded files
