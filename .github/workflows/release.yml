@@ -154,6 +154,8 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v8
         with:
+          # Reruns must not attach publication/consumer receipts as release assets.
+          pattern: tokmd-*
           path: artifacts
 
       - name: Display structure of downloaded files
@@ -207,21 +209,138 @@ jobs:
   publish-crates:
     name: Publish to crates.io
     needs: create-release
-    # Prerelease tags are distributed as GitHub Release assets only.
+    # RCs never enter the registry mutation path.
     if: ${{ github.repository == 'EffortlessMetrics/tokmd' && !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
-    env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    timeout-minutes: 180
+    concurrency:
+      group: tokmd-stable-registry-publication
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 5
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Rust
+        timeout-minutes: 10
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish crates in dependency order
-        run: bash scripts/publish-release-crates.sh
+      - name: Verify committed publication identity
+        id: identity
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          source="$(git rev-parse --verify 'HEAD^{commit}')"
+          test "${source}" = "${GITHUB_SHA}"
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "tokmd") | .version')"
+          test "${version}" = "${GITHUB_REF_NAME#v}"
+          mkdir -p target/publishing
+          jq -n --arg source "${source}" --arg tag "${GITHUB_REF_NAME}" \
+            --arg version "${version}" --arg repository "${GITHUB_REPOSITORY}" \
+            --arg run "${GITHUB_RUN_ID}" --arg attempt "${GITHUB_RUN_ATTEMPT}" \
+            '{source_commit:$source,tag:$tag,version:$version,repository:$repository,run_id:$run,run_attempt:$attempt}' \
+            > target/publishing/workflow-identity.json
+
+      - name: Restore prior attempt publication receipt
+        id: restore
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_RUN_ATTEMPT}" -gt 1 || exit 0
+          gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" \
+            > target/publishing/prior-artifacts.json
+          prior="$(jq -ce --arg prefix "release-publish-${GITHUB_SHA}-" \
+            --argjson attempt "${GITHUB_RUN_ATTEMPT}" \
+            '[.[] | .artifacts[] | select(.name | startswith($prefix)) |
+              . + {attempt:(.name | ltrimstr($prefix) | tonumber)} |
+              select(.attempt < $attempt)] | sort_by(.attempt) | last // {}' \
+            target/publishing/prior-artifacts.json)"
+          if [[ "${prior}" = '{}' ]]; then
+            echo 'No earlier uploaded receipt; the publisher will reinspect every registry version.'
+            exit 0
+          fi
+          test "$(jq -r '.expired' <<<"${prior}")" = false
+          name="$(jq -er '.name' <<<"${prior}")"
+          gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+            --name "${name}" --dir target/publishing/previous
+          receipt=target/publishing/previous/publish-receipt.json
+          if [[ -L "${receipt}" ]]; then
+            echo 'Refusing a symlink publication receipt' >&2
+            exit 1
+          fi
+          if [[ -e "${receipt}" ]]; then
+            test -s "${receipt}"
+            cp -- "${receipt}" target/publishing/publish-receipt.json
+          fi
+          # The Rust publisher validates schema, source/tree, manifests, options,
+          # registry and plan before accepting restored state as a resume input.
+
+      - name: Publish crates with identity-bound receipts
+        id: publisher
+        timeout-minutes: 130
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--receipt target/publishing/publish-receipt.json \
+            --bootstrap tokmd-types,tokmd-envelope --yes)
+          if [[ -f target/publishing/publish-receipt.json ]]; then
+            args+=(--resume)
+          fi
+          cargo --locked xtask publish "${args[@]}"
+
+      - name: Observe complete registry inventory
+        id: inventory
+        if: ${{ always() && steps.identity.outcome == 'success' }}
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reobserve delayed registry visibility without replaying publication.
+          # One shared eight-minute budget leaves time for failure evidence upload.
+          deadline=$((SECONDS + 480))
+          for attempt in 1 2 3; do
+            remaining=$((deadline - SECONDS))
+            if (( remaining <= 0 )); then
+              exit 124
+            fi
+            code=0
+            timeout --kill-after=5s "${remaining}s" cargo --locked xtask publish \
+              --registry-inventory target/publishing/registry-inventory.json || code=$?
+            if (( code == 0 )); then
+              exit 0
+            fi
+            if (( attempt == 3 || code == 124 || code == 137 )); then
+              exit "${code}"
+            fi
+            echo "Registry observation ${attempt}/3 failed (${code}); rechecking after bounded backoff."
+            sleep $((attempt * 5))
+          done
+
+      - name: Upload publication evidence even after failure
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-publish-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            target/publishing/workflow-identity.json
+            target/publishing/publish-receipt.json
+            target/publishing/registry-inventory.json
+          if-no-files-found: error
+          retention-days: 30
 
   docker:
     name: Promote Verified Docker Image
