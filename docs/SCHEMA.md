@@ -218,6 +218,16 @@ Produced by `tokmd --format json` or `tokmd lang --format json`.
 }
 ```
 
+## Release status receipt
+
+`cargo --locked xtask release-status` emits `tokmd.release_status.v1`, an
+operator receipt separate from the public product families. Its
+[formal JSON Schema](release-status.schema.json) defines the serialized shape
+and state-dependent prerequisites. The [release-status contract](specs/release-status.md)
+also requires matching source/publication commits, tag/version consistency,
+and completion derived from every required surface and the aligned graph.
+Offline fixture validity does not authenticate the supplied release evidence.
+
 ## Local publication receipt
 
 `cargo xtask publish --receipt <path>` writes

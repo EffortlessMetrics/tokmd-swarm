@@ -1,0 +1,453 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokmd.dev/schemas/release-status.v1.json",
+  "title": "tokmd release status receipt v1",
+  "description": "Read-only release facts and offline fixture structure. Completion in this slice is stable-only; RC inspection remains incomplete pending policy-aware non-promotion evidence. The release-status validator additionally enforces tag/version consistency, source/publication commit identity and exact completion calculation. Schema validity does not authenticate imported evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "tag",
+    "source",
+    "publication",
+    "git_tag",
+    "github_release",
+    "assets",
+    "registry",
+    "ghcr_exact",
+    "ghcr_aliases",
+    "action_exact",
+    "action_alias",
+    "consumer_proof",
+    "nix",
+    "wasm",
+    "finalization",
+    "complete"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tokmd.release_status.v1"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "$ref": "#/definitions/source"
+    },
+    "publication": {
+      "$ref": "#/definitions/publication"
+    },
+    "git_tag": {
+      "$ref": "#/definitions/fact"
+    },
+    "github_release": {
+      "$ref": "#/definitions/fact"
+    },
+    "assets": {
+      "$ref": "#/definitions/fact"
+    },
+    "registry": {
+      "$ref": "#/definitions/fact"
+    },
+    "ghcr_exact": {
+      "$ref": "#/definitions/fact"
+    },
+    "ghcr_aliases": {
+      "$ref": "#/definitions/fact"
+    },
+    "action_exact": {
+      "$ref": "#/definitions/fact"
+    },
+    "action_alias": {
+      "$ref": "#/definitions/fact"
+    },
+    "consumer_proof": {
+      "$ref": "#/definitions/fact"
+    },
+    "nix": {
+      "$ref": "#/definitions/fact"
+    },
+    "wasm": {
+      "$ref": "#/definitions/fact"
+    },
+    "finalization": {
+      "$ref": "#/definitions/fact"
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "complete": {
+            "const": true
+          }
+        },
+        "required": [
+          "complete"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tag": {
+            "pattern": "^v?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+          },
+          "source": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "publication": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "git_tag": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "github_release": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "assets": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "registry": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "ghcr_exact": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "ghcr_aliases": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "action_exact": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "action_alias": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "consumer_proof": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "nix": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "wasm": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          },
+          "finalization": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "missing",
+        "pending",
+        "passed",
+        "failed",
+        "unavailable",
+        "not_supported",
+        "not_run"
+      ]
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/definitions/state"
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "detail",
+              "evidence"
+            ],
+            "properties": {
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "expected_version"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/definitions/state"
+        },
+        "workspace_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_version": {
+          "type": "string"
+        },
+        "sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "workspace_version",
+              "sha",
+              "detail",
+              "evidence"
+            ],
+            "properties": {
+              "workspace_version": {
+                "type": "string"
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$"
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/definitions/state"
+        },
+        "merge_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "publication_ahead": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "swarm_ahead": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "merge_sha",
+              "parent_count",
+              "publication_ahead",
+              "swarm_ahead",
+              "detail",
+              "evidence"
+            ],
+            "properties": {
+              "merge_sha": {
+                "type": "string",
+                "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$"
+              },
+              "parent_count": {
+                "const": 2
+              },
+              "publication_ahead": {
+                "const": 0
+              },
+              "swarm_ahead": {
+                "const": 0
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

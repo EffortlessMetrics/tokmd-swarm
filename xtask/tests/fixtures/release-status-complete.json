@@ -1,0 +1,83 @@
+{
+  "schema": "tokmd.release_status.v1",
+  "schema_version": 1,
+  "tag": "v1.15.1",
+  "source": {
+    "state": "passed",
+    "workspace_version": "1.15.1",
+    "expected_version": "1.15.1",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "detail": "fixture",
+    "evidence": "fixture"
+  },
+  "publication": {
+    "state": "passed",
+    "merge_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parent_count": 2,
+    "publication_ahead": 0,
+    "swarm_ahead": 0,
+    "detail": "fixture",
+    "evidence": "fixture"
+  },
+  "git_tag": {
+    "state": "passed",
+    "detail": "tag",
+    "evidence": "fixture"
+  },
+  "github_release": {
+    "state": "passed",
+    "detail": "release",
+    "evidence": "fixture"
+  },
+  "assets": {
+    "state": "passed",
+    "detail": "assets",
+    "evidence": "fixture"
+  },
+  "registry": {
+    "state": "passed",
+    "detail": "registry",
+    "evidence": "fixture"
+  },
+  "ghcr_exact": {
+    "state": "passed",
+    "detail": "exact image",
+    "evidence": "fixture"
+  },
+  "ghcr_aliases": {
+    "state": "passed",
+    "detail": "aliases",
+    "evidence": "fixture"
+  },
+  "action_exact": {
+    "state": "passed",
+    "detail": "exact action",
+    "evidence": "fixture"
+  },
+  "action_alias": {
+    "state": "passed",
+    "detail": "action alias",
+    "evidence": "fixture"
+  },
+  "consumer_proof": {
+    "state": "passed",
+    "detail": "consumer",
+    "evidence": "fixture"
+  },
+  "nix": {
+    "state": "passed",
+    "detail": "nix",
+    "evidence": "fixture"
+  },
+  "wasm": {
+    "state": "passed",
+    "detail": "wasm",
+    "evidence": "fixture"
+  },
+  "finalization": {
+    "state": "passed",
+    "detail": "finalization",
+    "evidence": "fixture"
+  },
+  "complete": true
+}
