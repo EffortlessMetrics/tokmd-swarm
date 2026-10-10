@@ -951,7 +951,7 @@ fn test_gate_configured_baseline_malformed_intended_file_rejects_shadow() -> any
     check_baseline_load_error(
         &mut configured_baseline_command(root, &nested),
         &root.join("baseline.json"),
-        "Failed to parse baseline JSON",
+        "failed to parse baseline JSON",
     )
 }
 
