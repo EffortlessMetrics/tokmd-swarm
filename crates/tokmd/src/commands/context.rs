@@ -11,6 +11,14 @@ use crate::context_pack;
 use crate::progress::Progress;
 
 pub(crate) fn handle(args: cli::CliContextArgs, global: &cli::GlobalArgs) -> Result<()> {
+    handle_with_selection(args, global, |_| Ok(()))
+}
+
+fn handle_with_selection(
+    args: cli::CliContextArgs,
+    global: &cli::GlobalArgs,
+    after_selection: impl FnOnce(&[tokmd_types::ContextFileRow]) -> Result<()>,
+) -> Result<()> {
     let progress = Progress::new(!global.no_progress);
 
     let paths = args
@@ -124,6 +132,7 @@ pub(crate) fn handle(args: cli::CliContextArgs, global: &cli::GlobalArgs) -> Res
     }
 
     let selected = &select_result.selected;
+    after_selection(&select_result.selected)?;
 
     let used_tokens: usize = selected
         .iter()
@@ -214,5 +223,21 @@ fn add_excluded_path(
             path: pattern,
             reason: reason.to_string(),
         });
+    }
+}
+
+#[cfg(test)]
+mod required_read_tests {
+    use super::*;
+
+    #[test]
+    fn context_pack_command_required_reads_and_completion() -> Result<()> {
+        crate::context_pack::required_reads::command_matrix("context", |cli, mutate| {
+            let args = match cli.command {
+                Some(crate::cli::Commands::Context(args)) => args,
+                _ => anyhow::bail!("wrong fixture command"),
+            };
+            handle_with_selection(args, &cli.global, mutate)
+        })
     }
 }

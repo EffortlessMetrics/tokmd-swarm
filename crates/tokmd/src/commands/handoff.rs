@@ -37,6 +37,14 @@ const DEFAULT_TREE_DEPTH: usize = 4;
 
 /// Handle the handoff command.
 pub(crate) fn handle(args: cli::HandoffArgs, global: &cli::GlobalArgs) -> Result<()> {
+    handle_with_selection(args, global, |_| Ok(()))
+}
+
+fn handle_with_selection(
+    args: cli::HandoffArgs,
+    global: &cli::GlobalArgs,
+    after_selection: impl FnOnce(&[tokmd_types::ContextFileRow]) -> Result<()>,
+) -> Result<()> {
     let progress = Progress::new(!global.no_progress);
 
     let paths = args
@@ -120,6 +128,7 @@ pub(crate) fn handle(args: cli::HandoffArgs, global: &cli::GlobalArgs) -> Result
         },
     );
     let selected = select_result.selected;
+    after_selection(&selected)?;
     let smart_excluded_files = select_result.smart_excluded;
 
     let used_tokens: usize = selected
@@ -156,6 +165,7 @@ pub(crate) fn handle(args: cli::HandoffArgs, global: &cli::GlobalArgs) -> Result
         &intelligence,
         &selected,
         args.compress,
+        &paths,
     )?;
     let packet_local_proof_route = discover_packet_local_proof_route(
         args.proof_route.as_deref(),
@@ -356,5 +366,21 @@ mod tests {
         assert!(tree.contains("a/"));
         assert!(!tree.contains("b/"));
         assert!(!tree.contains("file.rs"));
+    }
+}
+
+#[cfg(test)]
+mod required_read_tests {
+    use super::*;
+
+    #[test]
+    fn context_pack_command_required_reads_and_completion() -> Result<()> {
+        crate::context_pack::required_reads::command_matrix("handoff", |cli, mutate| {
+            let args = match cli.command {
+                Some(crate::cli::Commands::Handoff(args)) => args,
+                _ => anyhow::bail!("wrong fixture command"),
+            };
+            handle_with_selection(args, &cli.global, mutate)
+        })
     }
 }

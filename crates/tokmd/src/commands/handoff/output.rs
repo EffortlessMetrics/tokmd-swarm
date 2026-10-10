@@ -1,7 +1,7 @@
 //! Handoff bundle output writers.
 
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -51,7 +51,10 @@ pub(super) fn write_payloads(
     intelligence: &HandoffIntelligence,
     selected: &[ContextFileRow],
     compress: bool,
+    input_paths: &[PathBuf],
 ) -> Result<HandoffPayloads> {
+    crate::context_pack::remove_completion_marker(&out_dir.join("manifest.json"))?;
+
     let map_path = out_dir.join("map.jsonl");
     let map_bytes = write_map_jsonl(&map_path, export)?;
     let map_hash = hash_file(&map_path)?;
@@ -64,7 +67,7 @@ pub(super) fn write_payloads(
     let intelligence_hash = hash_bytes(intelligence_json.as_bytes());
 
     let code_path = out_dir.join("code.txt");
-    let code_bytes = write_code_bundle(&code_path, selected, compress)?;
+    let code_bytes = write_code_bundle(&code_path, selected, compress, input_paths)?;
     let code_hash = hash_file(&code_path)?;
 
     let artifacts = vec![
@@ -825,79 +828,18 @@ fn write_map_jsonl(path: &Path, export: &ExportData) -> Result<u64> {
     Ok(bytes)
 }
 
-fn write_code_bundle(path: &Path, selected: &[ContextFileRow], compress: bool) -> Result<u64> {
+fn write_code_bundle(
+    path: &Path,
+    selected: &[ContextFileRow],
+    compress: bool,
+    input_paths: &[PathBuf],
+) -> Result<u64> {
     let file =
         File::create(path).with_context(|| format!("Failed to create {}", path.display()))?;
-    let mut writer = std::io::BufWriter::new(file);
-    let mut bytes: u64 = 0;
-
-    for ctx_file in selected {
-        let file_path = PathBuf::from(&ctx_file.path);
-        if !file_path.exists() {
-            continue;
-        }
-
-        match ctx_file.policy {
-            InclusionPolicy::Full => {
-                let header = format!("// === {} ===\n", ctx_file.path);
-                writer.write_all(header.as_bytes())?;
-                bytes += header.len() as u64;
-
-                if compress {
-                    let file = File::open(&file_path)
-                        .with_context(|| format!("Failed to open file: {}", file_path.display()))?;
-                    let reader = BufReader::new(file);
-                    for line in reader.lines() {
-                        let line = line.with_context(|| {
-                            format!("Failed to read file: {}", file_path.display())
-                        })?;
-                        if !line.trim().is_empty() {
-                            writeln!(writer, "{}", line)?;
-                            bytes += line.len() as u64 + 1;
-                        }
-                    }
-                    writeln!(writer)?;
-                    bytes += 1;
-                } else {
-                    let content = fs::read_to_string(&file_path)
-                        .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
-                    writer.write_all(content.as_bytes())?;
-                    bytes += content.len() as u64;
-                    if !content.ends_with('\n') {
-                        writeln!(writer)?;
-                        bytes += 1;
-                    }
-                    writeln!(writer)?;
-                    bytes += 1;
-                }
-            }
-            InclusionPolicy::HeadTail => {
-                let header = format!("// === {} ===\n", ctx_file.path);
-                writer.write_all(header.as_bytes())?;
-                bytes += header.len() as u64;
-
-                let mut buf = Vec::new();
-                crate::context_pack::write_head_tail(&mut buf, &file_path, ctx_file, compress)?;
-                writer.write_all(&buf)?;
-                bytes += buf.len() as u64;
-
-                writeln!(writer)?;
-                bytes += 1;
-            }
-            InclusionPolicy::Summary | InclusionPolicy::Skip => {
-                let header = format!(
-                    "// === {} [skipped: {}] ===\n\n",
-                    ctx_file.path,
-                    ctx_file.policy_reason.as_deref().unwrap_or("policy")
-                );
-                writer.write_all(header.as_bytes())?;
-                bytes += header.len() as u64;
-            }
-        }
-    }
-
+    let mut writer = crate::context_pack::CountingWriter::new(std::io::BufWriter::new(file));
+    crate::context_pack::write_handoff_bundle_output(&mut writer, selected, compress, input_paths)?;
     writer.flush()?;
-    Ok(bytes)
+    Ok(writer.bytes())
 }
 
 fn hash_bytes(bytes: &[u8]) -> String {
@@ -923,6 +865,37 @@ fn hash_file(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use tokmd_types::{ChildIncludeMode, FileRow};
+
+    fn render_required_fixture(
+        dir: &Path,
+        selected: &[ContextFileRow],
+        compress: bool,
+    ) -> Result<Vec<u8>> {
+        let path = dir.join("code.txt");
+        let bytes = write_code_bundle(&path, selected, compress, &[])?;
+        let output = fs::read(&path)?;
+        anyhow::ensure!(
+            bytes == output.len() as u64,
+            "handoff byte count disagrees with payload"
+        );
+        Ok(output)
+    }
+
+    #[test]
+    fn context_pack_handoff_required_read_matrix() -> Result<()> {
+        crate::context_pack::required_reads::required_read_matrix(render_required_fixture)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn context_pack_handoff_dangling_selected_symlink() -> Result<()> {
+        crate::context_pack::required_reads::dangling_symlink_matrix(render_required_fixture)
+    }
+
+    #[test]
+    fn context_pack_handoff_missing_policy_exclusions() -> Result<()> {
+        crate::context_pack::required_reads::policy_exclusions(render_required_fixture)
+    }
 
     #[test]
     fn map_jsonl_writes_parent_rows_only() {
