@@ -163,6 +163,7 @@ paths = [
   "xtask/src/tasks/ci_plan.rs",
   "xtask/src/tasks/ci_route.rs",
   "xtask/src/tasks/ci_runner_health.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/coverage_receipt.rs",
   "xtask/src/tasks/doc_artifacts.rs",
   "xtask/src/tasks/file_policy.rs",
@@ -440,6 +441,7 @@ paths = [
   "xtask/src/cli.rs",
   "xtask/src/main.rs",
   "xtask/src/tasks/mod.rs",
+  "xtask/src/tasks/changelog.rs",
   "xtask/src/tasks/no_panic.rs",
   "xtask/tests/no_panic_w94.rs",
 ]
@@ -1370,6 +1372,26 @@ paths = [
 ]
 proof = ["cargo xtask docs --check"]
 reason = "Top-level architecture, ADR, design, roadmap, requirements, proposal/spec/plan/template, and audit docs are project truth surfaces; edits should route to documentation checks instead of appearing as unknown files."
+mutation = false
+coverage = false
+
+[[scope]]
+name = "release_note_workflow"
+kind = "rust"
+paths = [
+  ".changes/**",
+  ".changie-version",
+  ".changie.yaml",
+  ".cargo/config.toml",
+  ".githooks/pre-commit",
+  ".githooks/pre-push",
+  "xtask/src/tasks/changelog.rs",
+  "xtask/src/tasks/lint_fix.rs",
+  "docs/changelog-workflow.md",
+]
+packages = ["xtask"]
+proof = ["cargo test --locked -p xtask changelog", "cargo --locked xtask docs --check"]
+reason = "Changie configuration and fragments share a pinned contract with the staged validator; focused fixtures check canonical keys, layout drift, index isolation, and safe creation, while docs checks cover the workflow guide."
 mutation = false
 coverage = false
 

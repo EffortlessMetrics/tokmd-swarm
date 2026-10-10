@@ -25,6 +25,7 @@ pub fn run(args: LintFixArgs) -> Result<()> {
         let status = Command::new("cargo")
             .args([
                 "clippy",
+                "--locked",
                 "--fix",
                 "--workspace",
                 "--all-targets",
@@ -45,6 +46,7 @@ pub fn run(args: LintFixArgs) -> Result<()> {
     let status = Command::new("cargo")
         .args([
             "clippy",
+            "--locked",
             "--workspace",
             "--all-targets",
             "--all-features",

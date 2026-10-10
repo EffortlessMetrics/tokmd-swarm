@@ -23,8 +23,8 @@ cargo fmt-check
 cargo fmt-fix
 cargo clippy --locked --all-features -- -D warnings
 cargo run --locked -p tokmd -- --version
-cargo xtask lint-fix
-cargo xtask gate --check
+cargo --locked xtask lint-fix
+cargo --locked xtask gate --check
 just lint
 just fmt
 just publish-plan
@@ -52,7 +52,7 @@ required CI sequence and does not execute libFuzzer campaigns; scheduled fuzz
 and platform lanes remain separate proof.
 
 The required workflow executes that sequence with `--locked` in
-`.github/workflows/ci.yml`, and `cargo xtask gate --check` passes `--locked` to
+`.github/workflows/ci.yml`, and `cargo --locked xtask gate --check` passes `--locked` to
 its own check, clippy, and compile-only test steps. `--locked` precedes the
 `xtask` alias because `.cargo/config.toml` expands it to `run -p xtask --`, so
 the launcher resolves dependencies itself and only a global option ahead of the
@@ -68,11 +68,19 @@ and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issue
 programme, with follow-up controls in [depguard#22](https://github.com/EffortlessMetrics/depguard/issues/22)
 and [depguard#24](https://github.com/EffortlessMetrics/depguard/issues/24).
 
-Optional git hooks:
+Before committing, capture required release-note intent with `cargo change`
+and run `cargo precommit` to validate the staged diff. See
+`docs/changelog-workflow.md` for the fragment contract and exemptions.
+
+Optional git hooks (the installer preserves unrelated hook configuration):
 
 ```bash
-git config core.hooksPath .githooks
+cargo --locked xtask hooks install
 ```
+
+The pre-commit launcher runs only staged fragment validation and preserves
+partial staging. Run formatting and lint fixes explicitly before staging;
+the full quality gate runs separately at pre-push.
 
 ## Dual-Repo Workbench Boundary
 

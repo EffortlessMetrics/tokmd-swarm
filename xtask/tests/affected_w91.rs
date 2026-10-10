@@ -138,6 +138,7 @@ fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json:
         "agents/shared/repo.md",
         "agents/shared/future-guidance.md",
         ".github/workflows/ci.yml",
+        "xtask/src/tasks/changelog.rs",
     ] {
         let target = repo.join(path);
         if let Some(parent) = target.parent() {
@@ -189,6 +190,24 @@ fn array_len(value: &serde_json::Value, key: &str) -> Result<usize> {
         .and_then(serde_json::Value::as_array)
         .map(Vec::len)
         .with_context(|| format!("affected report {key} should be an array"))
+}
+
+#[test]
+fn changelog_source_routes_to_its_focused_validator_proof() -> Result<()> {
+    let policy = workspace_root().join("ci/proof.toml");
+    let report = affected_fixture(&["xtask/src/tasks/changelog.rs"], &policy)?;
+    let focused = scope(&report, "release_note_workflow")?;
+    let commands = focused
+        .get("proof")
+        .and_then(serde_json::Value::as_array)
+        .context("focused proof commands missing")?;
+    ensure!(
+        commands
+            .iter()
+            .any(|command| command.as_str() == Some("cargo test --locked -p xtask changelog"))
+    );
+    ensure!(array_len(&report, "unknown_files")? == 0);
+    Ok(())
 }
 
 #[test]

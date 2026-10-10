@@ -1,0 +1,3 @@
+component: Release
+kind: fixed
+body: "Validate staged fragment mappings and timestamps, reject directory aliases, and install complete fragments without overwrites or filename collisions."

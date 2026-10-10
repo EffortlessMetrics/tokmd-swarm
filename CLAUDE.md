@@ -16,11 +16,11 @@ Preferred commands for repo work:
 
 | Command | Purpose |
 |---------|---------|
-| `cargo xtask lint-fix` | Auto-fix fmt + clippy, then verify |
-| `cargo xtask lint-fix --no-clippy` | Fast fmt-only fix |
+| `cargo --locked xtask lint-fix` | Auto-fix fmt + clippy, then verify |
+| `cargo --locked xtask lint-fix --no-clippy` | Fast fmt-only fix |
 | `cargo fmt-check` | Verify workspace formatting via the repo-native alias |
-| `cargo xtask gate --check` | Full quality gate (read-only) |
-| `cargo xtask gate` | Quality gate with auto-fix fmt step |
+| `cargo --locked xtask gate --check` | Full quality gate (read-only) |
+| `cargo --locked xtask gate` | Quality gate with auto-fix fmt step |
 | `cargo trim-target --check` | Show reclaimable target/debug footprint |
 | `cargo trim-target` | Remove PDB and incremental build cruft from target/debug |
 | `cargo sccache-check` | Verify local sccache setup |
@@ -32,14 +32,17 @@ Windows MSVC builds in this repo default to line-table debuginfo to keep `target
 If you need full local symbols for a debugging session, use `$env:RUSTFLAGS='-C debuginfo=2'; cargo test ...`.
 For cross-worktree cache reuse, use `cargo xtask sccache --basedir <PATH> -- <cargo args>` so the wrapper can set `SCCACHE_BASEDIRS` explicitly.
 
+Run `cargo precommit` before committing; use `cargo change` for required
+release-note fragments. See `docs/changelog-workflow.md`.
+
 Optional git hooks:
 
 ```bash
-git config core.hooksPath .githooks
+cargo --locked xtask hooks install
 ```
 
-- `pre-commit`: `cargo xtask lint-fix` + restage + typos
-- `pre-push`: `cargo xtask gate --check`
+- `pre-commit`: staged fragment validation only; preserves the index and working tree
+- `pre-push`: `cargo --locked xtask gate --check`
 
 ## Schema Version Sync
 

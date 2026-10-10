@@ -62,6 +62,8 @@ schemas, and verification policy for `tokmd`.
   surface, metadata, and CI ownership evidence before release mutation.
 - [release-readiness.md](release-readiness.md) — interpret pre-release evidence
   without publishing, tagging, or creating releases.
+- [changelog-workflow.md](changelog-workflow.md) — capture post-1.15.0
+  release-note intent with the pinned Changie baseline.
 - [releases/release-checklist.md](releases/release-checklist.md) — canonical
   RC/stable procedure, history-preserving import checklist, consumer-proof
   requirements, and failure recovery matrix.

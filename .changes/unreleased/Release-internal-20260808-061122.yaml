@@ -1,0 +1,4 @@
+component: Release
+kind: internal
+body: Added the pinned Changie configuration baseline for post-1.15.0 release fragments.
+time: 2026-08-08T06:11:22.8530286-04:00
