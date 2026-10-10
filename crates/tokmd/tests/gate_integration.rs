@@ -886,15 +886,16 @@ fn check_baseline_load_error(
     expected_detail: &str,
 ) -> anyhow::Result<()> {
     let output = command.output()?;
-    let stderr = String::from_utf8(output.stderr)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
     anyhow::ensure!(
-        output.status.code() == Some(2),
+        output.status.code() == Some(1) && output.stdout.is_empty(),
         "selected baseline error was masked: exit {:?}, stdout {}, stderr {stderr}",
         output.status.code(),
         String::from_utf8_lossy(&output.stdout)
     );
     anyhow::ensure!(
-        stderr.contains(expected_detail) && stderr.contains(intended_path.to_string_lossy().as_ref()),
+        stderr.contains(expected_detail)
+            && stderr.contains(intended_path.to_string_lossy().as_ref()),
         "baseline diagnostic lost its intended path or cause: {stderr}"
     );
     Ok(())
@@ -968,7 +969,8 @@ fn test_gate_configured_baseline_absolute_path_is_preserved() -> anyhow::Result<
 }
 
 #[test]
-fn test_gate_configured_baseline_cli_relative_override_remains_cwd_relative() -> anyhow::Result<()> {
+fn test_gate_configured_baseline_cli_relative_override_remains_cwd_relative() -> anyhow::Result<()>
+{
     let dir = configured_baseline_fixture()?;
     let root = dir.path();
     let nested = root.join("nested");
@@ -989,7 +991,8 @@ fn test_gate_configured_baseline_cli_relative_override_remains_cwd_relative() ->
 }
 
 #[test]
-fn test_gate_configured_baseline_env_selected_config_uses_its_own_directory() -> anyhow::Result<()> {
+fn test_gate_configured_baseline_env_selected_config_uses_its_own_directory() -> anyhow::Result<()>
+{
     let dir = configured_baseline_fixture()?;
     let root = dir.path();
     let nested = root.join("nested");
