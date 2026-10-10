@@ -122,7 +122,7 @@ jobs:
         run: |
           mkdir -p target/ci-core
           mark_clock() {
-            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
           }
           mark_clock target/ci-core/job_started
 
@@ -134,7 +134,7 @@ jobs:
           set +e
           mkdir -p target/ci-core
           mark_clock() {
-            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
           }
           mark_clock target/ci-core/core_started
           if [ "${RUNNER_KIND}" = "self-hosted" ]; then
@@ -206,7 +206,7 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         run: |
           mark_clock() {
-            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
           }
           mark_clock target/ci-core/ub_review_started
 
@@ -249,7 +249,7 @@ jobs:
               ;;
           esac
           mark_clock() {
-            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\\n")' "$1"
+            python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
           }
           if [ -n "${UB_OUTCOME:-}" ] && [ "${UB_OUTCOME}" != "skipped" ]; then
             mark_clock target/ci-core/ub_review_completed

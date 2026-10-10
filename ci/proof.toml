@@ -183,6 +183,7 @@ paths = [
   "xtask/src/tasks/proof_workflow_status.rs",
   "xtask/src/tasks/publish.rs",
   "xtask/src/tasks/repo_graph.rs",
+  "scripts/ci_observability_clock_test.py",
   "scripts/check-no-bare-self-hosted.sh",
   "scripts/publish-release-crates.sh",
   "xtask/src/tasks/workspace.rs",
@@ -204,6 +205,7 @@ paths = [
 ]
 packages = ["xtask"]
 proof = [
+  "python3 -m unittest scripts/ci_observability_clock_test.py",
   "cargo xtask proof-policy --check",
   "cargo xtask ci-gate-contract --check --workflow fixtures/ci-gate-contract/reference-ci.yml",
   "cargo xtask ci-lane-whitelist",
