@@ -270,11 +270,8 @@ mod tests {
             tokens: 17,
             ..measured.clone()
         };
-        let selection = prepare_policy_selection(
-            &[measured, child],
-            10_000,
-            &SelectOptions::default(),
-        );
+        let selection =
+            prepare_policy_selection(&[measured, child], 10_000, &SelectOptions::default());
         let charges = selection
             .pack_rows
             .iter()
