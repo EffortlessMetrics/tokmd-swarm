@@ -308,8 +308,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo --locked xtask publish \
-            --registry-inventory target/publishing/registry-inventory.json
+          # Reobserve delayed registry visibility without replaying publication.
+          # One shared eight-minute budget leaves time for failure evidence upload.
+          deadline=$((SECONDS + 480))
+          for attempt in 1 2 3; do
+            remaining=$((deadline - SECONDS))
+            if (( remaining <= 0 )); then
+              exit 124
+            fi
+            code=0
+            timeout --kill-after=5s "${remaining}s" cargo --locked xtask publish \
+              --registry-inventory target/publishing/registry-inventory.json || code=$?
+            if (( code == 0 )); then
+              exit 0
+            fi
+            if (( attempt == 3 || code == 124 || code == 137 )); then
+              exit "${code}"
+            fi
+            echo "Registry observation ${attempt}/3 failed (${code}); rechecking after bounded backoff."
+            sleep $((attempt * 5))
+          done
 
       - name: Upload publication evidence even after failure
         if: always()

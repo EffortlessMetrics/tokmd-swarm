@@ -85,7 +85,13 @@ class PublicationWorkflowTests(unittest.TestCase):
             args = sys.argv[1:]
             with Path("calls.jsonl").open("a", encoding="utf-8") as out:
                 out.write(json.dumps([tool, args]) + "\\n")
-            if tool == "git":
+            if tool == "timeout":
+                if "MOCK_TIMEOUT_EXIT" in os.environ:
+                    sys.exit(int(os.environ["MOCK_TIMEOUT_EXIT"]))
+                os.execvp(args[2], args[2:])
+            elif tool == "sleep":
+                sys.exit(0)
+            elif tool == "git":
                 print(os.environ.get("MOCK_SOURCE", os.environ["GITHUB_SHA"]))
             elif tool == "gh":
                 if args[0] == "api":
@@ -99,8 +105,14 @@ class PublicationWorkflowTests(unittest.TestCase):
                 print(json.dumps({"packages":[{"name":"tokmd", "version":os.environ.get("MOCK_VERSION", "1.15.1")}]}))
             elif "--registry-inventory" in args:
                 path = Path(args[args.index("--registry-inventory") + 1])
-                path.write_text('{"fixture":"registry"}')
-                sys.exit(int(os.environ.get("MOCK_INVENTORY_EXIT", "0")))
+                counter = Path("inventory-attempt")
+                attempt = int(counter.read_text()) + 1 if counter.exists() else 1
+                counter.write_text(str(attempt))
+                sequence = os.environ.get("MOCK_INVENTORY_SEQUENCE", "").split(",")
+                code = (int(sequence[min(attempt - 1, len(sequence) - 1)]) if sequence[0]
+                        else int(os.environ.get("MOCK_INVENTORY_EXIT", "0")))
+                path.write_text(json.dumps({"fixture":"registry", "attempt":attempt, "code":code}))
+                sys.exit(code)
             elif "--receipt" in args:
                 path = Path(args[args.index("--receipt") + 1])
                 path.write_text('{"fixture":"partial-or-complete"}')
@@ -108,7 +120,7 @@ class PublicationWorkflowTests(unittest.TestCase):
             else:
                 sys.exit("unexpected mock command")
         ''')
-        for name in ("cargo", "git", "gh"):
+        for name in ("cargo", "git", "gh", "timeout", "sleep"):
             executable = tools / name
             executable.write_text(mock, encoding="utf-8")
             executable.chmod(0o755)
@@ -218,6 +230,46 @@ class PublicationWorkflowTests(unittest.TestCase):
         self.assertIn("registry-inventory.json", upload)
         self.assertIn("${{ github.sha }}-${{ github.run_attempt }}", upload)
         self.assertNotIn("continue-on-error", self.job)
+
+    def test_inventory_eventual_visibility_is_observed_without_republishing(self):
+        """A failed observation followed by visibility must not replay the upload."""
+        self.env["MOCK_INVENTORY_SEQUENCE"] = "9,0"
+        result = self.run_step("Observe complete registry inventory")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inventory = json.loads((self.root / "target/publishing/registry-inventory.json").read_text())
+        self.assertEqual(inventory, {"fixture":"registry", "attempt":2, "code":0})
+        cargos = [args for tool, args in self.calls() if tool == "cargo"]
+        self.assertEqual(len(cargos), 2)
+        self.assertTrue(all("--registry-inventory" in args and "--yes" not in args for args in cargos))
+        self.assertEqual([args for tool, args in self.calls() if tool == "sleep"], [["5"]])
+
+    def test_inventory_persistent_failure_is_bounded_and_preserves_last_observation(self):
+        """Three failures remain a failure and retain the last genuine observation."""
+        self.env["MOCK_INVENTORY_EXIT"] = "9"
+        result = self.run_step("Observe complete registry inventory")
+        self.assertEqual(result.returncode, 9, result.stderr)
+        inventory = json.loads((self.root / "target/publishing/registry-inventory.json").read_text())
+        self.assertEqual(inventory["attempt"], 3)
+        self.assertEqual(inventory["code"], 9)
+        limits = [args for tool, args in self.calls() if tool == "timeout"]
+        self.assertEqual(len(limits), 3)
+        for args in limits:
+            self.assertEqual(args[0], "--kill-after=5s")
+            self.assertGreater(int(args[1][:-1]), 0)
+            self.assertLessEqual(int(args[1][:-1]), 480)
+        self.assertIn("deadline=$((SECONDS + 480))", self.block("Observe complete registry inventory"))
+        self.assertEqual([args for tool, args in self.calls() if tool == "sleep"], [["5"], ["10"]])
+
+    def test_inventory_timeout_is_terminal_without_fabricating_evidence(self):
+        """Timeout or forced kill consumes the budget rather than starting another retry."""
+        for code in (124, 137):
+            with self.subTest(code=code):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                self.env["MOCK_TIMEOUT_EXIT"] = str(code)
+                result = self.run_step("Observe complete registry inventory")
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual([tool for tool, _ in self.calls()], ["timeout"])
+                self.assertFalse((self.root / "target/publishing/registry-inventory.json").exists())
 
     def test_first_attempt_does_not_download_old_state(self):
         result = self.run_step("Restore prior attempt publication receipt")
