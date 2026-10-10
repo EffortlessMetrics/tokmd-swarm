@@ -37,31 +37,37 @@ fn full_file_pack_uses_policy_estimate(strategy: &str, padding: &str) -> Result<
     }
 
     let receipt: Value = serde_json::from_slice(&run_context(root, strategy, "json")?)?;
-    let files = receipt["files"].as_array().context("missing selected files")?;
+    let files = receipt
+        .get("files")
+        .and_then(Value::as_array)
+        .context("missing selected files")?;
     ensure!(
         files.len() == 7,
         "expected seven fully charged files, got {}",
         files.len()
     );
     ensure!(
-        receipt["used_tokens"].as_u64() == Some(9_800),
+        receipt.get("used_tokens").and_then(Value::as_u64) == Some(9_800),
         "wrong total charge"
     );
     let mut observed_bytes = 0_u64;
     for file in files {
         ensure!(
-            file["policy"].as_str() == Some("full"),
+            file.get("policy").and_then(Value::as_str) == Some("full"),
             "unexpected truncation"
         );
         ensure!(
-            file["tokens"].as_u64() == Some(1_400),
+            file.get("tokens").and_then(Value::as_u64) == Some(1_400),
             "stale full-file charge"
         );
         ensure!(
-            file["effective_tokens"].is_null(),
+            file.get("effective_tokens").is_none_or(Value::is_null),
             "full file has a partial charge"
         );
-        let path = file["path"].as_str().context("missing selected path")?;
+        let path = file
+            .get("path")
+            .and_then(Value::as_str)
+            .context("missing selected path")?;
         observed_bytes += fs::metadata(root.join(path))?.len();
     }
     ensure!(
