@@ -12,7 +12,7 @@ fn run(
     root: &Path,
     command: &str,
     nested: bool,
-    absolute: bool,
+    input_override: Option<&Path>,
     cap: &str,
     compress: bool,
 ) -> Result<std::process::Output> {
@@ -26,8 +26,9 @@ fn run(
     .args([
         "--no-progress",
         command,
-        if absolute {
-            root.to_str()
+        if let Some(input) = input_override {
+            input
+                .to_str()
                 .ok_or_else(|| anyhow::anyhow!("fixture path is not UTF-8"))?
         } else if nested {
             ".."
@@ -70,7 +71,14 @@ fn context_pack_cli_required_reads_preserve_failure_exit_and_completion() -> Res
                         let input = root.join("src/input.rs");
                         let valid = "fn f() {}\n\n".repeat(20);
                         fs::write(&input, &valid)?;
-                        let stable = run(root, command, nested, absolute, cap, compress)?;
+                        let stable = run(
+                            root,
+                            command,
+                            nested,
+                            absolute.then_some(root),
+                            cap,
+                            compress,
+                        )?;
                         ensure!(
                             stable.status.success(),
                             "stable {command} failed: {}",
@@ -108,7 +116,14 @@ fn context_pack_cli_required_reads_preserve_failure_exit_and_completion() -> Res
                         let mut invalid = valid.as_bytes().to_vec();
                         invalid.push(0xff);
                         fs::write(&input, &invalid)?;
-                        let failed = run(root, command, nested, absolute, cap, compress)?;
+                        let failed = run(
+                            root,
+                            command,
+                            nested,
+                            absolute.then_some(root),
+                            cap,
+                            compress,
+                        )?;
                         if command == "context" && cap == "1000" && !compress {
                             ensure!(
                                 failed.status.success(),
@@ -144,7 +159,14 @@ fn context_pack_cli_required_reads_preserve_failure_exit_and_completion() -> Res
                             }
                         }
                         fs::write(&input, &valid)?;
-                        let retry = run(root, command, nested, absolute, cap, compress)?;
+                        let retry = run(
+                            root,
+                            command,
+                            nested,
+                            absolute.then_some(root),
+                            cap,
+                            compress,
+                        )?;
                         ensure!(
                             retry.status.success(),
                             "repair failed: {}",
@@ -156,6 +178,37 @@ fn context_pack_cli_required_reads_preserve_failure_exit_and_completion() -> Res
                         );
                     }
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn context_pack_cli_absolute_file_root_reads_selected_input() -> Result<()> {
+    for command in ["context", "handoff"] {
+        for cap in ["1000", "4"] {
+            for compress in [false, true] {
+                let temp = tempfile::tempdir()?;
+                let root = temp.path().join("repo");
+                fs::create_dir_all(root.join("src"))?;
+                let input = root.join("src/input.rs");
+                fs::write(&input, "fn selected_file() {}\n\n".repeat(20))?;
+                let output = run(&root, command, true, Some(&input), cap, compress)?;
+                ensure!(
+                    output.status.success(),
+                    "absolute file root failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let payload = fs::read(temp.path().join("out").join(if command == "context" {
+                    "bundle.txt"
+                } else {
+                    "code.txt"
+                }))?;
+                ensure!(
+                    String::from_utf8(payload)?.contains("fn selected_file() {}"),
+                    "absolute file root did not render selected source"
+                );
             }
         }
     }

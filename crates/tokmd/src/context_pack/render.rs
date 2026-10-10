@@ -198,9 +198,14 @@ fn bundle_source_path(selected_path: &str, input_paths: &[PathBuf]) -> PathBuf {
         .filter(|root| root.is_absolute())
         .filter_map(|root| {
             let normalized_root = tokmd_model::normalize_path(root, None);
-            path.strip_prefix(&normalized_root)
-                .ok()
-                .map(|relative| (root, root.join(relative)))
+            path.strip_prefix(&normalized_root).ok().map(|relative| {
+                let resolved = if relative.as_os_str().is_empty() {
+                    root.clone()
+                } else {
+                    root.join(relative)
+                };
+                (root, resolved)
+            })
         })
         .max_by_key(|(root, _)| root.components().count())
         .map_or_else(|| path.to_path_buf(), |(_, resolved)| resolved)
