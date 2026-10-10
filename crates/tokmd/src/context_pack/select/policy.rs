@@ -14,26 +14,27 @@ const POLICY_CHARS_PER_TOKEN: usize = 4;
 /// Must stay aligned with `tokmd_model::rows::ESTIMATED_BYTES_PER_LINE`.
 const ESTIMATED_BYTES_PER_LINE: usize = 40;
 
-/// Tokens used for inclusion-policy caps and density classification.
+/// Return the policy token estimate and its corresponding source bytes.
 ///
-/// Receipt `row.tokens` is a line-derived estimate after the metadata-free model
-/// fast path; policy decisions that gate skip/head-tail need on-disk size when
-/// the scanned file is readable and the row still carries the line estimate.
-fn policy_tokens(path: &str, row: &FileRow) -> usize {
+/// Inventory rows can carry a line-derived estimate after the metadata-free
+/// model fast path. Keep a larger on-disk observation together with its token
+/// estimate so selected rows and their receipts do not retain stale byte totals.
+/// Supplied measurements and smaller/missing-file fallback remain unchanged.
+fn policy_estimate(path: &str, row: &FileRow) -> (usize, usize) {
     let estimated_bytes = row.lines.saturating_mul(ESTIMATED_BYTES_PER_LINE);
     if row.bytes != estimated_bytes {
-        return row.tokens;
+        return (row.tokens, row.bytes);
     }
 
     let Some(meta) = Path::new(path).metadata().ok() else {
-        return row.tokens;
+        return (row.tokens, row.bytes);
     };
 
     let disk_bytes = meta.len() as usize;
     if disk_bytes > row.bytes {
-        disk_bytes / POLICY_CHARS_PER_TOKEN
+        (disk_bytes / POLICY_CHARS_PER_TOKEN, disk_bytes)
     } else {
-        row.tokens
+        (row.tokens, row.bytes)
     }
 }
 
@@ -42,6 +43,7 @@ struct FileContextMeta {
     policy: InclusionPolicy,
     policy_reason: Option<String>,
     original_tokens: usize,
+    original_bytes: usize,
 }
 
 pub(super) struct PolicySelection {
@@ -64,7 +66,7 @@ pub(super) fn prepare_policy_selection(
         .filter(|row| row.kind == FileKind::Parent)
     {
         let path = normalize_path(&row.path);
-        let policy_tokens = policy_tokens(&path, row);
+        let (policy_tokens, policy_bytes) = policy_estimate(&path, row);
         let classifications =
             classify_file(&path, policy_tokens, row.lines, options.dense_threshold);
         let (policy, reason) = assign_policy(policy_tokens, file_cap, &classifications);
@@ -76,6 +78,7 @@ pub(super) fn prepare_policy_selection(
                 policy,
                 policy_reason: reason.clone(),
                 original_tokens: policy_tokens,
+                original_bytes: policy_bytes,
             },
         );
 
@@ -109,8 +112,8 @@ pub(super) fn prepare_policy_selection(
             if row.kind == FileKind::Parent
                 && let Some(meta) = file_meta_map.get(&path)
             {
-                // Packing must use the same observation as the policy decision,
-                // including full files that remain below the per-file cap.
+                // Packing and receipt bytes use the same policy observation.
+                // Only the effective HeadTail token charge is capped here.
                 let tokens = if meta.policy == InclusionPolicy::HeadTail {
                     meta.original_tokens.min(file_cap)
                 } else {
@@ -118,6 +121,7 @@ pub(super) fn prepare_policy_selection(
                 };
                 return FileRow {
                     tokens,
+                    bytes: meta.original_bytes,
                     ..row.clone()
                 };
             }
@@ -231,29 +235,36 @@ mod tests {
     fn full_rows_use_policy_tokens_without_mutating_inventory() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("ordinary.rs");
-        std::fs::write(&path, vec![b'x'; 5_600])?;
         let path = path.to_string_lossy();
-        let mut row = file_row(&path, 500, 50);
-        row.bytes = 2_000;
-        let selection = prepare_policy_selection(
-            std::slice::from_ref(&row),
-            10_000,
-            &SelectOptions::default(),
-        );
-        let packed = selection
-            .pack_rows
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("ordinary full file was excluded"))?;
-        anyhow::ensure!(packed.tokens == 1_400, "full file retained a stale charge");
-        anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
-        let mut selected = vec![selected_row(&path, packed.tokens)];
-        selection.annotate_selected(&mut selected);
-        let file = selected
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("selected row disappeared"))?;
-        anyhow::ensure!(file.policy == InclusionPolicy::Full, "unexpected policy");
-        anyhow::ensure!(file.tokens == 1_400, "annotation changed full-file charge");
-        anyhow::ensure!(file.effective_tokens.is_none(), "unexpected partial charge");
+        for disk_bytes in [5_600, 5_603] {
+            std::fs::write(path.as_ref(), vec![b'x'; disk_bytes])?;
+            let mut row = file_row(&path, 500, 50);
+            row.bytes = 2_000;
+            let selection = prepare_policy_selection(
+                std::slice::from_ref(&row),
+                10_000,
+                &SelectOptions::default(),
+            );
+            let packed = selection
+                .pack_rows
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("ordinary full file was excluded"))?;
+            anyhow::ensure!(packed.tokens == 1_400, "full file retained a stale charge");
+            anyhow::ensure!(packed.bytes == disk_bytes, "policy byte observation lost");
+            anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
+            let mut selected = vec![selected_row(&path, packed.tokens)];
+            if let Some(file) = selected.first_mut() {
+                file.bytes = packed.bytes;
+            }
+            selection.annotate_selected(&mut selected);
+            let file = selected
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("selected row disappeared"))?;
+            anyhow::ensure!(file.policy == InclusionPolicy::Full, "unexpected policy");
+            anyhow::ensure!(file.tokens == 1_400, "annotation changed full-file charge");
+            anyhow::ensure!(file.bytes == disk_bytes, "annotation changed source bytes");
+            anyhow::ensure!(file.effective_tokens.is_none(), "unexpected partial charge");
+        }
         Ok(())
     }
 
@@ -272,12 +283,15 @@ mod tests {
         };
         let selection =
             prepare_policy_selection(&[measured, child], 10_000, &SelectOptions::default());
-        let charges = selection
+        let observations = selection
             .pack_rows
             .iter()
-            .map(|row| row.tokens)
+            .map(|row| (row.tokens, row.bytes))
             .collect::<Vec<_>>();
-        anyhow::ensure!(charges == vec![1_234, 17], "supplied charges changed");
+        anyhow::ensure!(
+            observations == vec![(1_234, 5_600), (17, 5_600)],
+            "supplied charges or bytes changed"
+        );
         Ok(())
     }
 
@@ -302,8 +316,44 @@ mod tests {
                 .pack_rows
                 .first()
                 .ok_or_else(|| anyhow::anyhow!("fallback file was excluded"))?;
-            anyhow::ensure!(packed.tokens == 500, "inventory fallback changed");
+            anyhow::ensure!(packed.tokens == 500, "inventory token fallback changed");
+            anyhow::ensure!(packed.bytes == 2_000, "inventory byte fallback changed");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn head_tail_keeps_observed_bytes_when_token_charge_is_capped() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("ordinary.rs");
+        std::fs::write(&path, vec![b'x'; 8_203])?;
+        let path = path.to_string_lossy();
+        let mut row = file_row(&path, 500, 50);
+        row.bytes = 2_000;
+        let selection = prepare_policy_selection(
+            std::slice::from_ref(&row),
+            10_000,
+            &SelectOptions::default(),
+        );
+        let packed = selection
+            .pack_rows
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("head-tail file was excluded"))?;
+        anyhow::ensure!(packed.tokens == 1_500, "effective charge was not capped");
+        anyhow::ensure!(packed.bytes == 8_203, "source bytes were rounded or capped");
+        let mut selected = vec![ContextFileRow {
+            bytes: packed.bytes,
+            ..selected_row(&path, packed.tokens)
+        }];
+        selection.annotate_selected(&mut selected);
+        let file = selected
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("selected row disappeared"))?;
+        anyhow::ensure!(file.policy == InclusionPolicy::HeadTail, "unexpected policy");
+        anyhow::ensure!(file.tokens == 2_050, "original estimate was not restored");
+        anyhow::ensure!(file.effective_tokens == Some(1_500), "effective charge lost");
+        anyhow::ensure!(file.bytes == 8_203, "annotation changed source bytes");
+        anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
         Ok(())
     }
 }
