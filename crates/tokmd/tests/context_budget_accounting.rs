@@ -1,4 +1,5 @@
 //! Full-file packing regressions for the policy/packing measurement boundary.
+//! Test names match the existing `cargo test -p tokmd context_pack` proof filter.
 
 use std::fs;
 use std::path::Path;
@@ -84,21 +85,21 @@ fn full_file_pack_uses_policy_estimate(strategy: &str, padding: &str) -> Result<
 }
 
 #[test]
-fn greedy_full_file_budget_uses_policy_estimate() -> Result<()> {
+fn context_pack_greedy_full_file_budget_uses_policy_estimate() -> Result<()> {
     full_file_pack_uses_policy_estimate("greedy", &"x".repeat(85))
 }
 
 #[test]
-fn spread_full_file_budget_uses_policy_estimate() -> Result<()> {
+fn context_pack_spread_full_file_budget_uses_policy_estimate() -> Result<()> {
     full_file_pack_uses_policy_estimate("spread", &"x".repeat(85))
 }
 
 #[test]
-fn greedy_multibyte_budget_uses_policy_estimate() -> Result<()> {
+fn context_pack_greedy_multibyte_budget_uses_policy_estimate() -> Result<()> {
     full_file_pack_uses_policy_estimate("greedy", &format!("{}x", "é".repeat(42)))
 }
 
 #[test]
-fn spread_multibyte_budget_uses_policy_estimate() -> Result<()> {
+fn context_pack_spread_multibyte_budget_uses_policy_estimate() -> Result<()> {
     full_file_pack_uses_policy_estimate("spread", &format!("{}x", "é".repeat(42)))
 }
