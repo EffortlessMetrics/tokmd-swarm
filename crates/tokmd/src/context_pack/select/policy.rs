@@ -106,11 +106,18 @@ pub(super) fn prepare_policy_selection(
         })
         .map(|row| {
             let path = normalize_path(&row.path);
-            if let Some(meta) = file_meta_map.get(&path)
-                && meta.policy == InclusionPolicy::HeadTail
+            if row.kind == FileKind::Parent
+                && let Some(meta) = file_meta_map.get(&path)
             {
+                // Packing must use the same observation as the policy decision,
+                // including full files that remain below the per-file cap.
+                let tokens = if meta.policy == InclusionPolicy::HeadTail {
+                    meta.original_tokens.min(file_cap)
+                } else {
+                    meta.original_tokens
+                };
                 return FileRow {
-                    tokens: policy_tokens(&path, row).min(file_cap),
+                    tokens,
                     ..row.clone()
                 };
             }
@@ -218,5 +225,88 @@ mod tests {
             selection.excluded_by_policy[0].policy,
             InclusionPolicy::Skip
         );
+    }
+
+    #[test]
+    fn full_rows_use_policy_tokens_without_mutating_inventory() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("ordinary.rs");
+        std::fs::write(&path, vec![b'x'; 5_600])?;
+        let path = path.to_string_lossy();
+        let mut row = file_row(&path, 500, 50);
+        row.bytes = 2_000;
+        let selection = prepare_policy_selection(
+            std::slice::from_ref(&row),
+            10_000,
+            &SelectOptions::default(),
+        );
+        let packed = selection
+            .pack_rows
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("ordinary full file was excluded"))?;
+        anyhow::ensure!(packed.tokens == 1_400, "full file retained a stale charge");
+        anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
+        let mut selected = vec![selected_row(&path, packed.tokens)];
+        selection.annotate_selected(&mut selected);
+        let file = selected
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("selected row disappeared"))?;
+        anyhow::ensure!(file.policy == InclusionPolicy::Full, "unexpected policy");
+        anyhow::ensure!(file.tokens == 1_400, "annotation changed full-file charge");
+        anyhow::ensure!(file.effective_tokens.is_none(), "unexpected partial charge");
+        Ok(())
+    }
+
+    #[test]
+    fn measured_rows_and_children_keep_their_supplied_charges() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("ordinary.rs");
+        std::fs::write(&path, vec![b'x'; 8_000])?;
+        let path = path.to_string_lossy();
+        let mut measured = file_row(&path, 1_234, 50);
+        measured.bytes = 5_600;
+        let child = FileRow {
+            kind: FileKind::Child,
+            tokens: 17,
+            ..measured.clone()
+        };
+        let selection = prepare_policy_selection(
+            &[measured, child],
+            10_000,
+            &SelectOptions::default(),
+        );
+        let charges = selection
+            .pack_rows
+            .iter()
+            .map(|row| row.tokens)
+            .collect::<Vec<_>>();
+        anyhow::ensure!(charges == vec![1_234, 17], "supplied charges changed");
+        Ok(())
+    }
+
+    #[test]
+    fn smaller_and_missing_files_keep_inventory_fallback() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("ordinary.rs");
+        std::fs::write(&path, b"fn f() {}\n")?;
+        let path_string = path.to_string_lossy();
+        let mut row = file_row(&path_string, 500, 50);
+        row.bytes = 2_000;
+        for missing in [false, true] {
+            if missing {
+                std::fs::remove_file(&path)?;
+            }
+            let selection = prepare_policy_selection(
+                std::slice::from_ref(&row),
+                10_000,
+                &SelectOptions::default(),
+            );
+            let packed = selection
+                .pack_rows
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("fallback file was excluded"))?;
+            anyhow::ensure!(packed.tokens == 500, "inventory fallback changed");
+        }
+        Ok(())
     }
 }
