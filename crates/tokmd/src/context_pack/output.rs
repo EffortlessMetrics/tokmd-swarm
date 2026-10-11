@@ -131,7 +131,12 @@ fn write_bundle_to_destination(
         })?;
 
         let mut counter = CountingWriter::new(file);
-        write_bundle_output(&mut counter, selected, args.compress)?;
+        write_bundle_output(
+            &mut counter,
+            selected,
+            args.compress,
+            args.paths.as_deref().unwrap_or_default(),
+        )?;
         counter.flush()?;
 
         let bytes = counter.bytes() as usize;
@@ -140,7 +145,12 @@ fn write_bundle_to_destination(
     } else {
         let stdout = std::io::stdout();
         let mut counter = CountingWriter::new(stdout.lock());
-        write_bundle_output(&mut counter, selected, args.compress)?;
+        write_bundle_output(
+            &mut counter,
+            selected,
+            args.compress,
+            args.paths.as_deref().unwrap_or_default(),
+        )?;
         counter.flush()?;
         Ok(counter.bytes() as usize)
     }

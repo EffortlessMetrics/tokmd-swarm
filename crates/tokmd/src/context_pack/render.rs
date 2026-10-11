@@ -84,17 +84,43 @@ fn list_policy_label(file: &ContextFileRow) -> &str {
 ///
 /// Streams file content to avoid loading the entire bundle into memory and
 /// dispatches based on file inclusion policy (Full / HeadTail / Skip).
-pub(crate) fn write_bundle_output<W: Write>(
+pub(crate) fn write_context_bundle_output<W: Write>(
     w: &mut W,
     selected: &[ContextFileRow],
     compress: bool,
+    input_paths: &[PathBuf],
+) -> anyhow::Result<()> {
+    write_bundle_output(w, selected, compress, FullRead::Stream, input_paths)
+}
+
+/// Handoff's existing uncompressed Full policy validates UTF-8. Context's
+/// uncompressed Full policy streams raw bytes. Other policies share one path.
+pub(crate) fn write_handoff_bundle_output<W: Write>(
+    w: &mut W,
+    selected: &[ContextFileRow],
+    compress: bool,
+    input_paths: &[PathBuf],
+) -> anyhow::Result<()> {
+    write_bundle_output(w, selected, compress, FullRead::Utf8, input_paths)
+}
+
+#[derive(Clone, Copy)]
+enum FullRead {
+    Stream,
+    Utf8,
+}
+
+fn write_bundle_output<W: Write>(
+    w: &mut W,
+    selected: &[ContextFileRow],
+    compress: bool,
+    full_read: FullRead,
+    input_paths: &[PathBuf],
 ) -> anyhow::Result<()> {
     for file in selected {
-        let path = PathBuf::from(&file.path);
-        if !path.exists() {
-            continue;
-        }
-
+        let path = bundle_source_path(&file.path, input_paths);
+        // Full and HeadTail must open/read directly: exists() hides IO errors
+        // and can silently omit selected inputs. Summary/Skip need no read.
         match file.policy {
             InclusionPolicy::Full => {
                 writeln!(w, "// === {} ===", file.path)?;
@@ -111,13 +137,23 @@ pub(crate) fn write_bundle_output<W: Write>(
                         }
                     }
                     writeln!(w)?;
+                } else if matches!(full_read, FullRead::Utf8) {
+                    let content = std::fs::read_to_string(&path)
+                        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+                    w.write_all(content.as_bytes())?;
+                    if !content.ends_with('\n') {
+                        writeln!(w)?;
+                    }
+                    writeln!(w)?;
                 } else {
                     let mut f = File::open(&path)
                         .with_context(|| format!("Failed to open file: {}", path.display()))?;
                     let mut buf = [0u8; 16 * 1024];
                     let mut last: Option<u8> = None;
                     loop {
-                        let n = f.read(&mut buf)?;
+                        let n = f
+                            .read(&mut buf)
+                            .with_context(|| format!("Failed to read file: {}", path.display()))?;
                         if n == 0 {
                             break;
                         }
@@ -147,6 +183,43 @@ pub(crate) fn write_bundle_output<W: Write>(
         }
     }
     Ok(())
+}
+
+/// Model receipts normalize away a Unix leading slash. Recover the physical
+/// path from an explicitly absolute scan root, without probing existence or
+/// changing the advertised path. Relative invocations retain their usual path.
+fn bundle_source_path(selected_path: &str, input_paths: &[PathBuf]) -> PathBuf {
+    let path = Path::new(selected_path);
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    input_paths
+        .iter()
+        .filter(|root| root.is_absolute())
+        .filter_map(|root| {
+            let normalized_root = tokmd_model::normalize_path(root, None);
+            path.strip_prefix(&normalized_root).ok().map(|relative| {
+                let resolved = if relative.as_os_str().is_empty() {
+                    root.clone()
+                } else {
+                    root.join(relative)
+                };
+                (root, resolved)
+            })
+        })
+        .max_by_key(|(root, _)| root.components().count())
+        .map_or_else(|| path.to_path_buf(), |(_, resolved)| resolved)
+}
+
+/// Invalidate a previous completion marker before rewriting any payload.
+/// This is not an atomic generation replacement or crash-safety guarantee.
+pub(crate) fn remove_completion_marker(path: &Path) -> anyhow::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("Failed to remove completion marker: {}", path.display())),
+    }
 }
 
 /// Write head and tail lines of a file.
