@@ -61,6 +61,109 @@ fn run_git(cwd: &Path, args: &[&str]) {
 }
 
 #[test]
+fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
+    let docs = include_str!("../../../docs/start-here.md");
+    let section = docs
+        .split_once("Use policy gates only")
+        .ok_or("missing saved-policy section")?
+        .1
+        .split_once("For this repository's contributor workflow")
+        .ok_or("missing contributor-workflow boundary")?
+        .0;
+    let policy = section
+        .split_once("```toml\n")
+        .ok_or("missing standalone TOML policy")?
+        .1
+        .split_once("```")
+        .ok_or("unterminated TOML policy")?
+        .0;
+    let workflow = section
+        .split_once("```bash\n")
+        .ok_or("missing saved-analysis commands")?
+        .1
+        .split_once("```")
+        .ok_or("unterminated saved-analysis commands")?
+        .0;
+    let tmp = tempfile::tempdir()?;
+    fs::write(tmp.path().join("main.rs"), "fn main() {}\n")?;
+    let policy_path = tmp.path().join("tokmd-gate.toml");
+    fs::write(&policy_path, policy)?;
+
+    // Execute the documented commands, rather than a second copy of their argv.
+    let commands: Vec<Vec<&str>> = workflow
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.strip_prefix("tokmd ")
+                .map(|args| args.split_whitespace().collect())
+                .ok_or("expected a tokmd command")
+        })
+        .collect::<Result<_, _>>()?;
+    assert_eq!(commands.len(), 2);
+    for command in &commands {
+        tokmd_in(tmp.path()).args(command).assert().success();
+    }
+    let gate_command = commands.get(1).ok_or("missing gate command")?;
+
+    // Literal fixture oracle: one Rust line and six TOML policy lines yield
+    // 70 inventory-estimated tokens, well below the documented 500000 cap.
+    let output = tokmd_in(tmp.path())
+        .args(gate_command)
+        .args(["--format", "json"])
+        .output()?;
+    assert!(output.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(result["passed"], true);
+    assert_eq!(result["total_errors"], 0);
+    assert_eq!(
+        result["policy"]["rule_results"]
+            .as_array()
+            .ok_or("missing policy rule results")?
+            .len(),
+        1
+    );
+    assert_eq!(result["policy"]["rule_results"][0]["actual"], 70);
+
+    // A passing process must still enforce the policy: lower the literal cap.
+    assert!(policy.contains("value = 500000"));
+    fs::write(&policy_path, policy.replace("value = 500000", "value = 0"))?;
+    let failed = tokmd_in(tmp.path())
+        .args(gate_command)
+        .args(["--format", "json"])
+        .assert()
+        .code(1);
+    let result: serde_json::Value = serde_json::from_slice(&failed.get_output().stdout)?;
+    assert_eq!(result["passed"], false);
+    assert_eq!(result["total_errors"], 1);
+    assert_eq!(result["policy"]["rule_results"][0]["actual"], 70);
+
+    // The run manifest is a real JSON artifact, but has no derived metrics.
+    fs::write(&policy_path, policy)?;
+    tokmd_in(tmp.path())
+        .args([
+            "gate",
+            ".runs/current/receipt.json",
+            "--policy",
+            "tokmd-gate.toml",
+        ])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "Pointer '/derived/totals/tokens' not found in receipt",
+        ));
+
+    // A missing saved analysis must not turn this workflow into a passing gate.
+    fs::remove_file(tmp.path().join(".runs/current/analysis.json"))?;
+    tokmd_in(tmp.path())
+        .args(gate_command)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(".runs/current/analysis.json"));
+    Ok(())
+}
+
+#[test]
 fn recipe_badge_generation() {
     let tmp = tempfile::tempdir().unwrap();
 

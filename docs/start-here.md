@@ -132,10 +132,25 @@ Start with artifact-producing CI before adding gates:
 
 Use policy gates only when you have a clear policy file and a rollback path:
 
+Save this standalone policy as `tokmd-gate.toml`:
+
+```toml
+[[rules]]
+name = "max_tokens"
+pointer = "/derived/totals/tokens"
+op = "lte"
+value = 500000
+level = "error"
+```
+
 ```bash
 tokmd run --analysis receipt --output-dir .runs/current
-tokmd gate .runs/current/receipt.json --policy tokmd-gate.toml
+tokmd gate .runs/current/analysis.json --policy tokmd-gate.toml
 ```
+
+`analysis.json` contains the derived metrics used by this policy; `receipt.json`
+is the run manifest. Gate exits `0` when the policy passes and `1` when a rule
+fails.
 
 For this repository's contributor workflow, affected proof planning is owned by
 `xtask`:
