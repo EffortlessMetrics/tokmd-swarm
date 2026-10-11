@@ -115,11 +115,17 @@ mod tests {
     }
 
     #[test]
-    fn rebase_preserves_dot_spelling_even_when_paths_compare_equal() -> Result<()> {
+    fn rebase_preserves_dot_spelling() -> Result<()> {
         let dir = tempfile::tempdir()?;
         fs::write(dir.path().join("lib.rs"), "pub fn lib() {}\n")?;
         let canonical = fs::canonicalize(dir.path())?;
+        // Windows canonical paths use a verbatim prefix, whose joins normalize
+        // dot segments. Keep the caller's ordinary path spelling there.
+        #[cfg(windows)]
+        let input = dir.path().join(".");
+        #[cfg(not(windows))]
         let input = canonical.join(".");
+        #[cfg(not(windows))]
         assert_eq!(input, canonical);
         assert_ne!(input.as_os_str(), canonical.as_os_str());
         let roots = validated_scan_roots(std::slice::from_ref(&input))?;
@@ -128,7 +134,10 @@ mod tests {
 
         rebase_report_paths(&mut languages, &roots);
 
-        let report = &languages[&tokei::LanguageType::Rust].reports[0];
+        let report = languages
+            .get(&tokei::LanguageType::Rust)
+            .and_then(|language| language.reports.first())
+            .ok_or_else(|| anyhow::anyhow!("fixture must provide a Rust report"))?;
         assert_eq!(report.name.as_os_str(), input.join("lib.rs").as_os_str());
         Ok(())
     }
@@ -139,14 +148,17 @@ mod tests {
         fs::create_dir(dir.path().join("nested"))?;
         fs::write(dir.path().join("lib.rs"), "pub fn lib() {}\n")?;
         let canonical = fs::canonicalize(dir.path())?;
-        let alias = canonical.join("nested/..");
+        let alias = dir.path().join("nested").join("..");
         let roots = validated_scan_roots(&[canonical.clone(), alias.clone()])?;
         let mut languages = Languages::new();
         languages.get_statistics(&[canonical], &[], &tokei::Config::default());
 
         rebase_report_paths(&mut languages, &roots);
 
-        let report = &languages[&tokei::LanguageType::Rust].reports[0];
+        let report = languages
+            .get(&tokei::LanguageType::Rust)
+            .and_then(|language| language.reports.first())
+            .ok_or_else(|| anyhow::anyhow!("fixture must provide a Rust report"))?;
         assert_eq!(report.name.as_os_str(), alias.join("lib.rs").as_os_str());
         Ok(())
     }
