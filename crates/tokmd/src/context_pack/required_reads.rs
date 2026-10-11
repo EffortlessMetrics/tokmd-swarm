@@ -67,13 +67,140 @@ pub(crate) fn expect_io(error: &anyhow::Error, path: &Path, missing: bool) -> Re
             "wrong IO cause: {io}"
         );
     }
+    let rendered = format!("{error:#}").replace('\\', "/");
+    let expected = path.display().to_string().replace('\\', "/");
     ensure!(
-        format!("{error:#}").contains(&path.display().to_string()),
+        contains_selected_path(&rendered, &expected),
         "lost selected path: {error:#}"
     );
     ensure!(
         crate::exit_code(error) == 1,
         "required read failure must exit 1"
+    );
+    Ok(())
+}
+
+fn is_path_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | '+' | '~')
+}
+
+fn contains_selected_path(rendered: &str, expected: &str) -> bool {
+    if expected.is_empty() {
+        return false;
+    }
+    for (start, _) in rendered.match_indices(expected) {
+        let end = start + expected.len();
+        let left_ok = start == 0
+            || !rendered[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_path_token_char);
+        let right_ok = end == rendered.len()
+            || !rendered[end..]
+                .chars()
+                .next()
+                .is_some_and(is_path_token_char);
+        if left_ok && right_ok {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+fn literal_io(kind: std::io::ErrorKind, rendered_path: &str) -> anyhow::Error {
+    anyhow::Error::new(std::io::Error::new(
+        kind,
+        format!("Failed to open file: {rendered_path}: test io"),
+    ))
+}
+
+#[test]
+fn expect_io_slash_normalization_preserves_full_path() -> Result<()> {
+    use std::io::ErrorKind::NotFound;
+    let native = Path::new("C:\\owned\\nested\\input.rs");
+    let normalized_text = "C:/owned/nested/input.rs";
+    ensure!(
+        expect_io(&literal_io(NotFound, normalized_text), native, true).is_ok(),
+        "native expected must match normalized rendering"
+    );
+    let normalized = Path::new("C:/owned/nested/input.rs");
+    let native_text = "C:\\owned\\nested\\input.rs";
+    ensure!(
+        expect_io(&literal_io(NotFound, native_text), normalized, true).is_ok(),
+        "normalized expected must match native rendering"
+    );
+    let unix = Path::new("/owned/nested/input.rs");
+    ensure!(
+        expect_io(&literal_io(NotFound, "/owned/nested/input.rs"), unix, true).is_ok(),
+        "unix full path must match"
+    );
+    ensure!(
+        expect_io(
+            &literal_io(std::io::ErrorKind::IsADirectory, normalized_text),
+            native,
+            false
+        )
+        .is_ok(),
+        "directory kind must keep full path on all platforms"
+    );
+    Ok(())
+}
+
+#[test]
+fn expect_io_rejects_different_directory_filename_and_suffix() -> Result<()> {
+    use std::io::ErrorKind::NotFound;
+    let expected = Path::new("C:/owned/nested/input.rs");
+    ensure!(
+        expect_io(
+            &literal_io(NotFound, "C:/other/nested/input.rs"),
+            expected,
+            true
+        )
+        .is_err(),
+        "wrong directory with same basename must reject"
+    );
+    ensure!(
+        expect_io(
+            &literal_io(NotFound, "C:/owned/nested/other.rs"),
+            expected,
+            true
+        )
+        .is_err(),
+        "wrong filename must reject"
+    );
+    ensure!(
+        expect_io(
+            &literal_io(NotFound, "C:/owned/nested/input.rs.bak"),
+            expected,
+            true
+        )
+        .is_err(),
+        "input.rs.bak must not masquerade as input.rs"
+    );
+    Ok(())
+}
+
+#[test]
+fn expect_io_rejects_wrong_kind_and_missing_cause() -> Result<()> {
+    let expected = Path::new("C:/owned/nested/input.rs");
+    ensure!(
+        expect_io(
+            &literal_io(
+                std::io::ErrorKind::PermissionDenied,
+                "C:/owned/nested/input.rs"
+            ),
+            expected,
+            true
+        )
+        .is_err(),
+        "PermissionDenied must reject when missing expects NotFound"
+    );
+    let no_io: anyhow::Error =
+        anyhow::anyhow!("Failed to open file: C:/owned/nested/input.rs: test io");
+    ensure!(
+        expect_io(&no_io, expected, true).is_err(),
+        "absent io cause must reject"
     );
     Ok(())
 }
