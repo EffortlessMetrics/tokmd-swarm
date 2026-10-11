@@ -349,9 +349,15 @@ mod tests {
         let file = selected
             .first()
             .ok_or_else(|| anyhow::anyhow!("selected row disappeared"))?;
-        anyhow::ensure!(file.policy == InclusionPolicy::HeadTail, "unexpected policy");
+        anyhow::ensure!(
+            file.policy == InclusionPolicy::HeadTail,
+            "unexpected policy"
+        );
         anyhow::ensure!(file.tokens == 2_050, "original estimate was not restored");
-        anyhow::ensure!(file.effective_tokens == Some(1_500), "effective charge lost");
+        anyhow::ensure!(
+            file.effective_tokens == Some(1_500),
+            "effective charge lost"
+        );
         anyhow::ensure!(file.bytes == 8_203, "annotation changed source bytes");
         anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
         Ok(())
