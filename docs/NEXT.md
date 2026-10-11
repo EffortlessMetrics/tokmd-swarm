@@ -10,6 +10,21 @@ trusted-actor guards, disabled raw debug artifacts, and the service policy in
 
 ## Current Operating Mode
 
+The product-evidence correctness lane is deliberately selected under the
+maintainer's 2026-10-10 build-out direction. Its bounded packets and acceptance
+criteria live in [product-evidence alignment](plans/product-evidence-alignment.md):
+#684 token/byte accounting, #685 bounded rendering, #686 required-read outcomes,
+#687 coherent replacement (after #686), #688 measurement coverage, and #689
+scope-compatible ratios/comparisons (after #688). #691 is a measurement-led
+performance follow-on, not an automatic release blocker. Preserve active PR
+ownership and qualify each packet independently.
+
+Source implementation is separate from release admission: #670 owns the
+version, included source and freeze decision; #535 remains the release-operation
+controller. This selection does not add every packet to v1.15.1, authorize a
+schema/default-capability change, or authorize publication. Jules-local paused
+state remains unchanged. Historical closeouts below retain their original scope.
+
 The Rust-native proof control plane is in routine-observation mode. It now owns
 proof policy, affected planning, scoped advisory execution, executor
 observation collection, fast proof-run observation collection, and artifact
@@ -215,12 +230,12 @@ wrapper receipt yet: existing publish-surface, version-consistency, affected,
 proof-plan, and proof-evidence artifacts remain sufficient until a named
 consumer proves otherwise.
 
-There is no selected implementation lane outside AST/syntax productization.
-`.jules/goals/active.toml` is paused as the current Jules-local machine-readable
-state. New work outside the AST lane should start only from a fresh consumer,
-missing artifact, workflow pain, or product gap. Do not treat the Jules-local
-state file as Codex's active-lane controller. Do not reopen proof, architecture,
-user-path, publishing, or release-readiness work by inertia.
+The selected product-evidence correctness lane is the bounded exception to
+historical no-new-lane checkpoints above. `.jules/goals/active.toml` remains
+paused as Jules-local machine-readable state, not Codex's active-lane
+controller. Other new work still requires a fresh consumer, missing artifact,
+workflow pain, or product gap; do not reopen proof, architecture, user-path,
+publishing, or release-readiness work by inertia.
 
 Roadmap selection and durable near/mid-term lane ranking now live in
 `docs/ROADMAP.md`. Keep `docs/NEXT.md` focused on current operating state,
@@ -233,8 +248,10 @@ publication, recovery, final consumer matrix, alias promotion, and history
 audit are recorded in `docs/releases/1.15.0-incident.md` and the 1.15 ledger.
 The next release-control lane is `v1.15.1`: repair stable publication ordering
 and make alias promotion globally serialized, semver-validated, protected,
-and fail-closed. Do not reopen product, schema, AST, or major dependency work
-inside that lane.
+and fail-closed. Product correctness proceeds in the separately selected
+product-evidence plan; inclusion and compatibility decisions remain under
+#670. Do not add product, schema, AST, or major dependency work to the release
+lane by implication.
 
 1. Do not extend the closed proof workflow status packet lane to any other
    workflow without fresh evidence of a real status-arbitration gap; preserve
@@ -265,8 +282,9 @@ inside that lane.
 11. Treat the user-path evidence consumption lane as closed. Start the next
     product lane only from a fresh consumer, missing artifact, workflow pain, or
     product gap; do not extend the completed compression pass by inertia.
-12. Keep the active goal paused until a new implementation lane is deliberately
-    selected.
+12. Keep the Jules-local active goal paused until a separate Jules transition
+    is deliberately selected; it does not block assigned source work in the
+    product-evidence correctness lane.
 
 ## Directional Rules
 
@@ -351,7 +369,7 @@ inside that lane.
 - Observation collection can now also write `--summary-md`, and the proof executor workflow appends that Rust-generated Markdown collection report to the GitHub job summary while still uploading the JSON artifact.
 - `cargo xtask proof` now accepts `--executor-max-commands <n>` as a positive override for the policy-selected advisory executor command limit. The proof executor workflow keeps PR runs at a small policy-backed command limit by default, while manual dispatches can raise `max_evidence_commands` to collect multi-scope evidence without changing required gates.
 - `.github/workflows/proof-observation-collection.yml` now provides a manual collector for successful `proof-executor.yml` runs. It saves the successful-run list as `target/proof-observations/runs.json`, downloads prior `proof-executor-artifacts`, runs the Rust-owned observation collection thresholds over the downloaded artifacts and source-run window, uploads the collection, and appends the Markdown collection summary without executing new evidence commands. The default collector floor requires an observation artifact but not executed commands/scopes/artifacts yet, so maintainers can record the current evidence floor before choosing stricter promotion thresholds.
-- Manual proof-observation collector run `25487797962` on `main` passed on 2026-05-07. It downloaded 11 successful proof-executor observations and recorded the current floor: 11 observations, zero selected/executed/passed commands, zero scopes, and zero artifacts. That proves the collector path while confirming that stricter promotion thresholds need intentionally collected coverage-enabled observations first.
+- Manual proof-observation collector run `25487797962` on `main` passed on 2026-05-07. It downloaded 11 successful proof-executor observations and recorded the current floor: 11 observations, zero selected/executed/passed coverage commands, zero scopes, and zero artifacts. That proves the collector path while confirming that stricter promotion thresholds need intentionally collected coverage-enabled observations first.
 - Manual proof-executor run `25489053208` on disposable branch `codex/proof-executor-coverage-sample` passed on 2026-05-07. It changed `crates/tokmd-core/tests/ffi_parity_w53.rs` and `crates/tokmd-format/src/redact/mod.rs`, selected two non-required coverage commands, executed/passed both, and produced two LCOV artifacts for `tokmd_core_ffi` and `format_redaction_scan_args`.
 - Manual proof-observation collector run `25489377912` on `main` passed on 2026-05-07 with stricter thresholds: `--min-observations 1`, `--min-executed 2`, `--min-scopes 2`, and `--min-artifacts 2`. The collection recorded 19 observations total, with 2 selected/executed/passed coverage commands, 2 covered scopes, and 2 artifacts.
 - `cargo xtask proof-execution-artifacts-check` now resolves downloaded executor artifacts without manually reconstructing `target/proof`: it still honors workflow-relative paths as written, and also resolves `target/proof/...` artifact paths against the downloaded artifact root. The downloaded artifacts from run `25489053208` now re-verify locally with 2 executed commands and guard `ci_explicit_opt_in_enabled`.
