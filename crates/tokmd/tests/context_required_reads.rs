@@ -205,17 +205,24 @@ fn context_pack_cli_absolute_file_root_reads_selected_input() -> Result<()> {
                 } else {
                     "code.txt"
                 }))?;
-                // A four-token HeadTail allowance retains 16 source bytes;
-                // this distinctive prefix still rejects silent root omission.
+                // A four-token HeadTail allowance splits 16 source bytes
+                // across visible ends. Distinctive content rejects omission.
+                let payload = String::from_utf8(payload)?;
                 let expected = if cap == "4" {
-                    "fn selected_file"
+                    "fn selecte"
                 } else {
                     "fn selected_file() {}"
                 };
                 ensure!(
-                    String::from_utf8(payload)?.contains(expected),
-                    "absolute file root did not render selected source"
+                    payload.contains(expected),
+                    "absolute file root did not render selected source: {payload:?}"
                 );
+                if cap == "4" {
+                    ensure!(
+                        payload.contains(") {}"),
+                        "missing visible source tail: {payload:?}"
+                    );
+                }
             }
         }
     }

@@ -179,30 +179,46 @@ pub(super) fn write<W: Write>(
     };
     let head_lines = (target as f64 * 0.6).ceil() as usize;
     let tail_lines = target.saturating_sub(head_lines);
-    let (head, tail) = if target >= excerpt.total_lines {
+    let (candidate_head, candidate_tail) = if target >= excerpt.total_lines {
         (head, tail)
     } else {
         (first_lines(head, head_lines), last_lines(tail, tail_lines))
     };
     // Reserve 40% for the tail; unused tail space is available to the head.
-    // If that split cannot fit the final scalar, keep one scalar from each
-    // end whenever the total allowance can accommodate both.
+    // If either end is blank, use the bounded raw captures to retain a visible
+    // scalar from each end, including its outer whitespace, whenever both fit.
+    // An already-visible end survives when those minimum fragments cannot fit.
     // Captures overlap for short inputs, which the full-input branch above
     // emits once. Here retained head+tail <= allowance < total input bytes.
     let tail_allowance = allowance / 5 * 2 + allowance % 5 * 2 / 5;
-    let mut kept_tail = suffix(tail, tail_allowance);
-    if kept_tail.is_empty() {
-        let first_bytes = head.chars().next().map_or(0, char::len_utf8);
-        let last_bytes = tail.chars().next_back().map_or(0, char::len_utf8);
-        if first_bytes > 0 && last_bytes > 0 && first_bytes.saturating_add(last_bytes) <= allowance
+    let mut kept_tail = suffix(candidate_tail, tail_allowance);
+    let mut kept_head = prefix(candidate_head, allowance.saturating_sub(kept_tail.len()));
+    if kept_head.trim().is_empty() || kept_tail.trim().is_empty() {
+        let head_content = head.trim_start();
+        let first_scalar = head_content.chars().next().map_or(0, char::len_utf8);
+        let first_bytes =
+            first_scalar.saturating_add(head.len().saturating_sub(head_content.len()));
+        let content = tail.trim_end();
+        let last_scalar = content.chars().next_back().map_or(0, char::len_utf8);
+        let last_bytes = last_scalar.saturating_add(tail.len().saturating_sub(content.len()));
+        if first_scalar > 0
+            && last_scalar > 0
+            && first_bytes.saturating_add(last_bytes) <= allowance
         {
-            kept_tail = suffix(tail, last_bytes);
+            let tail_budget = tail_allowance
+                .max(last_bytes)
+                .min(allowance.saturating_sub(first_bytes));
+            kept_tail = suffix(tail, tail_budget);
+            kept_head = prefix(head, allowance.saturating_sub(kept_tail.len()));
+        } else if kept_tail.trim().is_empty() {
+            kept_tail = "";
+            kept_head = prefix(head, allowance);
         }
     }
-    let tail = kept_tail;
-    let head = prefix(head, allowance.saturating_sub(tail.len()));
-    fragment(writer, head, compress)?;
-    let omitted = excerpt.total_bytes.saturating_sub(head.len() + tail.len());
+    fragment(writer, kept_head, compress)?;
+    let omitted = excerpt
+        .total_bytes
+        .saturating_sub(kept_head.len() + kept_tail.len());
     writeln!(writer, "// ... [{omitted} bytes omitted] ...")?;
-    fragment(writer, tail, compress)
+    fragment(writer, kept_tail, compress)
 }

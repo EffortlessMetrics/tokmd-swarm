@@ -311,6 +311,87 @@ fn context_pack_head_tail_rebalances_four_byte_final_scalar() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn context_pack_head_tail_blank_tail_preserves_visible_ends() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("line_end.rs");
+    for (content, tokens, expected) in [
+        ("abcdefZ\n", 1, "ab\n// ... [4 bytes omitted] ...\nZ\n"),
+        ("abcdefZ\r\n", 1, "a\n// ... [5 bytes omitted] ...\nZ\n"),
+        ("😃😃🙂\n", 1, "😃\n// ... [9 bytes omitted] ...\n"),
+        ("😃😃🙂\r\n", 1, "😃\n// ... [10 bytes omitted] ...\n"),
+        ("abcdefZ\n", 0, "// ... [8 bytes omitted] ...\n"),
+        ("abcdefZ \n", 1, "a\n// ... [5 bytes omitted] ...\nZ \n"),
+        ("abcdefZ\t\n", 1, "a\n// ... [5 bytes omitted] ...\nZ\t\n"),
+        (
+            "abcdefZ\u{2003}\n",
+            2,
+            "abc\n// ... [3 bytes omitted] ...\nZ\u{2003}\n",
+        ),
+    ] {
+        std::fs::write(&path, content)?;
+        for compress in [false, true] {
+            let mut output = Vec::new();
+            write_head_tail(&mut output, &path, &row(tokens), compress)?;
+            ensure!(
+                output == expected.as_bytes(),
+                "blank tail hid visible ends: content={content:?} tokens={tokens} compress={compress}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn context_pack_head_tail_blank_head_rebalances_without_losing_visible_tail() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("leading.rs");
+    for (content, tokens, plain, compressed) in [
+        (
+            "     abcdefXYZ",
+            2,
+            "     a\n// ... [6 bytes omitted] ...\nYZ\n",
+            "     a\n// ... [6 bytes omitted] ...\nYZ\n",
+        ),
+        (
+            "\u{2003}😃abcdefZ",
+            2,
+            "\u{2003}😃\n// ... [6 bytes omitted] ...\nZ\n",
+            "\u{2003}😃\n// ... [6 bytes omitted] ...\nZ\n",
+        ),
+        (
+            "\nabcdeXYZ",
+            2,
+            "\nabcd\n// ... [1 bytes omitted] ...\nXYZ\n",
+            "abcd\n// ... [1 bytes omitted] ...\nXYZ\n",
+        ),
+        (
+            "    Z",
+            1,
+            "   \n// ... [1 bytes omitted] ...\nZ\n",
+            "// ... [1 bytes omitted] ...\nZ\n",
+        ),
+        (
+            "abcd    ",
+            1,
+            "abcd\n// ... [4 bytes omitted] ...\n",
+            "abcd\n// ... [4 bytes omitted] ...\n",
+        ),
+    ] {
+        std::fs::write(&path, content)?;
+        for compress in [false, true] {
+            let mut output = Vec::new();
+            write_head_tail(&mut output, &path, &row(tokens), compress)?;
+            let expected = if compress { compressed } else { plain };
+            ensure!(
+                output == expected.as_bytes(),
+                "blank head discarded feasible visible content: content={content:?} compress={compress}"
+            );
+        }
+    }
+    Ok(())
+}
+
 struct OneByteReader<'a>(&'a [u8]);
 impl Read for OneByteReader<'_> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
