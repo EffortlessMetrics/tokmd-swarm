@@ -56,14 +56,27 @@ pub fn load_config() -> ConfigContext {
     }
 }
 
-/// CLI configuration loading: a present but unreadable or malformed file is an
-/// error, not permission to silently use lower-precedence defaults.
-pub(crate) fn load_config_checked() -> Result<ConfigContext> {
+/// Startup-only diagnostics, without changing the public best-effort context.
+pub(crate) struct LoadedConfig {
+    pub context: ConfigContext,
+    pub legacy_failure: Option<anyhow::Error>,
+}
+
+/// TOML failures are fatal. Retain legacy failures for diagnostics and selected
+/// profiles, while preserving successful unselected and matching-view commands.
+pub(crate) fn load_config_checked() -> Result<LoadedConfig> {
     let toml_result = discover_toml_config(true)?;
-    Ok(ConfigContext {
-        toml: toml_result.as_ref().map(|(config, _)| config.clone()),
-        toml_path: toml_result.map(|(_, path)| path),
-        json: load_json_config(),
+    let (json, legacy_failure) = match load_json_config_checked() {
+        Ok(json) => (json, None),
+        Err(error) => (None, Some(error)),
+    };
+    Ok(LoadedConfig {
+        context: ConfigContext {
+            toml: toml_result.as_ref().map(|(config, _)| config.clone()),
+            toml_path: toml_result.map(|(_, path)| path),
+            json,
+        },
+        legacy_failure,
     })
 }
 
@@ -131,15 +144,37 @@ fn try_load_toml(path: &Path, strict: bool) -> Result<Option<(TomlConfig, PathBu
 
 /// Load legacy JSON configuration from user config directory.
 fn load_json_config() -> Option<UserConfig> {
-    let config_dir = dirs::config_dir()?.join("tokmd");
-    let config_path = config_dir.join("config.json");
+    load_json_config_checked().ok().flatten()
+}
 
-    if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).ok()?;
-        serde_json::from_str(&content).ok()
-    } else {
-        None
-    }
+fn load_json_config_checked() -> Result<Option<UserConfig>> {
+    let Some(config_dir) = dirs::config_dir() else {
+        return Ok(None);
+    };
+    load_json_config_from(&config_dir.join("tokmd").join("config.json"))
+}
+
+fn load_json_config_from(path: &Path) -> Result<Option<UserConfig>> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "Failed to read legacy JSON configuration from {}",
+                    path.display()
+                )
+            });
+        }
+    };
+    serde_json::from_str(&content)
+        .with_context(|| {
+            format!(
+                "Failed to parse legacy JSON configuration from {}",
+                path.display()
+            )
+        })
+        .map(Some)
 }
 
 /// Get the profile name from CLI arg, env var, or default.
@@ -351,7 +386,11 @@ impl std::error::Error for UnknownProfile {}
 
 /// Normal CLI commands must not silently discard a selected profile.
 /// Keep public best-effort resolution and `--show-config` diagnostics separate.
-pub(crate) fn check_selected_profile(ctx: &ConfigContext, name: Option<&str>) -> Result<()> {
+pub(crate) fn check_selected_profile(
+    ctx: &ConfigContext,
+    name: Option<&str>,
+    legacy_failure: Option<anyhow::Error>,
+) -> Result<()> {
     let Some(name) = name else {
         return Ok(());
     };
@@ -378,10 +417,15 @@ pub(crate) fn check_selected_profile(ctx: &ConfigContext, name: Option<&str>) ->
             .collect::<Vec<_>>()
             .join(", ")
     };
-    Err(UnknownProfile(format!(
+    let error = UnknownProfile(format!(
         "Unknown profile {name:?}. Available profiles: {available}. Use `tokmd --show-config` to inspect configuration sources, then select or define the profile."
-    ))
-    .into())
+    ));
+    match legacy_failure {
+        Some(failure) => Err(failure.context(UnknownProfile(format!(
+            "{error} Repair the legacy JSON configuration and retry."
+        )))),
+        None => Err(error.into()),
+    }
 }
 
 #[cfg(test)]
@@ -392,8 +436,92 @@ mod tests {
     };
 
     #[test]
+    fn legacy_failure_loader_distinguishes_absence_parse_and_read_errors() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("config.json");
+        assert!(super::load_json_config_from(&path)?.is_none());
+        for malformed in [r#"{"profiles":{"ci":"#, r#"{"profiles":[]}"#] {
+            std::fs::write(&path, malformed)?;
+            let error = super::load_json_config_from(&path).unwrap_err();
+            assert!(error.downcast_ref::<serde_json::Error>().is_some());
+            let message = format!("{error:#}");
+            assert!(
+                message.contains(path.to_string_lossy().as_ref())
+                    && message.contains("line")
+                    && message.contains("column"),
+                "{message}"
+            );
+        }
+        std::fs::write(&path, [0xff])?;
+        let error = super::load_json_config_from(&path).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::InvalidData
+        );
+        assert!(format!("{error:#}").contains(path.to_string_lossy().as_ref()));
+        std::fs::remove_file(&path)?;
+        std::fs::create_dir(&path)?;
+        let error = super::load_json_config_from(&path).unwrap_err();
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert!(format!("{error:#}").contains(path.to_string_lossy().as_ref()));
+        std::fs::remove_dir(&path)?;
+        std::fs::write(&path, r#"{"profiles":{"ci":{"format":"json"}},"repos":{}}"#)?;
+        assert!(
+            super::load_json_config_from(&path)?
+                .unwrap()
+                .profiles
+                .contains_key("ci")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_failure_selected_errors_preserve_local_typed_recovery() -> anyhow::Result<()> {
+        let failure = || {
+            anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            .context("Failed to read legacy JSON configuration from rate_limit/timeout base ref/config.json")
+        };
+        let name = "rate_limit/timeout base ref";
+        let error = check_selected_profile(&ConfigContext::default(), Some(name), Some(failure()))
+            .unwrap_err();
+        assert!(error.downcast_ref::<UnknownProfile>().is_some());
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(crate::exit_code(&error), 2);
+        let message = crate::format_error(&error);
+        assert!(
+            message.contains("Repair the legacy JSON configuration")
+                && message.contains("config.json")
+                && message.contains("permission denied"),
+            "{message}"
+        );
+        assert!(
+            !message.contains("tokmd JSON receipt")
+                && !message.contains("git fetch")
+                && !message.contains("Retry after a short delay")
+                && !message.contains("rate limit"),
+            "{message}"
+        );
+        check_selected_profile(&ConfigContext::default(), None, Some(failure()))?;
+        let mut toml = TomlConfig::default();
+        toml.view.insert(name.into(), ViewProfile::default());
+        let ctx = ConfigContext {
+            toml: Some(toml),
+            ..Default::default()
+        };
+        check_selected_profile(&ctx, Some(name), Some(failure()))?;
+        let mut json = UserConfig::default();
+        json.profiles.insert(name.into(), Profile::default());
+        let ctx = ConfigContext {
+            json: Some(json),
+            ..Default::default()
+        };
+        check_selected_profile(&ctx, Some(name), Some(failure()))?;
+        Ok(())
+    }
+
+    #[test]
     fn profile_selection_constructed_matches_preserve_precedence() -> anyhow::Result<()> {
-        check_selected_profile(&ConfigContext::default(), None)?;
+        check_selected_profile(&ConfigContext::default(), None, None)?;
         let mut toml = TomlConfig::default();
         toml.view.insert("empty".into(), ViewProfile::default());
         toml.view.insert(
@@ -420,7 +548,7 @@ mod tests {
             ..Default::default()
         };
         for name in ["empty", "shared", "legacy"] {
-            check_selected_profile(&ctx, Some(name))?;
+            check_selected_profile(&ctx, Some(name), None)?;
         }
         let shared = resolve_config(&ctx, Some("shared"));
         anyhow::ensure!(
@@ -455,7 +583,7 @@ mod tests {
             (ctx, r#""alpha", "quote\"\nname", "shared", "zebra""#),
             (ConfigContext::default(), "(none)"),
         ] {
-            let error = check_selected_profile(&context, Some(name))
+            let error = check_selected_profile(&context, Some(name), None)
                 .err()
                 .ok_or_else(|| anyhow::anyhow!("unmatched profile was accepted"))?;
             anyhow::ensure!(
