@@ -519,6 +519,108 @@ fn profile_selection_failure(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn legacy_failure_fixture(malformed: &str, diagnostic: bool) -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("repo");
+    let user_config = dir.path().join("rate_limit").join("timeout base ref");
+    let legacy = user_config.join("tokmd").join("config.json");
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::create_dir(&repo)?;
+    std::fs::create_dir_all(
+        legacy
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("legacy parent"))?,
+    )?;
+    std::fs::write(&selected_config, "")?;
+    let source = repo.join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    let repaired = r#"{"profiles":{"ci":{"format":"json","files":true}},"repos":{}}"#;
+    std::fs::write(&legacy, repaired)?;
+    let command = || profile_selection_command(&repo, &selected_config, &user_config);
+    let run = || {
+        command()
+            .args(["--profile", "ci", "lang"])
+            .arg(&source)
+            .output()
+    };
+    let original = first_use_json(&run()?)?;
+    std::fs::write(&legacy, malformed)?;
+    if diagnostic {
+        let output = command()
+            .args(["--profile", "ci", "--show-config", "does-not-exist"])
+            .output()?;
+        anyhow::ensure!(
+            output.status.code() == Some(0) && output.stderr.is_empty(),
+            "legacy diagnostics must succeed without scanning: {output:?}"
+        );
+        let report = std::str::from_utf8(&output.stdout)?;
+        anyhow::ensure!(
+            report.contains(legacy.to_string_lossy().as_ref())
+                && report.to_ascii_lowercase().contains("failed")
+                && report.contains("line")
+                && report.contains("column"),
+            "diagnostics must identify failed legacy source and parser cause: {report}"
+        );
+    } else {
+        let output = run()?;
+        // Source diagnostics are required independently of the pending 1-versus-2 policy.
+        anyhow::ensure!(
+            matches!(output.status.code(), Some(1 | 2)) && output.stdout.is_empty(),
+            "damaged selected legacy config must fail before machine output: {output:?}"
+        );
+        let stderr = std::str::from_utf8(&output.stderr)?;
+        anyhow::ensure!(
+            stderr.contains(legacy.to_string_lossy().as_ref())
+                && stderr.contains("JSON")
+                && stderr.contains("line")
+                && stderr.contains("column")
+                && stderr.to_ascii_lowercase().contains("repair"),
+            "selected legacy failure must name its source, cause and repair: {stderr}"
+        );
+        anyhow::ensure!(
+            !stderr.contains("tokmd JSON receipt")
+                && !stderr.contains("git fetch")
+                && !stderr.contains("Retry after a short delay")
+                && !stderr.contains("rate limit"),
+            "local config failure gained unrelated recovery advice: {stderr}"
+        );
+    }
+    std::fs::write(&legacy, repaired)?;
+    anyhow::ensure!(
+        first_use_json(&run()?)? == original && first_use_json(&run()?)? == original,
+        "legacy repair did not restore identical-argv semantic JSON"
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_selected_syntax_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":{"ci":"#, false)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_selected_shape_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":[],"repos":{}}"#, false)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_diagnostic_syntax_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":{"ci":"#, true)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_diagnostic_shape_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":[],"repos":{}}"#, true)
+}
+
 #[test]
 #[cfg(target_os = "linux")]
 fn profile_selection_unknown_cli_recovers_with_same_argv() -> anyhow::Result<()> {
