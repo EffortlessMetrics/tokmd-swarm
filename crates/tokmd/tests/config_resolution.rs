@@ -414,6 +414,13 @@ fn first_use_lang_command(
 }
 
 fn first_use_json(output: &std::process::Output) -> anyhow::Result<serde_json::Value> {
+    first_use_json_with_files(output, true)
+}
+
+fn first_use_json_with_files(
+    output: &std::process::Output,
+    with_files: bool,
+) -> anyhow::Result<serde_json::Value> {
     anyhow::ensure!(
         output.status.code() == Some(0) && output.stderr.is_empty(),
         "ordinary lang failed or emitted stderr: {}: {}",
@@ -427,7 +434,8 @@ fn first_use_json(output: &std::process::Output) -> anyhow::Result<serde_json::V
             && receipt.status == tokmd_types::ScanStatus::Complete
             && receipt.warnings.is_empty()
             && receipt.args.format == "json"
-            && receipt.args.with_files
+            && receipt.args.with_files == with_files
+            && receipt.report.with_files == with_files
             && receipt.scan.config == tokmd_types::ConfigMode::None,
         "ordinary lang receipt has wrong machine metadata: {receipt:?}"
     );
@@ -516,6 +524,213 @@ fn profile_selection_failure(
         stderr == expected,
         "wrong entire unmatched-profile diagnostic: {stderr:?}"
     );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn legacy_failure_fixture(malformed: &str, diagnostic: bool) -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("repo");
+    let user_config = dir.path().join("rate_limit").join("timeout base ref");
+    let legacy = user_config.join("tokmd").join("config.json");
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::create_dir(&repo)?;
+    std::fs::create_dir_all(
+        legacy
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("legacy parent"))?,
+    )?;
+    std::fs::write(&selected_config, "")?;
+    let source = repo.join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    let repaired = r#"{"profiles":{"ci":{"format":"json","files":true}},"repos":{}}"#;
+    std::fs::write(&legacy, repaired)?;
+    let command = || profile_selection_command(&repo, &selected_config, &user_config);
+    let run = || {
+        command()
+            .args(["--profile", "ci", "lang"])
+            .arg(&source)
+            .output()
+    };
+    let original = first_use_json(&run()?)?;
+    std::fs::write(&legacy, malformed)?;
+    if diagnostic {
+        let output = command()
+            .args(["--profile", "ci", "--show-config", "does-not-exist"])
+            .output()?;
+        anyhow::ensure!(
+            output.status.code() == Some(0) && output.stderr.is_empty(),
+            "legacy diagnostics must succeed without scanning: {output:?}"
+        );
+        let report = std::str::from_utf8(&output.stdout)?;
+        anyhow::ensure!(
+            report.contains(legacy.to_string_lossy().as_ref())
+                && report.to_ascii_lowercase().contains("failed")
+                && report.contains("line")
+                && report.contains("column"),
+            "diagnostics must identify failed legacy source and parser cause: {report}"
+        );
+    } else {
+        let output = run()?;
+        anyhow::ensure!(
+            output.status.code() == Some(2) && output.stdout.is_empty(),
+            "damaged selected legacy config must fail before machine output: {output:?}"
+        );
+        let stderr = std::str::from_utf8(&output.stderr)?;
+        anyhow::ensure!(
+            stderr.contains(legacy.to_string_lossy().as_ref())
+                && stderr.contains("JSON")
+                && stderr.contains("line")
+                && stderr.contains("column")
+                && stderr.to_ascii_lowercase().contains("repair"),
+            "selected legacy failure must name its source, cause and repair: {stderr}"
+        );
+        anyhow::ensure!(
+            !stderr.contains("tokmd JSON receipt")
+                && !stderr.contains("git fetch")
+                && !stderr.contains("Retry after a short delay")
+                && !stderr.contains("rate limit"),
+            "local config failure gained unrelated recovery advice: {stderr}"
+        );
+    }
+    std::fs::write(&legacy, repaired)?;
+    anyhow::ensure!(
+        first_use_json(&run()?)? == original && first_use_json(&run()?)? == original,
+        "legacy repair did not restore identical-argv semantic JSON"
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_selected_syntax_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":{"ci":"#, false)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_selected_shape_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":[],"repos":{}}"#, false)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_diagnostic_syntax_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":{"ci":"#, true)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_diagnostic_shape_names_source_before_retry() -> anyhow::Result<()> {
+    legacy_failure_fixture(r#"{"profiles":[],"repos":{}}"#, true)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn legacy_failure_preserves_success_and_toml_errors() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("repo");
+    let user_config = dir.path().join("user-config");
+    let legacy = user_config.join("tokmd/config.json");
+    let selected = dir.path().join("selected.toml");
+    std::fs::create_dir(&repo)?;
+    std::fs::create_dir_all(
+        legacy
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("legacy parent"))?,
+    )?;
+    let source = repo.join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(&selected, "[view.ci]\n")?;
+    let command = || profile_selection_command(&repo, &selected, &user_config);
+    let default = || {
+        command()
+            .args(["lang", "--format", "json"])
+            .arg(&source)
+            .output()
+    };
+    let matching = || {
+        command()
+            .args(["--profile", "ci", "lang", "--format", "json"])
+            .arg(&source)
+            .output()
+    };
+    let original = first_use_json_with_files(&default()?, false)?;
+    anyhow::ensure!(
+        first_use_json_with_files(&matching()?, false)? == original,
+        "empty TOML view changed defaults"
+    );
+    std::fs::write(&legacy, r#"{"profiles":[]}"#)?;
+    anyhow::ensure!(
+        first_use_json_with_files(&default()?, false)? == original
+            && first_use_json_with_files(&matching()?, false)? == original,
+        "malformed legacy JSON changed successful defaults or empty TOML view"
+    );
+    for selector in ["--profile", "--view"] {
+        let output = command()
+            .args([selector, "unknown", "lang", "--format", "json"])
+            .arg(&source)
+            .output()?;
+        anyhow::ensure!(
+            output.status.code() == Some(2)
+                && output.stdout.is_empty()
+                && String::from_utf8_lossy(&output.stderr)
+                    .contains(legacy.to_string_lossy().as_ref()),
+            "selector alias lost legacy failure: {output:?}"
+        );
+    }
+    let output = command()
+        .env("TOKMD_PROFILE", "unknown")
+        .args(["lang", "--format", "json"])
+        .arg(&source)
+        .output()?;
+    anyhow::ensure!(
+        output.status.code() == Some(2)
+            && output.stdout.is_empty()
+            && String::from_utf8_lossy(&output.stderr).contains(legacy.to_string_lossy().as_ref()),
+        "environment selector lost legacy failure: {output:?}"
+    );
+    std::fs::write(
+        &legacy,
+        r#"{"profiles":{"ci":{"format":"md","files":true}},"repos":{}}"#,
+    )?;
+    std::fs::write(&selected, "[view.ci]\nformat = \"json\"\nfiles = false\n")?;
+    let output = command()
+        .args(["--profile", "ci", "lang"])
+        .arg(&source)
+        .output()?;
+    anyhow::ensure!(
+        first_use_json_with_files(&output, false)? == original,
+        "TOML precedence changed after legacy repair"
+    );
+    std::fs::write(&legacy, "{")?;
+    std::fs::write(&selected, "[view.ci\n")?;
+    for diagnostic in [false, true] {
+        let mut cmd = command();
+        cmd.args(["--profile", "ci"]);
+        if diagnostic {
+            cmd.arg("--show-config");
+        }
+        let output = cmd
+            .args(["lang", "--format", "json"])
+            .arg(&source)
+            .output()?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::ensure!(
+            output.status.code() == Some(1)
+                && output.stdout.is_empty()
+                && stderr.contains("TOML")
+                && stderr.contains(selected.to_string_lossy().as_ref())
+                && !stderr.contains(legacy.to_string_lossy().as_ref()),
+            "TOML failure precedence changed: {output:?}"
+        );
+    }
     Ok(())
 }
 
