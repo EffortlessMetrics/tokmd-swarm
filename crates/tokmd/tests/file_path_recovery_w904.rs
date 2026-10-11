@@ -644,7 +644,7 @@ fn missing_context_root_can_be_created_and_bundled(selected_root: &str) -> anyho
     );
     let stdout = std::str::from_utf8(&retry.stdout)?;
     let expected = format!(
-        "// === {selected_root}/input.rs ===\npub fn line_01() {{}}\npub fn line_02() {{}}\npub fn line_03() {{}}\n// ... [16 lines omitted] ...\npub fn line_20() {{}}\n\n"
+        "// === {selected_root}/input.rs ===\npub fn line_01() {{}}\npub fn line_02() {{}}\npub fn line_03() {{}}\n// ... [320 bytes omitted] ...\npub fn line_20() {{}}\n\n"
     );
     anyhow::ensure!(
         stdout == expected,
