@@ -525,8 +525,14 @@ fn profile_selection_unknown_cli_recovers_with_same_argv() -> anyhow::Result<()>
     std::fs::create_dir(&repo)?;
     std::fs::create_dir(&user_config)?;
     let source = repo.join("sample.rs");
-    std::fs::write(&source, "pub fn first_use_one() {}\npub fn first_use_two() {}\n")?;
-    std::fs::write(&selected_config, "[view.ci]\nformat = \"json\"\nfiles = true\n")?;
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(
+        &selected_config,
+        "[view.ci]\nformat = \"json\"\nfiles = true\n",
+    )?;
     let command = || profile_selection_command(&repo, &selected_config, &user_config);
 
     let original = first_use_json(
@@ -575,7 +581,10 @@ fn profile_selection_unknown_env_preserves_cli_override_and_diagnostics() -> any
     let user_config = dir.path().join("user-config");
     std::fs::create_dir(&user_config)?;
     let source = dir.path().join("sample.rs");
-    std::fs::write(&source, "pub fn first_use_one() {}\npub fn first_use_two() {}\n")?;
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
     std::fs::write(&selected_config, "")?;
     let command = || {
         let mut command = profile_selection_command(dir.path(), &selected_config, &user_config);
@@ -622,7 +631,10 @@ fn profile_selection_legacy_match_sorted_names_and_local_guidance() -> anyhow::R
     let user_config = dir.path().join("user-config");
     std::fs::create_dir_all(user_config.join("tokmd"))?;
     let source = dir.path().join("sample.rs");
-    std::fs::write(&source, "pub fn first_use_one() {}\npub fn first_use_two() {}\n")?;
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
     std::fs::write(
         &selected_config,
         "[view.shared]\nformat = \"json\"\nfiles = true\n[view.zebra]\n",

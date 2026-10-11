@@ -337,6 +337,53 @@ pub fn resolve_config<'a>(
     }
 }
 
+/// A selected profile has no matching configuration and already names its repair.
+#[derive(Debug)]
+pub(crate) struct UnknownProfile(String);
+
+impl std::fmt::Display for UnknownProfile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UnknownProfile {}
+
+/// Normal CLI commands must not silently discard a selected profile.
+/// Keep public best-effort resolution and `--show-config` diagnostics separate.
+pub(crate) fn check_selected_profile(ctx: &ConfigContext, name: Option<&str>) -> Result<()> {
+    let Some(name) = name else {
+        return Ok(());
+    };
+    if ctx.get_toml_view(name).is_some() || ctx.get_json_profile(name).is_some() {
+        return Ok(());
+    }
+
+    let names: std::collections::BTreeSet<&str> = ctx
+        .toml
+        .iter()
+        .flat_map(|config| config.view.keys().map(String::as_str))
+        .chain(
+            ctx.json
+                .iter()
+                .flat_map(|config| config.profiles.keys().map(String::as_str)),
+        )
+        .collect();
+    let available = if names.is_empty() {
+        "(none)".to_string()
+    } else {
+        names
+            .iter()
+            .map(|name| format!("{name:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    Err(UnknownProfile(format!(
+        "Unknown profile {name:?}. Available profiles: {available}. Use `tokmd --show-config` to inspect configuration sources, then select or define the profile."
+    ))
+    .into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{get_profile_name, sanitize_selector};

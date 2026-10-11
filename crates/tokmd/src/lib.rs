@@ -65,6 +65,7 @@ pub fn run() -> Result<()> {
             &resolved,
         );
     }
+    config::check_selected_profile(&config_ctx, profile_name.as_deref())?;
     commands::dispatch(cli, &resolved)
 }
 
@@ -75,6 +76,7 @@ pub fn format_error(err: &anyhow::Error) -> String {
 /// Return the process exit code for a CLI error.
 pub fn exit_code(err: &anyhow::Error) -> i32 {
     if err.downcast_ref::<commands::UsageError>().is_some()
+        || err.downcast_ref::<config::UnknownProfile>().is_some()
         || err
             .downcast_ref::<error_hints::InvalidLangProfileFormat>()
             .is_some()

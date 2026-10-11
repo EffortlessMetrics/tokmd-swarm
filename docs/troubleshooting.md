@@ -382,6 +382,13 @@ Named profiles require `--profile`:
 tokmd --profile llm
 ```
 
+An unmatched `--profile`/`--view` or `TOKMD_PROFILE` exits with code 2 and
+empty stdout before running the command. The error lists available names.
+Use `tokmd --show-config` to inspect the selected configuration sources,
+then correct the selector or define that name in `[view.NAME]` (or the legacy
+JSON profiles map) and retry. `--show-config` still reports unmatched names
+successfully without scanning.
+
 **3. Environment variable override**
 
 Check if `TOKMD_CONFIG` is set:
