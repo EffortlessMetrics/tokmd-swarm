@@ -90,16 +90,15 @@ fn contains_selected_path(rendered: &str, expected: &str) -> bool {
     }
     for (start, _) in rendered.match_indices(expected) {
         let end = start + expected.len();
-        let left_ok = start == 0
-            || !rendered[..start]
+        let left_ok = rendered.get(..start).is_some_and(|before| {
+            before
                 .chars()
                 .next_back()
-                .is_some_and(is_path_token_char);
-        let right_ok = end == rendered.len()
-            || !rendered[end..]
-                .chars()
-                .next()
-                .is_some_and(is_path_token_char);
+                .is_none_or(|c| !is_path_token_char(c))
+        });
+        let right_ok = rendered
+            .get(end..)
+            .is_some_and(|after| after.chars().next().is_none_or(|c| !is_path_token_char(c)));
         if left_ok && right_ok {
             return true;
         }
