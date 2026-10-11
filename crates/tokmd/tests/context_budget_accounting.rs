@@ -37,7 +37,10 @@ fn run_context(
 
 fn check_estimate(estimate: Option<&TokenEstimationMeta>) -> Result<()> {
     let estimate = estimate.context("missing token estimation")?;
-    ensure!(estimate.source_bytes == 39_200, "stale receipt source bytes");
+    ensure!(
+        estimate.source_bytes == 39_200,
+        "stale receipt source bytes"
+    );
     ensure!(estimate.tokens_est == 9_800, "stale receipt token estimate");
     Ok(())
 }
@@ -47,8 +50,14 @@ fn check_audit(audit: Option<&TokenAudit>, output_bytes: usize) -> Result<()> {
     let overhead = output_bytes
         .checked_sub(39_200)
         .context("bundle lost source content")?;
-    ensure!(audit.output_bytes == output_bytes as u64, "wrong output bytes");
-    ensure!(audit.overhead_bytes == overhead as u64, "wrong framing bytes");
+    ensure!(
+        audit.output_bytes == output_bytes as u64,
+        "wrong output bytes"
+    );
+    ensure!(
+        audit.overhead_bytes == overhead as u64,
+        "wrong framing bytes"
+    );
     Ok(())
 }
 
@@ -78,16 +87,25 @@ fn full_file_pack_uses_policy_estimate(strategy: &str, padding: &str) -> Result<
     check_estimate(receipt.token_estimation.as_ref())?;
     let mut observed_bytes = 0_u64;
     for file in &receipt.files {
-        ensure!(file.policy == InclusionPolicy::Full, "unexpected truncation");
+        ensure!(
+            file.policy == InclusionPolicy::Full,
+            "unexpected truncation"
+        );
         ensure!(file.tokens == 1_400, "stale full-file charge");
         ensure!(file.bytes == 5_600, "stale selected-file bytes");
         ensure!(file.effective_tokens.is_none(), "unexpected partial charge");
         observed_bytes += fs::metadata(root.join(&file.path))?.len();
     }
-    ensure!(observed_bytes == 39_200, "selected payload disagrees with charge");
+    ensure!(
+        observed_bytes == 39_200,
+        "selected payload disagrees with charge"
+    );
 
     let bundle = String::from_utf8(run_context(root, strategy, "bundle", None)?)?;
-    ensure!(bundle.matches("// === ").count() == 7, "bundle selection disagrees");
+    ensure!(
+        bundle.matches("// === ").count() == 7,
+        "bundle selection disagrees"
+    );
     for file in &receipt.files {
         ensure!(
             bundle.contains(&format!("// === {} ===\n", file.path)),
@@ -99,13 +117,19 @@ fn full_file_pack_uses_policy_estimate(strategy: &str, padding: &str) -> Result<
         bundle.matches(source.as_str()).count() == 7,
         "bundle did not preserve all seven full source payloads"
     );
-    ensure!(bundle.len() <= 40_000, "fixture exceeds its byte-equivalent budget");
+    ensure!(
+        bundle.len() <= 40_000,
+        "fixture exceeds its byte-equivalent budget"
+    );
     // This fixture has framing headroom. It is not a general output-cap proof.
 
     let output = tempfile::tempdir()?;
     run_context(root, strategy, "bundle", Some(output.path()))?;
     let saved_bundle = fs::read(output.path().join("bundle.txt"))?;
-    ensure!(saved_bundle == bundle.as_bytes(), "directory bundle differs");
+    ensure!(
+        saved_bundle == bundle.as_bytes(),
+        "directory bundle differs"
+    );
     let saved: ContextReceipt =
         serde_json::from_slice(&fs::read(output.path().join("receipt.json"))?)?;
     let manifest: ContextBundleManifest =
@@ -116,15 +140,24 @@ fn full_file_pack_uses_policy_estimate(strategy: &str, padding: &str) -> Result<
             ensure!(actual.path == expected.path, "saved selection differs");
             ensure!(actual.bytes == 5_600, "saved source bytes are stale");
             ensure!(actual.tokens == 1_400, "saved charge is stale");
-            ensure!(actual.policy == InclusionPolicy::Full, "saved policy differs");
+            ensure!(
+                actual.policy == InclusionPolicy::Full,
+                "saved policy differs"
+            );
         }
     }
-    ensure!(saved.file_count == 7 && manifest.file_count == 7, "wrong saved count");
+    ensure!(
+        saved.file_count == 7 && manifest.file_count == 7,
+        "wrong saved count"
+    );
     ensure!(
         saved.used_tokens == 9_800 && manifest.used_tokens == 9_800,
         "wrong saved total charge"
     );
-    ensure!(manifest.bundle_bytes == saved_bundle.len(), "wrong manifest bytes");
+    ensure!(
+        manifest.bundle_bytes == saved_bundle.len(),
+        "wrong manifest bytes"
+    );
     check_estimate(saved.token_estimation.as_ref())?;
     check_estimate(manifest.token_estimation.as_ref())?;
     check_audit(saved.bundle_audit.as_ref(), saved_bundle.len())?;
