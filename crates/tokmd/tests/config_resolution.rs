@@ -481,6 +481,9 @@ fn first_use_failure(
     Ok(stderr.to_string())
 }
 
+// Only Linux's pinned config-directory lookup honors XDG_CONFIG_HOME.
+// Other platforms use constructed ConfigContext controls in config.rs.
+#[cfg(target_os = "linux")]
 fn profile_selection_command(
     repo: &std::path::Path,
     selected_config: &std::path::Path,
@@ -489,11 +492,11 @@ fn profile_selection_command(
     let mut command = first_use_command(repo, selected_config);
     command
         .env("XDG_CONFIG_HOME", user_config)
-        .env("APPDATA", user_config)
         .timeout(std::time::Duration::from_secs(30));
     command
 }
 
+#[cfg(target_os = "linux")]
 fn profile_selection_failure(
     output: &std::process::Output,
     name: &str,
@@ -517,6 +520,7 @@ fn profile_selection_failure(
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn profile_selection_unknown_cli_recovers_with_same_argv() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let repo = dir.path().join("repo");
@@ -575,6 +579,7 @@ fn profile_selection_unknown_cli_recovers_with_same_argv() -> anyhow::Result<()>
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn profile_selection_unknown_env_preserves_cli_override_and_diagnostics() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let selected_config = dir.path().join("selected.toml");
@@ -625,6 +630,7 @@ fn profile_selection_unknown_env_preserves_cli_override_and_diagnostics() -> any
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn profile_selection_legacy_match_sorted_names_and_local_guidance() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let selected_config = dir.path().join("selected.toml");
