@@ -67,12 +67,13 @@ pub(crate) fn expect_io(error: &anyhow::Error, path: &Path, missing: bool) -> Re
             "wrong IO cause: {io}"
         );
     }
-    let rendered = format!("{error:#}");
     let expected = path.display().to_string();
-    ensure!(
-        contains_selected_path(&rendered, &expected, cfg!(windows)),
-        "lost selected path: {error:#}"
-    );
+    let windows_separators = cfg!(windows);
+    let witnessed = error
+        .chain()
+        .filter(|entry| !entry.is::<std::io::Error>())
+        .any(|entry| contains_selected_path(&entry.to_string(), &expected, windows_separators));
+    ensure!(witnessed, "lost selected path: {error:#}");
     ensure!(
         crate::exit_code(error) == 1,
         "required read failure must exit 1"
@@ -80,12 +81,16 @@ pub(crate) fn expect_io(error: &anyhow::Error, path: &Path, missing: bool) -> Re
     Ok(())
 }
 
-fn is_path_token_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | '+' | '~')
-}
-
-fn is_path_token_char_with(c: char, windows_separators: bool) -> bool {
-    is_path_token_char(c) || (!windows_separators && c == '\\')
+fn strip_supported_producer_prefix(entry: &str) -> Option<&str> {
+    if let Some(rest) = entry.strip_prefix("Failed to open file: ") {
+        Some(rest)
+    } else if let Some(rest) = entry.strip_prefix("Failed to read file: ") {
+        Some(rest)
+    } else if let Some(rest) = entry.strip_prefix("Failed to read ") {
+        Some(rest)
+    } else {
+        None
+    }
 }
 
 fn normalize_for_match(text: &str, windows_separators: bool) -> String {
@@ -96,39 +101,20 @@ fn normalize_for_match(text: &str, windows_separators: bool) -> String {
     }
 }
 
-fn contains_selected_path(rendered: &str, expected: &str, windows_separators: bool) -> bool {
-    let rendered_norm = normalize_for_match(rendered, windows_separators);
+fn contains_selected_path(entry: &str, expected: &str, windows_separators: bool) -> bool {
+    let entry_norm = normalize_for_match(entry, windows_separators);
     let expected_norm = normalize_for_match(expected, windows_separators);
     if expected_norm.is_empty() {
         return false;
     }
-    for (start, _) in rendered_norm.match_indices(expected_norm.as_str()) {
-        let end = start + expected_norm.len();
-        let left_ok = rendered_norm.get(..start).is_some_and(|before| {
-            before
-                .chars()
-                .next_back()
-                .is_none_or(|c| !is_path_token_char_with(c, windows_separators))
-        });
-        let right_ok = rendered_norm.get(end..).is_some_and(|after| {
-            after
-                .chars()
-                .next()
-                .is_none_or(|c| !is_path_token_char_with(c, windows_separators))
-        });
-        if left_ok && right_ok {
-            return true;
-        }
-    }
-    false
+    strip_supported_producer_prefix(entry_norm.as_str())
+        .is_some_and(|actual| actual == expected_norm)
 }
 
 #[cfg(test)]
 fn literal_io(kind: std::io::ErrorKind, rendered_path: &str) -> anyhow::Error {
-    anyhow::Error::new(std::io::Error::new(
-        kind,
-        format!("Failed to open file: {rendered_path}: test io"),
-    ))
+    anyhow::Error::new(std::io::Error::new(kind, "test io"))
+        .context(format!("Failed to open file: {rendered_path}"))
 }
 
 #[test]
@@ -150,7 +136,7 @@ fn expect_io_slash_normalization_preserves_full_path() -> Result<()> {
     );
     ensure!(
         contains_selected_path(
-            "Failed to open file: C:/owned/nested/input.rs: test io",
+            "Failed to open file: C:/owned/nested/input.rs",
             "C:\\owned\\nested\\input.rs",
             true
         ),
@@ -158,26 +144,42 @@ fn expect_io_slash_normalization_preserves_full_path() -> Result<()> {
     );
     ensure!(
         contains_selected_path(
-            "Failed to open file: C:\\owned\\nested\\input.rs: test io",
+            "Failed to open file: C:\\owned\\nested\\input.rs",
             "C:/owned/nested/input.rs",
             true
         ),
         "windows backslash rendering must match slash expected"
     );
     ensure!(
-        !contains_selected_path("owned\\input.rs", "owned/input.rs", false),
+        !contains_selected_path(
+            "Failed to open file: owned\\input.rs",
+            "owned/input.rs",
+            false
+        ),
         "posix backslash must not alias slash"
     );
     ensure!(
-        !contains_selected_path("owned/input.rs", "owned\\input.rs", false),
+        !contains_selected_path(
+            "Failed to open file: owned/input.rs",
+            "owned\\input.rs",
+            false
+        ),
         "posix slash must not alias backslash"
     );
     ensure!(
-        contains_selected_path("owned\\input.rs", "owned\\input.rs", false),
+        contains_selected_path(
+            "Failed to open file: owned\\input.rs",
+            "owned\\input.rs",
+            false
+        ),
         "posix backslash identity must match"
     );
     ensure!(
-        !contains_selected_path("a\\owned\\input.rs", "owned\\input.rs", false),
+        !contains_selected_path(
+            "Failed to open file: a\\owned\\input.rs",
+            "owned\\input.rs",
+            false
+        ),
         "posix backslash must block suffix match"
     );
     Ok(())
@@ -232,8 +234,7 @@ fn expect_io_rejects_wrong_kind_and_missing_cause() -> Result<()> {
         .is_err(),
         "PermissionDenied must reject when missing expects NotFound"
     );
-    let no_io: anyhow::Error =
-        anyhow::anyhow!("Failed to open file: C:/owned/nested/input.rs: test io");
+    let no_io: anyhow::Error = anyhow::anyhow!("Failed to open file: C:/owned/nested/input.rs");
     ensure!(
         expect_io(&no_io, expected, true).is_err(),
         "absent io cause must reject"
@@ -627,6 +628,269 @@ fn check_completion(out: &Path, command: &str, payload: &[u8]) -> Result<()> {
             .and_then(serde_json::Value::as_u64)
             == Some(payload.len() as u64),
         "audit bytes disagree"
+    );
+    Ok(())
+}
+
+#[test]
+fn required_read_producer_context_suffix_table() -> Result<()> {
+    // (standalone producer context entry, expected selected path, windows_separators, want).
+    // All `want` values are independent literal outcomes.
+    let cases: &[(&str, &str, bool, bool)] = &[
+        (
+            "Failed to open file: /owned/input.rs",
+            "/owned/input.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to read file: /owned/input.rs",
+            "/owned/input.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to open file: C:/owned/input.rs",
+            "C:/owned/input.rs",
+            true,
+            true,
+        ),
+        (
+            "Failed to read file: C:\\owned\\input.rs",
+            "C:/owned/input.rs",
+            true,
+            true,
+        ),
+        (
+            "Failed to open file: C:/owned/nested/input.rs",
+            "C:\\owned\\nested\\input.rs",
+            true,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/input.rs",
+            "/owned/input.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to read file: C:\\owned\\input.rs",
+            "C:/owned/input.rs",
+            true,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/input:name.rs",
+            "/owned/input:name.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to read file: /owned/input@name.rs",
+            "/owned/input@name.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/input name.rs",
+            "/owned/input name.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/input#name.rs",
+            "/owned/input#name.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/inputé.rs",
+            "/owned/inputé.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to read file: C:/owned/inputé.rs",
+            "C:/owned/inputé.rs",
+            true,
+            true,
+        ),
+        (
+            "Failed to open file: owned\\input.rs",
+            "owned\\input.rs",
+            false,
+            true,
+        ),
+        (
+            "Failed to open file: /owned/input.rs:backup",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to read file: /owned/input.rs:backup",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to open file: /owned/input.rs@backup",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to open file: C:/owned/input.rs@backup",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to read file: C:\\owned\\input.rs@backup",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to open file: /owned/input.rs backup",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to read file: C:/owned/input.rs backup",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to open file: /owned/input.rs#backup",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to read file: C:/owned/input.rs#backup",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to open file: /owned/input.rsé",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to read file: /owned/input.rs中",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to open file: C:/owned/input.rsé",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to open file: /owned/input.rs (/owned/other.rs)",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "checked /owned/input.rs earlier; Failed to open file: /owned/other.rs",
+            "/owned/input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to read file: C:/owned/input.rs, C:/owned/other.rs",
+            "C:/owned/input.rs",
+            true,
+            false,
+        ),
+        (
+            "Failed to open file: owned/input.rs",
+            "owned\\input.rs",
+            false,
+            false,
+        ),
+        (
+            "Failed to open file: owned\\input.rs",
+            "owned/input.rs",
+            false,
+            false,
+        ),
+    ];
+    for (rendered, expected, windows, want) in cases {
+        ensure!(
+            contains_selected_path(rendered, expected, *windows) == *want,
+            "rendered={rendered:?} expected={expected:?} windows={windows} want={want}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn required_read_actual_context_at_suffix_rejects() -> Result<()> {
+    use std::io::ErrorKind::NotFound;
+    let selected = Path::new("/owned/input.rs");
+    let negative = anyhow::Error::new(std::io::Error::new(NotFound, "test io"))
+        .context("Failed to open file: /owned/input.rs@backup");
+    ensure!(
+        expect_io(&negative, selected, true).is_err(),
+        "@backup producer context must not match selected input.rs"
+    );
+    let positive_open = anyhow::Error::new(std::io::Error::new(NotFound, "test io"))
+        .context("Failed to open file: /owned/input.rs");
+    ensure!(
+        expect_io(&positive_open, selected, true).is_ok(),
+        "exact open producer context must match"
+    );
+    let positive_read = anyhow::Error::new(std::io::Error::new(NotFound, "test io"))
+        .context("Failed to read file: /owned/input.rs");
+    ensure!(
+        expect_io(&positive_read, selected, true).is_ok(),
+        "exact read producer context must match"
+    );
+    Ok(())
+}
+
+#[test]
+fn required_read_chain_witness_rejects_outer_prose_and_io_message() -> Result<()> {
+    use std::io::ErrorKind::NotFound;
+    let selected = Path::new("/owned/input.rs");
+    let io_message_only =
+        anyhow::Error::new(std::io::Error::new(NotFound, "test io for /owned/input.rs"))
+            .context("Failed to open file: /owned/other.rs");
+    ensure!(
+        expect_io(&io_message_only, selected, true).is_err(),
+        "io message path must not witness the selected read"
+    );
+    let producer_looking_io = anyhow::Error::new(std::io::Error::new(
+        NotFound,
+        "Failed to open file: /owned/input.rs",
+    ))
+    .context("Failed to open file: /owned/other.rs");
+    ensure!(
+        expect_io(&producer_looking_io, selected, true).is_err(),
+        "producer-looking io cause must not witness the selected read"
+    );
+    let inner_other = anyhow::Error::new(std::io::Error::new(NotFound, "test io"))
+        .context("Failed to open file: /owned/other.rs");
+    let outer_prose_only = inner_other.context("checked /owned/input.rs earlier");
+    ensure!(
+        expect_io(&outer_prose_only, selected, true).is_err(),
+        "outer prose path must not witness the selected read"
+    );
+    let inner_exact = anyhow::Error::new(std::io::Error::new(NotFound, "test io"))
+        .context("Failed to read file: /owned/input.rs");
+    let wrapped_exact = inner_exact.context("while packing context bundle");
+    ensure!(
+        expect_io(&wrapped_exact, selected, true).is_ok(),
+        "wrapped exact producer context must match through the chain"
     );
     Ok(())
 }
