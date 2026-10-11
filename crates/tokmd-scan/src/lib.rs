@@ -73,9 +73,28 @@ pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
 
     let mut languages = Languages::new();
     languages.get_statistics(&scan_paths, &ignore_refs, &cfg);
+    ensure_complete_scan(&languages)?;
     rebase_report_paths(&mut languages, &roots);
 
     Ok(languages)
+}
+
+// Tokei retains successful reports but marks a language inaccurate when one of
+// its selected files cannot be read. Downstream receipts must not label those
+// incomplete counts as complete, including when no successful reports remain.
+fn ensure_complete_scan(languages: &Languages) -> Result<()> {
+    let mut incomplete: Vec<_> = languages
+        .iter()
+        .filter(|(_, language)| language.inaccurate)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    incomplete.sort_unstable();
+    anyhow::ensure!(
+        incomplete.is_empty(),
+        "Incomplete scan: failed to read selected files for: {}. Check source file access permissions and retry",
+        incomplete.join(", ")
+    );
+    Ok(())
 }
 
 /// Build the `tokei` config used for a scan from clap-free `ScanOptions`.
@@ -132,6 +151,49 @@ mod tests {
             no_ignore_vcs: false,
             treat_doc_strings_as_comments: false,
         }
+    }
+
+    #[test]
+    fn complete_scan_accepts_empty_and_measured_languages() -> Result<()> {
+        let mut languages = Languages::new();
+        ensure_complete_scan(&languages)?;
+        languages.insert(
+            tokei::LanguageType::Rust,
+            tokei::Language {
+                code: 7,
+                ..Default::default()
+            },
+        );
+        ensure_complete_scan(&languages)
+    }
+
+    #[test]
+    fn incomplete_scan_rejects_empty_and_mixed_counts_in_named_order() {
+        let mut languages = Languages::new();
+        languages.insert(
+            tokei::LanguageType::Rust,
+            tokei::Language {
+                inaccurate: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ensure_complete_scan(&languages).unwrap_err().to_string(),
+            "Incomplete scan: failed to read selected files for: Rust. Check source file access permissions and retry"
+        );
+        languages.insert(
+            tokei::LanguageType::Python,
+            tokei::Language {
+                code: 13,
+                inaccurate: true,
+                ..Default::default()
+            },
+        );
+        languages.insert(tokei::LanguageType::Toml, tokei::Language::default());
+        assert_eq!(
+            ensure_complete_scan(&languages).unwrap_err().to_string(),
+            "Incomplete scan: failed to read selected files for: Python, Rust. Check source file access permissions and retry"
+        );
     }
 
     // Get a valid test path - the crate's own source directory
