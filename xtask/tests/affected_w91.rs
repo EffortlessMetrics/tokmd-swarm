@@ -229,7 +229,7 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     let workflow = affected_fixture(&[".github/workflows/ci.yml"], &after_policy)?;
     // The live control-plane command count moves with `ci/proof.toml`; the
     // guidance-scope reduction this test guards is the assertion above.
-    ensure!(array_len(scope(&workflow, "proof_control_plane")?, "proof")? == 30);
+    ensure!(array_len(scope(&workflow, "proof_control_plane")?, "proof")? == 31);
     ensure!(array_len(&workflow, "unknown_files")? == 0);
     Ok(())
 }
