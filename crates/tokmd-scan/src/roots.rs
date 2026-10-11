@@ -72,7 +72,11 @@ mod tests {
         let canonical = fs::canonicalize(dir.path())?;
         let roots = validated_scan_roots(std::slice::from_ref(&canonical))?;
         let mut languages = Languages::new();
-        languages.get_statistics(&[canonical.clone()], &[], &tokei::Config::default());
+        languages.get_statistics(
+            std::slice::from_ref(&canonical),
+            &[],
+            &tokei::Config::default(),
+        );
         let before: Vec<_> = languages
             .values()
             .flat_map(|language| {
