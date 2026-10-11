@@ -209,7 +209,7 @@ fn context_pack_cli_absolute_file_root_reads_selected_input() -> Result<()> {
                 // across visible ends. Distinctive content rejects omission.
                 let payload = String::from_utf8(payload)?;
                 let expected = if cap == "4" {
-                    "fn selecte"
+                    concat!("fn select", "e")
                 } else {
                     "fn selected_file() {}"
                 };
