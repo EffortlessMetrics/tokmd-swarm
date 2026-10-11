@@ -125,7 +125,7 @@ fn unreadable_selected_source_cannot_serialize_complete_or_empty_success() -> an
             let stderr = String::from_utf8(output.stderr)?;
             assert!(stderr.contains("Incomplete scan"), "{stderr}");
             assert!(stderr.contains("Rust"), "{stderr}");
-            assert!(stderr.contains("access permissions"), "{stderr}");
+            assert!(stderr.contains("read or decoding errors"), "{stderr}");
         }
         for format in ["json", "jsonl"] {
             let destination = dir.path().join("retained-output");

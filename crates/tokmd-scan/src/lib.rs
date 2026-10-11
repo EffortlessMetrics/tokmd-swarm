@@ -91,7 +91,7 @@ fn ensure_complete_scan(languages: &Languages) -> Result<()> {
     incomplete.sort_unstable();
     anyhow::ensure!(
         incomplete.is_empty(),
-        "Incomplete scan: failed to read selected files for: {}. Check source file access permissions and retry",
+        "Incomplete scan: failed to read selected files for: {}. Resolve source file read or decoding errors and retry",
         incomplete.join(", ")
     );
     Ok(())
@@ -179,7 +179,7 @@ mod tests {
         );
         assert_eq!(
             ensure_complete_scan(&languages).unwrap_err().to_string(),
-            "Incomplete scan: failed to read selected files for: Rust. Check source file access permissions and retry"
+            "Incomplete scan: failed to read selected files for: Rust. Resolve source file read or decoding errors and retry"
         );
         languages.insert(
             tokei::LanguageType::Python,
@@ -192,7 +192,7 @@ mod tests {
         languages.insert(tokei::LanguageType::Toml, tokei::Language::default());
         assert_eq!(
             ensure_complete_scan(&languages).unwrap_err().to_string(),
-            "Incomplete scan: failed to read selected files for: Python, Rust. Check source file access permissions and retry"
+            "Incomplete scan: failed to read selected files for: Python, Rust. Resolve source file read or decoding errors and retry"
         );
     }
 
