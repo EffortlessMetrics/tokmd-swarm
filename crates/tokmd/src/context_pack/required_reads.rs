@@ -100,10 +100,10 @@ pub(crate) fn required_read_matrix(
                         "one\ntwo\nfour\nfive\nsix\nseven\neight\nnine\nten\n".into()
                     }
                     (InclusionPolicy::HeadTail, false) => {
-                        "one\ntwo\n\n// ... [6 lines omitted] ...\nten\n".into()
+                        "one\ntwo\n\n// ... [31 bytes omitted] ...\nten\n".into()
                     }
                     (InclusionPolicy::HeadTail, true) => {
-                        "one\ntwo\n// ... [6 lines omitted] ...\nten\n".into()
+                        "one\ntwo\n// ... [31 bytes omitted] ...\nten\n".into()
                     }
                     _ => bail!("unexpected required policy"),
                 };
