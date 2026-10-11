@@ -389,6 +389,15 @@ then correct the selector or define that name in `[view.NAME]` (or the legacy
 JSON profiles map) and retry. `--show-config` still reports unmatched names
 successfully without scanning.
 
+If the error includes `Failed to parse legacy JSON configuration from ...` or
+`Failed to read legacy JSON configuration from ...`, repair the named JSON file
+or restore read access, then retry the same command. Parse errors include the
+line and column. `tokmd --show-config` reports this captured failure and repair
+guidance even when no profile is selected; it does not scan or produce a receipt.
+A missing legacy file remains optional. Commands without a profile selector,
+or with a matching TOML view, retain their existing successful fallback when
+the legacy file cannot be loaded.
+
 **3. Environment variable override**
 
 Check if `TOKMD_CONFIG` is set:
