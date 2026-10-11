@@ -85,11 +85,24 @@ fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("unterminated saved-analysis commands")?
         .0;
     let tmp = tempfile::tempdir()?;
-    fs::write(tmp.path().join("main.rs"), "fn main() {}\n")?;
-    let policy_path = tmp.path().join("tokmd-gate.toml");
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo)?;
+    fs::write(repo.join("main.rs"), "fn main() {}\n")?;
+    let selected_config = tmp.path().join("selected.toml");
+    fs::write(&selected_config, "")?;
+    let command = || {
+        let mut cmd = tokmd_in(&repo);
+        cmd.env("TOKMD_CONFIG", &selected_config)
+            .env_remove("TOKMD_PROFILE")
+            .env_remove("TOKMD_PROGRESS_EVENTS")
+            .args(["--config", "none", "--no-ignore-parent", "--no-progress"]);
+        cmd
+    };
+    let policy_path = repo.join("tokmd-gate.toml");
     fs::write(&policy_path, policy)?;
 
-    // Execute the documented commands, rather than a second copy of their argv.
+    // Extract doc-specific argv; the command closure only isolates ambient
+    // scan/TOML configuration, parent ignores, and progress output.
     let commands: Vec<Vec<&str>> = workflow
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -100,14 +113,14 @@ fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Result<_, _>>()?;
     assert_eq!(commands.len(), 2);
-    for command in &commands {
-        tokmd_in(tmp.path()).args(command).assert().success();
+    for args in &commands {
+        command().args(args).assert().success();
     }
     let gate_command = commands.get(1).ok_or("missing gate command")?;
 
     // Literal fixture oracle: one Rust line and six TOML policy lines yield
     // 70 inventory-estimated tokens, well below the documented 500000 cap.
-    let output = tokmd_in(tmp.path())
+    let output = command()
         .args(gate_command)
         .args(["--format", "json"])
         .output()?;
@@ -127,7 +140,7 @@ fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
     // A passing process must still enforce the policy: lower the literal cap.
     assert!(policy.contains("value = 500000"));
     fs::write(&policy_path, policy.replace("value = 500000", "value = 0"))?;
-    let failed = tokmd_in(tmp.path())
+    let failed = command()
         .args(gate_command)
         .args(["--format", "json"])
         .assert()
@@ -139,7 +152,7 @@ fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
 
     // The run manifest is a real JSON artifact, but has no derived metrics.
     fs::write(&policy_path, policy)?;
-    tokmd_in(tmp.path())
+    command()
         .args([
             "gate",
             ".runs/current/receipt.json",
@@ -153,8 +166,8 @@ fn start_here_saved_analysis_gate() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
     // A missing saved analysis must not turn this workflow into a passing gate.
-    fs::remove_file(tmp.path().join(".runs/current/analysis.json"))?;
-    tokmd_in(tmp.path())
+    fs::remove_file(repo.join(".runs/current/analysis.json"))?;
+    command()
         .args(gate_command)
         .assert()
         .code(1)

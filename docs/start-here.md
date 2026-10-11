@@ -149,8 +149,8 @@ tokmd gate .runs/current/analysis.json --policy tokmd-gate.toml
 ```
 
 `analysis.json` contains the derived metrics used by this policy; `receipt.json`
-is the run manifest. Gate exits `0` when the policy passes and `1` when a rule
-fails.
+is the run manifest. Gate exits `0` when the policy passes and `1` when an
+error-level rule fails.
 
 For this repository's contributor workflow, affected proof planning is owned by
 `xtask`:
