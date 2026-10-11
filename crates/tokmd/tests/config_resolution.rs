@@ -481,6 +481,195 @@ fn first_use_failure(
     Ok(stderr.to_string())
 }
 
+// Only Linux's pinned config-directory lookup honors XDG_CONFIG_HOME.
+// Other platforms use constructed ConfigContext controls in config.rs.
+#[cfg(target_os = "linux")]
+fn profile_selection_command(
+    repo: &std::path::Path,
+    selected_config: &std::path::Path,
+    user_config: &std::path::Path,
+) -> assert_cmd::Command {
+    let mut command = first_use_command(repo, selected_config);
+    command
+        .env("XDG_CONFIG_HOME", user_config)
+        .timeout(std::time::Duration::from_secs(30));
+    command
+}
+
+#[cfg(target_os = "linux")]
+fn profile_selection_failure(
+    output: &std::process::Output,
+    name: &str,
+    available: &str,
+) -> anyhow::Result<()> {
+    let stderr = std::str::from_utf8(&output.stderr)?;
+    anyhow::ensure!(
+        output.status.code() == Some(2) && output.stdout.is_empty(),
+        "unmatched profile must fail before receipt output: {}: stdout={:?}, stderr={stderr}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let expected = format!(
+        "Error: Unknown profile {name:?}. Available profiles: {available}. Use `tokmd --show-config` to inspect configuration sources, then select or define the profile.\n"
+    );
+    anyhow::ensure!(
+        stderr == expected,
+        "wrong entire unmatched-profile diagnostic: {stderr:?}"
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn profile_selection_unknown_cli_recovers_with_same_argv() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("repo");
+    let user_config = dir.path().join("user-config");
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::create_dir(&repo)?;
+    std::fs::create_dir(&user_config)?;
+    let source = repo.join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(
+        &selected_config,
+        "[view.ci]\nformat = \"json\"\nfiles = true\n",
+    )?;
+    let command = || profile_selection_command(&repo, &selected_config, &user_config);
+
+    let original = first_use_json(
+        &command()
+            .args(["lang", "--format", "json", "--files"])
+            .arg(&source)
+            .output()?,
+    )?;
+    let selected = first_use_json(
+        &command()
+            .args(["--profile", "ci", "lang"])
+            .arg(&source)
+            .output()?,
+    )?;
+    anyhow::ensure!(selected == original, "valid profile changed the receipt");
+
+    let retry = |explicit_json| {
+        let mut selected = command();
+        selected.args(["--profile", "c1", "lang"]).arg(&source);
+        if explicit_json {
+            selected.args(["--format", "json", "--files"]);
+        }
+        selected.output()
+    };
+    for explicit_json in [false, true] {
+        profile_selection_failure(&retry(explicit_json)?, "c1", "\"ci\"")?;
+    }
+    std::fs::write(
+        &selected_config,
+        "[view.ci]\nformat = \"json\"\nfiles = true\n[view.c1]\nformat = \"json\"\nfiles = true\n",
+    )?;
+    for explicit_json in [false, true] {
+        anyhow::ensure!(
+            first_use_json(&retry(explicit_json)?)? == original
+                && first_use_json(&retry(explicit_json)?)? == original,
+            "same-argv profile repair did not restore repeatable JSON"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn profile_selection_unknown_env_preserves_cli_override_and_diagnostics() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    let user_config = dir.path().join("user-config");
+    std::fs::create_dir(&user_config)?;
+    let source = dir.path().join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(&selected_config, "")?;
+    let command = || {
+        let mut command = profile_selection_command(dir.path(), &selected_config, &user_config);
+        command.env("TOKMD_PROFILE", "missing");
+        command
+    };
+    let run = || {
+        command()
+            .args(["lang", "--format", "json", "--files"])
+            .arg(&source)
+            .output()
+    };
+    profile_selection_failure(&run()?, "missing", "(none)")?;
+
+    let diagnostic = command().arg("--show-config").arg("not-a-path").output()?;
+    anyhow::ensure!(
+        diagnostic.status.success() && diagnostic.stderr.is_empty(),
+        "unmatched-profile diagnostics failed: {diagnostic:?}"
+    );
+    let report = std::str::from_utf8(&diagnostic.stdout)?;
+    anyhow::ensure!(
+        report.contains("missing (from TOKMD_PROFILE)")
+            && report.contains("did not match any TOML view or JSON profile"),
+        "diagnostics lost unmatched environment selection: {report}"
+    );
+
+    // A defined empty view is a match; CLI selection overrides the stale env.
+    std::fs::write(&selected_config, "[view.ci]\n")?;
+    first_use_json(
+        &command()
+            .args(["--view", "ci", "lang", "--format", "json", "--files"])
+            .arg(&source)
+            .output()?,
+    )?;
+    std::fs::write(&selected_config, "[view.missing]\n")?;
+    first_use_json(&run()?)?;
+    Ok(())
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn profile_selection_legacy_match_sorted_names_and_local_guidance() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    let user_config = dir.path().join("user-config");
+    std::fs::create_dir_all(user_config.join("tokmd"))?;
+    let source = dir.path().join("sample.rs");
+    std::fs::write(
+        &source,
+        "pub fn first_use_one() {}\npub fn first_use_two() {}\n",
+    )?;
+    std::fs::write(
+        &selected_config,
+        "[view.shared]\nformat = \"json\"\nfiles = true\n[view.zebra]\n",
+    )?;
+    std::fs::write(
+        user_config.join("tokmd/config.json"),
+        r#"{"profiles":{"alpha":{"format":"json","files":true},"shared":{"format":"md","files":false}},"repos":{}}"#,
+    )?;
+    let command = || profile_selection_command(dir.path(), &selected_config, &user_config);
+    for name in ["alpha", "shared"] {
+        first_use_json(
+            &command()
+                .args(["--profile", name, "lang"])
+                .arg(&source)
+                .output()?,
+        )?;
+    }
+    let marker_name = "rate_limit/timeout base ref";
+    profile_selection_failure(
+        &command()
+            .args(["--profile", marker_name, "lang", "--format", "json"])
+            .arg(&source)
+            .output()?,
+        marker_name,
+        "\"alpha\", \"shared\", \"zebra\"",
+    )?;
+    Ok(())
+}
+
 #[test]
 fn ordinary_non_git_json_journey_recovers_config_and_source() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;

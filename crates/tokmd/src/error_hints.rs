@@ -97,6 +97,7 @@ enum LocalRecovery {
     OutputParentNotDirectory,
     HandoffFileOutput,
     InvalidLangProfileFormat,
+    UnknownProfile,
     OutputOther,
     Json,
     Toml,
@@ -168,6 +169,12 @@ fn io_kind(err: &Error, kind: std::io::ErrorKind) -> bool {
 // Select one authoritative recovery before examining arbitrary pathname text.
 // String-only legacy and remote errors retain the fallback heuristics below.
 fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
+    if err
+        .downcast_ref::<crate::config::UnknownProfile>()
+        .is_some()
+    {
+        return Some(LocalRecovery::UnknownProfile);
+    }
     if err.downcast_ref::<InvalidLangProfileFormat>().is_some() {
         return Some(LocalRecovery::InvalidLangProfileFormat);
     }
@@ -363,7 +370,9 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
             &mut out,
             "Select a directory path for handoff output, then retry.",
         ),
-        LocalRecovery::InvalidLangProfileFormat | LocalRecovery::OutputOther => {}
+        LocalRecovery::InvalidLangProfileFormat
+        | LocalRecovery::UnknownProfile
+        | LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);

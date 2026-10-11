@@ -337,9 +337,142 @@ pub fn resolve_config<'a>(
     }
 }
 
+/// A selected profile has no matching configuration and already names its repair.
+#[derive(Debug)]
+pub(crate) struct UnknownProfile(String);
+
+impl std::fmt::Display for UnknownProfile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UnknownProfile {}
+
+/// Normal CLI commands must not silently discard a selected profile.
+/// Keep public best-effort resolution and `--show-config` diagnostics separate.
+pub(crate) fn check_selected_profile(ctx: &ConfigContext, name: Option<&str>) -> Result<()> {
+    let Some(name) = name else {
+        return Ok(());
+    };
+    if ctx.get_toml_view(name).is_some() || ctx.get_json_profile(name).is_some() {
+        return Ok(());
+    }
+
+    let names: std::collections::BTreeSet<&str> = ctx
+        .toml
+        .iter()
+        .flat_map(|config| config.view.keys().map(String::as_str))
+        .chain(
+            ctx.json
+                .iter()
+                .flat_map(|config| config.profiles.keys().map(String::as_str)),
+        )
+        .collect();
+    let available = if names.is_empty() {
+        "(none)".to_string()
+    } else {
+        names
+            .iter()
+            .map(|name| format!("{name:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    Err(UnknownProfile(format!(
+        "Unknown profile {name:?}. Available profiles: {available}. Use `tokmd --show-config` to inspect configuration sources, then select or define the profile."
+    ))
+    .into())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{get_profile_name, sanitize_selector};
+    use super::{
+        ConfigContext, Profile, TomlConfig, UnknownProfile, UserConfig, ViewProfile,
+        check_selected_profile, get_profile_name, resolve_config, sanitize_selector,
+    };
+
+    #[test]
+    fn profile_selection_constructed_matches_preserve_precedence() -> anyhow::Result<()> {
+        check_selected_profile(&ConfigContext::default(), None)?;
+        let mut toml = TomlConfig::default();
+        toml.view.insert("empty".into(), ViewProfile::default());
+        toml.view.insert(
+            "shared".into(),
+            ViewProfile {
+                format: Some("json".into()),
+                files: Some(true),
+                ..Default::default()
+            },
+        );
+        let mut json = UserConfig::default();
+        json.profiles.insert("legacy".into(), Profile::default());
+        json.profiles.insert(
+            "shared".into(),
+            Profile {
+                format: Some("md".into()),
+                files: Some(false),
+                ..Default::default()
+            },
+        );
+        let ctx = ConfigContext {
+            toml: Some(toml),
+            json: Some(json),
+            ..Default::default()
+        };
+        for name in ["empty", "shared", "legacy"] {
+            check_selected_profile(&ctx, Some(name))?;
+        }
+        let shared = resolve_config(&ctx, Some("shared"));
+        anyhow::ensure!(
+            shared.format() == Some("json") && shared.files() == Some(true),
+            "TOML view must retain precedence over matching legacy JSON"
+        );
+        let unknown = resolve_config(&ctx, Some("unknown"));
+        anyhow::ensure!(
+            unknown.toml_view.is_none() && unknown.json_profile.is_none(),
+            "public best-effort resolution must remain available"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn profile_selection_constructed_errors_are_local_sorted_and_escaped() -> anyhow::Result<()> {
+        let mut toml = TomlConfig::default();
+        for name in ["zebra", "shared", "quote\"\nname"] {
+            toml.view.insert(name.into(), ViewProfile::default());
+        }
+        let mut json = UserConfig::default();
+        for name in ["shared", "alpha"] {
+            json.profiles.insert(name.into(), Profile::default());
+        }
+        let ctx = ConfigContext {
+            toml: Some(toml),
+            json: Some(json),
+            ..Default::default()
+        };
+        let name = "rate_limit/timeout base ref";
+        for (context, available) in [
+            (ctx, r#""alpha", "quote\"\nname", "shared", "zebra""#),
+            (ConfigContext::default(), "(none)"),
+        ] {
+            let error = check_selected_profile(&context, Some(name))
+                .err()
+                .ok_or_else(|| anyhow::anyhow!("unmatched profile was accepted"))?;
+            anyhow::ensure!(
+                error.downcast_ref::<UnknownProfile>().is_some() && crate::exit_code(&error) == 2,
+                "unmatched profile must retain its typed usage error"
+            );
+            let expected = format!(
+                "Error: Unknown profile {name:?}. Available profiles: {available}. Use `tokmd --show-config` to inspect configuration sources, then select or define the profile."
+            );
+            anyhow::ensure!(
+                crate::format_error(&error) == expected,
+                "wrong complete local profile diagnostic: {}",
+                crate::format_error(&error)
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn sanitize_selector_rejects_empty_and_control_values() {
