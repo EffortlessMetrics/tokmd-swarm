@@ -67,10 +67,10 @@ pub(crate) fn expect_io(error: &anyhow::Error, path: &Path, missing: bool) -> Re
             "wrong IO cause: {io}"
         );
     }
-    let rendered = format!("{error:#}").replace('\\', "/");
-    let expected = path.display().to_string().replace('\\', "/");
+    let rendered = format!("{error:#}");
+    let expected = path.display().to_string();
     ensure!(
-        contains_selected_path(&rendered, &expected),
+        contains_selected_path(&rendered, &expected, cfg!(windows)),
         "lost selected path: {error:#}"
     );
     ensure!(
@@ -84,21 +84,38 @@ fn is_path_token_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | '+' | '~')
 }
 
-fn contains_selected_path(rendered: &str, expected: &str) -> bool {
-    if expected.is_empty() {
+fn is_path_token_char_with(c: char, windows_separators: bool) -> bool {
+    is_path_token_char(c) || (!windows_separators && c == '\\')
+}
+
+fn normalize_for_match(text: &str, windows_separators: bool) -> String {
+    if windows_separators {
+        text.replace('\\', "/")
+    } else {
+        text.to_owned()
+    }
+}
+
+fn contains_selected_path(rendered: &str, expected: &str, windows_separators: bool) -> bool {
+    let rendered_norm = normalize_for_match(rendered, windows_separators);
+    let expected_norm = normalize_for_match(expected, windows_separators);
+    if expected_norm.is_empty() {
         return false;
     }
-    for (start, _) in rendered.match_indices(expected) {
-        let end = start + expected.len();
-        let left_ok = rendered.get(..start).is_some_and(|before| {
+    for (start, _) in rendered_norm.match_indices(expected_norm.as_str()) {
+        let end = start + expected_norm.len();
+        let left_ok = rendered_norm.get(..start).is_some_and(|before| {
             before
                 .chars()
                 .next_back()
-                .is_none_or(|c| !is_path_token_char(c))
+                .is_none_or(|c| !is_path_token_char_with(c, windows_separators))
         });
-        let right_ok = rendered
-            .get(end..)
-            .is_some_and(|after| after.chars().next().is_none_or(|c| !is_path_token_char(c)));
+        let right_ok = rendered_norm.get(end..).is_some_and(|after| {
+            after
+                .chars()
+                .next()
+                .is_none_or(|c| !is_path_token_char_with(c, windows_separators))
+        });
         if left_ok && right_ok {
             return true;
         }
@@ -117,18 +134,6 @@ fn literal_io(kind: std::io::ErrorKind, rendered_path: &str) -> anyhow::Error {
 #[test]
 fn expect_io_slash_normalization_preserves_full_path() -> Result<()> {
     use std::io::ErrorKind::NotFound;
-    let native = Path::new("C:\\owned\\nested\\input.rs");
-    let normalized_text = "C:/owned/nested/input.rs";
-    ensure!(
-        expect_io(&literal_io(NotFound, normalized_text), native, true).is_ok(),
-        "native expected must match normalized rendering"
-    );
-    let normalized = Path::new("C:/owned/nested/input.rs");
-    let native_text = "C:\\owned\\nested\\input.rs";
-    ensure!(
-        expect_io(&literal_io(NotFound, native_text), normalized, true).is_ok(),
-        "normalized expected must match native rendering"
-    );
     let unix = Path::new("/owned/nested/input.rs");
     ensure!(
         expect_io(&literal_io(NotFound, "/owned/nested/input.rs"), unix, true).is_ok(),
@@ -136,12 +141,44 @@ fn expect_io_slash_normalization_preserves_full_path() -> Result<()> {
     );
     ensure!(
         expect_io(
-            &literal_io(std::io::ErrorKind::IsADirectory, normalized_text),
-            native,
+            &literal_io(std::io::ErrorKind::IsADirectory, "/owned/nested/input.rs"),
+            unix,
             false
         )
         .is_ok(),
         "directory kind must keep full path on all platforms"
+    );
+    ensure!(
+        contains_selected_path(
+            "Failed to open file: C:/owned/nested/input.rs: test io",
+            "C:\\owned\\nested\\input.rs",
+            true
+        ),
+        "windows slash rendering must match backslash expected"
+    );
+    ensure!(
+        contains_selected_path(
+            "Failed to open file: C:\\owned\\nested\\input.rs: test io",
+            "C:/owned/nested/input.rs",
+            true
+        ),
+        "windows backslash rendering must match slash expected"
+    );
+    ensure!(
+        !contains_selected_path("owned\\input.rs", "owned/input.rs", false),
+        "posix backslash must not alias slash"
+    );
+    ensure!(
+        !contains_selected_path("owned/input.rs", "owned\\input.rs", false),
+        "posix slash must not alias backslash"
+    );
+    ensure!(
+        contains_selected_path("owned\\input.rs", "owned\\input.rs", false),
+        "posix backslash identity must match"
+    );
+    ensure!(
+        !contains_selected_path("a\\owned\\input.rs", "owned\\input.rs", false),
+        "posix backslash must block suffix match"
     );
     Ok(())
 }
