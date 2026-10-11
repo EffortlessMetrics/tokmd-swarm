@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload asset receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-release-assets
           path: receipt/release-assets.json
@@ -293,7 +293,7 @@ jobs:
 
       - name: Upload binary receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-binary-${{ matrix.id }}
           path: receipt/binary-${{ matrix.id }}.json
@@ -348,7 +348,7 @@ jobs:
 
       - name: Upload Nix receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-nix
           path: receipt/nix.json
@@ -456,7 +456,7 @@ jobs:
           PY
       - name: Upload WASM receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-wasm
           path: receipt/wasm.json
@@ -537,7 +537,7 @@ jobs:
           RECEIPT_STATUS: ${{ steps.tokmd.outcome == 'success' && (steps.tokmd.outputs.packet-status == 'complete' || steps.tokmd.outputs.packet-status == 'partial') && 'passed' || 'failed' }}
       - name: Upload Action receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-action-binary-packet
           path: receipt/action-binary.json
@@ -620,7 +620,7 @@ jobs:
           RECEIPT_STATUS: ${{ steps.tokmd.outcome == 'success' && (steps.tokmd.outputs.packet-status == 'complete' || steps.tokmd.outputs.packet-status == 'partial') && 'passed' || 'failed' }}
       - name: Upload Action receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-action-container-packet
           path: receipt/action-container.json
@@ -661,7 +661,7 @@ jobs:
         run: cat release-consumer-smoke.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload consolidated receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
         with:
           name: consumer-smoke-final
           path: |
