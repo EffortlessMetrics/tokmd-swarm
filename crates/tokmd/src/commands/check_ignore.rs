@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
@@ -79,7 +80,7 @@ fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<Ch
     }
 
     // 1. Check git ignore (if git is available and we're in a repo)
-    if let Some(git_reason) = check_git_ignore(path, verbose) {
+    if let Some(git_reason) = check_git_ignore(path) {
         reasons.push(git_reason);
         ignored = true;
     } else if is_git_tracked(path) {
@@ -123,61 +124,45 @@ fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<Ch
     })
 }
 
-fn check_git_ignore(path: &Path, verbose: bool) -> Option<IgnoreReason> {
-    // Try to use git check-ignore -v
-    let output = git_cmd()
-        .args(["check-ignore", "-v", "--"])
-        .arg(path)
+fn check_git_ignore(path: &Path) -> Option<IgnoreReason> {
+    // NUL-delimited records keep source/pattern/path colons and tabs literal.
+    // With -z Git also requires NUL-delimited paths on stdin.
+    let mut child = git_cmd()
+        .args(["check-ignore", "-v", "-z", "--stdin"])
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
         .ok()?;
-
-    if output.status.success() {
-        // Parse output: <source>:<line>:<pattern>\t<path>
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let line = stdout.lines().next()?;
-
-        // Format: ".gitignore:5:*.log\tpath/to/file.log"
-        if let Some(tab_pos) = line.find('\t') {
-            let source_part = &line[..tab_pos];
-            if let Some(last_colon) = source_part.rfind(':') {
-                let pattern = source_part[last_colon + 1..].to_string();
-                let rest = &source_part[..last_colon];
-
-                let (source, line_num) = if let Some(colon) = rest.rfind(':') {
-                    let src = rest[..colon].to_string();
-                    let ln = rest[colon + 1..].parse::<usize>().ok();
-                    (src, ln)
-                } else {
-                    (rest.to_string(), None)
-                };
-
-                return Some(IgnoreReason::Git {
-                    source,
-                    pattern,
-                    line: line_num,
-                });
-            }
-        }
-
-        // Fallback: just report it's ignored by git
-        if verbose {
-            return Some(IgnoreReason::Git {
-                source: "git".to_string(),
-                pattern: stdout.trim().to_string(),
-                line: None,
-            });
-        }
-
-        return Some(IgnoreReason::Git {
-            source: "(unknown)".to_string(),
-            pattern: "(unknown)".to_string(),
-            line: None,
-        });
+    let written = child.stdin.take().map(|mut stdin| {
+        stdin
+            .write_all(path.as_os_str().as_encoded_bytes())
+            .and_then(|()| stdin.write_all(&[0]))
+    });
+    // Reap Git even if it closed stdin before the path could be written.
+    let output = child.wait_with_output().ok()?;
+    written?.ok()?;
+    if !output.status.success() {
+        return None;
     }
 
-    None
+    // Format: <source> NUL <line> NUL <pattern> NUL <path> NUL.
+    let mut fields = output.stdout.split(|byte| *byte == 0);
+    let source = fields.next()?;
+    let line = fields.next()?;
+    let pattern = fields.next()?;
+    let _path = fields.next()?;
+    // Verbose Git succeeds for an unignore match too; only positive rules
+    // contribute an ignore reason. An escaped \! remains a positive rule.
+    if pattern.starts_with(b"!") {
+        return None;
+    }
+
+    Some(IgnoreReason::Git {
+        source: String::from_utf8_lossy(source).into_owned(),
+        pattern: String::from_utf8_lossy(pattern).into_owned(),
+        line: std::str::from_utf8(line).ok()?.parse::<usize>().ok(),
+    })
 }
 
 fn is_git_tracked(path: &Path) -> bool {
