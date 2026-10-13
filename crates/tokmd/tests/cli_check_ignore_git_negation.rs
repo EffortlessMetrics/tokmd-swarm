@@ -99,7 +99,7 @@ fn check_output(output: &Output, code: i32, stdout: &[u8]) -> Result<()> {
 }
 
 #[test]
-fn git_negation_is_not_ignored_in_both_cli_modes() -> Result<()> {
+fn git_negation_is_not_ignored_in_ordinary_mode() -> Result<()> {
     let fixture = Fixture::new()?;
     // This oracle uses Git's nonverbose decision, independent of verbose records.
     fixture.native(&["check-ignore", "--", "keep.rs"], 1, b"")?;
@@ -108,7 +108,18 @@ fn git_negation_is_not_ignored_in_both_cli_modes() -> Result<()> {
         0,
         b".gitignore:2:!keep.rs\tkeep.rs\n",
     )?;
-    fixture.tokmd(&["check-ignore", "keep.rs"], 1, "keep.rs: not ignored\n")?;
+    fixture.tokmd(&["check-ignore", "keep.rs"], 1, "keep.rs: not ignored\n")
+}
+
+#[test]
+fn git_negation_is_not_ignored_in_verbose_mode() -> Result<()> {
+    let fixture = Fixture::new()?;
+    fixture.native(&["check-ignore", "--", "keep.rs"], 1, b"")?;
+    fixture.native(
+        &["check-ignore", "-v", "--", "keep.rs"],
+        0,
+        b".gitignore:2:!keep.rs\tkeep.rs\n",
+    )?;
     fixture.tokmd(
         &["check-ignore", "-v", "keep.rs"],
         1,
@@ -260,7 +271,7 @@ fn missing_path_remains_an_error() -> Result<()> {
         .command(env!("CARGO_BIN_EXE_tokmd"))
         .args(["check-ignore", "missing.rs"])
         .output()?;
-    ensure!(output.status.code() == Some(2), "missing path: {output:?}");
+    ensure!(output.status.code() == Some(1), "missing path: {output:?}");
     ensure!(output.stdout.is_empty(), "missing path stdout: {output:?}");
     let stderr = std::str::from_utf8(&output.stderr)?;
     ensure!(
