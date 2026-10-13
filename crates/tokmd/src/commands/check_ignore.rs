@@ -134,11 +134,14 @@ fn check_git_ignore(path: &Path) -> Option<IgnoreReason> {
         .stderr(Stdio::piped())
         .spawn()
         .ok()?;
-    let mut stdin = child.stdin.take()?;
-    stdin.write_all(path.as_os_str().as_encoded_bytes()).ok()?;
-    stdin.write_all(&[0]).ok()?;
-    drop(stdin);
+    let written = child.stdin.take().map(|mut stdin| {
+        stdin
+            .write_all(path.as_os_str().as_encoded_bytes())
+            .and_then(|()| stdin.write_all(&[0]))
+    });
+    // Reap Git even if it closed stdin before the path could be written.
     let output = child.wait_with_output().ok()?;
+    written?.ok()?;
     if !output.status.success() {
         return None;
     }
