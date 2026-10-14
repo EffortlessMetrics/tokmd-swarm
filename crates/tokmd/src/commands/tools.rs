@@ -45,9 +45,11 @@ mod tests {
             }
             // Successful writes deliberately accept one byte at a time.
             // A single write instead of write_all must not pass this oracle.
-            let len = bytes.len().min(1);
-            self.bytes.extend_from_slice(&bytes[..len]);
-            Ok(len)
+            let Some(&byte) = bytes.first() else {
+                return Ok(0);
+            };
+            self.bytes.push(byte);
+            Ok(1)
         }
 
         fn flush(&mut self) -> io::Result<()> {

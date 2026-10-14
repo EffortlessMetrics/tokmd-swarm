@@ -61,11 +61,11 @@ fn journey(format: &str, pretty: bool) -> Result<()> {
     let (entries, parameters) = match format {
         "openai" => {
             assert_eq!(keys, ["functions"]);
-            (&value["functions"], "parameters")
+            (value.get("functions").context("functions")?, "parameters")
         }
         "anthropic" => {
             assert_eq!(keys, ["tools"]);
-            (&value["tools"], "input_schema")
+            (value.get("tools").context("tools")?, "input_schema")
         }
         "jsonschema" => {
             assert_eq!(
@@ -82,7 +82,7 @@ fn journey(format: &str, pretty: bool) -> Result<()> {
             assert_eq!(value["$schema"], "https://json-schema.org/draft-07/schema#");
             assert_eq!(value["schema_version"], 1);
             assert_eq!(value["name"], "tokmd");
-            (&value["tools"], "parameters")
+            (value.get("tools").context("tools")?, "parameters")
         }
         "clap" => {
             assert_eq!(
@@ -91,7 +91,7 @@ fn journey(format: &str, pretty: bool) -> Result<()> {
             );
             assert_eq!(value["schema_version"], 1);
             assert_eq!(value["name"], "tokmd");
-            (&value["tools"], "parameters")
+            (value.get("tools").context("tools")?, "parameters")
         }
         _ => anyhow::bail!("test case has an unknown format"),
     };
@@ -99,7 +99,7 @@ fn journey(format: &str, pretty: bool) -> Result<()> {
         .as_array()
         .context("tool entries array")?
         .iter()
-        .find(|entry| entry["name"] == "lang")
+        .find(|entry| entry.get("name").and_then(Value::as_str) == Some("lang"))
         .context("lang tool")?;
     if format == "clap" {
         assert!(lang[parameters].is_array());
