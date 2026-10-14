@@ -53,7 +53,12 @@ fn journey(format: &str, pretty: bool) {
     let text = std::str::from_utf8(&recovered.stdout).unwrap();
     assert_eq!(text.lines().count() > 1, pretty);
     let value: Value = serde_json::from_slice(&recovered.stdout).unwrap();
-    let keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
+    let keys: Vec<&str> = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
     let (entries, parameters) = match format {
         "openai" => {
             assert_eq!(keys, ["functions"]);
@@ -66,7 +71,14 @@ fn journey(format: &str, pretty: bool) {
         "jsonschema" => {
             assert_eq!(
                 keys,
-                ["$schema", "description", "name", "schema_version", "tools", "version"]
+                [
+                    "$schema",
+                    "description",
+                    "name",
+                    "schema_version",
+                    "tools",
+                    "version"
+                ]
             );
             assert_eq!(value["$schema"], "https://json-schema.org/draft-07/schema#");
             assert_eq!(value["schema_version"], 1);
@@ -74,7 +86,10 @@ fn journey(format: &str, pretty: bool) {
             (&value["tools"], "parameters")
         }
         "clap" => {
-            assert_eq!(keys, ["description", "name", "schema_version", "tools", "version"]);
+            assert_eq!(
+                keys,
+                ["description", "name", "schema_version", "tools", "version"]
+            );
             assert_eq!(value["schema_version"], 1);
             assert_eq!(value["name"], "tokmd");
             (&value["tools"], "parameters")
