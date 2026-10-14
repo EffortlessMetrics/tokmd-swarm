@@ -2,6 +2,7 @@
 
 use std::process::{Command, Stdio};
 
+use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -21,22 +22,20 @@ fn command(root: &TempDir, format: &str, pretty: bool) -> Command {
     cmd
 }
 
-fn journey(format: &str, pretty: bool) {
-    let root = TempDir::new().unwrap();
-    std::fs::write(root.path().join("tokmd.toml"), "").unwrap();
+fn journey(format: &str, pretty: bool) -> Result<()> {
+    let root = TempDir::new()?;
+    std::fs::write(root.path().join("tokmd.toml"), "")?;
 
     // Close the reader before spawning, so failure does not depend on output
     // size, pipe capacity, or which process happens to run first.
-    let (reader, writer) = std::io::pipe().unwrap();
+    let (reader, writer) = std::io::pipe()?;
     drop(reader);
     let failed = command(&root, format, pretty)
         .stdout(writer)
         .stderr(Stdio::piped())
-        .output()
-        .unwrap();
+        .output()?;
     assert_eq!(failed.status.code(), Some(1), "{failed:?}");
-    assert!(failed.stdout.is_empty());
-    let stderr = String::from_utf8(failed.stderr).unwrap();
+    let stderr = String::from_utf8(failed.stderr)?;
     assert!(
         stderr.starts_with("Error: Failed to write tool schema to stdout:"),
         "{stderr}"
@@ -45,17 +44,17 @@ fn journey(format: &str, pretty: bool) {
 
     // Retry identical argv with a working consumer. Expectations below are
     // literals, independent of the production schema renderer/serializer.
-    let recovered = command(&root, format, pretty).output().unwrap();
+    let recovered = command(&root, format, pretty).output()?;
     assert_eq!(recovered.status.code(), Some(0), "{recovered:?}");
     assert!(recovered.stderr.is_empty(), "{recovered:?}");
     assert!(recovered.stdout.ends_with(b"}\n"));
     assert!(!recovered.stdout.ends_with(b"\n\n"));
-    let text = std::str::from_utf8(&recovered.stdout).unwrap();
+    let text = std::str::from_utf8(&recovered.stdout)?;
     assert_eq!(text.lines().count() > 1, pretty);
-    let value: Value = serde_json::from_slice(&recovered.stdout).unwrap();
+    let value: Value = serde_json::from_slice(&recovered.stdout)?;
     let keys: Vec<&str> = value
         .as_object()
-        .unwrap()
+        .context("JSON object")?
         .keys()
         .map(String::as_str)
         .collect();
@@ -94,14 +93,14 @@ fn journey(format: &str, pretty: bool) {
             assert_eq!(value["name"], "tokmd");
             (&value["tools"], "parameters")
         }
-        _ => unreachable!("test case has an unknown format"),
+        _ => anyhow::bail!("test case has an unknown format"),
     };
     let lang = entries
         .as_array()
-        .unwrap()
+        .context("tool entries array")?
         .iter()
         .find(|entry| entry["name"] == "lang")
-        .expect("lang tool");
+        .context("lang tool")?;
     if format == "clap" {
         assert!(lang[parameters].is_array());
     } else {
@@ -111,13 +110,14 @@ fn journey(format: &str, pretty: bool) {
             json!(["md", "tsv", "json"])
         );
     }
+    Ok(())
 }
 
 macro_rules! journeys {
     ($($name:ident: ($format:literal, $pretty:literal)),+ $(,)?) => {
         $(#[test]
-        fn $name() {
-            journey($format, $pretty);
+        fn $name() -> Result<()> {
+            journey($format, $pretty)
         })+
     };
 }

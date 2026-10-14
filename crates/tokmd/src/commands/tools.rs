@@ -24,6 +24,7 @@ fn write_output(out: &mut impl Write, output: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::write_output;
+    use anyhow::{Context, Result};
     use std::io::{self, Write};
 
     const PAYLOAD: &str = r#"{"name":"fixture"}"#;
@@ -69,38 +70,49 @@ mod tests {
     }
 
     #[test]
-    fn literal_output_survives_short_writes_and_flushes() {
+    fn literal_output_survives_short_writes_and_flushes() -> Result<()> {
         let mut out = writer(None, false);
-        write_output(&mut out, PAYLOAD).unwrap();
+        write_output(&mut out, PAYLOAD)?;
         assert_eq!(out.bytes, EXPECTED);
         assert_eq!(out.flushes, 1);
+        Ok(())
     }
 
     #[test]
-    fn initial_partial_and_newline_errors_preserve_native_cause() {
+    fn initial_partial_and_newline_errors_preserve_native_cause() -> Result<()> {
         for offset in [0, 4, PAYLOAD.len()] {
             let mut out = writer(Some(offset), false);
-            let err = write_output(&mut out, PAYLOAD).unwrap_err();
+            let err = write_output(&mut out, PAYLOAD)
+                .err()
+                .context("expected write failure")?;
             assert_eq!(err.to_string(), "Failed to write tool schema to stdout");
-            let cause = err.downcast_ref::<io::Error>().unwrap();
+            let cause = err
+                .downcast_ref::<io::Error>()
+                .context("native I/O cause")?;
             assert_eq!(cause.kind(), io::ErrorKind::BrokenPipe);
             assert_eq!(cause.to_string(), "write rejected");
             assert_eq!(crate::exit_code(&err), 1);
             assert_eq!(out.bytes, EXPECTED[..offset]);
             assert_eq!(out.flushes, 0);
         }
+        Ok(())
     }
 
     #[test]
-    fn flush_error_preserves_native_cause_after_complete_output() {
+    fn flush_error_preserves_native_cause_after_complete_output() -> Result<()> {
         let mut out = writer(None, true);
-        let err = write_output(&mut out, PAYLOAD).unwrap_err();
+        let err = write_output(&mut out, PAYLOAD)
+            .err()
+            .context("expected flush failure")?;
         assert_eq!(err.to_string(), "Failed to flush tool schema to stdout");
-        let cause = err.downcast_ref::<io::Error>().unwrap();
+        let cause = err
+            .downcast_ref::<io::Error>()
+            .context("native I/O cause")?;
         assert_eq!(cause.kind(), io::ErrorKind::Other);
         assert_eq!(cause.to_string(), "flush rejected");
         assert_eq!(crate::exit_code(&err), 1);
         assert_eq!(out.bytes, EXPECTED);
         assert_eq!(out.flushes, 1);
+        Ok(())
     }
 }
