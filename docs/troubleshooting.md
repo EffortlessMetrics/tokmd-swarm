@@ -39,6 +39,22 @@ end in `.json`. For `Failed to parse policy TOML`, fix the selected file's TOML
 syntax and key names, then retry. Regenerating the input receipt does not repair
 these policy files. Parse failures produce no gate JSON on stdout.
 
+## Git Ref Diffs in JSON Pipelines
+
+If a diff cannot resolve a Git ref, read stderr for the selected ref and Git's
+diagnostic. Both refs must exist locally. Check them with
+`git rev-parse --verify <ref>`, fetch or correct the missing ref, then retry the
+same diff command:
+
+```bash
+tokmd --no-progress diff main HEAD --format json > diff.json
+```
+
+A successful Git-ref diff writes one JSON receipt to stdout. A ref-resolution
+failure writes no receipt or worktree status text there. Git diagnostics and
+progress use stderr; keep it separate from stdout when parsing the JSON. Worktree setup
+and cleanup do not add status lines to either JSON or Markdown reports.
+
 ## Files Not Appearing in Scans
 
 ### Symptom
