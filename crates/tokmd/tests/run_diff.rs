@@ -1075,3 +1075,285 @@ fn test_diff_git_refs() {
         .stdout(predicate::str::contains("## Diff:"))
         .stdout(predicate::str::contains("Rust"));
 }
+
+#[cfg(feature = "git")]
+mod diff_stdout_contract {
+    use super::*;
+    use anyhow::{Context, Result, ensure};
+    use std::path::{Path, PathBuf};
+    use std::process::Output;
+    use tempfile::TempDir;
+
+    const OLD_RUST: &str = "pub fn baseline() {}\n";
+    const NEW_RUST: &str = "pub fn baseline() {}\npub fn added() {}\n";
+    const OLD_PYTHON: &str = "def answer():\n    return 1\n";
+    const NEW_PYTHON: &str = "def answer():\n    return 1\n\ndef added():\n    return 2\n";
+
+    struct Fixture {
+        dir: TempDir,
+        repo: PathBuf,
+        empty_config: PathBuf,
+    }
+
+    impl Fixture {
+        fn new() -> Result<Self> {
+            let dir = tempdir()?;
+            let repo = dir.path().join("repo");
+            fs::create_dir(&repo)?;
+            let empty_config = dir.path().join("empty-config");
+            fs::write(&empty_config, "")?;
+            let fixture = Self {
+                dir,
+                repo,
+                empty_config,
+            };
+            // Every setup command must succeed; missing Git is a setup failure,
+            // not a silently skipped stdout regression.
+            fixture.git(&["init", "-q", "--template="])?;
+            fixture.git(&["config", "user.name", "Tokmd Diff Test"])?;
+            fixture.git(&["config", "user.email", "diff-test@example.invalid"])?;
+            fixture.git(&["config", "commit.gpgsign", "false"])?;
+            fixture.git(&["config", "core.autocrlf", "false"])?;
+            write_sources(&fixture.repo, OLD_RUST, OLD_PYTHON)?;
+            fixture.git(&["add", "--", "lib.rs", "app.py"])?;
+            fixture.git(&["commit", "-qm", "baseline"])?;
+            write_sources(&fixture.repo, NEW_RUST, NEW_PYTHON)?;
+            fixture.git(&["add", "--", "lib.rs", "app.py"])?;
+            fixture.git(&["commit", "-qm", "add Rust and Python functions"])?;
+            Ok(fixture)
+        }
+
+        fn git(&self, args: &[&str]) -> Result<Output> {
+            let mut command = tokmd_git::git_cmd();
+            command.current_dir(&self.repo).args(args);
+            // Ignore caller identity, helper, config and repository overrides.
+            // The subprocess still uses the fixture's local Git configuration.
+            for (name, _) in std::env::vars_os() {
+                if name.to_string_lossy().starts_with("GIT_") {
+                    command.env_remove(name);
+                }
+            }
+            command
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_SYSTEM", &self.empty_config)
+                .env("GIT_CONFIG_GLOBAL", &self.empty_config)
+                .env("LC_ALL", "C");
+            let output = command
+                .output()
+                .with_context(|| format!("failed to run fixture git {args:?}"))?;
+            ensure!(output.status.success(), "fixture git {args:?}: {output:?}");
+            Ok(output)
+        }
+
+        fn tokmd(&self) -> Command {
+            let mut command = cargo_bin_cmd!("tokmd");
+            command.current_dir(&self.repo);
+            for (name, _) in std::env::vars_os() {
+                let key = name.to_string_lossy();
+                if key.starts_with("GIT_") || key.starts_with("TOKMD_") {
+                    command.env_remove(name);
+                }
+            }
+            command
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_SYSTEM", &self.empty_config)
+                .env("GIT_CONFIG_GLOBAL", &self.empty_config)
+                .env("TOKMD_CONFIG", &self.empty_config)
+                .env("LC_ALL", "C")
+                .args(["--no-progress", "--config", "none"]);
+            command
+        }
+
+        fn worktrees(&self) -> Result<Vec<u8>> {
+            Ok(self.git(&["worktree", "list", "--porcelain"])?.stdout)
+        }
+
+        fn ensure_worktrees_unchanged(&self, before: &[u8]) -> Result<()> {
+            let after = self.worktrees()?;
+            ensure!(
+                after == before,
+                "diff left worktree state behind: before={}, after={}",
+                String::from_utf8_lossy(before),
+                String::from_utf8_lossy(&after)
+            );
+            Ok(())
+        }
+
+        fn save_lang_receipt(&self, name: &str, rust: &str, python: &str) -> Result<PathBuf> {
+            let source = self.dir.path().join(name);
+            fs::create_dir(&source)?;
+            write_sources(&source, rust, python)?;
+            let output = self
+                .tokmd()
+                .arg("lang")
+                .arg(&source)
+                .args(["--format", "json"])
+                .output()?;
+            ensure!(output.status.success(), "lang control failed: {output:?}");
+            let _: tokmd_types::LangReceipt = serde_json::from_slice(&output.stdout)
+                .context("lang control must produce a complete receipt")?;
+            let receipt = self.dir.path().join(format!("{name}-lang.json"));
+            fs::write(&receipt, output.stdout)?;
+            Ok(receipt)
+        }
+    }
+
+    fn write_sources(dir: &Path, rust: &str, python: &str) -> Result<()> {
+        fs::write(dir.join("lib.rs"), rust)?;
+        fs::write(dir.join("app.py"), python)?;
+        Ok(())
+    }
+
+    fn complete_json_receipt(output: &Output) -> Result<tokmd_types::DiffReceipt> {
+        ensure!(output.status.success(), "diff failed: {output:?}");
+        serde_json::from_slice(&output.stdout).with_context(|| {
+            format!(
+                "complete stdout must be one JSON DiffReceipt; stdout={}, stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        })
+    }
+
+    fn ensure_receipt(receipt: &tokmd_types::DiffReceipt, from: &str, to: &str) -> Result<()> {
+        ensure!(
+            receipt.schema_version == 2
+                && receipt.mode == "diff"
+                && receipt.tool.name == "tokmd"
+                && receipt.tool.version == env!("CARGO_PKG_VERSION")
+                && receipt.generated_at_ms > 0
+                && receipt.from_source == from
+                && receipt.to_source == to,
+            "diff metadata changed: {receipt:?}"
+        );
+        ensure!(
+            receipt.diff_rows.len() == 2,
+            "expected both changed languages"
+        );
+        for (lang, old_code, new_code, old_lines, new_lines) in
+            [("Rust", 1, 2, 1, 2), ("Python", 2, 4, 2, 5)]
+        {
+            let row = receipt
+                .diff_rows
+                .iter()
+                .find(|row| row.lang == lang)
+                .with_context(|| format!("missing {lang} diff row: {receipt:?}"))?;
+            ensure!(
+                (row.old_code, row.new_code, row.delta_code)
+                    == (old_code, new_code, new_code as i64 - old_code as i64)
+                    && (row.old_lines, row.new_lines, row.delta_lines)
+                        == (old_lines, new_lines, new_lines as i64 - old_lines as i64)
+                    && (row.old_files, row.new_files, row.delta_files) == (1, 1, 0),
+                "unexpected {lang} source delta: {row:?}"
+            );
+        }
+        let totals = &receipt.totals;
+        ensure!(
+            (
+                totals.old_code,
+                totals.new_code,
+                totals.delta_code,
+                totals.old_lines,
+                totals.new_lines,
+                totals.delta_lines,
+                totals.old_files,
+                totals.new_files,
+                totals.delta_files,
+            ) == (3, 6, 3, 3, 7, 4, 2, 2, 0),
+            "unexpected source totals: {totals:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn git_json_stdout_is_one_complete_receipt() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let before = fixture.worktrees()?;
+        let output = fixture
+            .tokmd()
+            .args(["diff", "HEAD~1", "HEAD", "--format", "json"])
+            .output()?;
+        fixture.ensure_worktrees_unchanged(&before)?;
+        let receipt = complete_json_receipt(&output)?;
+        ensure_receipt(&receipt, "HEAD~1", "HEAD")
+    }
+
+    #[test]
+    fn git_markdown_stdout_starts_with_report() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let before = fixture.worktrees()?;
+        let output = fixture
+            .tokmd()
+            .args(["diff", "HEAD~1", "HEAD", "--color", "never"])
+            .output()?;
+        fixture.ensure_worktrees_unchanged(&before)?;
+        ensure!(output.status.success(), "diff failed: {output:?}");
+        let stdout = std::str::from_utf8(&output.stdout)?;
+        ensure!(
+            stdout.starts_with("## Diff: HEAD~1 → HEAD\n"),
+            "Markdown must start with the report: {stdout}"
+        );
+        ensure!(
+            stdout.contains("Rust")
+                && stdout.contains("Python")
+                && !stdout.contains("HEAD is now at")
+                && !stdout.contains("Preparing worktree"),
+            "Markdown contains worktree chatter or lost a language: {stdout}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_second_ref_has_empty_stdout_and_same_argv_recovers() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let before = fixture.worktrees()?;
+        let args = ["diff", "HEAD~1", "recover-local", "--format", "json"];
+        let failure = fixture.tokmd().args(args).output()?;
+        fixture.ensure_worktrees_unchanged(&before)?;
+        let stderr = std::str::from_utf8(&failure.stderr)?;
+        ensure!(
+            failure.status.code() == Some(1),
+            "expected diff runtime error exit 1: {failure:?}"
+        );
+        ensure!(
+            failure.stdout.is_empty(),
+            "failed second ref must not leave first-ref output: {}",
+            String::from_utf8_lossy(&failure.stdout)
+        );
+        ensure!(
+            stderr.contains("Failed to load diff source 'recover-local'")
+                && stderr.contains("invalid reference: recover-local")
+                && stderr.contains("ensure the branch, tag, or commit exists"),
+            "missing selected ref, Git cause, or recovery hint: {stderr}"
+        );
+
+        fixture.git(&["branch", "recover-local", "HEAD"])?;
+        let retry = fixture.tokmd().args(args).output()?;
+        fixture.ensure_worktrees_unchanged(&before)?;
+        let receipt = complete_json_receipt(&retry)?;
+        ensure_receipt(&receipt, "HEAD~1", "recover-local")
+    }
+
+    #[test]
+    fn saved_lang_receipts_keep_json_stdout_contract() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let from = fixture.save_lang_receipt("old", OLD_RUST, OLD_PYTHON)?;
+        let to = fixture.save_lang_receipt("new", NEW_RUST, NEW_PYTHON)?;
+        let before = fixture.worktrees()?;
+        let output = fixture
+            .tokmd()
+            .args(["diff", "--from"])
+            .arg(&from)
+            .arg("--to")
+            .arg(&to)
+            .args(["--format", "json"])
+            .output()?;
+        fixture.ensure_worktrees_unchanged(&before)?;
+        let receipt = complete_json_receipt(&output)?;
+        ensure_receipt(
+            &receipt,
+            from.to_str().context("non-UTF-8 receipt fixture path")?,
+            to.to_str().context("non-UTF-8 receipt fixture path")?,
+        )
+    }
+}
