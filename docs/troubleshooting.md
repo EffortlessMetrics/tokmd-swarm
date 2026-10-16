@@ -12,8 +12,10 @@ command. A missing file produces an error before gate JSON is written to stdout.
 
 The file-recovery hints also recognize operating-system `NotFound` errors on
 Windows and in other locales. A missing file inside a command does not imply
-that the command name was misspelled; subcommand suggestions apply to explicit
-missing bare-path tokens instead.
+that the command name was misspelled. For example, `tokmd lang anolyze --format
+json` treats `anolyze` as an input directory: create or correct that path, then
+retry. Subcommand suggestions still apply to a missing bare token in command
+position, such as `tokmd anolyze`.
 
 Names such as `rate_limit` or `timeout` in a missing or inaccessible local file
 path do not call for provider retries or network backoff. Correct the selected
