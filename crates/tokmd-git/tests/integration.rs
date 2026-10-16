@@ -335,49 +335,20 @@ fn test_repo_root_from_subdirectory() {
     );
 }
 
-/// Test that max_commits limit is respected exactly.
-/// This test verifies that when asking for 2 commits from a repo with 3,
-/// we get exactly 2 (not more, not less).
-///
-/// Note: When we break early from reading git output, the git process may
-/// exit with non-zero status due to broken pipe. We handle this by catching
-/// the error and checking if we got the expected commits anyway.
+/// A fulfilled commit limit succeeds even when Git has unconsumed history.
 #[test]
-fn test_max_commits_exact_limit() {
+fn test_max_commits_exact_limit() -> Result<(), Box<dyn std::error::Error>> {
     let repo = create_test_repo().expect("Should create test repo");
     let root = repo_root(&repo.path).expect("Should find repo root");
 
-    // Our test repo has exactly 3 commits. If we ask for 3 (or more),
-    // git will output all commits and exit normally.
-    // If we ask for 2, git may fail due to broken pipe, but that's OK.
-
-    // Test with limit equal to total commits (should succeed reliably)
     let commits = collect_history(&root, Some(3), None).expect("Should collect history");
-    assert_eq!(
-        commits.len(),
-        3,
-        "Should get exactly 3 commits when max_commits=3"
-    );
-
-    // Test with limit greater than total commits (should succeed reliably)
+    assert_eq!(commits.len(), 3);
     let commits = collect_history(&root, Some(10), None).expect("Should collect history");
-    assert_eq!(
-        commits.len(),
-        3,
-        "Should get all 3 commits when max_commits exceeds total"
-    );
+    assert_eq!(commits.len(), 3);
 
-    // Test with lower limit (may fail due to broken pipe, but verifies the limit works)
-    // We use Ok().is_ok_and() to handle potential broken pipe errors gracefully
-    let result = collect_history(&root, Some(2), None);
-    if let Ok(commits) = result {
-        assert!(
-            commits.len() <= 2,
-            "Should get at most 2 commits when max_commits=2, got {}",
-            commits.len()
-        );
-    }
-    // If it fails, that's acceptable - the early break causes broken pipe
+    let commits = collect_history(&root, Some(2), None)?;
+    assert_eq!(commits.len(), 2);
+    Ok(())
 }
 
 /// Helper to create a repo with commits having multiple files.

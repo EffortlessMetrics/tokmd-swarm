@@ -17,7 +17,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Child, ExitStatus, Stdio};
 
 use anyhow::{Context, Result};
 pub use tokmd_types::CommitIntentKind;
@@ -104,11 +104,28 @@ pub fn collect_history(
         .spawn()
         .context("Failed to spawn git log")?;
 
-    let stdout = child.stdout.take().context("Missing git log stdout")?;
+    collect_history_from_child(&mut child, max_commits, max_commit_files)
+}
+
+fn collect_history_from_child(
+    child: &mut Child,
+    max_commits: Option<usize>,
+    max_commit_files: Option<usize>,
+) -> Result<Vec<GitCommit>> {
+    let mut child = HistoryChild {
+        child,
+        reaped: false,
+    };
+    let stdout = child
+        .child
+        .stdout
+        .take()
+        .context("Missing git log stdout")?;
     let reader = BufReader::new(stdout);
 
     let mut commits: Vec<GitCommit> = Vec::new();
     let mut current: Option<GitCommit> = None;
+    let mut limited = false;
 
     for line in reader.lines() {
         let line = line?;
@@ -116,6 +133,7 @@ pub fn collect_history(
             if let Some(commit) = current.take() {
                 commits.push(commit);
                 if max_commits.is_some_and(|limit| commits.len() >= limit) {
+                    limited = true;
                     break;
                 }
             }
@@ -156,12 +174,52 @@ pub fn collect_history(
         commits.push(commit);
     }
 
+    if limited {
+        child.terminate()?;
+        return Ok(commits);
+    }
+
     let status = child.wait()?;
     if !status.success() {
         return Err(anyhow::anyhow!("git log failed"));
     }
 
     Ok(commits)
+}
+
+// Own the direct child until it is reaped, including stdout/read error paths.
+struct HistoryChild<'a> {
+    child: &'a mut Child,
+    reaped: bool,
+}
+
+impl HistoryChild<'_> {
+    fn wait(&mut self) -> std::io::Result<ExitStatus> {
+        let status = self.child.wait()?;
+        self.reaped = true;
+        Ok(status)
+    }
+
+    fn terminate(&mut self) -> Result<()> {
+        if let Err(error) = self.child.kill() {
+            // A natural exit can race cancellation, notably on Windows.
+            if self.child.try_wait()?.is_none() {
+                return Err(error).context("Failed to terminate git log");
+            }
+        }
+        self.wait().context("Failed to reap git log")?;
+        Ok(())
+    }
+}
+
+impl Drop for HistoryChild<'_> {
+    fn drop(&mut self) {
+        if !self.reaped {
+            // Best effort on an error path; preserve the original read error.
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
 }
 
 /// Get the set of added line numbers per file between two refs.
@@ -350,5 +408,108 @@ mod tests {
             BTreeSet::from([2_usize, 3_usize]),
         );
         assert_eq!(added, expected);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod history_cleanup_tests {
+    use super::*;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    // The shell replaces itself with sleep, so there is only one owned child.
+    // Even the broken implementation finishes within four seconds.
+    fn fixture(script: &str) -> Result<Child> {
+        Ok(Command::new("sh")
+            .args(["-c", script])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?)
+    }
+
+    fn observe_cleanup(child: &mut Child) -> Result<ExitStatus> {
+        // Capture this before try_wait(), which can itself reap a zombie.
+        #[cfg(target_os = "linux")]
+        let proc_entry = Path::new("/proc").join(child.id().to_string()).try_exists();
+        let status = child.try_wait()?;
+        // Keep negative-control runs clean even when cleanup is broken.
+        if status.is_none() {
+            child.kill()?;
+            child.wait()?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            assert!(Path::new("/proc/self").try_exists()?, "procfs unavailable");
+            assert!(!proc_entry?, "history child was not reaped before return");
+        }
+        status.context("history child survived collection")
+    }
+
+    #[test]
+    fn history_limit_terminates_and_reaps_child() -> Result<()> {
+        let mut child =
+            fixture("printf '1|test@example.com|abc|subject\nfile.rs\n\n'; exec sleep 4")?;
+        let started = Instant::now();
+        let commits = collect_history_from_child(&mut child, Some(1), None)?;
+        let elapsed = started.elapsed();
+        eprintln!("history limit termination: {elapsed:?}");
+        assert_eq!(commits.len(), 1);
+        observe_cleanup(&mut child)?;
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "waited for unused history: {elapsed:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn history_read_error_terminates_and_reaps_child() -> Result<()> {
+        let mut child = fixture("printf '\\377\n'; exec sleep 4")?;
+        let started = Instant::now();
+        let result = collect_history_from_child(&mut child, None, None);
+        let elapsed = started.elapsed();
+        let status = observe_cleanup(&mut child)?;
+        eprintln!("history read error termination: {elapsed:?}; status: {status:?}");
+        let error = result.err().context("invalid UTF-8 was accepted")?;
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert!(elapsed < Duration::from_secs(2));
+        Ok(())
+    }
+
+    #[test]
+    fn history_missing_stdout_terminates_and_reaps_child() -> Result<()> {
+        let mut child = fixture("exec sleep 4")?;
+        drop(child.stdout.take());
+        let error = collect_history_from_child(&mut child, None, None)
+            .err()
+            .context("missing stdout was accepted")?;
+        assert_eq!(error.to_string(), "Missing git log stdout");
+        observe_cleanup(&mut child)?;
+        Ok(())
+    }
+
+    #[test]
+    fn history_eof_preserves_success_and_nonzero_failure() -> Result<()> {
+        for (exit, success) in [(0, true), (7, false)] {
+            let mut child = fixture(&format!(
+                "printf '1|test@example.com|abc|subject\nfile.rs\n'; exit {exit}"
+            ))?;
+            let result = collect_history_from_child(&mut child, None, None);
+            if success {
+                let commits = result?;
+                assert_eq!(commits.len(), 1);
+                assert_eq!(
+                    commits.first().map(|commit| commit.subject.as_str()),
+                    Some("subject")
+                );
+            } else {
+                assert_eq!(
+                    result.err().map(|error| error.to_string()).as_deref(),
+                    Some("git log failed")
+                );
+            }
+            assert_eq!(observe_cleanup(&mut child)?.code(), Some(exit));
+        }
+        Ok(())
     }
 }
