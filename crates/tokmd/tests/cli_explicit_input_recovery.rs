@@ -25,7 +25,7 @@ fn missing_input_can_be_created_and_retried(
     arguments: &[&str],
     selected_path: &str,
     expected_mode: &str,
-    expected_cause: &str,
+    expected_header: &str,
 ) -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     std::fs::write(dir.path().join("tokmd.toml"), "")?;
@@ -44,7 +44,7 @@ fn missing_input_can_be_created_and_retried(
         "missing input emitted stdout for {arguments:?}"
     );
     anyhow::ensure!(
-        stderr.contains(expected_cause),
+        stderr.lines().next() == Some(expected_header),
         "wrong selected-input diagnostic for {arguments:?}: {stderr:?}"
     );
     let hints = stderr
@@ -106,7 +106,7 @@ fn explicit_lang_missing_bare_path_has_input_recovery() -> anyhow::Result<()> {
         &["lang", "anolyze", "--format", "json"],
         "anolyze",
         "lang",
-        "Path not found: anolyze",
+        "Error: Failed to read command input: Path not found: anolyze",
     )
 }
 
@@ -116,7 +116,7 @@ fn explicit_export_missing_bare_path_has_input_recovery() -> anyhow::Result<()> 
         &["export", "anolyze", "--format", "json"],
         "anolyze",
         "export",
-        "Path not found: anolyze",
+        "Error: Failed to read command input: Path not found: anolyze",
     )
 }
 
@@ -148,6 +148,6 @@ fn root_path_shaped_missing_input_has_same_argv_recovery() -> anyhow::Result<()>
         &["missing/root", "--format", "json"],
         "missing/root",
         "lang",
-        "Path not found: missing/root",
+        "Error: Path not found: missing/root",
     )
 }
