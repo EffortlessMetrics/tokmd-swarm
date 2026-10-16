@@ -78,17 +78,21 @@ fn missing_input_can_be_created_and_retried(
         receipt["scan"]["paths"] == serde_json::json!([selected_path]),
         "same-argv retry scanned another path: {receipt}"
     );
-    let rows = receipt["rows"]
-        .as_array()
+    let rows = receipt
+        .get("rows")
+        .and_then(serde_json::Value::as_array)
         .ok_or_else(|| anyhow::anyhow!("recovered receipt has no rows: {receipt}"))?;
     anyhow::ensure!(rows.len() == 1, "wrong recovered fixture rows: {receipt}");
+    let row = rows
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("wrong recovered fixture rows: {receipt}"))?;
     anyhow::ensure!(
-        rows[0]["lang"] == "Rust" && rows[0]["code"] == 1,
+        row["lang"] == "Rust" && row["code"] == 1,
         "recovered receipt did not scan the tiny Rust fixture: {receipt}"
     );
     if expected_mode == "export" {
         anyhow::ensure!(
-            rows[0]["path"] == format!("{selected_path}/main.rs"),
+            row["path"] == format!("{selected_path}/main.rs"),
             "export did not retain the selected fixture path: {receipt}"
         );
     } else {
