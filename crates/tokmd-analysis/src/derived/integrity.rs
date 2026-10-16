@@ -40,11 +40,20 @@ fn compare_integrity_rows(a: &FileRow, b: &FileRow) -> std::cmp::Ordering {
         return compare_usize_pair_ascii(a.bytes, a.lines, b.bytes, b.lines);
     }
 
-    if a_bytes.len() < b_bytes.len() {
+    let boundary = if a_bytes.len() < b_bytes.len() {
         b':'.cmp(&b_bytes[min_len])
     } else {
         a_bytes[min_len].cmp(&b':')
+    };
+    if boundary != std::cmp::Ordering::Equal {
+        return boundary;
     }
+
+    // A colon in the longer path matches the shorter path's record delimiter.
+    // The remaining path bytes must still be compared with the numeric fields;
+    // distinct complete records must not compare equal at that boundary.
+    format!("{}:{}:{}", a.path, a.bytes, a.lines)
+        .cmp(&format!("{}:{}:{}", b.path, b.bytes, b.lines))
 }
 
 fn compare_usize_pair_ascii(
@@ -126,6 +135,21 @@ mod tests {
             ("a", 0, usize::MAX, "a", 0, 9),
             ("a", 999, 0, "a", 1000, 0),
             ("a", 10, 2, "a", 10, 10),
+            ("a.rs", 10, 1, "a.rs:x.rs", 30, 3),
+            ("a.rs:x.rs", 30, 3, "a.rs", 10, 1),
+            ("a.rs", 10, 1, "a.rs:0.rs", 20, 2),
+            ("a.rs:0.rs", 20, 2, "a.rs", 10, 1),
+            ("a.rs", 10, 1, "a.rs:10.rs", 20, 2),
+            ("a.rs:10.rs", 20, 2, "a.rs", 10, 1),
+            ("a.rs", 10, 1, "a.rs::x.rs", 20, 2),
+            ("a.rs::x.rs", 20, 2, "a.rs", 10, 1),
+            ("a.rs", 10, 1, "a.rs!", 20, 2),
+            ("a.rs", 10, 1, "a.rs;", 20, 2),
+            ("a.rs", 10, 1, "a.rsé", 20, 2),
+            ("é.rs", 10, 1, "é.rs:x.rs", 20, 2),
+            ("", 0, 0, ":x.rs", 20, 2),
+            (":x.rs", 20, 2, "", 0, 0),
+            ("", 0, 0, "", 0, 0),
         ];
 
         for (p1, b1, l1, p2, b2, l2) in cases {
@@ -139,5 +163,52 @@ mod tests {
 
             assert_eq!(actual, expected, "Failed for {s1} vs {s2}");
         }
+    }
+
+    #[test]
+    fn integrity_hash_matches_literal_stream_for_delimiter_prefix_permutations() {
+        let rows = [
+            make_row("a.rs", 10, 1),
+            make_row("a.rs:0.rs", 20, 2),
+            make_row("a.rs:x.rs", 30, 3),
+        ];
+        // Order complete serialized records, including the path/bytes delimiter:
+        // after "a.rs:", '0' < '1' < 'x'. This literal oracle is independent
+        // of compare_integrity_rows and deliberately differs from path order.
+        let expected_stream = b"a.rs:0.rs:20:2\na.rs:10:1\na.rs:x.rs:30:3";
+        let expected_hash = "295a9dc9e5b394a4219b539427a8a1554d436ad3d215d18d3ec7cf130890cbc5";
+        assert_eq!(
+            blake3::hash(expected_stream).to_hex().as_str(),
+            expected_hash
+        );
+        let [a, b, c] = &rows;
+        for input in [
+            [a, b, c],
+            [a, c, b],
+            [b, a, c],
+            [b, c, a],
+            [c, a, b],
+            [c, b, a],
+        ] {
+            let report = build_integrity_report(&input);
+            assert_eq!(report.algo, "blake3");
+            assert_eq!(report.entries, 3);
+            assert_eq!(report.hash, expected_hash, "input permutation {input:?}");
+        }
+    }
+
+    #[test]
+    fn integrity_hash_handles_empty_input_and_identical_records() {
+        let empty = build_integrity_report(&[]);
+        assert_eq!(empty.entries, 0);
+        assert_eq!(empty.hash, blake3::hash(b"").to_hex().to_string());
+
+        let row = make_row("a.rs", 10, 1);
+        let duplicate = build_integrity_report(&[&row, &row]);
+        assert_eq!(duplicate.entries, 2);
+        assert_eq!(
+            duplicate.hash,
+            blake3::hash(b"a.rs:10:1\na.rs:10:1").to_hex().to_string()
+        );
     }
 }
