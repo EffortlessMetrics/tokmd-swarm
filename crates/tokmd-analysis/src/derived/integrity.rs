@@ -181,19 +181,19 @@ mod tests {
             blake3::hash(expected_stream).to_hex().as_str(),
             expected_hash
         );
-        for order in [
-            [0, 1, 2],
-            [0, 2, 1],
-            [1, 0, 2],
-            [1, 2, 0],
-            [2, 0, 1],
-            [2, 1, 0],
+        let [a, b, c] = &rows;
+        for input in [
+            [a, b, c],
+            [a, c, b],
+            [b, a, c],
+            [b, c, a],
+            [c, a, b],
+            [c, b, a],
         ] {
-            let input = order.map(|index| &rows[index]);
             let report = build_integrity_report(&input);
             assert_eq!(report.algo, "blake3");
             assert_eq!(report.entries, 3);
-            assert_eq!(report.hash, expected_hash, "input permutation {order:?}");
+            assert_eq!(report.hash, expected_hash, "input permutation {input:?}");
         }
     }
 

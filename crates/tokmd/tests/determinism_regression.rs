@@ -154,8 +154,9 @@ fn analyze_receipt_json_byte_identical_across_runs() {
 }
 
 #[test]
-fn analyze_integrity_is_stable_across_export_row_orders() {
-    let dir = tempfile::tempdir().expect("temporary export directory");
+fn analyze_integrity_is_stable_across_export_row_orders() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = tempfile::tempdir()?;
     let rows = [
         r#"{"type":"row","path":"a.rs","module":"(root)","lang":"Rust","kind":"parent","code":1,"comments":0,"blanks":0,"lines":1,"bytes":40,"tokens":10}"#,
         r#"{"type":"row","path":"a.rs:x.rs","module":"(root)","lang":"Rust","kind":"parent","code":2,"comments":0,"blanks":0,"lines":2,"bytes":80,"tokens":20}"#,
@@ -171,7 +172,7 @@ fn analyze_integrity_is_stable_across_export_row_orders() {
         ("reverse.jsonl", format!("{}\n{}\n", rows[1], rows[0])),
     ] {
         let path = dir.path().join(name);
-        std::fs::write(&path, contents).expect("write equivalent export");
+        std::fs::write(&path, contents)?;
         for _ in 0..2 {
             let output = tokmd_cmd()
                 .arg("analyze")
@@ -179,10 +180,9 @@ fn analyze_integrity_is_stable_across_export_row_orders() {
                 .args([
                     "--preset", "receipt", "--format", "json", "--config", "none",
                 ])
-                .output()
-                .expect("analyze export");
+                .output()?;
             assert_cmd_ok(&output);
-            let receipt: Value = serde_json::from_slice(&output.stdout).expect("analysis JSON");
+            let receipt: Value = serde_json::from_slice(&output.stdout)?;
             assert_eq!(
                 receipt["derived"]["integrity"],
                 serde_json::json!({"algo": "blake3", "hash": expected_hash, "entries": 2}),
@@ -190,6 +190,7 @@ fn analyze_integrity_is_stable_across_export_row_orders() {
             );
         }
     }
+    Ok(())
 }
 
 // ===========================================================================
