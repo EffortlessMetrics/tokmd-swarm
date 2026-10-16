@@ -40,11 +40,20 @@ fn compare_integrity_rows(a: &FileRow, b: &FileRow) -> std::cmp::Ordering {
         return compare_usize_pair_ascii(a.bytes, a.lines, b.bytes, b.lines);
     }
 
-    if a_bytes.len() < b_bytes.len() {
+    let boundary = if a_bytes.len() < b_bytes.len() {
         b':'.cmp(&b_bytes[min_len])
     } else {
         a_bytes[min_len].cmp(&b':')
+    };
+    if boundary != std::cmp::Ordering::Equal {
+        return boundary;
     }
+
+    // A colon in the longer path matches the shorter path's record delimiter.
+    // The remaining path bytes must still be compared with the numeric fields;
+    // distinct complete records must not compare equal at that boundary.
+    format!("{}:{}:{}", a.path, a.bytes, a.lines)
+        .cmp(&format!("{}:{}:{}", b.path, b.bytes, b.lines))
 }
 
 fn compare_usize_pair_ascii(
