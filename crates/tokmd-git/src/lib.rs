@@ -427,6 +427,24 @@ mod history_cleanup_tests {
             .spawn()?)
     }
 
+    fn observe_cleanup(child: &mut Child) -> Result<ExitStatus> {
+        // Capture this before try_wait(), which can itself reap a zombie.
+        #[cfg(target_os = "linux")]
+        let proc_entry = Path::new("/proc").join(child.id().to_string()).try_exists();
+        let status = child.try_wait()?;
+        // Keep negative-control runs clean even when cleanup is broken.
+        if status.is_none() {
+            child.kill()?;
+            child.wait()?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            assert!(Path::new("/proc/self").try_exists()?, "procfs unavailable");
+            assert!(!proc_entry?, "history child was not reaped before return");
+        }
+        status.context("history child survived collection")
+    }
+
     #[test]
     fn history_limit_terminates_and_reaps_child() -> Result<()> {
         let mut child =
@@ -436,7 +454,7 @@ mod history_cleanup_tests {
         let elapsed = started.elapsed();
         eprintln!("history limit termination: {elapsed:?}");
         assert_eq!(commits.len(), 1);
-        assert!(child.try_wait()?.is_some(), "history child was not reaped");
+        observe_cleanup(&mut child)?;
         assert!(
             elapsed < Duration::from_secs(2),
             "waited for unused history: {elapsed:?}"
@@ -450,16 +468,10 @@ mod history_cleanup_tests {
         let started = Instant::now();
         let result = collect_history_from_child(&mut child, None, None);
         let elapsed = started.elapsed();
-        let status = child.try_wait()?;
-        // Clean up even when run against the old implementation as a control.
-        if status.is_none() {
-            child.kill()?;
-            child.wait()?;
-        }
+        let status = observe_cleanup(&mut child)?;
         eprintln!("history read error termination: {elapsed:?}; status: {status:?}");
         let error = result.err().context("invalid UTF-8 was accepted")?;
         assert!(error.downcast_ref::<std::io::Error>().is_some());
-        assert!(status.is_some(), "history child survived a read error");
         assert!(elapsed < Duration::from_secs(2));
         Ok(())
     }
@@ -472,12 +484,7 @@ mod history_cleanup_tests {
             .err()
             .context("missing stdout was accepted")?;
         assert_eq!(error.to_string(), "Missing git log stdout");
-        let status = child.try_wait()?;
-        if status.is_none() {
-            child.kill()?;
-            child.wait()?;
-        }
-        assert!(status.is_some(), "history child survived missing stdout");
+        observe_cleanup(&mut child)?;
         Ok(())
     }
 
@@ -501,10 +508,7 @@ mod history_cleanup_tests {
                     Some("git log failed")
                 );
             }
-            assert_eq!(
-                child.try_wait()?.and_then(|status| status.code()),
-                Some(exit)
-            );
+            assert_eq!(observe_cleanup(&mut child)?.code(), Some(exit));
         }
         Ok(())
     }
