@@ -1,6 +1,22 @@
 use anyhow::Error;
 use clap::CommandFactory;
 
+const EXPLICIT_INPUT_CONTEXT: &str = "Failed to read command input";
+
+pub(crate) fn command_input_context(error: Error) -> Error {
+    let message = error.to_string();
+    let missing_path = message
+        .strip_prefix("Path not found: ")
+        .or_else(|| message.strip_prefix("Input path does not exist: "));
+    if missing_path.is_some_and(looks_like_bare_subcommand_token) {
+        // Once clap selected a command, a bare missing root is its input,
+        // even if the directory name resembles another command.
+        error.context(EXPLICIT_INPUT_CONTEXT)
+    } else {
+        error
+    }
+}
+
 /// Subcommand names as clap actually knows them, including visible aliases.
 ///
 /// Derived from the parser rather than hard-coded: the previous literal list
@@ -413,6 +429,12 @@ pub(crate) fn format(err: &Error) -> String {
 }
 
 fn missing_path_as_unrecognized_subcommand(err: &Error) -> Option<String> {
+    if err
+        .chain()
+        .any(|entry| entry.to_string() == EXPLICIT_INPUT_CONTEXT)
+    {
+        return None;
+    }
     for entry in err.chain() {
         let message = entry.to_string();
         let token = message
@@ -599,8 +621,11 @@ fn missing_path_hints(chain: &[String], out: &mut Vec<String>) -> bool {
 
     let mut extracted_bad_path = None;
 
-    // Only an explicit missing bare path can be a typoed subcommand.
-    if has_context(chain, &["path not found: ", "input path does not exist: "]) {
+    // A bare missing path can be a command typo only before a command is selected.
+    let explicit_input = chain
+        .iter()
+        .any(|message| message == EXPLICIT_INPUT_CONTEXT);
+    if !explicit_input && has_context(chain, &["path not found: ", "input path does not exist: "]) {
         // Find the original path string from the chain
         for e_str in chain {
             if let Some(bad_path) = e_str

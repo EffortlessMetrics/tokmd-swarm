@@ -68,8 +68,9 @@ fn reject_implicit_lang_options_with_subcommand(cli: &cli::Cli) -> Result<()> {
 
 pub(crate) fn dispatch(cli: cli::Cli, resolved: &ResolvedConfig) -> Result<()> {
     reject_implicit_lang_options_with_subcommand(&cli)?;
+    let explicit_command = cli.command.is_some();
     let global = &cli.global;
-    match cli.command.unwrap_or(cli::Commands::Lang(cli.lang.clone())) {
+    let result = match cli.command.unwrap_or(cli::Commands::Lang(cli.lang.clone())) {
         cli::Commands::Completions(args) => completions::handle(args),
         #[cfg(feature = "analysis")]
         cli::Commands::Run(args) => run::handle(args, global),
@@ -101,6 +102,11 @@ pub(crate) fn dispatch(cli: cli::Cli, resolved: &ResolvedConfig) -> Result<()> {
         cli::Commands::Packet(args) => packet::handle(args, global),
         #[cfg(not(feature = "analysis"))]
         _ => anyhow::bail!("analysis feature is not enabled"),
+    };
+    if explicit_command {
+        result.map_err(crate::error_hints::command_input_context)
+    } else {
+        result
     }
 }
 
