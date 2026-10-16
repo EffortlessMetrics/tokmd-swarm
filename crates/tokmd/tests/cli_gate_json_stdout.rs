@@ -45,7 +45,8 @@ const FAILED: &str = r#"{
 }
 "#;
 
-const FAILING_POLICY: &str = "[[rules]]\nname = \"cap\"\npointer = \"/metric\"\nop = \"lte\"\nvalue = 1\n";
+const FAILING_POLICY: &str =
+    "[[rules]]\nname = \"cap\"\npointer = \"/metric\"\nop = \"lte\"\nvalue = 1\n";
 
 struct Fixture(TempDir);
 
