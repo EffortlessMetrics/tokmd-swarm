@@ -1,6 +1,8 @@
 //! Result rendering for the `tokmd gate` command.
 
-use anyhow::Result;
+use std::io::{self, Write};
+
+use anyhow::{Context, Result};
 use tokmd_gate::RuleLevel;
 
 use super::CombinedGateResult;
@@ -106,6 +108,104 @@ pub(super) fn print_text_result(result: &CombinedGateResult) {
 /// Print combined results in JSON format.
 pub(super) fn print_json_result(result: &CombinedGateResult) -> Result<()> {
     let json = serde_json::to_string_pretty(&result)?;
-    println!("{}", json);
-    Ok(())
+    write_json_output(&mut io::stdout().lock(), &json)
+}
+
+fn write_json_output(out: &mut impl Write, json: &str) -> Result<()> {
+    writeln!(out, "{json}").context("Failed to write gate JSON to stdout")?;
+    // A failing gate exits directly after rendering; detect buffered failures
+    // before its policy verdict can be returned to the caller.
+    out.flush().context("Failed to flush gate JSON to stdout")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_json_output;
+    use anyhow::{Context, Result};
+    use std::io::{self, Write};
+
+    struct Writer {
+        bytes: Vec<u8>,
+        fail_at: Option<usize>,
+        fail_flush: bool,
+        flushes: usize,
+    }
+
+    impl Write for Writer {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.fail_at == Some(self.bytes.len()) {
+                return Err(io::ErrorKind::BrokenPipe.into());
+            }
+            let Some(&byte) = bytes.first() else {
+                return Ok(0);
+            };
+            self.bytes.push(byte);
+            Ok(1)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushes += 1;
+            if self.fail_flush {
+                Err(io::Error::other("flush rejected"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn writer(fail_at: Option<usize>, fail_flush: bool) -> Writer {
+        Writer {
+            bytes: Vec::new(),
+            fail_at,
+            fail_flush,
+            flushes: 0,
+        }
+    }
+
+    #[test]
+    fn short_writes_preserve_literal_json_and_flush() -> Result<()> {
+        let mut out = writer(None, false);
+        write_json_output(&mut out, "{}")?;
+        assert_eq!(out.bytes, b"{}\n");
+        assert_eq!(out.flushes, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn initial_partial_and_newline_errors_preserve_io_cause() -> Result<()> {
+        for offset in [0, 1, 2] {
+            let mut out = writer(Some(offset), false);
+            let error = write_json_output(&mut out, "{}")
+                .err()
+                .context("expected write failure")?;
+            assert_eq!(error.to_string(), "Failed to write gate JSON to stdout");
+            assert_eq!(
+                error
+                    .downcast_ref::<io::Error>()
+                    .context("I/O cause")?
+                    .kind(),
+                io::ErrorKind::BrokenPipe
+            );
+            assert_eq!(crate::exit_code(&error), 1);
+            assert_eq!(out.bytes, b"{}\n".get(..offset).context("output prefix")?);
+            assert_eq!(out.flushes, 0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn flush_error_is_returned_after_complete_json() -> Result<()> {
+        let mut out = writer(None, true);
+        let error = write_json_output(&mut out, "{}")
+            .err()
+            .context("expected flush failure")?;
+        assert_eq!(error.to_string(), "Failed to flush gate JSON to stdout");
+        let cause = error.downcast_ref::<io::Error>().context("I/O cause")?;
+        assert_eq!(cause.kind(), io::ErrorKind::Other);
+        assert_eq!(cause.to_string(), "flush rejected");
+        assert_eq!(crate::exit_code(&error), 1);
+        assert_eq!(out.bytes, b"{}\n");
+        assert_eq!(out.flushes, 1);
+        Ok(())
+    }
 }
