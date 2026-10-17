@@ -790,6 +790,17 @@ mod zip_tests {
         Ok(cursor.into_inner())
     }
 
+    fn patch_fixture(bytes: &mut [u8], offset: usize, patch: &[u8]) -> Result<(), &'static str> {
+        let end = offset
+            .checked_add(patch.len())
+            .ok_or("fixture offset overflow")?;
+        bytes
+            .get_mut(offset..end)
+            .ok_or("fixture patch out of bounds")?
+            .copy_from_slice(patch);
+        Ok(())
+    }
+
     #[test]
     fn round_trips_stored_and_deflated() -> Result<(), Box<dyn std::error::Error>> {
         let bytes = build_zip(|w| {
@@ -922,11 +933,14 @@ mod zip_tests {
             w.write_all(b"archive bytes\n")?;
             Ok(())
         })?;
-        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
+        let central = bytes
+            .windows(4)
+            .position(|s| s == b"PK\x01\x02")
+            .ok_or("fixture central directory missing")?;
         // FileOptions intentionally masks special bits; set hostile Unix
         // metadata directly in this single-entry fixture's central directory.
-        bytes[central + 5] = 3; // Unix creator system.
-        bytes[central + 38..central + 42].copy_from_slice(&(0o107777u32 << 16).to_le_bytes());
+        patch_fixture(&mut bytes, central + 5, &[3])?; // Unix creator system.
+        patch_fixture(&mut bytes, central + 38, &(0o107777u32 << 16).to_le_bytes())?;
         let mut archive = zip::ZipArchive::new(Cursor::new(&bytes))?;
         // ZIP 9 strips SUID/SGID/sticky bits from the reported permissions.
         assert_eq!(archive.by_index(0)?.unix_mode(), Some(0o100777));
@@ -956,12 +970,15 @@ mod zip_tests {
             w.write_all(b"hello deflated world")?;
             Ok(())
         })?;
-        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
-        assert_eq!(&bytes[..4], b"PK\x03\x04");
+        let central = bytes
+            .windows(4)
+            .position(|s| s == b"PK\x01\x02")
+            .ok_or("fixture central directory missing")?;
+        assert_eq!(bytes.get(..4), Some(b"PK\x03\x04".as_slice()));
         // Keep compressed bytes and CRC valid, but understate the inflated
         // length in both headers. ZIP 8.6 accepted the larger payload.
-        bytes[22..26].copy_from_slice(&1u32.to_le_bytes());
-        bytes[central + 24..central + 28].copy_from_slice(&1u32.to_le_bytes());
+        patch_fixture(&mut bytes, 22, &1u32.to_le_bytes())?;
+        patch_fixture(&mut bytes, central + 24, &1u32.to_le_bytes())?;
         let mut archive = zip::ZipArchive::new(Cursor::new(&bytes))?;
         assert_eq!(archive.by_index(0)?.size(), 1);
 
@@ -993,15 +1010,15 @@ mod zip_tests {
             w.write_all(b"fn main() {}")?;
             Ok(())
         })?;
-        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
-        assert_eq!(u16::from_le_bytes([bytes[6], bytes[7]]) & 0x800, 0);
-        assert_eq!(
-            u16::from_le_bytes([bytes[central + 8], bytes[central + 9]]) & 0x800,
-            0
-        );
+        let central = bytes
+            .windows(4)
+            .position(|s| s == b"PK\x01\x02")
+            .ok_or("fixture central directory missing")?;
+        assert_eq!(bytes.get(7).map(|byte| byte & 0x08), Some(0));
+        assert_eq!(bytes.get(central + 9).map(|byte| byte & 0x08), Some(0));
         // Legacy ZIP names use CP437: byte 0x82 encodes 'é'.
-        bytes[33] = 0x82;
-        bytes[central + 49] = 0x82;
+        patch_fixture(&mut bytes, 33, &[0x82])?;
+        patch_fixture(&mut bytes, central + 49, &[0x82])?;
         let snap = snapshot_from_zip_bytes("repo", &bytes, &ArchiveLimits::default())?;
         assert_eq!(snap.paths().collect::<Vec<_>>(), vec!["café.rs"]);
         assert_eq!(
