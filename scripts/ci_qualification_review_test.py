@@ -17,6 +17,8 @@ from unittest.mock import patch
 import ci_budget as budget
 
 import ci_qualification_test as request_fixture
+
+NODE = request_fixture.NODE
 from ci_workflow_admission_test import WORKFLOWS, jobs
 
 Q, ROOT, step_script = request_fixture.Q, request_fixture.ROOT, request_fixture.step_script
@@ -39,6 +41,32 @@ class ReviewRegressions(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+
+    def test_control_suite_uses_the_action_runtime_without_a_node_path_prerequisite(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        body = block(source, 'Test qualification controls')
+        pin = re.search(r'uses: (actions/github-script@[a-f0-9]{40})', body)
+        self.assertIsNotNone(pin, 'mandatory control tests need an explicit action runtime')
+        self.assertIn(pin.group(1), (ROOT / '.github/workflows/release.yml').read_text())
+        program = textwrap.dedent(body.split('script: |\n', 1)[1])
+        bindir = self.root / 'no-node-on-path'
+        bindir.mkdir()
+        record = self.root / 'runtime'
+        python = bindir / 'python3'
+        python.write_text('#!/bin/bash\nprintf "%s\\n" "$TOKMD_CI_NODE" "$@" > "$RUNTIME_RECORD"\nexit "$CHILD_STATUS"\n')
+        python.chmod(0o755)
+        node = os.path.realpath(request_fixture.NODE)
+        if not os.path.isabs(node) or not os.path.exists(node):
+            node = shutil.which(request_fixture.NODE)
+        self.assertIsNotNone(node)
+        for status in ('0', '2'):
+            with self.subTest(status=status):
+                env = dict(os.environ, PATH=str(bindir), RUNTIME_RECORD=str(record), CHILD_STATUS=status)
+                run = subprocess.run([node, '-e', 'const core={setFailed:(message)=>{console.error(message);process.exitCode=1;}};\n' + program],
+                    cwd=ROOT, env=env, capture_output=True, text=True, timeout=5)
+                self.assertEqual(run.returncode, 0 if status == '0' else 1, run.stderr)
+                self.assertEqual(record.read_text().splitlines(),
+                    [node, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'ci_*_test.py'])
 
     def test_windows_matrix_shared_scripts_choose_bash(self):
         source = (ROOT / '.github/workflows/test-action.yml').read_text()
@@ -180,7 +208,7 @@ raise SystemExit(int(sys.argv[2]))
 const github={event_name:'pull_request',event:{pull_request:{head:{repo:{fork:false}}}}};
 const needs={admission:{outputs:{admitted:'true'}}};
 const steps=new Proxy({}, {get:()=>({outcome:'failure'})});process.stdout.write(String(eval(condition)));"""
-                call = subprocess.run(['node', '-e', program, condition], capture_output=True, text=True, timeout=3)
+                call = subprocess.run([NODE, '-e', program, condition], capture_output=True, text=True, timeout=3)
                 self.assertEqual(call.returncode, 0, call.stderr)
                 self.assertEqual(call.stdout, 'false', identifier)
         markers = self.root / 'target/ci-core'

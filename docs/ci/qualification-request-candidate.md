@@ -136,15 +136,22 @@ the reporting reserve; they do not qualify this candidate or establish a hard
 20-minute service-lifetime contract. The #732 source remains separately preserved.
 
 The first deployed request in PR#737 passed admission and Cargo Deny. It exposed
-two additional integration defects: the macOS Action guard reported an unsupported
+integration defects: the macOS Action guard reported an unsupported
 process-operation permission error, and the affected planner correctly rejected
 six new helper/test paths missing from the existing control-plane scope. The
 repair selects the portable source-read boundary before spawning on non-Linux
 platforms (no permission change or denied-operation retry), registers those exact
 paths with the existing scope, and executes the registered Python control suite
-inside the required Linux job. That failed native request is not acceptance of
-the repair. The current source remains frozen remotely until its running work
-finishes and the repair receives fresh exact-head review.
+inside the required Linux job. The live gate-contract checker also rejected the
+conditional check name and route fallback; the repair preserves its unchanged
+markers in the executable name/routing expressions. Qualified checks keep the
+canonical name, while observations receive a distinct suffix. Independent review
+identified an undeclared Node CLI prerequisite in the new mandatory suite. The
+existing pinned GitHub Script action now supplies its runtime's absolute path to
+the Python fixtures, and a production-step regression removes Node from PATH and
+checks both successful and failing child results. That failed native request is
+not acceptance of the repair. The current source remains frozen remotely until
+its running work finishes and the repair receives fresh exact-head review.
 
 ## Validation and next native step
 
@@ -162,7 +169,9 @@ with a fresh exact manifest admits actual proof. A full expected-green request
 must include Windows and all selected obligations. Manual dispatch does not
 substitute for PR/fork attachment. A legitimate fork subject and any existing
 platform approval must be evidenced without granting credentials or access.
-No speculative full run or live activation has occurred.
+Main activation remains pending successful native qualification. The first
+explicit native request and its failures remain recorded separately from local
+repair evidence.
 
 Before integration inspect actual publication triggers. The existing Swarm GHCR
 workflow publishes on selected main changes. The parent's hold on publication-

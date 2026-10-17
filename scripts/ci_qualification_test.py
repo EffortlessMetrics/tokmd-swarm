@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+NODE = os.environ.get('TOKMD_CI_NODE', 'node')
 SPEC = importlib.util.spec_from_file_location("qualification", ROOT / "scripts/ci_qualification.py")
 Q = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(Q)
@@ -207,7 +208,7 @@ class ProductionPathTests(unittest.TestCase):
             seen += 1
             self.assertRegex(body, r"(?m)^    needs:.*admission|^      - admission$")
             if name == "tokmd-rust-result":
-                self.assertIn("\'Tokmd Rust Result\'", body)
+                self.assertIn('    name: Tokmd Rust Result${{', body)
                 self.assertIn("    if: always()\n", body)
             else:
                 self.assertIn("needs.admission.outputs.admitted == 'true'", body)
@@ -225,18 +226,32 @@ class ProductionPathTests(unittest.TestCase):
 
     def test_actual_check_name_preserves_qualification_and_does_not_overwrite_it_on_observation(self):
         body = self.source.split("  tokmd-rust-result:\n", 1)[1].split("  detect:\n", 1)[0]
-        expression = re.search(r"^    name: \$\{\{ (.+) \}\}$", body, re.MULTILINE).group(1)
-        program = """const [expression,event,action,label]=process.argv.slice(1);
+        expression = re.search(r"^    name: (.+)$", body, re.MULTILINE).group(1)
+        program = r"""const [template,event,action,label]=process.argv.slice(1);
 const github={event_name:event,event:{action,label:{name:label}}};
-process.stdout.write(String(eval(expression)));"""
-        for event, action, label, expected in (("pull_request","opened","","Qualification not requested"),
-            ("pull_request","ready_for_review","","Qualification not requested"),
-            ("pull_request","labeled","ordinary","Qualification not requested"),
+process.stdout.write(template.replace(/\$\{\{ (.*?) \}\}/g,(_,expression)=>String(eval(expression))));"""
+        for event, action, label, expected in (("pull_request","opened","","Tokmd Rust Result (qualification not requested)"),
+            ("pull_request","ready_for_review","","Tokmd Rust Result (qualification not requested)"),
+            ("pull_request","labeled","ordinary","Tokmd Rust Result (qualification not requested)"),
             ("pull_request","labeled","ci:qualify","Tokmd Rust Result"),
             ("workflow_dispatch","","","Tokmd Rust Result"),("push","","","Tokmd Rust Result")):
-            run = subprocess.run(["node","-e",program,expression,event,action,label],capture_output=True,text=True,timeout=3)
+            run = subprocess.run([NODE,"-e",program,expression,event,action,label],capture_output=True,text=True,timeout=3)
             self.assertEqual(run.returncode,0,run.stderr)
             self.assertEqual(run.stdout,expected)
+
+    def test_required_runner_uses_the_route_or_a_refusal_capable_fallback(self):
+        body = self.source.split('  tokmd-rust-result:\n', 1)[1].split('  detect:\n', 1)[0]
+        expression = re.search(r'^    runs-on: \$\{\{ (.+) \}\}$', body, re.MULTILINE).group(1)
+        program = """const [expression,runner]=process.argv.slice(1);
+const needs={route:{outputs:{runner}}}; const fromJSON=JSON.parse;
+process.stdout.write(JSON.stringify(eval(expression)));"""
+        for runner, expected in (('', 'ubuntu-latest'), ('"ubuntu-latest"', 'ubuntu-latest'),
+                ('["self-hosted","em-ci","trusted-pr","rust-small"]',
+                 ['self-hosted', 'em-ci', 'trusted-pr', 'rust-small'])):
+            with self.subTest(runner=runner):
+                run = subprocess.run([NODE, '-e', program, expression, runner], capture_output=True, text=True, timeout=3)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(json.loads(run.stdout), expected)
 
     def test_actual_required_refusal_step_fails_without_successful_admission(self):
         body = step_script(self.source, "Refuse unrequested or failed admission")
@@ -263,7 +278,7 @@ process.stdout.write(String(eval(expression)));"""
         def actual(event, head=HEAD, base=BASE, action="opened", label="ordinary"):
             context = dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label), pull_request=dict(number=734)), sha="merge-" + head + base, ref="refs/heads/topic"),
                            inputs=dict(pull_request="734", generation=f"{head}:{base}"))
-            result = subprocess.run(["node", "-e", program, expression, json.dumps(context)], capture_output=True, text=True, timeout=3)
+            result = subprocess.run([NODE, "-e", program, expression, json.dumps(context)], capture_output=True, text=True, timeout=3)
             self.assertEqual(result.returncode, 0, result.stderr)
             return result.stdout
         request = actual("workflow_dispatch")
@@ -310,7 +325,7 @@ process.stdout.write(String(eval(expression)));"""
             for prior, fork, expected in (("red-baseline", "false", "false"), ("stale-source", "false", "false"),
                                           ("success", "false", "true"), ("success", "true", "false")):
                 with self.subTest(step=name, prior=prior, fork=fork):
-                    run = subprocess.run(["node", "-e", program, condition, prior, fork], capture_output=True, text=True, timeout=3)
+                    run = subprocess.run([NODE, "-e", program, condition, prior, fork], capture_output=True, text=True, timeout=3)
                     self.assertEqual(run.returncode, 0, run.stderr)
                     self.assertEqual(run.stdout, expected)
 
@@ -331,7 +346,7 @@ process.stdout.write(String(eval(condition)));"""
                     ("success", "failure", "success", "false"), ("success", "success", "failure", "false"),
                     ("success", "success", "success", "true")):
             with self.subTest(before=before, after=after, baseline=baseline):
-                run = subprocess.run(["node", "-e", program, output, condition, before, after, baseline], capture_output=True, text=True, timeout=3)
+                run = subprocess.run([NODE, "-e", program, output, condition, before, after, baseline], capture_output=True, text=True, timeout=3)
                 self.assertEqual(run.returncode, 0, run.stderr)
                 self.assertEqual(run.stdout, expected)
 

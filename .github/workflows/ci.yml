@@ -121,13 +121,13 @@ jobs:
 
   tokmd-rust-result:
     if: always()
-    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'ci:qualify')) && 'Tokmd Rust Result' || 'Qualification not requested' }}
+    name: Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}
     outputs:
       source_validated: ${{ steps.source_before.outcome == 'success' && steps.source_after.outcome == 'success' }}
       rustc_version: ${{ steps.compiler_version.outputs.version }}
       rustup_toolchain: ${{ steps.compiler_version.outputs.toolchain }}
     needs: [admission, route, deny]
-    runs-on: ${{ fromJSON(needs.route.outputs.runner || '"ubuntu-latest"') }}
+    runs-on: ${{ (needs.route.outputs.runner && fromJSON(needs.route.outputs.runner)) || 'ubuntu-latest' }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -180,7 +180,15 @@ jobs:
 
       - name: Test qualification controls
         timeout-minutes: ${{ fromJSON(steps.control_test_budget.outputs.minutes || '1') }}
-        run: python3 -m unittest discover -s scripts -p 'ci_*_test.py'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const {spawnSync} = require('node:child_process');
+            const result = spawnSync('python3',
+              ['-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'ci_*_test.py'],
+              {stdio: 'inherit', env: {...process.env, TOKMD_CI_NODE: process.execPath}, timeout: 55000});
+            if (result.error) throw result.error;
+            if (result.status !== 0) core.setFailed(`Qualification control tests failed: status=${result.status}, signal=${result.signal}`);
 
       - name: Allocate toolchain budget
         id: toolchain_budget

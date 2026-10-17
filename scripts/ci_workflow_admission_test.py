@@ -11,6 +11,8 @@ import unittest
 
 import ci_qualification_test as request_fixture
 
+NODE = request_fixture.NODE
+
 ROOT, step_script = request_fixture.ROOT, request_fixture.step_script
 
 WORKFLOWS = ('bindings-parity', 'ci-policy', 'clippy-exceptions-policy', 'cockpit', 'coverage',
@@ -39,7 +41,7 @@ const output=contexts.map(([event,action,label])=>{
   const github={event_name:event,event:{action,label:{name:label}}};
   return templates.map(([, , template])=>template.replace(/\$\{\{ (.*?) \}\}/g,(_,expression)=>String(eval(expression))));
 }); process.stdout.write(JSON.stringify(output));"""
-        run = subprocess.run(['node', '-e', program, json.dumps(templates)], capture_output=True, text=True, timeout=5)
+        run = subprocess.run([NODE, '-e', program, json.dumps(templates)], capture_output=True, text=True, timeout=5)
         self.assertEqual(run.returncode, 0, run.stderr)
         qualified, pushed, *observations = json.loads(run.stdout)
         self.assertEqual(qualified, pushed, 'Non-PR names must retain the qualification names')
@@ -129,7 +131,7 @@ process.stdout.write(String(eval(expression)));"""
             self.assertIn('queue: max', block)
             values = []
             for label, sha in (('ci:qualify', 'a' * 40), ('ordinary', 'a' * 40), ('ci:qualify', 'b' * 40)):
-                run = subprocess.run(['node', '-e', program, expression, label, sha], capture_output=True, text=True, timeout=3)
+                run = subprocess.run([NODE, '-e', program, expression, label, sha], capture_output=True, text=True, timeout=3)
                 self.assertEqual(run.returncode, 0, run.stderr)
                 values.append(run.stdout)
             self.assertEqual(len(set(values)), 3, name)
@@ -144,7 +146,7 @@ const steps=new Proxy({}, {get:(_,key)=>({outcome:key==='qualification_gate'?qua
 process.stdout.write(String(eval(expression)));"""
         for event, qualified, phase, expected in (('push','skipped','skipped','true'),('workflow_dispatch','skipped','skipped','true'),
                     ('pull_request','failure','skipped','false'),('pull_request','success','failure','false'),('pull_request','success','success','true')):
-            run = subprocess.run(['node','-e',program,expression,event,qualified,phase], capture_output=True,text=True,timeout=3)
+            run = subprocess.run([NODE,'-e',program,expression,event,qualified,phase], capture_output=True,text=True,timeout=3)
             self.assertEqual(run.returncode,0,run.stderr)
             self.assertEqual(run.stdout,expected)
 
