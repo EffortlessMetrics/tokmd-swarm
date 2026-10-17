@@ -2,6 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::{Context, Result};
+
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
@@ -27,10 +29,10 @@ fn run_xtask(args: &[&str]) -> (String, String, bool) {
     (stdout, stderr, output.status.success())
 }
 
-fn workflow_step<'a>(job: &'a str, marker: &str) -> &'a str {
+fn workflow_step<'a>(job: &'a str, marker: &str) -> Result<&'a str> {
     job.split("\n      - ")
         .find(|step| step.starts_with(marker))
-        .unwrap_or_else(|| panic!("missing workflow step {marker}"))
+        .with_context(|| format!("missing workflow step {marker}"))
 }
 
 #[test]
@@ -151,7 +153,7 @@ fn ci_actuals_writes_schema_stable_receipt() {
 }
 
 #[test]
-fn ci_actuals_uploads_receipt_before_advisory_summary() {
+fn ci_actuals_uploads_receipt_before_advisory_summary() -> Result<()> {
     let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
         .expect("read ci workflow");
     let ci_actuals_idx = workflow
@@ -213,7 +215,7 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         "uses: Swatinem/rust-cache@",
     ] {
         assert!(
-            workflow_step(ci_actuals, action).contains("continue-on-error: true"),
+            workflow_step(ci_actuals, action)?.contains("continue-on-error: true"),
             "{action} should remain best-effort telemetry setup"
         );
     }
@@ -223,11 +225,11 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         ("Generate CI actuals receipt", "phase_budget_5"),
         ("Upload CI actuals receipt", "phase_budget_6"),
     ] {
-        let step = workflow_step(ci_actuals, &format!("name: {name}\n"));
+        let step = workflow_step(ci_actuals, &format!("name: {name}\n"))?;
         let condition = step
             .lines()
             .find(|line| line.trim_start().starts_with("if:"))
-            .expect("reporting step condition");
+            .context("reporting step condition")?;
         assert!(
             condition.contains("always()")
                 && condition.contains("steps.job_budget.outcome == 'success'")
@@ -322,6 +324,7 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         !summary_block.contains("sys.exit(1)"),
         "advisory summary must not fail the job"
     );
+    Ok(())
 }
 
 #[test]
