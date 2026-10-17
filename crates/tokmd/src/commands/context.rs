@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::cli;
@@ -145,6 +146,14 @@ fn handle_with_selection(
     };
 
     progress.finish_and_clear();
+
+    // Keep the opt-in machine progress stream parseable as JSON lines.
+    if std::env::var_os("TOKMD_PROGRESS_EVENTS").is_none()
+        && let Some(warning) = &select_result.budget_warning
+    {
+        // Optional guidance must not turn a successful payload into a failure.
+        writeln!(std::io::stderr().lock(), "{warning}").unwrap_or_default();
+    }
 
     // Determine output destination for logging
     let output_destination = context_pack::determine_output_destination(&args);
