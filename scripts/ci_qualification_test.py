@@ -152,6 +152,39 @@ class ProductionPathTests(unittest.TestCase):
         triggers = self.source.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
         self.assertNotRegex(triggers, r"(?m)^    (if|needs):")
 
+    def test_actual_pr_trigger_admits_explicit_label_and_keeps_ready_as_collaboration(self):
+        triggers = self.source.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
+        pr = triggers.split("  pull_request:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
+        types = re.search(r"^    types: \[(.+)\]$", pr, re.MULTILINE).group(1)
+        actual = {value.strip() for value in types.split(",")}
+        self.assertEqual(actual, {"opened", "reopened", "synchronize", "labeled"})
+        self.assertNotIn("ready_for_review", actual)
+        self.assertNotIn("converted_to_draft", actual)
+        self.assertIn('branches: [ "main" ]', pr)
+
+    def test_actual_route_keeps_forks_hosted_and_requires_same_idle_runner_capabilities(self):
+        body = step_script(self.source, "Decide gate runner (self-hosted primary, gh-hosted overflow)")
+        split = {"runners": [{"status": "online", "busy": False, "labels": [{"name": "trusted-pr"}]},
+                             {"status": "online", "busy": False, "labels": [{"name": "rust-small"}]}]}
+        capable = {"runners": [{"status": "online", "busy": False, "labels": [{"name": "trusted-pr"}, {"name": "rust-small"}]}]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gh = root / "gh"
+            gh.write_text('#!/bin/bash\nprintf "%s\\n" "$RUNNERS_JSON"\n')
+            gh.chmod(0o755)
+            for fork, runners, token, expected in ((True, capable, "test-only", "github"),
+                    (False, split, "test-only", "github"), (False, capable, "test-only", "self-hosted"),
+                    (False, capable, "", "github")):
+                with self.subTest(fork=fork, runners=runners, token=bool(token)):
+                    output = root / "output"
+                    output.unlink(missing_ok=True)
+                    script = body.replace("${{ github.event_name }}", "pull_request").replace("${{ github.event.pull_request.head.repo.fork }}", str(fork).lower())
+                    run = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=root,
+                        env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"], GITHUB_OUTPUT=str(output),
+                                 GH_TOKEN=token, RUNNERS_JSON=json.dumps(runners)), capture_output=True, text=True, timeout=3)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertIn("runner_kind=" + expected + "\n", output.read_text())
+
     def test_all_old_jobs_depend_on_real_admission_and_required_name_is_preserved(self):
         jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
         seen = 0
