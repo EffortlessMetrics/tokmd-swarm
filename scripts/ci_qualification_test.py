@@ -170,10 +170,10 @@ class ProductionPathTests(unittest.TestCase):
     def test_expensive_jobs_wait_for_the_blocking_baseline(self):
         jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
         for name, body in zip(jobs[1::2], jobs[2::2]):
-            if name in ("admission", "route", "deny", "ci-actuals"):
+            if name in ("admission", "route", "deny"):
                 continue
             with self.subTest(job=name):
-                self.assertRegex(body, r"(?m)^    needs:.*deny")
+                self.assertIn("deny", re.search(r"^    needs:(.*?)(?=^    [a-z]|\Z)", body, re.MULTILINE | re.DOTALL).group(1))
                 if name != "tokmd-rust-result":
                     self.assertIn("needs.deny.result == 'success'", body)
 
@@ -235,6 +235,22 @@ process.stdout.write(String(eval(expression)));"""
         result = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED="true", ADMISSION_RESULT="success", BASELINE_RESULT="failure"), timeout=3)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("needs: [admission, route, deny]", self.source)
+
+    def test_actual_advisory_conditions_refuse_red_baseline_and_stale_pre_setup_source(self):
+        program = """const [expression, prior, fork] = process.argv.slice(1);
+const success = () => prior === 'success'; const cancelled = () => false;
+const needs = {admission: {outputs: {admitted: 'true'}}};
+const github = {event_name: 'pull_request', event: {pull_request: {head: {repo: {fork: fork === 'true'}}}}};
+process.stdout.write(String(eval(expression)));"""
+        for name in ("Record UB Review start", "UB Review (advisory)"):
+            block = re.findall(rf"^      - name: {re.escape(name)}\n(.*?)(?=^      - |^  [a-z][a-z0-9-]*:|\Z)", self.source, re.MULTILINE | re.DOTALL)[0]
+            condition = re.search(r"^        if: \$\{\{ (.+) \}\}$", block, re.MULTILINE).group(1)
+            for prior, fork, expected in (("red-baseline", "false", "false"), ("stale-source", "false", "false"),
+                                          ("success", "false", "true"), ("success", "true", "false")):
+                with self.subTest(step=name, prior=prior, fork=fork):
+                    run = subprocess.run(["node", "-e", program, condition, prior, fork], capture_output=True, text=True, timeout=3)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(run.stdout, expected)
 
     def test_actual_core_keeps_all_four_obligations_and_consumes_one_budget(self):
         body = step_script(self.source, "Fast precontext and launch core gate")
