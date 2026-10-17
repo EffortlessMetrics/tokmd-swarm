@@ -70,7 +70,7 @@ expires          = "2027-04-17"
 [[lane]]
 id               = "qualification_context_name"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'ci:qualify')) && 'Tokmd Rust Result' || 'Qualification not requested' }}"
+job              = "Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
