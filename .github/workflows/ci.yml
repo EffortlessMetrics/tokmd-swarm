@@ -4,6 +4,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
+    types: [opened, reopened, synchronize, labeled]
     branches: [ "main" ]
   workflow_dispatch:
     inputs:
@@ -34,7 +35,7 @@ permissions:
 
 concurrency:
   # Observation events never share a cancellation domain with qualification.
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('qualification-{0}-{1}', inputs.pull_request, inputs.generation) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('qualification-{0}-{1}', inputs.pull_request, inputs.generation) || (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha)) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
   cancel-in-progress: false
   queue: max
 
@@ -63,7 +64,9 @@ jobs:
         id: admit
         env:
           QUALIFICATION_DEADLINE: ${{ steps.deadline.outputs.deadline_epoch }}
-        run: python3 scripts/ci_qualification.py
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
 
   # Phase 2 (#226): single tight gate — route + one required check.
   # Normative spec: docs/specs/ub-review-ci-gate.md
@@ -119,7 +122,7 @@ jobs:
   tokmd-rust-result:
     if: always()
     name: Tokmd Rust Result
-    needs: [admission, route]
+    needs: [admission, route, deny]
     runs-on: ${{ fromJSON(needs.route.outputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 20
     permissions:
@@ -130,11 +133,19 @@ jobs:
         env:
           ADMITTED: ${{ needs.admission.outputs.admitted }}
           ADMISSION_RESULT: ${{ needs.admission.result }}
-        run: test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true
+          BASELINE_RESULT: ${{ needs.deny.result }}
+        run: test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true && test "$BASELINE_RESULT" = success
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Revalidate exact qualification before setup
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -310,6 +321,14 @@ jobs:
             mark_clock target/ci-core/ub_review_completed
           fi
 
+      - name: Revalidate exact qualification after proof
+        if: ${{ !cancelled() && needs.admission.outputs.admitted == 'true' }}
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
       - name: Assert core gate verdict
         if: ${{ always() }}
         env:
@@ -484,8 +503,8 @@ jobs:
   # paths change, even without an explicit label. Mirrors the routing
   # in policy/ci-risk-packs.toml.
   detect:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Detect risk packs
     runs-on: ubuntu-latest
     outputs:
@@ -559,8 +578,8 @@ jobs:
           retention-days: 14
 
   msrv:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: MSRV Check
     runs-on: ubuntu-latest
     steps:
@@ -583,8 +602,8 @@ jobs:
   # the Rust-owned `git_io` risk pack output.
   build-windows:
     name: Build & Test (Windows)
-    needs: [admission, detect]
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
+    needs: [admission, deny, detect]
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
     runs-on: windows-latest
 
     steps:
@@ -605,9 +624,9 @@ jobs:
         CI: true
 
   build-macos:
-    needs: admission
+    needs: [admission, deny]
     name: Build & Test (macOS)
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push')
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push')
     runs-on: macos-latest
 
     steps:
@@ -629,8 +648,8 @@ jobs:
         CI: true
 
   feature-boundaries:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Feature Boundaries
     runs-on: ubuntu-latest
     steps:
@@ -751,9 +770,9 @@ jobs:
           PY
 
   affected-plan:
-    needs: admission
+    needs: [admission, deny]
     name: Affected Proof Plan
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'pull_request')
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -833,9 +852,9 @@ jobs:
           if-no-files-found: error
 
   fast-proof-run:
-    needs: admission
+    needs: [admission, deny]
     name: Fast Proof Run (Advisory)
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'pull_request')
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -969,8 +988,8 @@ jobs:
 
   wasm-compile:
     name: Wasm Compile & Test
-    needs: [admission, detect]
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
+    needs: [admission, deny, detect]
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1027,8 +1046,8 @@ jobs:
         run: cargo deny --all-features check
 
   typos:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Typos
     runs-on: ubuntu-latest
     steps:
@@ -1046,8 +1065,8 @@ jobs:
 
   proptest-smoke:
     name: Proptest Smoke
-    needs: [admission, detect]
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
+    needs: [admission, deny, detect]
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1066,8 +1085,8 @@ jobs:
           CI: true
 
   publish-plan:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Publish Surface
     runs-on: ubuntu-latest
     steps:
@@ -1084,8 +1103,8 @@ jobs:
           CI: true
 
   version-consistency:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Version consistency
     runs-on: ubuntu-latest
     steps:
@@ -1097,8 +1116,8 @@ jobs:
         run: cargo xtask version-consistency
 
   docs-check:
-    if: needs.admission.outputs.admitted == 'true'
-    needs: admission
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
+    needs: [admission, deny]
     name: Docs Check
     runs-on: ubuntu-latest
     steps:
@@ -1151,11 +1170,11 @@ jobs:
 
   nix-pr:
     name: Nix PR Package Gate
-    needs: [admission, detect]
+    needs: [admission, deny, detect]
     # Nix package validation is publication-owned. Keep it out of the
     # tokmd-swarm workbench so swarm push/PR checks do not depend on
     # publication repo Nix state.
-    if: needs.admission.outputs.admitted == 'true' && (github.repository == 'EffortlessMetrics/tokmd' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'nix') || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.nix == 'true' || needs.detect.outputs.release == 'true'))
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.repository == 'EffortlessMetrics/tokmd' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'nix') || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.nix == 'true' || needs.detect.outputs.release == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -1184,7 +1203,7 @@ jobs:
         run: nix build -L .#tokmd
 
   mutation:
-    needs: admission
+    needs: [admission, deny]
     name: Mutation Testing
     runs-on: ubuntu-latest
     # Runtime mutation testing moves to label/push-to-main so ordinary
@@ -1193,7 +1212,7 @@ jobs:
     # prices for the default PR. The "(Required)" suffix is dropped to
     # avoid implying this lane is a mandatory PR check; required-status
     # guarantees live on the `Tokmd Rust Result` gate job.
-    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'mutation') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'mutation') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

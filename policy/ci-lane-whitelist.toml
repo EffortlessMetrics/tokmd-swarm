@@ -48,6 +48,26 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
+id               = "qualification_admission"
+workflow         = ".github/workflows/ci.yml"
+job              = "Admit explicit qualification"
+kind             = "planner"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Admit only an explicit exact-source qualification request before heavyweight proof."
+failure_mode     = "Unrequested, stale or wrong-source work produces a misleading qualification."
+proof_obligation = "Validate native request, checkout, head/base/merge source refs and shared deadline; refuse unsupported dispatch proof."
+evidence         = ["job logs", "job outputs"]
+allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-10-17"
+expires          = "2027-04-17"
+
+[[lane]]
 id               = "route_ci_runner"
 workflow         = ".github/workflows/ci.yml"
 job              = "Route CI runner"

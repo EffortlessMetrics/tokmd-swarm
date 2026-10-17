@@ -1,7 +1,7 @@
 """Exercise admission and refusal through checked-in production shell/source.
 
-The candidate intentionally refuses dispatch proof until the native PR-context
-and fork check-subject gaps are resolved. Passing this suite does not qualify CI.
+The candidate admits explicit native PR requests and refuses dispatch proof
+without PR context. Passing this suite does not establish native CI qualification.
 """
 
 import importlib.util
@@ -24,7 +24,7 @@ HEAD, BASE = "a" * 40, "b" * 40
 
 
 def step_script(source, name):
-    blocks = re.findall(rf"^      - name: {re.escape(name)}\n(.*?)(?=^      - |\Z)", source, re.MULTILINE | re.DOTALL)
+    blocks = re.findall(rf"^      - name: {re.escape(name)}\n(.*?)(?=^      - |^  [a-z][a-z0-9-]*:|\Z)", source, re.MULTILINE | re.DOTALL)
     if len(blocks) != 1 or "        run: " not in blocks[0]:
         raise AssertionError(f"missing literal production step {name}")
     value = blocks[0].split("        run: ", 1)[1]
@@ -76,7 +76,7 @@ class AdmissionTests(unittest.TestCase):
 
     def test_valid_dispatch_reaches_truthful_production_migration_refusal(self):
         source = (ROOT / ".github/workflows/ci.yml").read_text()
-        self.assertEqual(step_script(source, "Validate explicit qualification request"), "python3 scripts/ci_qualification.py")
+        self.assertIn("python3 scripts/ci_qualification.py", step_script(source, "Validate explicit qualification request"))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             event = root / "event.json"
@@ -88,6 +88,42 @@ class AdmissionTests(unittest.TestCase):
             with patch.dict(os.environ, env), patch.object(Q, "live_refs", return_value=self.refs):
                 self.assertEqual(Q.main(), 1)
             self.assertFalse(output.exists(), "refusal must not publish admitted=true")
+
+    def native_request(self):
+        merge = "c" * 40
+        request = dict(self.event["inputs"], merge_sha=merge)
+        body = "<!-- tokmd-qualification:v1\n" + json.dumps(request) + "\n-->"
+        event = dict(action="labeled", label=dict(name="ci:qualify"), number=734,
+                     pull_request=dict(state="open", body=body, draft=True, head=dict(sha=HEAD), base=dict(sha=BASE, ref="main")))
+        context = dict(self.context, event_name="pull_request", ref="refs/pull/734/merge", sha=merge, workflow_sha=merge)
+        refs = dict(self.refs, **{"refs/pull/734/merge": merge})
+        return event, context, refs
+
+    def test_native_explicit_request_admits_real_pr_composition_including_draft(self):
+        event, context, refs = self.native_request()
+        self.assertEqual(Q.admit(event, context, lambda pr: refs)["mode"], "pr-qualification")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            event_path, output = root / "event", root / "output"
+            event_path.write_text(json.dumps(event))
+            env = dict(os.environ, GITHUB_EVENT_PATH=str(event_path), GITHUB_OUTPUT=str(output),
+                       GITHUB_EVENT_NAME=context["event_name"], GITHUB_REF=context["ref"], GITHUB_SHA=context["sha"],
+                       GITHUB_WORKFLOW_SHA=context["workflow_sha"], GITHUB_REPOSITORY=Q.REPOSITORY,
+                       QUALIFICATION_DEADLINE=str(int(time.time()) + 600))
+            with patch.dict(os.environ, env), patch.object(Q, "live_refs", return_value=refs):
+                self.assertEqual(Q.main(), 0)
+            self.assertIn("admitted=true\n", output.read_text())
+
+    def test_native_label_alone_closed_wrong_pr_or_stale_merge_cannot_admit(self):
+        event, context, refs = self.native_request()
+        cases = [dict(event, pull_request=dict(event["pull_request"], body="")),
+                 dict(event, pull_request=dict(event["pull_request"], state="closed")), dict(event, number=735)]
+        for candidate in cases:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                Q.admit(candidate, context, lambda pr: refs)
+        with self.assertRaisesRegex(ValueError, "merge composition is stale"):
+            Q.admit(event, context, lambda pr: dict(refs, **{"refs/pull/734/merge": "d" * 40}))
+
 
     def test_main_push_entrypoint_preserves_post_integration_admission_and_deadline(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,11 +167,21 @@ class ProductionPathTests(unittest.TestCase):
                 self.assertIn("needs.admission.outputs.admitted == 'true'", body)
         self.assertEqual(seen, 19)
 
+    def test_expensive_jobs_wait_for_the_blocking_baseline(self):
+        jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
+        for name, body in zip(jobs[1::2], jobs[2::2]):
+            if name in ("admission", "route", "deny", "ci-actuals"):
+                continue
+            with self.subTest(job=name):
+                self.assertRegex(body, r"(?m)^    needs:.*deny")
+                if name != "tokmd-rust-result":
+                    self.assertIn("needs.deny.result == 'success'", body)
+
     def test_actual_required_refusal_step_fails_without_successful_admission(self):
         body = step_script(self.source, "Refuse unrequested or failed admission")
         for admitted, result, expected in (("", "failure", 1), ("true", "failure", 1), ("", "success", 1), ("true", "success", 0)):
             with self.subTest(admitted=admitted, result=result):
-                run = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED=admitted, ADMISSION_RESULT=result), timeout=3)
+                run = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED=admitted, ADMISSION_RESULT=result, BASELINE_RESULT="success"), timeout=3)
                 self.assertEqual(run.returncode, expected)
 
     def test_actual_concurrency_separates_observation_and_exact_generation_without_cancellation(self):
@@ -153,8 +199,8 @@ class ProductionPathTests(unittest.TestCase):
 const {github, inputs} = JSON.parse(context);
 const format = (template, ...args) => template.replace(/\\{(\\d+)\\}/g, (_, i) => args[Number(i)]);
 process.stdout.write(String(eval(expression)));"""
-        def actual(event, head=HEAD, base=BASE):
-            context = dict(github=dict(event_name=event, event=dict(pull_request=dict(number=734)), ref="refs/heads/topic"),
+        def actual(event, head=HEAD, base=BASE, action="opened", label="ordinary"):
+            context = dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label), pull_request=dict(number=734)), sha="merge-" + head + base, ref="refs/heads/topic"),
                            inputs=dict(pull_request="734", generation=f"{head}:{base}"))
             result = subprocess.run(["node", "-e", program, expression, json.dumps(context)], capture_output=True, text=True, timeout=3)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -163,6 +209,32 @@ process.stdout.write(String(eval(expression)));"""
         self.assertEqual(request, actual("workflow_dispatch"))
         self.assertNotEqual(request, actual("workflow_dispatch", head="c" * 40))
         self.assertNotEqual(request, actual("pull_request"))
+        native = actual("pull_request", action="labeled", label="ci:qualify")
+        self.assertEqual(native, actual("pull_request", action="labeled", label="ci:qualify"))
+        self.assertNotEqual(native, actual("pull_request", action="labeled", label="ordinary"))
+        self.assertNotEqual(native, actual("pull_request", head="c" * 40, action="labeled", label="ci:qualify"))
+
+    def test_production_admission_checks_checkout_before_running_validator(self):
+        body = step_script(self.source, "Validate explicit qualification request")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, script in (("git", '#!/bin/bash\necho "$CHECKOUT_SHA"\n'), ("python3", '#!/bin/bash\ntouch "$CALLED"\n')):
+                path = root / name
+                path.write_text(script)
+                path.chmod(0o755)
+            for checkout, expected in ((HEAD, 0), (BASE, 1)):
+                marker = root / "called"
+                marker.unlink(missing_ok=True)
+                result = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                                        CHECKOUT_SHA=checkout, GITHUB_SHA=HEAD, CALLED=str(marker)), capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertEqual(marker.exists(), expected == 0)
+
+    def test_red_baseline_cannot_admit_the_required_proof(self):
+        body = step_script(self.source, "Refuse unrequested or failed admission")
+        result = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED="true", ADMISSION_RESULT="success", BASELINE_RESULT="failure"), timeout=3)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("needs: [admission, route, deny]", self.source)
 
     def test_actual_core_keeps_all_four_obligations_and_consumes_one_budget(self):
         body = step_script(self.source, "Fast precontext and launch core gate")

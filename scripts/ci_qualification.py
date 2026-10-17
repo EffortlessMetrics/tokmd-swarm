@@ -17,12 +17,30 @@ SHA = re.compile(r"[0-9a-f]{40}\Z")
 REPOSITORY = "EffortlessMetrics/tokmd-swarm"
 
 
+def request_inputs(event, context):
+    if context["event_name"] == "workflow_dispatch":
+        return event.get("inputs", {}), None
+    if context["event_name"] != "pull_request" or event.get("action") != "labeled" or event.get("label", {}).get("name") != "ci:qualify":
+        raise ValueError("explicit qualification request required")
+    pr = event.get("pull_request", {})
+    if pr.get("state") != "open" or pr.get("base", {}).get("ref") != "main":
+        raise ValueError("qualification requires an open PR targeting main")
+    body = pr.get("body") or ""
+    manifests = re.findall(r"<!-- tokmd-qualification:v1\s*\n(.*?)\n-->", body, re.DOTALL)
+    if len(manifests) != 1:
+        raise ValueError("one exact qualification request manifest is required")
+    request = json.loads(manifests[0])
+    if not isinstance(request, dict):
+        raise ValueError("qualification request must be a JSON object")
+    return request, pr
+
+
 def admit(event, context, read_refs):
     if context["event_name"] == "push" and context["ref"] == "refs/heads/main":
         return {"mode": "main-push", "head": context["sha"], "base": "", "pr": ""}
-    if context["event_name"] != "workflow_dispatch":
-        raise ValueError("explicit qualification request required")
-    inputs = event.get("inputs", {})
+    inputs, native_pr = request_inputs(event, context)
+    if not isinstance(inputs, dict):
+        raise ValueError("qualification inputs must be an object")
     pr = inputs.get("pull_request", "")
     head, base = inputs.get("head_sha", ""), inputs.get("base_sha", "")
     if not isinstance(pr, str) or not re.fullmatch(r"[1-9][0-9]*", pr):
@@ -33,17 +51,31 @@ def admit(event, context, read_refs):
         raise ValueError("generation must equal head_sha:base_sha")
     if inputs.get("expected_green") != "true":
         raise ValueError("request must explicitly assert expected-green local source and review")
-    if context["repository"] != REPOSITORY or context["sha"] != head or context["workflow_sha"] != head:
-        raise ValueError("native run and workflow source must both equal the requested head")
+    if context["repository"] != REPOSITORY:
+        raise ValueError("native run repository must equal the requested repository")
+    if native_pr is None:
+        if context["sha"] != head or context["workflow_sha"] != head:
+            raise ValueError("native run and workflow source must both equal the requested head")
+        proof_sha = None
+    else:
+        proof_sha = inputs.get("merge_sha", "")
+        if not isinstance(proof_sha, str) or not SHA.fullmatch(proof_sha):
+            raise ValueError("merge_sha must be the full exact composition commit")
+        if (str(event.get("number")) != pr or native_pr.get("head", {}).get("sha") != head
+                or native_pr.get("base", {}).get("sha") != base
+                or context["sha"] != proof_sha or context["workflow_sha"] != proof_sha):
+            raise ValueError("native PR source or merge composition differs from the request")
     refs = read_refs(pr)
     if refs.get(f"refs/pull/{pr}/head") != head or refs.get("refs/heads/main") != base:
         raise ValueError("requested head or base is stale")
-    return {"mode": "qualification", "head": head, "base": base, "pr": pr}
+    if proof_sha is not None and refs.get(f"refs/pull/{pr}/merge") != proof_sha:
+        raise ValueError("requested merge composition is stale")
+    return {"mode": "qualification" if native_pr is None else "pr-qualification", "head": head, "base": base, "pr": pr}
 
 
 def live_refs(pr):
     result = subprocess.run(
-        ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", "refs/heads/main"],
+        ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"],
         check=True, text=True, capture_output=True, timeout=20,
     )
     return {ref: sha for sha, ref in (line.split() for line in result.stdout.splitlines())}
