@@ -76,7 +76,7 @@ pub(super) fn load_baseline(
     if let Some(toml) = resolved.toml
         && let Some(baseline_path) = &toml.gate.baseline
     {
-        let path = std::path::PathBuf::from(baseline_path);
+        let path = configured_path(baseline_path, resolved.toml_path);
         let content = read_baseline_text(&path)?;
         let value: serde_json::Value = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse baseline JSON from {}", path.display()))?;
