@@ -156,7 +156,11 @@ identified an undeclared Node CLI prerequisite in the new mandatory suite. The
 existing pinned GitHub Script action now supplies its runtime's absolute path to
 the Python fixtures, and a production-step regression removes Node from PATH and
 checks both successful and failing child results. That failed native request is
-not acceptance of the repair. The current source remains frozen remotely until
+not acceptance of the repair. Its required Rust suite also exposed an existing
+CI Actuals contract test whose aggregate text count included the new best-effort
+allocators. The repair checks each setup action and each admitted reporting step
+directly, preserving ordering and permission assertions and adding executable
+positive/refusal cases for the actual reporting conditions. The current source remains frozen remotely until
 its running work finishes and the repair receives fresh exact-head review.
 
 ## Validation and next native step
