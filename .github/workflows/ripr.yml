@@ -33,11 +33,12 @@ jobs:
           fetch-depth: 0
 
       - name: Admit explicit PR qualification
+        shell: bash
         id: qualification_gate
         if: github.event_name == 'pull_request'
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          python3 scripts/ci_qualification.py
+          python scripts/ci_qualification.py
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -186,12 +187,13 @@ jobs:
           retention-days: 14
 
       - name: Finalize explicit PR qualification budget
+        shell: bash
         if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
         run: |
           set +e
-          python3 scripts/ci_qualification.py
+          python scripts/ci_qualification.py
           source_status=$?
-          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
           budget_status=$?
           cat target/ci-budget-finalization.json
           if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi

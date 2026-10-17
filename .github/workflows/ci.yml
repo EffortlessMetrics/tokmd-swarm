@@ -203,10 +203,12 @@ jobs:
 
       - name: Allocate cache budget
         id: cache_budget
+        continue-on-error: true
         run: python3 scripts/ci_budget.py allowance --max-minutes 5
 
       - name: Restore Rust build cache (best effort)
         id: rust_cache
+        if: ${{ steps.cache_budget.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(steps.cache_budget.outputs.minutes || '1') }}
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
@@ -306,11 +308,12 @@ jobs:
 
       - name: Allocate advisory review budget
         id: review_budget
+        continue-on-error: true
         if: ${{ success() && needs.admission.outputs.admitted == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         run: python3 scripts/ci_budget.py allowance --max-minutes 15
 
       - name: Record UB Review start
-        if: ${{ success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        if: ${{ steps.review_budget.outcome == 'success' && success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         run: |
           mark_clock() {
             python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
@@ -320,7 +323,7 @@ jobs:
       - name: UB Review (advisory)
         id: ubreview
         timeout-minutes: ${{ fromJSON(steps.review_budget.outputs.minutes || '1') }}
-        if: ${{ success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        if: ${{ steps.review_budget.outcome == 'success' && success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         continue-on-error: true
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
         with:
@@ -545,6 +548,7 @@ jobs:
 
       - name: Allocate receipt upload budget
         id: upload_budget
+        continue-on-error: true
         if: ${{ always() && steps.source_checkout.outcome == 'success' }}
         run: python3 scripts/ci_budget.py allowance --reserve-seconds 0
 
@@ -595,7 +599,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -706,7 +709,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -780,7 +782,6 @@ jobs:
       run: |
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         python scripts/ci_qualification.py
-        python scripts/ci_budget.py allowance --reserve-seconds 0
 
     - name: Allocate phase 2 budget
       id: phase_budget_2
@@ -851,7 +852,6 @@ jobs:
       run: |
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         python scripts/ci_qualification.py
-        python scripts/ci_budget.py allowance --reserve-seconds 0
 
     - name: Allocate phase 2 budget
       id: phase_budget_2
@@ -921,7 +921,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1116,7 +1115,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1260,7 +1258,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1449,7 +1446,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1635,7 +1631,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1700,7 +1695,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1758,7 +1752,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1827,7 +1820,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1893,7 +1885,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -1946,7 +1937,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -2062,7 +2052,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -2151,7 +2140,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
@@ -2348,7 +2336,6 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python scripts/ci_qualification.py
-          python scripts/ci_budget.py allowance --reserve-seconds 0
 
       - name: Reuse an already selected compiler
         id: cached_compiler

@@ -6,6 +6,13 @@ work changes existing orchestration rather than adding a controller/status
 service. Main and #732 source are independently owned and are not replaced by
 this candidate.
 
+The admission scope is the inventoried Rust/Action PR qualification workloads.
+Unmodified security-review automation still selects ordinary PR activity, and
+non-PR companion jobs retain their installed native limits. Those controls are
+outside this repair's security-change authorization. This candidate cannot claim
+repository-wide absence of early CI or a maximum service lifetime for every
+installed workflow. It preserves those concrete limits for the coordinating owner.
+
 The requirement is: “I do not want CI runs longer than 20 minutes, and I do not
 want CI runs early.” A configured ceiling or passing local deadline fixture is
 not evidence of successful complete qualification within that bound.
@@ -51,7 +58,9 @@ does not establish this property. No branch protection change is proposed.
 The existing core command boundary now owns one unique child process group and
 uses one monotonic deadline. Timeout/cancellation sends TERM, retains the leader
 PID without reaping during its finite grace, kills the remaining group and
-records the distinct outcome. Source exits including 124 and 137 are not guessed
+records the distinct outcome. Normal/source-error completion also settles the
+owned group before reaping its leader, so inherited stdout cannot outlive the
+boundary. Source exits including 124 and 137 are not guessed
 to be timeouts. Cancellation stops later proof commands; an independent new
 invocation can recover. The four locked Cargo obligations remain intact.
 
@@ -75,6 +84,12 @@ required job. Otherwise the existing toolchain action runs. It changes neither
 the selected compiler nor cache policy. The final finite Linux summary script
 uses the existing command boundary, including sub-minute remaining time. Earlier
 proof/source failures remain failures even when finalization succeeds.
+Optional cache/review/upload allocation refusal skips its optional action; it
+does not invent a failed mandatory proof while time remains. Final source and
+deadline validation remain blocking. Git source reads use the smaller request,
+admission and retained monotonic allowance; POSIX source reads reuse owned-group
+cleanup. Windows retains native process cancellation, whose process-tree behavior
+remains unverified here.
 
 Native job setup/download, queue delay, cancellation grace and post-job actions
 remain platform behavior. Native action timeouts accept positive integer minutes;

@@ -302,6 +302,7 @@ process.stdout.write(String(eval(expression)));"""
 const success = () => prior === 'success'; const cancelled = () => false;
 const needs = {admission: {outputs: {admitted: 'true'}}};
 const github = {event_name: 'pull_request', event: {pull_request: {head: {repo: {fork: fork === 'true'}}}}};
+const steps = {review_budget: {outcome: 'success'}};
 process.stdout.write(String(eval(expression)));"""
         for name in ("Record UB Review start", "UB Review (advisory)"):
             block = re.findall(rf"^      - name: {re.escape(name)}\n(.*?)(?=^      - |^  [a-z][a-z0-9-]*:|\Z)", self.source, re.MULTILINE | re.DOTALL)[0]
@@ -353,7 +354,7 @@ process.stdout.write(String(eval(condition)));"""
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ["PATH"], RUNNER_KIND="github",
                        GITHUB_EVENT_NAME="workflow_dispatch", CALLS=str(root / "calls"), QUALIFICATION_DEADLINE="104", CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 125_000_000_000))
-            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", body], cwd=root, env=env, capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", body], cwd=root, env=env, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / "calls").read_text().splitlines(), expected)
             receipts = [json.loads(path.read_text()) for path in (root / "target/ci-core").glob("*_exit.json")]

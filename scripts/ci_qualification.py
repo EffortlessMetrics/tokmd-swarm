@@ -10,7 +10,11 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
+from pathlib import Path
+
+from ci_budget import run_command
 
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -79,12 +83,33 @@ def admit(event, context, read_refs):
     return decision
 
 
-def live_refs(pr):
-    result = subprocess.run(
-        ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"],
-        check=True, text=True, capture_output=True, timeout=20,
-    )
-    return {ref: sha for sha, ref in (line.split() for line in result.stdout.splitlines())}
+def live_refs(pr, request_deadline=""):
+    limits = [20.0]
+    for deadline in (request_deadline, os.environ.get('QUALIFICATION_DEADLINE', '')):
+        if deadline:
+            limits.append(int(deadline) - time.time())
+    anchor = os.environ.get('CI_BUDGET_MONO_NS')
+    if anchor:
+        limits.append((int(anchor) - time.monotonic_ns()) / 1e9)
+    timeout = min(limits)
+    if timeout <= 0:
+        raise ValueError('source budget exhausted before source read')
+    command = ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"]
+    if os.name != 'posix':
+        # Windows retains native process cancellation; POSIX group ownership is
+        # not a portable Windows process-tree guarantee.
+        result = subprocess.run(command, check=True, text=True, capture_output=True, timeout=timeout)
+        output = result.stdout
+    else:
+        with tempfile.TemporaryDirectory(prefix='tokmd-source-read-') as directory:
+            root = Path(directory)
+            with (root / 'stdout').open('w') as out, (root / 'stderr').open('w') as err:
+                status = run_command(command, root / 'exit', grace=min(.1, timeout / 4), reserve=0,
+                    deadline_mono_ns=time.monotonic_ns() + int(timeout * 1e9), stdout=out, stderr=err)
+            output, error = (root / 'stdout').read_text(), (root / 'stderr').read_text()
+            if status:
+                raise subprocess.CalledProcessError(status, command, output, error)
+    return {ref: sha for sha, ref in (line.split() for line in output.splitlines())}
 
 
 def main():
@@ -96,7 +121,10 @@ def main():
             ("sha", "GITHUB_SHA"), ("workflow_sha", "GITHUB_WORKFLOW_SHA"),
             ("repository", "GITHUB_REPOSITORY"),
         )}
-        decision = admit(event, context, live_refs)
+        def read_refs(pr):
+            request, _ = request_inputs(event, context)
+            return live_refs(pr, request.get('deadline_epoch', ''))
+        decision = admit(event, context, read_refs)
     except (KeyError, ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"qualification refused: {error}", file=sys.stderr)
         return 1
