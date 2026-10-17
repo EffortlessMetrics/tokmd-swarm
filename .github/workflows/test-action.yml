@@ -25,7 +25,7 @@ concurrency:
 jobs:
   test-action:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Test tokmd-receipt Action
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test tokmd-receipt Action
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -120,7 +120,7 @@ jobs:
 
   test-formats:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Test export formats
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test export formats
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -184,7 +184,7 @@ jobs:
 
   test-modes:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Test explicit modes
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test explicit modes
     runs-on: ubuntu-latest
 
     steps:
@@ -1058,7 +1058,7 @@ jobs:
 
   test-packet:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Test packet mode
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test packet mode
     runs-on: ubuntu-latest
 
     steps:

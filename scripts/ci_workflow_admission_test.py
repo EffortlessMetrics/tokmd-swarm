@@ -23,6 +23,34 @@ def jobs(source):
 
 
 class CompanionAdmissionTests(unittest.TestCase):
+    def test_every_actual_check_context_is_isolated_from_observation(self):
+        paths = [ROOT / '.github/workflows/ci.yml'] + [ROOT / f'.github/workflows/{name}.yml' for name in WORKFLOWS]
+        templates = []
+        for path in paths:
+            for job, body in jobs(path.read_text()):
+                match = re.search(r'^    name: (.+)$', body, re.MULTILINE)
+                self.assertIsNotNone(match, (path.name, job))
+                templates.append((path.name, job, match.group(1)))
+        program = r"""const templates=JSON.parse(process.argv[1]);
+const contexts=[['pull_request','labeled','ci:qualify'],['push','',''],
+  ['pull_request','opened',''],['pull_request','ready_for_review',''],
+  ['pull_request','synchronize',''],['pull_request','labeled','ordinary']];
+const output=contexts.map(([event,action,label])=>{
+  const github={event_name:event,event:{action,label:{name:label}}};
+  return templates.map(([, , template])=>template.replace(/\$\{\{ (.*?) \}\}/g,(_,expression)=>String(eval(expression))));
+}); process.stdout.write(JSON.stringify(output));"""
+        run = subprocess.run(['node', '-e', program, json.dumps(templates)], capture_output=True, text=True, timeout=5)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        qualified, pushed, *observations = json.loads(run.stdout)
+        self.assertEqual(qualified, pushed, 'Non-PR names must retain the qualification names')
+        self.assertIn('Tokmd Rust Result', qualified)
+        self.assertEqual(len(templates), 36)
+        for index, (workflow, job, _) in enumerate(templates):
+            with self.subTest(workflow=workflow, job=job):
+                for names in observations:
+                    self.assertNotIn(names[index], qualified,
+                        'An observation can overwrite an existing qualification context on the same head')
+
     def test_actual_triggers_and_every_job_gate_precede_heavywork(self):
         count = 0
         for name in WORKFLOWS:

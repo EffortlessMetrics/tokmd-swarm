@@ -36,13 +36,15 @@ actual proof requiredness are retained. No security/release workflow or registry
 behavior is changed. Mere Draft/Ready activity does not select those expensive
 paths. An unrelated label does not pass the validator.
 
-The required Rust job uses `Tokmd Rust Result` for deliberate requests. Ordinary
-observations use another name so they cannot overwrite its existing qualified
-head or emit a skipped-success required context. **Remaining source work:** apply
-and validate equivalent non-interference to the other check contexts before
-publishing/activating this continuation; unrelated label runs can still affect
-those context names. Do not treat concurrency isolation alone as check-name
-isolation. No branch protection change is proposed.
+Deliberate requests preserve every qualification check name, including
+`Tokmd Rust Result`. Ordinary observations use separate names across all 36
+jobs in the main and inventoried companion workflows, so their failures/skips
+cannot overwrite a qualified context on the same head. The real name expressions
+are exercised for ordinary open, Ready, synchronize and unrelated-label events,
+as well as explicit requests and non-PR pushes. Existing catalog entries retain
+their IDs, costs, requiredness and proof obligations; only their job-name template
+tracks the corresponding conditional display name. Concurrency isolation alone
+does not establish this property. No branch protection change is proposed.
 
 ## Shared work boundary
 

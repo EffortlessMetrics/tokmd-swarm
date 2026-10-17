@@ -23,7 +23,7 @@ env:
 jobs:
   check-clippy-exceptions:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Clippy Exceptions
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Clippy Exceptions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

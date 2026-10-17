@@ -36,7 +36,7 @@ env:
 jobs:
   scoped-coverage-executor:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Scoped Coverage Executor (Non-Required)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Scoped Coverage Executor (Non-Required)
     runs-on: ubuntu-latest
     permissions:
       contents: read

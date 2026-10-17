@@ -48,7 +48,7 @@ env:
 
 jobs:
   bindings-parity:
-    name: Bindings Parity (advisory)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Bindings Parity (advisory)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

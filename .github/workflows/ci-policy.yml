@@ -23,7 +23,7 @@ env:
 jobs:
 
   no-bare-self-hosted:
-    name: No Bare Self-Hosted Routing
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}No Bare Self-Hosted Routing
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -63,7 +63,7 @@ jobs:
 
   ci-lane-whitelist:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: CI Lane Whitelist
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Lane Whitelist
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,7 +164,7 @@ jobs:
 
   ci-gate-contract-reference:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: CI Gate Contract (reference)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Gate Contract (reference)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -227,7 +227,7 @@ jobs:
 
   ci-gate-contract-live-gap:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: CI Gate Contract (live gap)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Gate Contract (live gap)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

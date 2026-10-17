@@ -37,7 +37,7 @@ env:
 
 jobs:
   coverage:
-    name: Codecov Coverage
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Codecov Coverage
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 45 }}
 

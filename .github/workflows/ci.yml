@@ -46,7 +46,7 @@ env:
 
 jobs:
   admission:
-    name: Admit explicit qualification
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Admit explicit qualification
     runs-on: ubuntu-latest
     timeout-minutes: 1
     outputs:
@@ -73,7 +73,7 @@ jobs:
   route:
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: Route CI runner
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Route CI runner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -572,7 +572,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: Detect risk packs
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Detect risk packs
     runs-on: ubuntu-latest
     outputs:
       wasm: ${{ steps.detect.outputs.wasm }}
@@ -692,7 +692,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: MSRV Check
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}MSRV Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -762,7 +762,7 @@ jobs:
 
   build-windows:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Build & Test (Windows)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (Windows)
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
     runs-on: windows-latest
@@ -834,7 +834,7 @@ jobs:
   build-macos:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: Build & Test (macOS)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (macOS)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push')
     runs-on: macos-latest
 
@@ -907,7 +907,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: Feature Boundaries
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Feature Boundaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1099,7 +1099,7 @@ jobs:
   affected-plan:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: Affected Proof Plan
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Affected Proof Plan
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
@@ -1244,7 +1244,7 @@ jobs:
   fast-proof-run:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: Fast Proof Run (Advisory)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Fast Proof Run (Advisory)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
@@ -1433,7 +1433,7 @@ jobs:
 
   wasm-compile:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Wasm Compile & Test
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Wasm Compile & Test
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
     runs-on: ubuntu-latest
@@ -1621,7 +1621,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: Cargo Deny
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Cargo Deny
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1686,7 +1686,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: Typos
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Typos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1742,7 +1742,7 @@ jobs:
 
   proptest-smoke:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: Proptest Smoke
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Proptest Smoke
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
     runs-on: ubuntu-latest
@@ -1813,7 +1813,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: Publish Surface
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Publish Surface
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1879,7 +1879,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: Version consistency
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Version consistency
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1932,7 +1932,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: Docs Check
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Docs Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2037,7 +2037,7 @@ jobs:
           exit "$budget_status"
 
   nix-pr:
-    name: Nix PR Package Gate
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Nix PR Package Gate
     needs: [admission, deny, detect]
     # Nix package validation is publication-owned. Keep it out of the
     # tokmd-swarm workbench so swarm push/PR checks do not depend on
@@ -2128,7 +2128,7 @@ jobs:
   mutation:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: Mutation Testing
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Mutation Testing
     runs-on: ubuntu-latest
     # Runtime mutation testing moves to label/push-to-main so ordinary
     # PRs don't pay 45 LEM by default. PR 11 adds an advisory `ripr`
@@ -2309,7 +2309,7 @@ jobs:
 
   ci-actuals:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: CI Actuals (Advisory)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Actuals (Advisory)
     permissions:
       contents: read
       actions: read

@@ -1,4 +1,4 @@
-"""Fail-closed workflow_dispatch admission using native context and Git source refs.
+"""Explicit qualification admission using native context and Git source refs.
 
 This script never dispatches a run, changes a status, cancels work, or uses a
 credential. GitHub supplies the event/context; git reads only public source refs.
