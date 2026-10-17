@@ -43,6 +43,10 @@ actual proof requiredness are retained. No security/release workflow or registry
 behavior is changed. Mere Draft/Ready activity does not select those expensive
 paths. An unrelated label does not pass the validator.
 
+PR-open state is the native request event's snapshot. Revalidation checks the
+current head, main and merge refs, rather than polling collaboration state or
+cancelling valid work merely because the PR is subsequently closed.
+
 Deliberate requests preserve every qualification check name, including
 `Tokmd Rust Result`. Ordinary observations use separate names across all 36
 jobs in the main and inventoried companion workflows, so their failures/skips
@@ -59,8 +63,10 @@ The existing core command boundary now owns one unique child process group and
 uses one monotonic deadline. Timeout/cancellation sends TERM, retains the leader
 PID without reaping during its finite grace, kills the remaining group and
 records the distinct outcome. Normal/source-error completion also settles the
-owned group before reaping its leader, so inherited stdout cannot outlive the
-boundary. Source exits including 124 and 137 are not guessed
+owned group before reaping its leader, so descendants remaining in that group
+cannot hold inherited stdout beyond its termination boundary. A descendant that
+creates a separate session/group is outside this ownership guarantee; native
+teardown for such a process remains unverified. Source exits including 124 and 137 are not guessed
 to be timeouts. Cancellation stops later proof commands; an independent new
 invocation can recover. The four locked Cargo obligations remain intact.
 
