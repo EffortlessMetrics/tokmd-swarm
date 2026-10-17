@@ -90,6 +90,11 @@ deadline validation remain blocking. Git source reads use the smaller request,
 admission and retained monotonic allowance; POSIX source reads reuse owned-group
 cleanup. Windows retains native process cancellation, whose process-tree behavior
 remains unverified here.
+This applies to phase allocators throughout the inventoried workflows, including
+the advisory final reporter: an allocator cannot promote its following explicitly
+best-effort action into a new requirement. Advisory review reserves two minutes
+for downstream final reporting; the observed reporter takes about35 seconds, and
+native action admission itself requires a whole minute of remaining allowance.
 
 Native job setup/download, queue delay, cancellation grace and post-job actions
 remain platform behavior. Native action timeouts accept positive integer minutes;
@@ -121,6 +126,14 @@ no cache hit, compiler-version change or cold-build time saving is assumed.
 Local static-tool reuse used the separately pinned1.95.0 environment and is not
 relabeled as that native compiler proof. No full Cargo build or remote run was
 started for these controls, and active735 work was not interrupted.
+
+The separately qualified #732 composition `67fdcbd3` subsequently passed native
+run39075087883. Its coordinating owner's native receipt gives22:26:35→22:46:37
+creation/completion (**20m02**, including queue/final accounting), with required
+Rust22:26:42→22:45:56 (**19m14**). Final reporting logs span35.0s and the captured
+cross-job work/cleanup window is19m56.5s. These distinct observations motivate
+the reporting reserve; they do not qualify this candidate or establish a hard
+20-minute service-lifetime contract. The #732 source remains separately preserved.
 
 ## Validation and next native step
 

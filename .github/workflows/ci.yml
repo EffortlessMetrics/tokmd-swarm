@@ -310,7 +310,7 @@ jobs:
         id: review_budget
         continue-on-error: true
         if: ${{ success() && needs.admission.outputs.admitted == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
-        run: python3 scripts/ci_budget.py allowance --max-minutes 15
+        run: python3 scripts/ci_budget.py allowance --reserve-seconds 120 --max-minutes 15
 
       - name: Record UB Review start
         if: ${{ steps.review_budget.outcome == 'success' && success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
@@ -2066,6 +2066,7 @@ jobs:
 
       - name: Allocate phase 3 budget
         id: phase_budget_3
+        continue-on-error: true
         if: ${{ steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -2357,6 +2358,7 @@ jobs:
 
       - name: Allocate phase 2 budget
         id: phase_budget_2
+        continue-on-error: true
         if: ${{ steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -2368,6 +2370,7 @@ jobs:
 
       - name: Allocate phase 3 budget
         id: phase_budget_3
+        continue-on-error: true
         if: ${{ steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -2381,6 +2384,7 @@ jobs:
 
       - name: Allocate phase 4 budget
         id: phase_budget_4
+        continue-on-error: true
         if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -2474,6 +2478,7 @@ jobs:
 
       - name: Allocate phase 5 budget
         id: phase_budget_5
+        continue-on-error: true
         if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -2501,6 +2506,7 @@ jobs:
 
       - name: Allocate phase 6 budget
         id: phase_budget_6
+        continue-on-error: true
         if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20

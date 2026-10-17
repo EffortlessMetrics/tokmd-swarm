@@ -17,7 +17,7 @@ from unittest.mock import patch
 import ci_budget as budget
 
 import ci_qualification_test as request_fixture
-from ci_workflow_admission_test import jobs
+from ci_workflow_admission_test import WORKFLOWS, jobs
 
 Q, ROOT, step_script = request_fixture.Q, request_fixture.ROOT, request_fixture.step_script
 
@@ -46,6 +46,33 @@ class ReviewRegressions(unittest.TestCase):
         self.assertIn('windows-latest', body)
         for name in ('Admit explicit PR qualification', 'Finalize explicit PR qualification budget'):
             self.assertIn('shell: bash', block(body, name), name)
+
+    def test_phase_allocations_preserve_best_effort_actions_in_all_workflows(self):
+        checked = 0
+        for name in ('ci',) + WORKFLOWS:
+            for job, body in jobs((ROOT / f'.github/workflows/{name}.yml').read_text()):
+                indent = re.search(r'^( +)- (?:name|uses):', body, re.MULTILINE).group(1)
+                steps = re.split(r'^' + indent + r'- ', body, flags=re.MULTILINE)[1:]
+                for allocation, action in zip(steps, steps[1:]):
+                    if not allocation.startswith('name: Allocate phase '):
+                        continue
+                    if not re.search(r'^' + indent + r'  continue-on-error: true$', action, re.MULTILINE):
+                        continue
+                    checked += 1
+                    with self.subTest(workflow=name, job=job, phase=allocation.splitlines()[0]):
+                        self.assertRegex(allocation, r'(?m)^' + indent + r'  continue-on-error: true$')
+                        phase = re.search(r'^ +id: (phase_budget_[0-9]+)$', allocation, re.MULTILINE).group(1)
+                        self.assertIn(f"steps.{phase}.outcome == 'success'", action)
+        self.assertGreaterEqual(checked, 5)
+
+    def test_advisory_review_leaves_two_minutes_for_selected_final_reporting(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        env = dict(os.environ, CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 365_000_000_000),
+            GITHUB_OUTPUT=str(self.root / 'review-output'))
+        run = subprocess.run(['bash', '-e', '-c', script(block(source, 'Allocate advisory review budget'))],
+            cwd=ROOT, env=env, capture_output=True, text=True, timeout=3)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual((self.root / 'review-output').read_text(), 'minutes=4\n')
 
     def test_process_creation_does_not_renew_the_retained_endpoint(self):
         real_popen = subprocess.Popen

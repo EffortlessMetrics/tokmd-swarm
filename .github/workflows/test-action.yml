@@ -421,6 +421,7 @@ jobs:
 
       - name: Allocate phase 11 budget
         id: phase_budget_11
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -456,6 +457,7 @@ jobs:
 
       - name: Allocate phase 13 budget
         id: phase_budget_13
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -889,6 +891,7 @@ jobs:
 
       - name: Allocate phase 32 budget
         id: phase_budget_32
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1014,6 +1017,7 @@ jobs:
 
       - name: Allocate phase 38 budget
         id: phase_budget_38
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1258,6 +1262,7 @@ jobs:
 
       - name: Allocate phase 9 budget
         id: phase_budget_9
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1296,6 +1301,7 @@ jobs:
 
       - name: Allocate phase 11 budget
         id: phase_budget_11
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1334,6 +1340,7 @@ jobs:
 
       - name: Allocate phase 13 budget
         id: phase_budget_13
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1435,6 +1442,7 @@ jobs:
 
       - name: Allocate phase 17 budget
         id: phase_budget_17
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
@@ -1473,6 +1481,7 @@ jobs:
 
       - name: Allocate phase 19 budget
         id: phase_budget_19
+        continue-on-error: true
         if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
         shell: bash
         run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
