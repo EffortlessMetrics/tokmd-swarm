@@ -16,7 +16,6 @@
 //! * Output formatting (printing to stdout/file)
 //! * Tokei interaction (use tokmd-scan)
 
-use std::borrow::Cow;
 use std::path::Path;
 
 mod aggregate;
@@ -71,8 +70,9 @@ pub fn avg(lines: usize, files: usize) -> usize {
 /// Normalize a path for portable output.
 ///
 /// - Uses `/` separators
-/// - Strips leading `./`
-/// - Optionally strips a user-provided prefix (after normalization)
+/// - Strips repeated leading `./`
+/// - Optionally strips a user-provided prefix (after normalizing both
+///   the path and the prefix the same way)
 ///
 /// # Examples
 ///
@@ -91,49 +91,48 @@ pub fn avg(lines: usize, files: usize) -> usize {
 /// ```
 #[inline]
 pub fn normalize_path(path: &Path, strip_prefix: Option<&Path>) -> String {
-    let s_cow = path.to_string_lossy();
-    let s: Cow<str> = if s_cow.contains('\\') {
-        Cow::Owned(s_cow.replace('\\', "/"))
-    } else {
-        s_cow
-    };
-
-    let mut slice: &str = &s;
-
-    // Strip leading ./ first, so strip_prefix can match against "src/" instead of "./src/"
-    if let Some(stripped) = slice.strip_prefix("./") {
-        slice = stripped;
-    }
+    let normalized_path = normalize_separators_and_leading_dot_slashes(&path.to_string_lossy());
+    let mut slice: &str = &normalized_path;
 
     if let Some(prefix) = strip_prefix {
-        let p_cow = prefix.to_string_lossy();
-        // Strip leading ./ from prefix so it can match normalized paths
-        let p_source = p_cow.as_ref();
-        let mut p_slice = p_source.strip_prefix("./").unwrap_or(p_source);
-        let normalized_prefix;
-        if p_slice.contains('\\') {
-            normalized_prefix = p_slice.replace('\\', "/");
-            p_slice = &normalized_prefix;
-        }
-
-        if let Some(stripped) = strip_path_prefix(slice, p_slice) {
+        let normalized_prefix =
+            normalize_separators_and_leading_dot_slashes(&prefix.to_string_lossy());
+        if !normalized_prefix.is_empty()
+            && let Some(stripped) = strip_path_prefix(slice, &normalized_prefix)
+        {
             slice = stripped;
         }
     }
 
-    slice = slice.trim_start_matches('/');
-
     // After trimming slashes, we might be left with a leading ./ (e.g. from "/./")
-    if let Some(stripped) = slice.strip_prefix("./") {
-        slice = stripped;
+    loop {
+        let after_slashes = slice.trim_start_matches('/');
+        let after_dot_slash = after_slashes.strip_prefix("./").unwrap_or(after_slashes);
+        if after_dot_slash.len() == slice.len() {
+            slice = after_dot_slash;
+            break;
+        }
+        slice = after_dot_slash;
     }
-    slice = slice.trim_start_matches('/');
 
-    if slice.len() == s.len() {
-        s.into_owned()
+    if slice.len() == normalized_path.len() {
+        normalized_path
     } else {
         slice.to_string()
     }
+}
+
+/// Convert `\` separators to `/` and remove every leading `./` segment.
+///
+/// Applied identically to the path and to any strip prefix before
+/// [`strip_path_prefix`], so `.\project`, `./project`, and `././project`
+/// all normalize to `project`.
+fn normalize_separators_and_leading_dot_slashes(value: &str) -> String {
+    let mut normalized = value.replace('\\', "/");
+    while normalized.starts_with("./") {
+        normalized.drain(..2);
+    }
+    normalized
 }
 
 fn strip_path_prefix<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
