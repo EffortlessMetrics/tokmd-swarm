@@ -115,6 +115,22 @@ class ReviewRegressions(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual((self.root / 'review-output').read_text(), 'minutes=4\n')
 
+    def test_actual_reporting_conditions_require_source_and_phase_admission_after_failure(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text().split('  ci-actuals:\n', 1)[1]
+        program = """const [expression,source,phase]=process.argv.slice(1);
+const always=()=>true;
+const steps=new Proxy({}, {get:(_,key)=>({outcome:key==='job_budget'?source:phase})});
+process.stdout.write(String(eval(expression)));"""
+        for name in ('Generate CI timings sidecar', 'Generate CI actuals receipt', 'Upload CI actuals receipt'):
+            condition = re.search(r'^ +if: \$\{\{ (.+) \}\}$', block(source, name), re.MULTILINE).group(1)
+            for admitted, phase, expected in (('success', 'success', 'true'),
+                    ('failure', 'success', 'false'), ('success', 'failure', 'false'), ('', '', 'false')):
+                with self.subTest(step=name, source=admitted, phase=phase):
+                    run = subprocess.run([NODE, '-e', program, condition, admitted, phase],
+                        capture_output=True, text=True, timeout=3)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(run.stdout, expected)
+
     def test_process_creation_does_not_renew_the_retained_endpoint(self):
         real_popen = subprocess.Popen
         def delayed(*args, **kwargs):

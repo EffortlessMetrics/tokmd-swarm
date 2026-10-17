@@ -27,6 +27,12 @@ fn run_xtask(args: &[&str]) -> (String, String, bool) {
     (stdout, stderr, output.status.success())
 }
 
+fn workflow_step<'a>(job: &'a str, marker: &str) -> &'a str {
+    job.split("\n      - ")
+        .find(|step| step.starts_with(marker))
+        .unwrap_or_else(|| panic!("missing workflow step {marker}"))
+}
+
 #[test]
 fn ci_actuals_help_mentions_receipt_inputs() {
     let (stdout, stderr, success) = run_xtask(&["ci-actuals", "--help"]);
@@ -201,17 +207,43 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
     let upload_block = &ci_actuals[upload_idx..summary_idx];
     let summary_block = &ci_actuals[summary_idx..];
 
-    assert_eq!(
-        setup_block.matches("continue-on-error: true").count(),
-        3,
-        "checkout, toolchain, and cache should be best-effort telemetry setup"
-    );
+    for action in [
+        "uses: actions/checkout@",
+        "uses: dtolnay/rust-toolchain@stable",
+        "uses: Swatinem/rust-cache@",
+    ] {
+        assert!(
+            workflow_step(ci_actuals, action).contains("continue-on-error: true"),
+            "{action} should remain best-effort telemetry setup"
+        );
+    }
+    assert!(setup_block.contains("Reuse an already selected compiler"));
+    for (name, phase) in [
+        ("Generate CI timings sidecar", "phase_budget_4"),
+        ("Generate CI actuals receipt", "phase_budget_5"),
+        ("Upload CI actuals receipt", "phase_budget_6"),
+    ] {
+        let step = workflow_step(ci_actuals, &format!("name: {name}\n"));
+        let condition = step
+            .lines()
+            .find(|line| line.trim_start().starts_with("if:"))
+            .expect("reporting step condition");
+        assert!(
+            condition.contains("always()")
+                && condition.contains("steps.job_budget.outcome == 'success'")
+                && condition.contains(&format!("steps.{phase}.outcome == 'success'")),
+            "{name} must report after source failures only with valid source and phase admission"
+        );
+        assert!(
+            step.contains(&format!("fromJSON(steps.{phase}.outputs.minutes || '1')")),
+            "{name} must retain its admitted native timeout"
+        );
+    }
     assert!(
         ci_actuals.contains("permissions:\n      contents: read\n      actions: read"),
         "CI actuals job should request only read permissions needed for checkout and job timing lookup"
     );
     assert!(ci_actuals.contains("continue-on-error: true"));
-    assert!(timings_block.contains("if: always()"));
     assert!(timings_block.contains("continue-on-error: true"));
     assert!(
         timings_block.contains("GITHUB_TOKEN: ${{ github.token }}"),
@@ -239,7 +271,6 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
             && timings_block.contains("record[\"runner\"] = runner"),
         "timing sidecar should preserve duration and runner label observations"
     );
-    assert!(generate_block.contains("if: always()"));
     assert!(generate_block.contains("continue-on-error: true"));
     assert!(
         generate_block.contains("printf '%s\\n' \"${NEEDS_JSON}\" > target/ci/needs.json"),
@@ -264,7 +295,6 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         generate_block.contains("--github-summary \"$GITHUB_STEP_SUMMARY\""),
         "workflow should publish a human-readable CI actuals table"
     );
-    assert!(upload_block.contains("if: always()"));
     assert!(upload_block.contains("continue-on-error: true"));
     assert!(
         upload_block.contains("name: ci-actuals"),
