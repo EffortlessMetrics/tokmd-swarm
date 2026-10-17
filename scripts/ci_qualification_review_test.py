@@ -47,6 +47,19 @@ class ReviewRegressions(unittest.TestCase):
         for name in ('Admit explicit PR qualification', 'Finalize explicit PR qualification budget'):
             self.assertIn('shell: bash', block(body, name), name)
 
+    def test_non_linux_source_reads_use_the_portable_child_timeout(self):
+        bindir = self.root / 'bin'
+        bindir.mkdir()
+        git = bindir / 'git'
+        git.write_text('#!/bin/bash\nprintf "%s\\n" "' + 'a' * 40 + '\trefs/pull/734/head"\n')
+        git.chmod(0o755)
+        for platform in ('darwin', 'win32'):
+            with self.subTest(platform=platform), patch.object(Q.sys, 'platform', platform), \
+                    patch.dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
+                        CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 2_000_000_000)), \
+                    patch.object(Q, 'run_command', side_effect=PermissionError('unsupported group observation')):
+                self.assertEqual(Q.live_refs('734'), {'refs/pull/734/head': 'a' * 40})
+
     def test_phase_allocations_preserve_best_effort_actions_in_all_workflows(self):
         checked = 0
         for name in ('ci',) + WORKFLOWS:

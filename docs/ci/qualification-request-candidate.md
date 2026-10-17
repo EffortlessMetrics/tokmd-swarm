@@ -87,9 +87,9 @@ proof/source failures remain failures even when finalization succeeds.
 Optional cache/review/upload allocation refusal skips its optional action; it
 does not invent a failed mandatory proof while time remains. Final source and
 deadline validation remain blocking. Git source reads use the smaller request,
-admission and retained monotonic allowance; POSIX source reads reuse owned-group
-cleanup. Windows retains native process cancellation, whose process-tree behavior
-remains unverified here.
+admission and retained monotonic allowance; Linux source reads reuse owned-group
+cleanup. Other platforms use the portable child timeout without attempting the
+Linux group observer. Their native process-tree cancellation remains unverified.
 This applies to phase allocators throughout the inventoried workflows, including
 the advisory final reporter: an allocator cannot promote its following explicitly
 best-effort action into a new requirement. Advisory review reserves two minutes
@@ -134,6 +134,17 @@ Rust22:26:42→22:45:56 (**19m14**). Final reporting logs span35.0s and the capt
 cross-job work/cleanup window is19m56.5s. These distinct observations motivate
 the reporting reserve; they do not qualify this candidate or establish a hard
 20-minute service-lifetime contract. The #732 source remains separately preserved.
+
+The first deployed request in PR#737 passed admission and Cargo Deny. It exposed
+two additional integration defects: the macOS Action guard reported an unsupported
+process-operation permission error, and the affected planner correctly rejected
+six new helper/test paths missing from the existing control-plane scope. The
+repair selects the portable source-read boundary before spawning on non-Linux
+platforms (no permission change or denied-operation retry), registers those exact
+paths with the existing scope, and executes the registered Python control suite
+inside the required Linux job. That failed native request is not acceptance of
+the repair. The current source remains frozen remotely until its running work
+finishes and the repair receives fresh exact-head review.
 
 ## Validation and next native step
 

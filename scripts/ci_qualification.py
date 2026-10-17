@@ -95,9 +95,9 @@ def live_refs(pr, request_deadline=""):
     if timeout <= 0:
         raise ValueError('source budget exhausted before source read')
     command = ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"]
-    if os.name != 'posix':
-        # Windows retains native process cancellation; POSIX group ownership is
-        # not a portable Windows process-tree guarantee.
+    if not sys.platform.startswith('linux'):
+        # The owned-group observer is verified on Linux. Other platforms use
+        # the portable child timeout without attempting unsupported signals.
         result = subprocess.run(command, check=True, text=True, capture_output=True, timeout=timeout)
         output = result.stdout
     else:
