@@ -231,7 +231,9 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     // guidance-scope reduction this test guards is the assertion above.
     let control_plane = scope(&workflow, "proof_control_plane")?;
     ensure!(array_len(control_plane, "proof")? == 32);
-    let commands = control_plane["proof"].as_array().context("proof commands")?;
+    let commands = control_plane["proof"]
+        .as_array()
+        .context("proof commands")?;
     for command in [
         "python3 -m unittest scripts/ci_observability_clock_test.py",
         "python3 -m unittest discover -s scripts -p ci_*_test.py",
