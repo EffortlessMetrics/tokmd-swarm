@@ -479,7 +479,12 @@ pub fn snapshot_from_zip_bytes(
             })?;
 
         // Raw, untrusted stored name; the admission engine validates it.
-        let name = file.name().to_string();
+        let name = file
+            .name()
+            .map_err(|err| ArchiveError::MalformedArchive {
+                reason: err.to_string(),
+            })?
+            .into_owned();
 
         // Classify: symlink/device/other (via unix type bits) before directory,
         // so a symlink whose name lacks a trailing slash is still rejected.
@@ -854,6 +859,159 @@ mod zip_tests {
     }
 
     #[test]
+    fn rejects_outside_symlinks_without_touching_host_files()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = tempfile::tempdir()?;
+        let root = host.path().join("repo");
+        let outside = host.path().join("outside.txt");
+        std::fs::write(&outside, b"untouched\n")?;
+        #[cfg(unix)]
+        let original_mode = {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(&outside)?.permissions().mode()
+        };
+
+        for target in [
+            "../outside.txt",
+            outside.to_str().ok_or("non-UTF-8 temp path")?,
+        ] {
+            let bytes = build_zip(|w| {
+                w.start_file("ok.rs", stored())?;
+                w.write_all(b"fn main() {}")?;
+                w.add_symlink("link", target, stored())?;
+                w.start_file("link/child.rs", stored())?;
+                w.write_all(b"hostile")?;
+                Ok(())
+            })?;
+
+            assert_eq!(
+                snapshot_from_zip_bytes(&root, &bytes, &ArchiveLimits::default()).unwrap_err(),
+                ArchiveError::NonRegularEntry {
+                    name: "link".into()
+                }
+            );
+            assert_eq!(std::fs::read(&outside)?, b"untouched\n");
+            assert!(
+                !root.exists(),
+                "decoding must not extract even benign entries"
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    std::fs::metadata(&outside)?.permissions().mode(),
+                    original_mode
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn privileged_mode_metadata_stays_in_memory() -> Result<(), Box<dyn std::error::Error>> {
+        let host = tempfile::tempdir()?;
+        let existing = host.path().join("mode.rs");
+        std::fs::write(&existing, b"host bytes\n")?;
+        #[cfg(unix)]
+        let original_mode = {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(&existing)?.permissions().mode()
+        };
+        let mut bytes = build_zip(|w| {
+            w.start_file("mode.rs", stored())?;
+            w.write_all(b"archive bytes\n")?;
+            Ok(())
+        })?;
+        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
+        // FileOptions intentionally masks special bits; set hostile Unix
+        // metadata directly in this single-entry fixture's central directory.
+        bytes[central + 5] = 3; // Unix creator system.
+        bytes[central + 38..central + 42].copy_from_slice(&(0o107777u32 << 16).to_le_bytes());
+        let mut archive = zip::ZipArchive::new(Cursor::new(&bytes))?;
+        // ZIP 9 strips SUID/SGID/sticky bits from the reported permissions.
+        assert_eq!(archive.by_index(0)?.unix_mode(), Some(0o100777));
+
+        let snap = snapshot_from_zip_bytes(host.path(), &bytes, &ArchiveLimits::default())?;
+        assert_eq!(snap.paths().collect::<Vec<_>>(), vec!["mode.rs"]);
+        assert_eq!(
+            snap.get("mode.rs").map(VirtualFile::bytes),
+            Some(&b"archive bytes\n"[..])
+        );
+        assert_eq!(std::fs::read(&existing)?, b"host bytes\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&existing)?.permissions().mode(),
+                original_mode
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_underdeclared_deflated_size() -> Result<(), Box<dyn std::error::Error>> {
+        let mut bytes = build_zip(|w| {
+            w.start_file("small.txt", deflated())?;
+            w.write_all(b"hello deflated world")?;
+            Ok(())
+        })?;
+        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
+        assert_eq!(&bytes[..4], b"PK\x03\x04");
+        // Keep compressed bytes and CRC valid, but understate the inflated
+        // length in both headers. ZIP 8.6 accepted the larger payload.
+        bytes[22..26].copy_from_slice(&1u32.to_le_bytes());
+        bytes[central + 24..central + 28].copy_from_slice(&1u32.to_le_bytes());
+        let mut archive = zip::ZipArchive::new(Cursor::new(&bytes))?;
+        assert_eq!(archive.by_index(0)?.size(), 1);
+
+        assert_eq!(
+            snapshot_from_zip_bytes("repo", &bytes, &ArchiveLimits::default()).unwrap_err(),
+            ArchiveError::MalformedArchive {
+                reason: "File is larger than its declared uncompressed size".into()
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn decodes_utf8_and_cp437_names() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = build_zip(|w| {
+            w.start_file("café.rs", stored())?;
+            w.write_all(b"fn main() {}")?;
+            Ok(())
+        })?;
+        let snap = snapshot_from_zip_bytes("repo", &bytes, &ArchiveLimits::default())?;
+        assert_eq!(snap.paths().collect::<Vec<_>>(), vec!["café.rs"]);
+        assert_eq!(
+            snap.get("café.rs").map(VirtualFile::bytes),
+            Some(&b"fn main() {}"[..])
+        );
+
+        let mut bytes = build_zip(|w| {
+            w.start_file("cafe.rs", stored())?;
+            w.write_all(b"fn main() {}")?;
+            Ok(())
+        })?;
+        let central = bytes.windows(4).position(|s| s == b"PK\x01\x02").unwrap();
+        assert_eq!(u16::from_le_bytes([bytes[6], bytes[7]]) & 0x800, 0);
+        assert_eq!(
+            u16::from_le_bytes([bytes[central + 8], bytes[central + 9]]) & 0x800,
+            0
+        );
+        // Legacy ZIP names use CP437: byte 0x82 encodes 'é'.
+        bytes[33] = 0x82;
+        bytes[central + 49] = 0x82;
+        let snap = snapshot_from_zip_bytes("repo", &bytes, &ArchiveLimits::default())?;
+        assert_eq!(snap.paths().collect::<Vec<_>>(), vec!["café.rs"]);
+        assert_eq!(
+            snap.get("café.rs").map(VirtualFile::bytes),
+            Some(&b"fn main() {}"[..])
+        );
+        Ok(())
+    }
+
+    #[test]
     fn rejects_traversal_name() -> Result<(), Box<dyn std::error::Error>> {
         let bytes = build_zip(|w| {
             w.start_file("../evil.rs", stored())?;
@@ -879,7 +1037,14 @@ mod zip_tests {
         })?;
 
         let err = snapshot_from_zip_bytes("repo", &bytes, &small).unwrap_err();
-        assert!(matches!(err, ArchiveError::EntryTooLarge { .. }));
+        assert_eq!(
+            err,
+            ArchiveError::EntryTooLarge {
+                name: "big.bin".into(),
+                size: 9,
+                limit: 8
+            }
+        );
         Ok(())
     }
 
