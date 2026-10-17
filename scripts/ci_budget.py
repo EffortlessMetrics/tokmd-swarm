@@ -42,14 +42,15 @@ def run_command(command, marker, grace=2.0, reserve=60.0, deadline_mono_ns=None,
     for signum in (signal.SIGTERM, signal.SIGINT):
         old_handlers[signum] = signal.signal(signum, interrupt)
     try:
-        allowance = remaining(deadline_mono_ns) - reserve - grace
+        endpoint = int(os.environ['CI_BUDGET_MONO_NS'] if deadline_mono_ns is None else deadline_mono_ns)
+        allowance = remaining(endpoint) - reserve - grace
         if allowance > 0:
             try:
                 process = subprocess.Popen(command, start_new_session=True, stdout=stdout, stderr=stderr)
             except OSError:
                 reason, status = 'spawn_failed', 127
             else:
-                deadline = time.monotonic() + allowance
+                deadline = endpoint / 1_000_000_000 - reserve - grace
                 def exited():
                     # Observe without reaping: the unique leader PID cannot be
                     # reused by an unrelated job before group cleanup finishes.

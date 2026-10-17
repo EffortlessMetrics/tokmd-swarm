@@ -94,6 +94,9 @@ remains unverified here.
 Native job setup/download, queue delay, cancellation grace and post-job actions
 remain platform behavior. Native action timeouts accept positive integer minutes;
 a source-side timer cannot prove a strict service creation-to-completion bound.
+Process creation may itself be noninterruptible on a platform; the command
+boundary retains the absolute admitted endpoint and does not restart an
+allowance after spawning returns.
 No hard whole-service guarantee is claimed from these source controls. Native
 qualification must measure the complete workflow, including Windows and final
 reporting, not merely the named Rust job.

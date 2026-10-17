@@ -12,6 +12,9 @@ import tempfile
 import textwrap
 import time
 import unittest
+from unittest.mock import patch
+
+import ci_budget as budget
 
 import ci_qualification_test as request_fixture
 from ci_workflow_admission_test import jobs
@@ -43,6 +46,19 @@ class ReviewRegressions(unittest.TestCase):
         self.assertIn('windows-latest', body)
         for name in ('Admit explicit PR qualification', 'Finalize explicit PR qualification budget'):
             self.assertIn('shell: bash', block(body, name), name)
+
+    def test_process_creation_does_not_renew_the_retained_endpoint(self):
+        real_popen = subprocess.Popen
+        def delayed(*args, **kwargs):
+            time.sleep(.2)
+            return real_popen(*args, **kwargs)
+        with patch.dict(os.environ, CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 300_000_000)), \
+                patch.object(budget.subprocess, 'Popen', side_effect=delayed):
+            started = time.monotonic()
+            status = budget.run_command([sys.executable, '-c', 'import time; time.sleep(2)'],
+                self.root / 'spawn', grace=.04, reserve=0)
+            self.assertEqual(status, 124)
+            self.assertLess(time.monotonic() - started, .42, 'process creation renewed the admitted budget')
 
     def test_fresh_satellite_guard_then_native_environment_injection_admits_next_phase(self):
         source = (ROOT / '.github/workflows/ci.yml').read_text()
