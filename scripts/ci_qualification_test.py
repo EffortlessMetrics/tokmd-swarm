@@ -252,6 +252,27 @@ process.stdout.write(String(eval(expression)));"""
                     self.assertEqual(run.returncode, 0, run.stderr)
                     self.assertEqual(run.stdout, expected)
 
+    def test_actuals_cargo_report_refuses_failed_pre_or_post_source_validation(self):
+        rust = self.source.split("  tokmd-rust-result:\n", 1)[1].split("  detect:\n", 1)[0]
+        output = re.search(r"^      source_validated: \$\{\{ (.+) \}\}$", rust, re.MULTILINE).group(1)
+        actuals = self.source.split("  ci-actuals:\n", 1)[1]
+        condition = re.search(r"^    if: (.+)$", actuals, re.MULTILINE).group(1)
+        condition = condition.replace("needs.tokmd-rust-result", 'needs["tokmd-rust-result"]')
+        program = """const [output, condition, before, after, baseline] = process.argv.slice(1);
+const steps = {source_before: {outcome: before}, source_after: {outcome: after}};
+const validated = String(eval(output));
+const always = () => true;
+const needs = {admission: {outputs: {admitted: 'true'}}, deny: {result: baseline},
+  'tokmd-rust-result': {outputs: {source_validated: validated}}};
+process.stdout.write(String(eval(condition)));"""
+        for before, after, baseline, expected in (("failure", "skipped", "success", "false"),
+                    ("success", "failure", "success", "false"), ("success", "success", "failure", "false"),
+                    ("success", "success", "success", "true")):
+            with self.subTest(before=before, after=after, baseline=baseline):
+                run = subprocess.run(["node", "-e", program, output, condition, before, after, baseline], capture_output=True, text=True, timeout=3)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(run.stdout, expected)
+
     def test_actual_core_keeps_all_four_obligations_and_consumes_one_budget(self):
         body = step_script(self.source, "Fast precontext and launch core gate")
         expected = ["--locked xtask gate --check", "test --locked --all-features",

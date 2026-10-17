@@ -122,6 +122,8 @@ jobs:
   tokmd-rust-result:
     if: always()
     name: Tokmd Rust Result
+    outputs:
+      source_validated: ${{ steps.source_before.outcome == 'success' && steps.source_after.outcome == 'success' }}
     needs: [admission, route, deny]
     runs-on: ${{ fromJSON(needs.route.outputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 20
@@ -141,6 +143,7 @@ jobs:
           persist-credentials: false
 
       - name: Revalidate exact qualification before setup
+        id: source_before
         env:
           QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
         run: |
@@ -322,6 +325,7 @@ jobs:
           fi
 
       - name: Revalidate exact qualification after proof
+        id: source_after
         if: ${{ success() && !cancelled() && needs.admission.outputs.admitted == 'true' }}
         env:
           QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
@@ -1314,7 +1318,7 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-latest
-    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && always()
+    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && needs.tokmd-rust-result.outputs.source_validated == 'true' && always()
     continue-on-error: true
     needs:
       - admission
