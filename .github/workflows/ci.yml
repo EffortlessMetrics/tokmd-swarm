@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Start shared work budget
         id: deadline
-        run: echo "deadline_epoch=$(( $(date +%s) + 19 * 60 ))" >> "$GITHUB_OUTPUT"
+        run: echo "deadline_epoch=$(( $(date +%s) + 20 * 60 ))" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -101,7 +101,7 @@ jobs:
             exit 0
           fi
           set +e
-          RESP="$(gh api "orgs/EffortlessMetrics/actions/runners?per_page=100" 2>route.err)"
+          RESP="$(timeout 20s gh api "orgs/EffortlessMetrics/actions/runners?per_page=100" 2>route.err)"
           CODE=$?
           set -e
           if [[ $CODE -ne 0 ]]; then
@@ -121,9 +121,11 @@ jobs:
 
   tokmd-rust-result:
     if: always()
-    name: Tokmd Rust Result
+    name: ${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'ci:qualify')) && 'Tokmd Rust Result' || 'Qualification not requested' }}
     outputs:
       source_validated: ${{ steps.source_before.outcome == 'success' && steps.source_after.outcome == 'success' }}
+      rustc_version: ${{ steps.compiler_version.outputs.version }}
+      rustup_toolchain: ${{ steps.compiler_version.outputs.toolchain }}
     needs: [admission, route, deny]
     runs-on: ${{ fromJSON(needs.route.outputs.runner || '"ubuntu-latest"') }}
     timeout-minutes: 20
@@ -137,7 +139,29 @@ jobs:
           ADMISSION_RESULT: ${{ needs.admission.result }}
           BASELINE_RESULT: ${{ needs.deny.result }}
         run: test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true && test "$BASELINE_RESULT" = success
+      - name: Anchor shared setup budget
+        id: setup_budget
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          python3 - <<'PY'
+          import os, sys, time
+          deadline = os.environ.get("QUALIFICATION_DEADLINE", "")
+          if not deadline.isdecimal():
+              sys.exit(124)
+          remaining = int(deadline) - time.time()
+          minutes = int((remaining - 60) // 60)
+          if not 1 <= minutes <= 20:
+              sys.exit(124)
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              print(f"CI_BUDGET_MONO_NS={time.monotonic_ns() + int(remaining * 1e9)}", file=env)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"minutes={minutes}", file=output)
+          PY
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: source_checkout
+        timeout-minutes: ${{ fromJSON(steps.setup_budget.outputs.minutes || '1') }}
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -150,9 +174,20 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 scripts/ci_qualification.py
 
+      - name: Allocate toolchain budget
+        id: toolchain_budget
+        run: python3 scripts/ci_budget.py allowance
+
       - uses: dtolnay/rust-toolchain@stable
+        timeout-minutes: ${{ fromJSON(steps.toolchain_budget.outputs.minutes || '1') }}
         with:
           components: rustfmt, clippy
+
+      - name: Record selected compiler version
+        id: compiler_version
+        run: |
+          echo "version=$(rustc --version)" >> "$GITHUB_OUTPUT"
+          echo "toolchain=${RUSTUP_TOOLCHAIN:-stable}" >> "$GITHUB_OUTPUT"
 
       - name: Use larger writable target dir on GitHub-hosted overflow
         if: needs.route.outputs.runner_kind == 'github'
@@ -166,10 +201,14 @@ jobs:
           # Best-effort reclaim of legacy /tmp orphans from pre-fix disposable gate runs (#309).
           find /tmp -maxdepth 1 -type d -name 'tokmd-gate-target-*' -mmin +30 -exec rm -rf {} + 2>/dev/null || true
 
+      - name: Allocate cache budget
+        id: cache_budget
+        run: python3 scripts/ci_budget.py allowance --max-minutes 5
+
       - name: Restore Rust build cache (best effort)
         id: rust_cache
         continue-on-error: true
-        timeout-minutes: 5
+        timeout-minutes: ${{ fromJSON(steps.cache_budget.outputs.minutes || '1') }}
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           cache-directories: ${{ runner.temp }}/target
@@ -229,21 +268,15 @@ jobs:
             shift 3
             echo "::group::${label} (shared qualification deadline)"
             echo "started $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$log"
-            # Start a new session so timeout's TERM/KILL reaches Cargo and its
-            # spawned rustc/linker/tests instead of leaving orphan processes.
-            # GNU timeout reports 137 when its KILL grace path fires; normalize
-            # that equivalent timeout outcome to the receipt's 124 marker.
-            remaining=$((QUALIFICATION_DEADLINE - $(date +%s)))
-            if [ "$remaining" -le 0 ]; then
-              status=124
-            else
-              setsid -w timeout --kill-after=30s "${remaining}s" "$@" 2>&1 | tee -a "$log"
-              status="${PIPESTATUS[0]}"
-            fi
-            if [ "$status" -eq 137 ]; then
-              status=124
-            fi
+            # The existing command boundary owns one unique child process group.
+            # Preserve source exits; timeout/cancellation are separate receipts.
+            python3 scripts/ci_budget.py run --marker "$marker" -- "$@" 2>&1 | tee -a "$log"
+            status="${PIPESTATUS[0]}"
             echo "$status" > "$marker"
+            if [ "$(jq -r '.terminal_reason // ""' "${marker}.json" 2>/dev/null)" = cancelled ]; then
+              mark_clock target/ci-core/core_completed
+              exit "$status"
+            fi
             echo "finished $(date -u +%Y-%m-%dT%H:%M:%SZ) exit=${status}" | tee -a "$log"
             echo "::endgroup::"
           }
@@ -271,6 +304,11 @@ jobs:
           mark_clock target/ci-core/core_completed
           echo "completed serial core gate, tests, and proof-policy"
 
+      - name: Allocate advisory review budget
+        id: review_budget
+        if: ${{ success() && needs.admission.outputs.admitted == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        run: python3 scripts/ci_budget.py allowance --max-minutes 15
+
       - name: Record UB Review start
         if: ${{ success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         run: |
@@ -281,7 +319,7 @@ jobs:
 
       - name: UB Review (advisory)
         id: ubreview
-        timeout-minutes: 15
+        timeout-minutes: ${{ fromJSON(steps.review_budget.outputs.minutes || '1') }}
         if: ${{ success() && needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         continue-on-error: true
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
@@ -443,12 +481,24 @@ jobs:
           proof_policy_exit="$(read_marker "${receipt_dir}/proof_policy_exit")"
           timeout_classification="not_timeout"
           terminal_reason="completed"
-          for exit_code in "${core_exit}" "${test_exit}" "${xtask_test_exit}" "${proof_policy_exit}"; do
-            if [ "${exit_code}" = "124" ]; then
+          cancelled_command=false
+          for marker in core_exit test_exit xtask_test_exit proof_policy_exit; do
+            exit_code="$(read_marker "${receipt_dir}/${marker}")"
+            reason=""
+            if [ -s "${receipt_dir}/${marker}.json" ]; then
+              reason="$(jq -r '.terminal_reason // ""' "${receipt_dir}/${marker}.json" 2>/dev/null)"
+            fi
+            if [ "$reason" = cancelled ]; then
+              cancelled_command=true
+            elif [ "$reason" = budget_exhausted ] || { [ -z "$reason" ] && [ "$exit_code" = 124 ]; }; then
               timeout_classification="bounded_command_timeout"
               terminal_reason="core_proof_timeout"
             fi
           done
+          if [ "$cancelled_command" = true ]; then
+            timeout_classification="not_timeout"
+            terminal_reason="core_proof_cancelled"
+          fi
           if [ "${terminal_reason}" = "completed" ]; then
             for exit_code in "${core_exit}" "${test_exit}" "${xtask_test_exit}" "${proof_policy_exit}"; do
               if [ -n "${exit_code}" ] && [ "${exit_code}" != "0" ]; then
@@ -493,8 +543,14 @@ jobs:
             '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:20,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:null,selection:"not_exposed",candidates:[{provider_policy:$ub_provider_policy,model:$ub_model},{provider_policy:"opencode-fallback",model:"deepseek-v4-flash"}],outcome:$ub_outcome}}}}' \
             > "${receipt_dir}/ub-review-receipt.json"
 
+      - name: Allocate receipt upload budget
+        id: upload_budget
+        if: ${{ always() && steps.source_checkout.outcome == 'success' }}
+        run: python3 scripts/ci_budget.py allowance --reserve-seconds 0
+
       - name: Upload UB Review observability receipt
-        if: ${{ always() }}
+        if: ${{ always() && steps.upload_budget.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.upload_budget.outputs.minutes || '1') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -502,13 +558,20 @@ jobs:
           path: target/ci-core/ub-review-receipt.json
           if-no-files-found: warn
 
+      - name: Assert final shared budget
+        if: ${{ always() && steps.source_checkout.outcome == 'success' }}
+        run: |
+          python3 scripts/ci_budget.py finalize --receipt target/ci-core/budget-finalization.json
+          cat target/ci-core/budget-finalization.json
+
   # Detect which risk packs the PR diff hits. Downstream gated jobs OR
   # this output into their `if:` so the deep lanes also run when matching
   # paths change, even without an explicit label. Mirrors the routing
   # in policy/ci-risk-packs.toml.
   detect:
-    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
-    needs: [admission, deny]
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Detect risk packs
     runs-on: ubuntu-latest
     outputs:
@@ -524,8 +587,25 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ (github.event_name == 'pull_request') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Fetch base ref
-        if: github.event_name == 'pull_request'
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+        if: ${{ (github.event_name == 'pull_request') && steps.phase_budget_2.outcome == 'success' }}
         run: git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" || true
 
       - id: detect
@@ -558,8 +638,15 @@ jobs:
             --route-json-out target/ci/proof-pack-route.json \
             --github-output "$GITHUB_OUTPUT"
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify proof-pack route receipts
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_3.outcome == 'success' }}
         run: |
           status=0
           for receipt in target/ci/ci-detect-plan.json target/ci/proof-pack-route.json; do
@@ -570,8 +657,15 @@ jobs:
           done
           exit "$status"
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload proof-pack route receipt
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_4.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: proof-pack-route
@@ -581,7 +675,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   msrv:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: MSRV Check
@@ -590,21 +698,70 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Set up Rust (MSRV)
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check MSRV compatibility
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: cargo check --workspace --all-features
 
   # Windows full-test moves off the default PR gate. It runs on push to
   # main and on PRs explicitly labelled `windows` or `full-ci`. Rust path
   # changes that are likely to behave differently on Windows go through
   # the Rust-owned `git_io` risk pack output.
+
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   build-windows:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: Build & Test (Windows)
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
@@ -615,19 +772,67 @@ jobs:
       with:
         persist-credentials: false
 
+    - name: Revalidate shared qualification budget
+      id: job_budget
+      shell: bash
+      env:
+        QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+      run: |
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        python scripts/ci_qualification.py
+        python scripts/ci_budget.py allowance --reserve-seconds 0
+
+    - name: Allocate phase 2 budget
+      id: phase_budget_2
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - name: Set up Rust
+      if: ${{ steps.phase_budget_2.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Allocate phase 3 budget
+      id: phase_budget_3
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - uses: Swatinem/rust-cache@v2
+      if: ${{ steps.phase_budget_3.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
 
+    - name: Allocate phase 4 budget
+      id: phase_budget_4
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - name: Run tests
+      if: ${{ steps.phase_budget_4.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
       run: cargo test --all-features --verbose
       env:
         CI: true
 
+    - name: Finalize shared qualification budget
+      if: ${{ always() && steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: |
+        set +e
+        python scripts/ci_qualification.py
+        source_status=$?
+        python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+        budget_status=$?
+        cat target/ci-budget-finalization.json
+        if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+        exit "$budget_status"
+
   build-macos:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
     name: Build & Test (macOS)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push')
@@ -638,20 +843,68 @@ jobs:
       with:
         persist-credentials: false
 
+    - name: Revalidate shared qualification budget
+      id: job_budget
+      shell: bash
+      env:
+        QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+      run: |
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        python scripts/ci_qualification.py
+        python scripts/ci_budget.py allowance --reserve-seconds 0
+
+    - name: Allocate phase 2 budget
+      id: phase_budget_2
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - name: Set up Rust
+      if: ${{ steps.phase_budget_2.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Allocate phase 3 budget
+      id: phase_budget_3
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - uses: Swatinem/rust-cache@v2
+      if: ${{ steps.phase_budget_3.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
         cache-bin: false
 
+    - name: Allocate phase 4 budget
+      id: phase_budget_4
+      if: ${{ steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
     - name: Run tests
+      if: ${{ steps.phase_budget_4.outcome == 'success' }}
+      timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
       run: cargo test --all-features --verbose
       env:
         CI: true
 
+    - name: Finalize shared qualification budget
+      if: ${{ always() && steps.job_budget.outcome == 'success' }}
+      shell: bash
+      run: |
+        set +e
+        python scripts/ci_qualification.py
+        source_status=$?
+        python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+        budget_status=$?
+        cat target/ci-budget-finalization.json
+        if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+        exit "$budget_status"
+
   feature-boundaries:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: Feature Boundaries
@@ -660,27 +913,84 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-directories: ${{ runner.temp }}/target
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: tokmd-analysis with all features
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: cargo test -p tokmd-analysis --all-features --verbose
         env:
           CI: true
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: tokmd-analysis with no default features
+        if: ${{ steps.phase_budget_5.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
         run: cargo test -p tokmd-analysis --no-default-features --verbose
         env:
           CI: true
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Guard analysis microcrate boundaries
+        if: ${{ steps.phase_budget_6.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_6.outputs.minutes || '1') }}
         run: cargo xtask boundaries-check
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 15
+
       - name: Qualify no-UI CLI builds and recovery (shared 15m)
-        timeout-minutes: 15
+        if: ${{ steps.phase_budget_7.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_7.outputs.minutes || '1') }}
         env:
           CI: true
         run: |
@@ -773,7 +1083,21 @@ jobs:
           sys.exit(status)
           PY
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   affected-plan:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
     name: Affected Proof Plan
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
@@ -784,16 +1108,58 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Fetch base ref
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" || true
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate affected proof artifacts
+        if: ${{ steps.phase_budget_5.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
         run: |
           set +e
           mkdir -p target/proof
@@ -847,15 +1213,36 @@ jobs:
 
           exit 0
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload affected proof artifacts
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_6.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_6.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: affected-proof-plan
           path: target/proof/
           if-no-files-found: error
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   fast-proof-run:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
     name: Fast Proof Run (Advisory)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
@@ -865,11 +1252,37 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         with:
           components: rustfmt
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -884,7 +1297,15 @@ jobs:
             --github-output target/proof-run/proof-run-pr.outputs
           cat target/proof-run/proof-run-pr.outputs >> "$GITHUB_OUTPUT"
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run fast proof runner
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         env:
           PROOF_RUN_PROFILE: ${{ steps.proof_run_policy.outputs.profile }}
         run: |
@@ -982,15 +1403,36 @@ jobs:
 
           exit 0
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload fast proof-run artifacts
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_5.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.proof_run_policy.outputs.artifact_name || 'fast-proof-run' }}
           path: target/proof-run/
           if-no-files-found: error
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   wasm-compile:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: Wasm Compile & Test
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
@@ -999,40 +1441,184 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         with:
           targets: wasm32-unknown-unknown
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: actions/setup-node@v7
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: taiki-e/install-action@v2
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         with:
           tool: wasm-pack
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_5.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check tokmd-scan for wasm32
+        if: ${{ steps.phase_budget_6.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_6.outputs.minutes || '1') }}
         run: cargo check -p tokmd-scan --target wasm32-unknown-unknown
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check tokmd-core analysis for wasm32
+        if: ${{ steps.phase_budget_7.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_7.outputs.minutes || '1') }}
         run: cargo check -p tokmd-core --features analysis --target wasm32-unknown-unknown
+      - name: Allocate phase 8 budget
+        id: phase_budget_8
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check tokmd-wasm core-only for wasm32
+        if: ${{ steps.phase_budget_8.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_8.outputs.minutes || '1') }}
         run: cargo check -p tokmd-wasm --no-default-features --target wasm32-unknown-unknown
+      - name: Allocate phase 9 budget
+        id: phase_budget_9
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check tokmd-wasm for wasm32
+        if: ${{ steps.phase_budget_9.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_9.outputs.minutes || '1') }}
         run: cargo check -p tokmd-wasm --features analysis --target wasm32-unknown-unknown
+      - name: Allocate phase 10 budget
+        id: phase_budget_10
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check tokmd-wasm archive-zip for wasm32
+        if: ${{ steps.phase_budget_10.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_10.outputs.minutes || '1') }}
         run: cargo check -p tokmd-wasm --no-default-features --features archive-zip --target wasm32-unknown-unknown
+      - name: Allocate phase 11 budget
+        id: phase_budget_11
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run tokmd-wasm core-only wasm tests
+        if: ${{ steps.phase_budget_11.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_11.outputs.minutes || '1') }}
         run: wasm-pack test --node crates/tokmd-wasm --no-default-features
+      - name: Allocate phase 12 budget
+        id: phase_budget_12
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run tokmd-wasm analysis wasm tests
+        if: ${{ steps.phase_budget_12.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_12.outputs.minutes || '1') }}
         run: wasm-pack test --node crates/tokmd-wasm --features analysis
+      - name: Allocate phase 13 budget
+        id: phase_budget_13
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run tokmd-wasm archive-zip wasm tests
+        if: ${{ steps.phase_budget_13.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_13.outputs.minutes || '1') }}
         run: wasm-pack test --node crates/tokmd-wasm --no-default-features --features archive-zip
+      - name: Allocate phase 14 budget
+        id: phase_budget_14
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Build browser runner wasm bundle
+        if: ${{ steps.phase_budget_14.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_14.outputs.minutes || '1') }}
         run: npm --prefix web/runner run build:wasm
+      - name: Allocate phase 15 budget
+        id: phase_budget_15
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Browser runner protocol and wasm boot smoke
+        if: ${{ steps.phase_budget_15.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_15.outputs.minutes || '1') }}
         run: npm --prefix web/runner test
+      - name: Allocate phase 16 budget
+        id: phase_budget_16
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Browser runner syntax check
+        if: ${{ steps.phase_budget_16.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_16.outputs.minutes || '1') }}
         run: npm --prefix web/runner run check
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   deny:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
     name: Cargo Deny
@@ -1041,15 +1627,63 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: taiki-e/install-action@v2
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         with:
           tool: cargo-deny@0.19.0
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Print cargo-deny version
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         run: cargo deny --version
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check advisories and licenses
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: cargo deny --all-features check
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   typos:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: Typos
@@ -1058,16 +1692,56 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Install typos with bounded retries
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
         with:
           tool: typos@1.49.0
           checksum: true
           fallback: none
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check spelling
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         run: typos
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   proptest-smoke:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: Proptest Smoke
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
@@ -1076,11 +1750,45 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run property tests (reduced iterations)
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: |
           PROPTEST_CASES=50 cargo test -p tokmd-model --test properties --all-features --verbose
           PROPTEST_CASES=50 cargo test -p tokmd-types --test properties --all-features --verbose
@@ -1088,7 +1796,21 @@ jobs:
         env:
           CI: true
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   publish-plan:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: Publish Surface
@@ -1097,16 +1819,64 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify publish surface and dry-run checks
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: cargo xtask publish-surface --json --verify-publish
         env:
           CI: true
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   version-consistency:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: Version consistency
@@ -1115,11 +1885,51 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check release metadata alignment
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         run: cargo xtask version-consistency
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   docs-check:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
     name: Docs Check
@@ -1128,11 +1938,45 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check documentation drift
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: |
           set +e
           mkdir -p target/docs
@@ -1164,13 +2008,33 @@ jobs:
           exit 0
         env:
           CI: true
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload doc artifact check receipt
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_5.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: doc-artifacts-check
           path: target/docs/doc-artifacts-check.json
           if-no-files-found: warn
+
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
 
   nix-pr:
     name: Nix PR Package Gate
@@ -1180,7 +2044,7 @@ jobs:
     # publication repo Nix state.
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.repository == 'EffortlessMetrics/tokmd' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'nix') || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.nix == 'true' || needs.detect.outputs.release == 'true'))
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 60 }}
     permissions:
       contents: read
     env:
@@ -1190,23 +2054,79 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Install Nix
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         uses: DeterminateSystems/nix-installer-action@v22
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Setup Nix cache
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         continue-on-error: true
         uses: DeterminateSystems/magic-nix-cache-action@v14
         with:
           use-flakehub: false
           use-gha-cache: enabled
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check flake
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         run: nix flake check --no-build --accept-flake-config
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Build package
+        if: ${{ steps.phase_budget_5.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
         run: nix build -L .#tokmd
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   mutation:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
     name: Mutation Testing
     runs-on: ubuntu-latest
@@ -1223,12 +2143,46 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ steps.phase_budget_2.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - name: Install cargo-mutants
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         run: cargo install cargo-mutants --version 26.1.2 --locked
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Get changed Rust files
+        if: ${{ steps.phase_budget_4.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
         id: changed
         env:
           PUSH_BEFORE: ${{ github.event.before || '' }}
@@ -1260,8 +2214,15 @@ jobs:
             --json-output target/mutation/mutation-scope.json \
             --github-output "$GITHUB_OUTPUT"
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ (steps.changed.outputs.count != '0') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Mutation Testing
-        if: steps.changed.outputs.count != '0'
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
+        if: ${{ (steps.changed.outputs.count != '0') && steps.phase_budget_5.outcome == 'success' }}
         env:
           CI: true
         run: |
@@ -1290,16 +2251,37 @@ jobs:
 
           echo "✓ All mutations caught or unviable (0 MISSED)"
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ (steps.changed.outputs.count == '0' && steps.changed.outputs.scope_exceeded != 'true') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Skip notice
-        if: steps.changed.outputs.count == '0' && steps.changed.outputs.scope_exceeded != 'true'
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_6.outputs.minutes || '1') }}
+        if: ${{ (steps.changed.outputs.count == '0' && steps.changed.outputs.scope_exceeded != 'true') && steps.phase_budget_6.outcome == 'success' }}
         run: echo "No production Rust files changed - skipping mutation testing"
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ (steps.changed.outputs.scope_exceeded == 'true') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Scope exceeded notice
-        if: steps.changed.outputs.scope_exceeded == 'true'
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_7.outputs.minutes || '1') }}
+        if: ${{ (steps.changed.outputs.scope_exceeded == 'true') && steps.phase_budget_7.outcome == 'success' }}
         run: echo "Mutation scope exceeded - selected files were cleared. See target/mutation/mutation-scope.json."
 
+      - name: Allocate phase 8 budget
+        id: phase_budget_8
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload mutants report
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_8.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_8.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: mutants-report
@@ -1312,7 +2294,21 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   ci-actuals:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: CI Actuals (Advisory)
     permissions:
       contents: read
@@ -1344,16 +2340,67 @@ jobs:
           persist-credentials: false
         continue-on-error: true
 
+      - name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+          python scripts/ci_budget.py allowance --reserve-seconds 0
+
+      - name: Reuse an already selected compiler
+        id: cached_compiler
+        if: steps.job_budget.outcome == 'success'
+        timeout-minutes: 1
+        shell: python3 scripts/ci_budget.py run --marker target/ci-budget/compiler-probe --reserve-seconds 0 -- bash --noprofile --norc -e -o pipefail {0}
+        env:
+          EXPECTED_RUSTC: ${{ needs.tokmd-rust-result.outputs.rustc_version }}
+          EXPECTED_TOOLCHAIN: ${{ needs.tokmd-rust-result.outputs.rustup_toolchain }}
+        run: |
+          actual="$(rustup run "$EXPECTED_TOOLCHAIN" rustc --version 2>/dev/null || true)"
+          if [ -n "$EXPECTED_RUSTC" ] && [ "$actual" = "$EXPECTED_RUSTC" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo "RUSTUP_TOOLCHAIN=$EXPECTED_TOOLCHAIN" >> "$GITHUB_ENV"
+            echo "CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}" >> "$GITHUB_ENV"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ (steps.phase_budget_2.outcome == 'success') && steps.cached_compiler.outputs.ready != 'true' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}
         continue-on-error: true
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ steps.phase_budget_3.outcome == 'success' }}
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         continue-on-error: true
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate CI timings sidecar
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_4.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_4.outcome == 'success' }}
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1378,6 +2425,7 @@ jobs:
               headers["Authorization"] = f"Bearer {token}"
 
           job_name_to_need_key = {
+              "Admit explicit qualification": "admission",
               "Route CI runner": "route",
               "Tokmd Rust Result": "tokmd-rust-result",
               "Detect risk packs": "detect",
@@ -1437,8 +2485,15 @@ jobs:
           print(f"CI timings sidecar written with {len(timings)} job(s)")
           PY
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate CI actuals receipt
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_5.outcome == 'success' }}
         continue-on-error: true
         env:
           NEEDS_JSON: ${{ toJson(needs) }}
@@ -1457,8 +2512,15 @@ jobs:
             --github-summary "$GITHUB_STEP_SUMMARY" \
             --sha "${GITHUB_SHA}"
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload CI actuals receipt
-        if: always()
+        timeout-minutes: ${{ fromJSON(steps.phase_budget_6.outputs.minutes || '1') }}
+        if: ${{ ((always()) && steps.job_budget.outcome == 'success') && steps.phase_budget_6.outcome == 'success' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7.0.1
         with:
@@ -1471,7 +2533,9 @@ jobs:
           retention-days: 14
 
       - name: Publish advisory lane summary
-        if: always()
+        shell: python3 scripts/ci_budget.py run --marker target/ci-budget/lane-summary --reserve-seconds 0 -- bash --noprofile --norc -e -o pipefail {0}
+        timeout-minutes: 1
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
         continue-on-error: true
         env:
           NEEDS_JSON: ${{ toJson(needs) }}
@@ -1502,3 +2566,16 @@ jobs:
 
           print(summary)
           PY
+
+      - name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"

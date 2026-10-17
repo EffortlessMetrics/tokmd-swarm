@@ -11,7 +11,7 @@ on:
       - ".github/workflows/coverage.yml"
       - "codecov.yml"
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [labeled]
     branches: ["main"]
     paths:
       - "crates/**"
@@ -26,8 +26,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: coverage-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  group: coverage-${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
@@ -38,7 +39,7 @@ jobs:
   coverage:
     name: Codecov Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 45 }}
 
     if: >-
       github.event_name == 'push' ||
@@ -52,25 +53,71 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Fetch base ref
+      - name: Admit explicit PR qualification
+        id: qualification_gate
         if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name == 'pull_request') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
+      - name: Fetch base ref
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
+        if: ${{ (github.event_name == 'pull_request') && (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
         run: git fetch origin "${{ github.base_ref }}":"refs/remotes/origin/${{ github.base_ref }}" || true
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Set up Rust
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.95"
           components: llvm-tools-preview
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Use larger target dir
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         run: echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/target" >> "$GITHUB_ENV"
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: Swatinem/rust-cache@v2
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
         with:
           cache-directories: ${{ runner.temp }}/target
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate coverage route receipt
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_6.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_6.outputs.minutes || '1') || 360 }}
         env:
           LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels) || '[]' }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
@@ -96,8 +143,15 @@ jobs:
             --json-out target/ci/coverage-plan.json \
             --route-json-out target/ci/proof-pack-route.json
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify coverage route receipts
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_7.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_7.outcome == 'success') }}
         run: |
           status=0
           for receipt in target/ci/coverage-plan.json target/ci/proof-pack-route.json; do
@@ -108,8 +162,15 @@ jobs:
           done
           exit "$status"
 
+      - name: Allocate phase 8 budget
+        id: phase_budget_8
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload coverage route receipts
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_8.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_8.outcome == 'success') }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-route
@@ -119,7 +180,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Allocate phase 9 budget
+        id: phase_budget_9
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Install cargo-llvm-cov
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_9.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_9.outputs.minutes || '1') || 360 }}
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
@@ -252,16 +321,30 @@ jobs:
 
           echo "overall_status=${overall_status}" >> "$GITHUB_OUTPUT"
 
+      - name: Allocate phase 10 budget
+        id: phase_budget_10
+        if: ${{ github.event_name == 'pull_request' && ((steps.coverage_run.outputs.overall_status == '0') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Validate coverage output
-        if: steps.coverage_run.outputs.overall_status == '0'
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_10.outputs.minutes || '1') || 360 }}
+        if: ${{ (steps.coverage_run.outputs.overall_status == '0') && (github.event_name != 'pull_request' || steps.phase_budget_10.outcome == 'success') }}
         run: |
           set -euo pipefail
           test -s coverage.json
           test -s lcov.info
           test -s coverage.txt
 
+      - name: Allocate phase 11 budget
+        id: phase_budget_11
+        if: ${{ github.event_name == 'pull_request' && ((steps.coverage_run.outputs.overall_status == '0') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate coverage receipt
-        if: steps.coverage_run.outputs.overall_status == '0'
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_11.outputs.minutes || '1') || 360 }}
+        if: ${{ (steps.coverage_run.outputs.overall_status == '0') && (github.event_name != 'pull_request' || steps.phase_budget_11.outcome == 'success') }}
         run: |
           cargo xtask coverage-receipt \
             --coverage-json coverage.json \
@@ -269,7 +352,15 @@ jobs:
             --lcov lcov.info \
             --output target/coverage/coverage-receipt.json
 
+      - name: Allocate phase 12 budget
+        id: phase_budget_12
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Detect Codecov token
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_12.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_12.outputs.minutes || '1') || 360 }}
         id: codecov-token
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -280,8 +371,15 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Allocate phase 13 budget
+        id: phase_budget_13
+        if: ${{ github.event_name == 'pull_request' && ((steps.coverage_run.outputs.overall_status == '0' && steps.codecov-token.outputs.present == 'true') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload coverage to Codecov
-        if: ${{ steps.coverage_run.outputs.overall_status == '0' && steps.codecov-token.outputs.present == 'true' }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_13.outputs.minutes || '1') || 360 }}
+        if: ${{ (steps.coverage_run.outputs.overall_status == '0' && steps.codecov-token.outputs.present == 'true') && (github.event_name != 'pull_request' || steps.phase_budget_13.outcome == 'success') }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -290,8 +388,15 @@ jobs:
           name: tokmd-rust
           fail_ci_if_error: ${{ github.event_name == 'push' }}
 
+      - name: Allocate phase 14 budget
+        id: phase_budget_14
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload coverage artifacts
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_14.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_14.outcome == 'success') }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: coverage-report
@@ -304,8 +409,27 @@ jobs:
             target/coverage/coverage-receipt.json
           retention-days: 14
 
+      - name: Allocate phase 15 budget
+        id: phase_budget_15
+        if: ${{ github.event_name == 'pull_request' && (((always() && steps.coverage_run.outputs.overall_status == '1') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Fail on coverage command failure
-        if: always() && steps.coverage_run.outputs.overall_status == '1'
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_15.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always() && steps.coverage_run.outputs.overall_status == '1') && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_15.outcome == 'success') }}
         run: |
           echo "::error::Coverage command failed; see target/coverage/coverage-status.json in the coverage-report artifact."
           exit 1
+
+      - name: Finalize explicit PR qualification budget
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python3 scripts/ci_qualification.py
+          source_status=$?
+          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"

@@ -20,6 +20,10 @@
   description: Performance improvements or issues
 
 # Workflow Labels
+- name: ci:qualify
+  color: 0075ca
+  description: Submit an exact expected-green qualification manifest from the PR body
+
 - name: triage
   color: ededed
   description: Needs initial review and categorization

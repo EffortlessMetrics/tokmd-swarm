@@ -1,111 +1,131 @@
 # Qualification request candidate (#734)
 
-This is an **unpublished, incomplete migration candidate**, not an accepted CI
-contract. It must not replace production until the remaining timing and native
-integration gaps below are resolved. Main and #732 source remain unchanged.
+This is an incomplete source candidate, not an activated migration or a runtime
+qualification. The reviewed checkpoint `7610a14c` remains preserved. Continuation
+work changes existing orchestration rather than adding a controller/status
+service. Main and #732 source are independently owned and are not replaced by
+this candidate.
 
-The user's requirement is: “I do not want CI runs longer than 20 minutes, and I
-do not want CI runs early.” Native evidence establishes early admission. The
-cited runs do not establish execution exceeding 20 minutes: #732 replacement
-39067784935 has a 19m59s creation-to-update interval. #733's reported interval is
-13m48s, without a native head/run receipt independently supplied to this lane.
-Run lifetime, job duration and command execution duration are distinct measures.
+The requirement is: “I do not want CI runs longer than 20 minutes, and I do not
+want CI runs early.” A configured ceiling or passing local deadline fixture is
+not evidence of successful complete qualification within that bound.
 
-## Explicit source and composition request
+## Request and subject
 
-The existing `workflow_dispatch` interface now accepts a PR number, exact head
-and main SHAs, `head:base` generation, and an expected-green source/review
-assertion. Admission compares both native run SHA and workflow-source SHA with
-the requested head and reads live Git source refs. A valid dispatch then refuses
-proof explicitly: dispatch lacks the native PR context required by the existing
-risk, affected-proof and review lanes. This refusal is an implementation
-constraint, not an approval flag to flip. Checkout or receipt labels cannot
-change a dispatch run's native subject, including for fork-only commits.
-
-A positive path instead preserves the native PR event and merge subject. The
-requester puts exactly one manifest in the PR body, then deliberately adds the
-`ci:qualify` label. A label alone, persistent label, ordinary Draft opening,
-Ready change, unrelated label, synchronize event or changed request does not
-admit proof. The manifest has this shape (replace every placeholder):
+A deliberate `ci:qualify` label event submits exactly one PR-body manifest:
 
 ```text
 <!-- tokmd-qualification:v1
-{"pull_request":"734","head_sha":"<full head SHA>","base_sha":"<full main SHA>","merge_sha":"<full PR merge SHA>","generation":"<head SHA>:<main SHA>","expected_green":"true"}
+{"pull_request":"<number>","head_sha":"<full head SHA>","base_sha":"<full main SHA>","merge_sha":"<full PR merge SHA>","generation":"<head SHA>:<main SHA>","deadline_epoch":"<UTC epoch no more than 20 minutes ahead>","expected_green":"true"}
 -->
 ```
 
-Admission requires an open PR targeting main, the event PR/head/base matching
-the request, and native run/workflow source matching its exact merge commit.
-Live head/main/merge source refs must still match. The actual checkout is also
-checked against the native run SHA. Source reads fail closed and use no token.
-The same source validation runs before setup and after proof, without resetting
-the deadline. A moved head/base/merge invalidates the old request before a passing
-verdict. Request body withdrawal after the event is not independently monitored;
-this is not a controller or live cancellation service.
+Admission requires an open PR to main, matching native PR/head/base/merge and
+workflow source, actual checkout and current Git head/main/merge refs. The single
+request expiry is shared across workflow/job starts; later phases cannot renew
+it. Each job anchors that remaining wall-clock allowance once to its monotonic
+clock. Revalidation retains the anchor. Wrong/malformed/stale/expired subjects
+refuse before proof. The supported dispatch interface validates exact inputs but
+still refuses proof because it lacks the native PR context of the retained
+risk/affected/review obligations. Checkout labels do not change native subjects.
 
-All 19 existing jobs depend on admission. `Tokmd Rust Result` retains its name
-and an always-scheduled hosted refusal path, so failed admission or baseline
-cannot become skipped-success qualification. Refusal does not enable advisory
-review. Existing permission blocks, action pins, required commands and risk
-predicates remain intact. The PR path retains native fork context and hosted fork
-routing; its actual required-check attachment still needs native qualification.
-Main push retains post-integration proof. Current live legacy enforcement is
-unchanged because this candidate has not been published or activated.
+All ten other inventoried PR workflows with Cargo/Rust work now select labeled
+PR events and reuse the same validator before heavyweight setup. Branch/path
+filters, non-PR triggers, action pins, existing permission blocks, commands and
+actual proof requiredness are retained. No security/release workflow or registry
+behavior is changed. Mere Draft/Ready activity does not select those expensive
+paths. An unrelated label does not pass the validator.
 
-Cargo Deny remains blocking and runs before Rust and the other substantive proof
-lanes. Its failure refuses expensive proof rather than being reclassified. No
-#729 dependency repair is included.
+The required Rust job uses `Tokmd Rust Result` for deliberate requests. Ordinary
+observations use another name so they cannot overwrite its existing qualified
+head or emit a skipped-success required context. **Remaining source work:** apply
+and validate equivalent non-interference to the other check contexts before
+publishing/activating this continuation; unrelated label runs can still affect
+those context names. Do not treat concurrency isolation alone as check-name
+isolation. No branch protection change is proposed.
 
-## Concurrency and work budget
+## Shared work boundary
 
-Explicit native PR requests use PR plus native merge subject for concurrency;
-dispatch requests use PR plus generation. Observation events have another group.
-Cancellation is disabled. `queue: max` uses GitHub's bounded native pending queue.
-Repeated exact requests serialize; **they are not deduplicated**. A new generation
-does not cancel a valid run. Pending requests revalidate source at admission;
-active proof revalidates before setup and after proof. No arbitrary run is
-canceled. Native queue capacity/ordering is platform behavior, not a local test
-result, and no end-to-end queue service bound is asserted.
+The existing core command boundary now owns one unique child process group and
+uses one monotonic deadline. Timeout/cancellation sends TERM, retains the leader
+PID without reaping during its finite grace, kills the remaining group and
+records the distinct outcome. Source exits including 124 and 137 are not guessed
+to be timeouts. Cancellation stops later proof commands; an independent new
+invocation can recover. The four locked Cargo obligations remain intact.
 
-A deadline starts at the first admission step, before checkout. All four retained
-serial Cargo commands consume its remaining allowance instead of four fresh
-15-minute budgets. Expiration writes timeout markers without launching Cargo.
-The obsolete unbounded retry and synchronous marker wait are removed. The Rust
-job has a 20-minute native backstop, and its observability receipt reports that
-actual configured limit. These changes are a bounded core control, **not proof
-that complete qualification succeeds within 20 minutes**.
+Setup/toolchain/cache/review/upload allowance comes from the same anchor. The
+existing cache and review caps remain tighter where applicable. Core work
+reserves finalization time. Satellite and companion phases refresh their
+remaining allowance and use native step timeouts, with final source/deadline
+validation after body work. Windows retains its actual test command and uses
+native runner cancellation, not the POSIX child-group implementation. That
+Windows cancellation behavior has not been exercised by these local Linux tests.
 
-Satellite actions, advisory review and native cleanup/teardown are not yet all
-governed by the shared deadline. Queue delay can exceed any job execution bound.
-Putting the blocking baseline before Rust also changes the critical path. The
-19m59s observed run offers no measured margin to absorb that serial dependency;
-no duration for the reordered candidate is claimed. A measured optimization and
-complete action/deadline accounting are required before a full run. Simply
-reducing timeouts would manufacture failure ceilings rather than meet the user's
-successful-completion requirement. Cache setup work #567 remains separately
-owned; this candidate does not take it over.
+The existing blocking risk-path classifier remains blocking and executes in
+parallel with Cargo Deny, as in production. Both precede dependent platform
+proof. Full Rust proof waits for Cargo Deny. No proof is removed/reclassified to
+shorten the critical path. Every old catalog entry remains authoritative; new
+admission/context metadata describes the proposed controls.
 
-## Local proof and exact next action
+A narrow reporter optimization reuses an already installed compiler only when
+its full version and toolchain equal the compiler selected by the current
+required job. Otherwise the existing toolchain action runs. It changes neither
+the selected compiler nor cache policy. The final finite Linux summary script
+uses the existing command boundary, including sub-minute remaining time. Earlier
+proof/source failures remain failures even when finalization succeeds.
 
-Run `python3 scripts/ci_qualification_test.py` and
-`python3 scripts/ci_observability_clock_test.py`. Tests execute the checked-in
-admission entrypoint, checkout/refusal shells and core producer with controlled
-commands. Positive PR request/composition admission, malformed/missing request,
-Draft/Ready-only events, closed/wrong PR, stale head/base/merge/generation, wrong
-native source, source-read failure, red baseline, and repeated/concurrent request
-groups are covered. The actual group expression is evaluated locally for its
-supported expression subset; this is not native concurrency service proof.
-Positive budget tests retain all four commands and see one decreasing allowance;
-expired-budget tests launch none. Source-failure markers remain failures.
+Native job setup/download, queue delay, cancellation grace and post-job actions
+remain platform behavior. Native action timeouts accept positive integer minutes;
+a source-side timer cannot prove a strict service creation-to-completion bound.
+No hard whole-service guarantee is claimed from these source controls. Native
+qualification must measure the complete workflow, including Windows and final
+reporting, not merely the named Rust job.
 
-The next bounded source step is complete shared action/cleanup budgeting and a
-measured optimization of the reordered critical path. After exact-source review,
-native qualification must establish named check attachment, fork behavior and
-full obligation selection on an explicit request, while ordinary events remain
-cheap refusals. No speculative full run, PR publication, permission expansion,
-new status writer/controller, policy relaxation or #732 change is included.
+## Actual retained critical-path evidence
 
-Platform references: [dispatch and PR event subjects](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows),
-[native concurrency and queue behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
-These explain platform semantics, not this repository's live protections or a
-measured result for this candidate.
+Main `0aa2dd065b51c8fbb927b752648b98b9cba124a9` has the exact tree of qualified
+#735 head `463b885fd98a9ea430e69d37b45fdbdedb4b1c10`. All returned non-skipped jobs
+of run39071174151 completed successfully. The Windows log reports **no cache
+found**, compilation from21:31:42.166 to21:38:24.174 (6m42s observed window), then
+test execution through21:48:07.828 (about9m44s). Its first/last log timestamps span
+17m02.6s. These are log windows, not invented job timestamps.
+
+Cargo Deny's log spans9.1s, risk detection73.5s, and final CI Actuals31.6s. The
+last CI Actuals log line is21:48:46.902, 19m00.9s after the supplied run creation
+21:29:46. That is supporting chronology, not an independently read native
+workflow-completion timestamp. It includes the actual Windows path.
+
+The reporter's toolchain action spent8.6s and reported an existing, unchanged
+stable compiler (`rustc 1.99.1`). That supports the exact-compiler reuse path;
+no cache hit, compiler-version change or cold-build time saving is assumed.
+Local static-tool reuse used the separately pinned1.95.0 environment and is not
+relabeled as that native compiler proof. No full Cargo build or remote run was
+started for these controls, and active735 work was not interrupted.
+
+## Validation and next native step
+
+Local suites cover the actual workflow guard/phase expressions, ordinary versus
+explicit request naming, exact source/expiry, Windows route selection, repeated
+request/concurrency groups, real child timeout/cancellation/descendants/recovery,
+unique source failures and final receipts. Source invariants/catalog checks and
+independent exact-head review are required for the continuation; the old review
+is not relabeled as review of this new source.
+
+After completion/review and composition with accepted main, the supported native
+activation is a candidate PR whose changed `pull_request` workflow runs from its
+merge subject. Opening/Draft is a cheap observation; the single deliberate label
+with a fresh exact manifest admits actual proof. A full expected-green request
+must include Windows and all selected obligations. Manual dispatch does not
+substitute for PR/fork attachment. A legitimate fork subject and any existing
+platform approval must be evidenced without granting credentials or access.
+No speculative full run or live activation has occurred.
+
+Before integration inspect actual publication triggers. The existing Swarm GHCR
+workflow publishes on selected main changes. The parent's hold on publication-
+causing #732/#733 merges remains in force; registry/permission behavior must not
+be disabled to bypass it. This candidate's own final main-relative path set must
+be checked separately before any integration.
+
+References: [workflow events and subjects](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows),
+[native timeouts and steps](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax),
+[native concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).

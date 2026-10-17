@@ -48,7 +48,7 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
-id               = "qualification_admission"
+id               = "admission"
 workflow         = ".github/workflows/ci.yml"
 job              = "Admit explicit qualification"
 kind             = "planner"
@@ -64,6 +64,26 @@ proof_obligation = "Validate native request, checkout, head/base/merge source re
 evidence         = ["job logs", "job outputs"]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 duplicate_of     = []
+review_after     = "2026-10-17"
+expires          = "2027-04-17"
+
+[[lane]]
+id               = "qualification_context_name"
+workflow         = ".github/workflows/ci.yml"
+job              = "${{ (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'ci:qualify')) && 'Tokmd Rust Result' || 'Qualification not requested' }}"
+kind             = "planner"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Keep ordinary observation events outside the required qualification context."
+failure_mode     = "An unrelated label overwrites a qualified head or skipped work emits a passing required context."
+proof_obligation = "Name deliberate requests Tokmd Rust Result and unrequested events Qualification not requested; preserve full Rust gate proof."
+evidence         = ["job logs", "native check names"]
+allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
+duplicate_of     = ["tokmd_rust_result"]
 review_after     = "2026-10-17"
 expires          = "2027-04-17"
 

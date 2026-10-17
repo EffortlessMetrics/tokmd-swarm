@@ -2,7 +2,7 @@
 
 This script never dispatches a run, changes a status, cancels work, or uses a
 credential. GitHub supplies the event/context; git reads only public source refs.
-The required Rust job separately checks live PR metadata with its existing token.
+The required Rust job repeats native-event and source validation before and after proof.
 """
 
 import json
@@ -65,12 +65,18 @@ def admit(event, context, read_refs):
                 or native_pr.get("base", {}).get("sha") != base
                 or context["sha"] != proof_sha or context["workflow_sha"] != proof_sha):
             raise ValueError("native PR source or merge composition differs from the request")
+    decision = {"mode": "qualification" if native_pr is None else "pr-qualification", "head": head, "base": base, "pr": pr}
+    if native_pr is not None:
+        deadline = inputs.get("deadline_epoch", "")
+        if not isinstance(deadline, str) or not deadline.isdecimal() or not 0 < int(deadline) - time.time() <= 20 * 60:
+            raise ValueError("request deadline is missing, expired or exceeds 20 minutes")
+        decision["deadline_epoch"] = deadline
     refs = read_refs(pr)
     if refs.get(f"refs/pull/{pr}/head") != head or refs.get("refs/heads/main") != base:
         raise ValueError("requested head or base is stale")
     if proof_sha is not None and refs.get(f"refs/pull/{pr}/merge") != proof_sha:
         raise ValueError("requested merge composition is stale")
-    return {"mode": "qualification" if native_pr is None else "pr-qualification", "head": head, "base": base, "pr": pr}
+    return decision
 
 
 def live_refs(pr):
@@ -100,11 +106,20 @@ def main():
     if decision["mode"] == "qualification":
         print("qualification refused: dispatch lacks the native PR context required by the current risk/proof lanes; migration is not qualified", file=sys.stderr)
         return 1
-    deadline = os.environ.get("QUALIFICATION_DEADLINE", "")
-    if not deadline.isdecimal() or not 0 < int(deadline) - int(time.time()) <= 19 * 60:
+    local_deadline = os.environ.get("QUALIFICATION_DEADLINE", "")
+    deadline = decision.get("deadline_epoch", local_deadline)
+    if local_deadline.isdecimal() and deadline.isdecimal():
+        deadline = str(min(int(local_deadline), int(deadline)))
+    if not deadline.isdecimal() or not 0 < int(deadline) - int(time.time()) <= 20 * 60:
         print("qualification refused: missing, expired or invalid shared work deadline", file=sys.stderr)
         return 1
     decision["deadline_epoch"] = deadline
+    # Other existing PR workflows reuse this guard without another controller.
+    # Revalidation must retain the first job-local monotonic anchor.
+    if os.environ.get("GITHUB_ENV") and not os.environ.get("CI_BUDGET_MONO_NS"):
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as environment:
+            print(f"QUALIFICATION_DEADLINE={deadline}", file=environment)
+            print(f"CI_BUDGET_MONO_NS={time.monotonic_ns() + int((int(deadline) - time.time()) * 1e9)}", file=environment)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in decision.items():
             print(f"{key}={value}", file=output)

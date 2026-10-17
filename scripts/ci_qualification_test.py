@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -91,7 +92,7 @@ class AdmissionTests(unittest.TestCase):
 
     def native_request(self):
         merge = "c" * 40
-        request = dict(self.event["inputs"], merge_sha=merge)
+        request = dict(self.event["inputs"], merge_sha=merge, deadline_epoch=str(int(time.time()) + 600))
         body = "<!-- tokmd-qualification:v1\n" + json.dumps(request) + "\n-->"
         event = dict(action="labeled", label=dict(name="ci:qualify"), number=734,
                      pull_request=dict(state="open", body=body, draft=True, head=dict(sha=HEAD), base=dict(sha=BASE, ref="main")))
@@ -124,6 +125,18 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "merge composition is stale"):
             Q.admit(event, context, lambda pr: dict(refs, **{"refs/pull/734/merge": "d" * 40}))
 
+
+    def test_request_expiry_is_shared_and_rejects_invalid_deadlines_before_source_reads(self):
+        event, context, refs = self.native_request()
+        request = Q.request_inputs(event, context)[0]
+        for deadline in ("", "1", str(int(time.time()) + 1201)):
+            candidate = dict(request, deadline_epoch=deadline)
+            body = "<!-- tokmd-qualification:v1\n" + json.dumps(candidate) + "\n-->"
+            changed = dict(event, pull_request=dict(event["pull_request"], body=body))
+            def forbidden(pr):
+                self.fail("invalid deadline must refuse before source reads")
+            with self.subTest(deadline=deadline), self.assertRaisesRegex(ValueError, "request deadline"):
+                Q.admit(changed, context, forbidden)
 
     def test_main_push_entrypoint_preserves_post_integration_admission_and_deadline(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -194,7 +207,7 @@ class ProductionPathTests(unittest.TestCase):
             seen += 1
             self.assertRegex(body, r"(?m)^    needs:.*admission|^      - admission$")
             if name == "tokmd-rust-result":
-                self.assertIn("    name: Tokmd Rust Result\n", body)
+                self.assertIn("\'Tokmd Rust Result\'", body)
                 self.assertIn("    if: always()\n", body)
             else:
                 self.assertIn("needs.admission.outputs.admitted == 'true'", body)
@@ -203,12 +216,27 @@ class ProductionPathTests(unittest.TestCase):
     def test_expensive_jobs_wait_for_the_blocking_baseline(self):
         jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
         for name, body in zip(jobs[1::2], jobs[2::2]):
-            if name in ("admission", "route", "deny"):
+            if name in ("admission", "route", "deny", "detect"):
                 continue
             with self.subTest(job=name):
                 self.assertIn("deny", re.search(r"^    needs:(.*?)(?=^    [a-z]|\Z)", body, re.MULTILINE | re.DOTALL).group(1))
                 if name != "tokmd-rust-result":
                     self.assertIn("needs.deny.result == 'success'", body)
+
+    def test_actual_check_name_preserves_qualification_and_does_not_overwrite_it_on_observation(self):
+        body = self.source.split("  tokmd-rust-result:\n", 1)[1].split("  detect:\n", 1)[0]
+        expression = re.search(r"^    name: \$\{\{ (.+) \}\}$", body, re.MULTILINE).group(1)
+        program = """const [expression,event,action,label]=process.argv.slice(1);
+const github={event_name:event,event:{action,label:{name:label}}};
+process.stdout.write(String(eval(expression)));"""
+        for event, action, label, expected in (("pull_request","opened","","Qualification not requested"),
+            ("pull_request","ready_for_review","","Qualification not requested"),
+            ("pull_request","labeled","ordinary","Qualification not requested"),
+            ("pull_request","labeled","ci:qualify","Tokmd Rust Result"),
+            ("workflow_dispatch","","","Tokmd Rust Result"),("push","","","Tokmd Rust Result")):
+            run = subprocess.run(["node","-e",program,expression,event,action,label],capture_output=True,text=True,timeout=3)
+            self.assertEqual(run.returncode,0,run.stderr)
+            self.assertEqual(run.stdout,expected)
 
     def test_actual_required_refusal_step_fails_without_successful_admission(self):
         body = step_script(self.source, "Refuse unrequested or failed admission")
@@ -316,19 +344,22 @@ process.stdout.write(String(eval(condition)));"""
             bindir.mkdir()
             scripts = {
                 "cargo": '#!/bin/bash\necho "$*" >> "$CALLS"\nexit 0\n',
-                "timeout": '#!/bin/bash\necho "$1 $2" >> "$CALLS.timeout"\nshift 2\nexec "$@"\n',
-                "date": '#!/bin/bash\nif [ "$1" = +%s ]; then n=$(cat "$CALLS.clock" 2>/dev/null || echo 100); echo "$n"; echo "$((n+1))" > "$CALLS.clock"; else exec /bin/date "$@"; fi\n',
             }
+            (root / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/ci_budget.py", root / "scripts/ci_budget.py")
             for name, script in scripts.items():
                 path = bindir / name
                 path.write_text(script)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ["PATH"], RUNNER_KIND="github",
-                       GITHUB_EVENT_NAME="workflow_dispatch", CALLS=str(root / "calls"), QUALIFICATION_DEADLINE="104")
+                       GITHUB_EVENT_NAME="workflow_dispatch", CALLS=str(root / "calls"), QUALIFICATION_DEADLINE="104", CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 125_000_000_000))
             result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", body], cwd=root, env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / "calls").read_text().splitlines(), expected)
-            self.assertEqual((root / "calls.timeout").read_text().splitlines(), [f"--kill-after=30s {n}s" for n in (4, 3, 2, 1)])
+            receipts = [json.loads(path.read_text()) for path in (root / "target/ci-core").glob("*_exit.json")]
+            self.assertEqual(len(receipts), 4)
+            self.assertTrue(all(r["terminal_reason"] == "completed" for r in receipts))
+            self.assertEqual({r["deadline_mono_ns"] for r in receipts}, {env["CI_BUDGET_MONO_NS"]})
 
     def test_actual_core_commands_share_one_deadline_and_expired_budget_launches_nothing(self):
         body = step_script(self.source, "Fast precontext and launch core gate")
@@ -336,11 +367,13 @@ process.stdout.write(String(eval(condition)));"""
             root = Path(directory)
             bindir = root / "bin"
             bindir.mkdir()
+            (root / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/ci_budget.py", root / "scripts/ci_budget.py")
             cargo = bindir / "cargo"
             cargo.write_text('#!/bin/bash\necho "$*" >> "$CALLS"\nexit 0\n')
             cargo.chmod(0o755)
             env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ["PATH"], RUNNER_KIND="github",
-                       GITHUB_EVENT_NAME="workflow_dispatch", CALLS=str(root / "calls"), QUALIFICATION_DEADLINE="1")
+                       GITHUB_EVENT_NAME="workflow_dispatch", CALLS=str(root / "calls"), QUALIFICATION_DEADLINE="1", CI_BUDGET_MONO_NS="1")
             result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", body], cwd=root, env=env, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((root / "calls").exists())

@@ -4,14 +4,16 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    types: [labeled]
     branches: ["main"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-policy-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  group: ci-policy-${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,10 +31,38 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Check runner routing
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         run: scripts/check-no-bare-self-hosted.sh .github/workflows
 
+      - name: Finalize explicit PR qualification budget
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python3 scripts/ci_qualification.py
+          source_status=$?
+          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   ci-lane-whitelist:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: CI Lane Whitelist
     runs-on: ubuntu-latest
     steps:
@@ -40,13 +70,44 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run CI lane whitelist linter
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         run: |
           mkdir -p target/tokmd/reports
           cargo xtask ci-lane-whitelist \
@@ -56,8 +117,15 @@ jobs:
             --report-dir target/tokmd/reports \
             --strict
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload lane whitelist report
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: ci-lane-whitelist-report
@@ -65,8 +133,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Append report to step summary
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_6.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_6.outcome == 'success') }}
         run: |
           if [ -f target/tokmd/reports/ci-lane-whitelist-report.txt ]; then
             {
@@ -75,7 +150,20 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Finalize explicit PR qualification budget
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python3 scripts/ci_qualification.py
+          source_status=$?
+          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   ci-gate-contract-reference:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: CI Gate Contract (reference)
     runs-on: ubuntu-latest
     steps:
@@ -83,18 +171,62 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify reference single-tight gate fixture
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         run: |
           cargo xtask ci-gate-contract --check \
             --workflow fixtures/ci-gate-contract/reference-ci.yml
 
+      - name: Finalize explicit PR qualification budget
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python3 scripts/ci_qualification.py
+          source_status=$?
+          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   ci-gate-contract-live-gap:
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     name: CI Gate Contract (live gap)
     runs-on: ubuntu-latest
     steps:
@@ -102,9 +234,32 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - name: Verify live ci.yml matches single-tight gate contract
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         run: |
           set -euo pipefail
           cargo xtask ci-gate-contract --check --workflow .github/workflows/ci.yml
@@ -115,3 +270,15 @@ jobs:
             echo "Normative spec: \`docs/specs/ub-review-ci-gate.md\`."
             echo "Reference fixture: \`fixtures/ci-gate-contract/reference-ci.yml\`."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Finalize explicit PR qualification budget
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python3 scripts/ci_qualification.py
+          source_status=$?
+          python3 scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
