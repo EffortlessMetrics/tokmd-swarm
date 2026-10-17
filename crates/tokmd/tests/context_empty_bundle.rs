@@ -1,7 +1,10 @@
 //! Empty stdout bundles remain valid payloads, with recovery guidance on stderr.
 
+use assert_cmd::Command;
+use assert_cmd::assert::Assert;
+use predicates::prelude::*;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Command as ProcessCommand;
 
 struct Fixture {
     _temp: tempfile::TempDir,
@@ -25,7 +28,7 @@ impl Fixture {
     }
 
     fn init_git(&self) -> anyhow::Result<()> {
-        let output = Command::new("git")
+        let output = ProcessCommand::new("git")
             .args(["init", "--quiet"])
             .current_dir(&self.root)
             .output()?;
@@ -33,8 +36,8 @@ impl Fixture {
         Ok(())
     }
 
-    fn context_command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
+    fn raw_context_command(&self, args: &[&str]) -> ProcessCommand {
+        let mut command = ProcessCommand::new(env!("CARGO_BIN_EXE_tokmd"));
         command
             .current_dir(&self.root)
             .env("TOKMD_CONFIG", &self.config)
@@ -45,8 +48,12 @@ impl Fixture {
         command
     }
 
-    fn context(&self, args: &[&str]) -> anyhow::Result<Output> {
-        Ok(self.context_command(args).output()?)
+    fn context_command(&self, args: &[&str]) -> Command {
+        Command::from_std(self.raw_context_command(args))
+    }
+
+    fn context(&self, args: &[&str]) -> Assert {
+        self.context_command(args).assert().success()
     }
 
     fn write_source(&self) -> anyhow::Result<()> {
@@ -56,13 +63,9 @@ impl Fixture {
 }
 
 fn assert_empty_bundle_guidance(fixture: &Fixture) -> anyhow::Result<()> {
-    let output = fixture.context(&["--mode", "bundle"])?;
-    anyhow::ensure!(output.status.success(), "empty bundle failed: {output:?}");
-    anyhow::ensure!(
-        output.stdout.is_empty(),
-        "guidance contaminated the payload"
-    );
-    let stderr = std::str::from_utf8(&output.stderr)?;
+    let mut assertion = fixture
+        .context(&["--mode", "bundle"])
+        .stdout(predicate::str::is_empty());
     for expected in [
         "No files were selected for the context bundle.",
         "scan paths",
@@ -70,10 +73,7 @@ fn assert_empty_bundle_guidance(fixture: &Fixture) -> anyhow::Result<()> {
         "`tokmd check-ignore <path>`",
         "`--mode json`",
     ] {
-        anyhow::ensure!(
-            stderr.contains(expected),
-            "missing recovery guidance {expected:?}: {stderr:?}"
-        );
+        assertion = assertion.stderr(predicate::str::contains(expected));
     }
     Ok(())
 }
@@ -96,7 +96,7 @@ fn empty_stdout_bundle_keeps_success_with_a_closed_stderr_reader() -> anyhow::Re
     let (reader, writer) = std::io::pipe()?;
     drop(reader);
     let output = fixture
-        .context_command(&["--mode", "bundle"])
+        .raw_context_command(&["--mode", "bundle"])
         .stderr(writer)
         .output()?;
     anyhow::ensure!(
@@ -126,7 +126,7 @@ fn budget_guidance_keeps_success_with_a_closed_stderr_reader() -> anyhow::Result
             let (reader, writer) = std::io::pipe()?;
             drop(reader);
             let output = fixture
-                .context_command(&["--mode", mode, "--budget", "1"])
+                .raw_context_command(&["--mode", mode, "--budget", "1"])
                 .stderr(writer)
                 .output()?;
             anyhow::ensure!(
@@ -160,10 +160,10 @@ fn ignored_only_stdout_bundle_has_guidance() -> anyhow::Result<()> {
 fn normal_stdout_bundle_keeps_its_payload_and_stderr() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
     fixture.write_source()?;
-    let output = fixture.context(&["--mode", "bundle"])?;
-    anyhow::ensure!(output.status.success(), "bundle failed: {output:?}");
-    anyhow::ensure!(output.stdout == b"// === main.rs ===\nfn main() {}\n\n");
-    anyhow::ensure!(output.stderr.is_empty(), "unexpected guidance: {output:?}");
+    fixture
+        .context(&["--mode", "bundle"])
+        .stdout(predicate::str::diff("// === main.rs ===\nfn main() {}\n\n"))
+        .stderr(predicate::str::is_empty());
     Ok(())
 }
 
@@ -173,10 +173,10 @@ fn no_ignore_recovers_the_ignored_source_without_guidance() -> anyhow::Result<()
     fixture.init_git()?;
     fixture.write_source()?;
     std::fs::write(fixture.root.join(".gitignore"), "*\n")?;
-    let output = fixture.context(&["--mode", "bundle", "--no-ignore"])?;
-    anyhow::ensure!(output.status.success(), "recovery failed: {output:?}");
-    anyhow::ensure!(output.stdout == b"// === main.rs ===\nfn main() {}\n\n");
-    anyhow::ensure!(output.stderr.is_empty(), "unexpected guidance: {output:?}");
+    fixture
+        .context(&["--mode", "bundle", "--no-ignore"])
+        .stdout(predicate::str::diff("// === main.rs ===\nfn main() {}\n\n"))
+        .stderr(predicate::str::is_empty());
     Ok(())
 }
 
@@ -184,15 +184,16 @@ fn no_ignore_recovers_the_ignored_source_without_guidance() -> anyhow::Result<()
 fn empty_receipt_modes_remain_silent_on_stderr() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
     for mode in ["list", "json"] {
-        let output = fixture.context(&["--mode", mode])?;
-        anyhow::ensure!(output.status.success(), "{mode} failed: {output:?}");
-        anyhow::ensure!(output.stderr.is_empty(), "unexpected guidance: {output:?}");
+        let assertion = fixture
+            .context(&["--mode", mode])
+            .stderr(predicate::str::is_empty());
         if mode == "json" {
-            let receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-            anyhow::ensure!(receipt["file_count"] == 0);
-            anyhow::ensure!(receipt["files"] == serde_json::json!([]));
+            let receipt: serde_json::Value =
+                serde_json::from_slice(&assertion.get_output().stdout)?;
+            assert_eq!(receipt["file_count"], 0);
+            assert_eq!(receipt["files"], serde_json::json!([]));
         } else {
-            anyhow::ensure!(std::str::from_utf8(&output.stdout)?.contains("Files: 0"));
+            assertion.stdout(predicate::str::contains("Files: 0"));
         }
     }
     Ok(())
@@ -201,22 +202,19 @@ fn empty_receipt_modes_remain_silent_on_stderr() -> anyhow::Result<()> {
 #[test]
 fn empty_bundle_preserves_machine_readable_progress_stderr() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
-    let output = fixture
+    let assertion = fixture
         .context_command(&["--mode", "bundle"])
         .env("TOKMD_PROGRESS_EVENTS", "1")
-        .output()?;
-    anyhow::ensure!(
-        output.status.success(),
-        "progress bundle failed: {output:?}"
-    );
-    anyhow::ensure!(output.stdout.is_empty());
-    let stderr = std::str::from_utf8(&output.stderr)?;
-    anyhow::ensure!(!stderr.is_empty(), "missing requested progress events");
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::is_empty().not());
+    let stderr = std::str::from_utf8(&assertion.get_output().stderr)?;
     for line in stderr.lines() {
         let event: serde_json::Value = serde_json::from_str(line)?;
-        anyhow::ensure!(event["event"] == "tokmd.progress");
-        anyhow::ensure!(event["schema_version"] == 1);
-        anyhow::ensure!(event["kind"] == "update" || event["kind"] == "finish");
+        assert_eq!(event["event"], "tokmd.progress");
+        assert_eq!(event["schema_version"], 1);
+        assert!(event["kind"] == "update" || event["kind"] == "finish");
     }
     Ok(())
 }
@@ -224,25 +222,22 @@ fn empty_bundle_preserves_machine_readable_progress_stderr() -> anyhow::Result<(
 #[test]
 fn empty_file_bundle_keeps_the_existing_write_notice() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
-    let output = fixture.context(&["--mode", "bundle", "--output", "context.txt"])?;
-    anyhow::ensure!(output.status.success(), "file bundle failed: {output:?}");
-    anyhow::ensure!(output.stdout.is_empty());
-    anyhow::ensure!(std::fs::read(fixture.root.join("context.txt"))?.is_empty());
-    anyhow::ensure!(std::str::from_utf8(&output.stderr)? == "Wrote context.txt\n");
+    fixture
+        .context(&["--mode", "bundle", "--output", "context.txt"])
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::diff("Wrote context.txt\n"));
+    assert!(std::fs::read(fixture.root.join("context.txt"))?.is_empty());
     Ok(())
 }
 
 #[test]
 fn empty_directory_bundle_does_not_get_stdout_guidance() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
-    let output = fixture.context(&["--mode", "bundle", "--output-dir", "bundle"])?;
-    anyhow::ensure!(
-        output.status.success(),
-        "directory bundle failed: {output:?}"
-    );
-    anyhow::ensure!(output.stdout.is_empty());
-    anyhow::ensure!(fixture.root.join("bundle/manifest.json").is_file());
-    anyhow::ensure!(!std::str::from_utf8(&output.stderr)?.contains("No files were selected"));
+    fixture
+        .context(&["--mode", "bundle", "--output-dir", "bundle"])
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("No files were selected").not());
+    assert!(fixture.root.join("bundle/manifest.json").is_file());
     Ok(())
 }
 
@@ -250,14 +245,14 @@ fn empty_directory_bundle_does_not_get_stdout_guidance() -> anyhow::Result<()> {
 fn tiny_budget_omission_is_a_selected_file_not_an_empty_bundle() -> anyhow::Result<()> {
     let fixture = Fixture::new()?;
     fixture.write_source()?;
-    let output = fixture.context(&["--mode", "bundle", "--budget", "1"])?;
-    anyhow::ensure!(output.status.success(), "tiny budget failed: {output:?}");
-    let stdout = std::str::from_utf8(&output.stdout)?;
-    anyhow::ensure!(stdout.contains("// === main.rs ==="));
-    anyhow::ensure!(stdout.contains("bytes omitted"));
-    anyhow::ensure!(
-        std::str::from_utf8(&output.stderr)?
-            == "Warning: context budget (1 tokens; per-file cap 0 tokens) leaves no usable file content. Review --budget and --max-file-pct.\n"
-    );
+    fixture
+        .context(&["--mode", "bundle", "--budget", "1"])
+        .stdout(
+            predicate::str::contains("// === main.rs ===")
+                .and(predicate::str::contains("bytes omitted")),
+        )
+        .stderr(predicate::str::diff(
+            "Warning: context budget (1 tokens; per-file cap 0 tokens) leaves no usable file content. Review --budget and --max-file-pct.\n",
+        ));
     Ok(())
 }

@@ -1,5 +1,7 @@
 use anyhow::Result;
 use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
+use predicates::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::process::Output;
@@ -54,7 +56,7 @@ fn tiny_budget_names_the_cause_and_larger_budget_recovers_the_same_file() -> Res
             for mode in ["bundle", "list", "json"] {
                 let small = context(dir.path(), mode, "1", strategy, false)?;
                 // A generic empty/ignore hint or the wrong budget must fail literally.
-                assert_eq!(String::from_utf8_lossy(&small.stderr), WARNING);
+                small.clone().assert().stderr(predicate::str::diff(WARNING));
                 if mode == "json" {
                     let receipt: serde_json::Value = serde_json::from_slice(&small.stdout)?;
                     assert_eq!(receipt["budget_tokens"], 1);
