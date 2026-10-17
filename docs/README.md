@@ -60,6 +60,8 @@ schemas, and verification policy for `tokmd`.
 - [handoff.md](handoff.md) — coding-agent handoff bundle workflow and guardrails.
 - [publishing-evidence.md](publishing-evidence.md) — release-facing package
   surface, metadata, and CI ownership evidence before release mutation.
+- [specs/release-status.md](specs/release-status.md) — read-only,
+  fail-closed release state receipt and state vocabulary.
 - [release-readiness.md](release-readiness.md) — interpret pre-release evidence
   without publishing, tagging, or creating releases.
 - [releases/release-checklist.md](releases/release-checklist.md) — canonical
