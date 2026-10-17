@@ -6,16 +6,37 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      pull_request:
+        description: PR number to qualify
+        required: true
+        type: string
+      head_sha:
+        description: Exact PR head; select its branch as the dispatch ref
+        required: true
+        type: string
+      base_sha:
+        description: Exact current main commit
+        required: true
+        type: string
+      generation:
+        description: Exact head_sha:base_sha pair
+        required: true
+        type: string
+      expected_green:
+        description: Local source proof and independent review are expected green
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # Cancel superseded push runs and PR synchronize runs. Label add/remove must
-  # not cancel an in-flight PR run: it triggers a fresh run with the new label
-  # set without throwing away work.
-  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
+  # Observation events never share a cancellation domain with qualification.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('qualification-{0}-{1}', inputs.pull_request, inputs.generation) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,9 +44,32 @@ env:
   RUSTFLAGS: -C debuginfo=0
 
 jobs:
+  admission:
+    name: Admit explicit qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+      mode: ${{ steps.admit.outputs.mode }}
+      deadline_epoch: ${{ steps.admit.outputs.deadline_epoch }}
+    steps:
+      - name: Start shared work budget
+        id: deadline
+        run: echo "deadline_epoch=$(( $(date +%s) + 19 * 60 ))" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate explicit qualification request
+        id: admit
+        env:
+          QUALIFICATION_DEADLINE: ${{ steps.deadline.outputs.deadline_epoch }}
+        run: python3 scripts/ci_qualification.py
+
   # Phase 2 (#226): single tight gate — route + one required check.
   # Normative spec: docs/specs/ub-review-ci-gate.md
   route:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Route CI runner
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -73,14 +117,20 @@ jobs:
           fi
 
   tokmd-rust-result:
+    if: always()
     name: Tokmd Rust Result
-    needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 90
+    needs: [admission, route]
+    runs-on: ${{ fromJSON(needs.route.outputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write
     steps:
+      - name: Refuse unrequested or failed admission
+        env:
+          ADMITTED: ${{ needs.admission.outputs.admitted }}
+          ADMISSION_RESULT: ${{ needs.admission.result }}
+        run: test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -127,9 +177,10 @@ jobs:
           mark_clock target/ci-core/job_started
 
       - name: Fast precontext and launch core gate
-        timeout-minutes: 70
+        timeout-minutes: 19
         env:
           RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
         run: |
           set +e
           mkdir -p target/ci-core
@@ -155,22 +206,26 @@ jobs:
           # gate, full tests, and advisory review concurrently can starve the
           # gate long enough to produce a false timeout marker (124) even when
           # the same commands pass with the available resources.
-          # Bound each command separately so the receipts distinguish a
-          # command timeout (124) from a source failure, while tee keeps live
-          # progress visible in the hosted log and preserves the full log.
+          # Share one admission deadline across the retained commands while
+          # preserving command timeout (124), source failure and complete logs.
           run_bounded() {
             label="$1"
             marker="$2"
             log="$3"
             shift 3
-            echo "::group::${label} (bounded 15m)"
+            echo "::group::${label} (shared qualification deadline)"
             echo "started $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$log"
             # Start a new session so timeout's TERM/KILL reaches Cargo and its
             # spawned rustc/linker/tests instead of leaving orphan processes.
             # GNU timeout reports 137 when its KILL grace path fires; normalize
             # that equivalent timeout outcome to the receipt's 124 marker.
-            setsid -w timeout --kill-after=30s 15m "$@" 2>&1 | tee -a "$log"
-            status="${PIPESTATUS[0]}"
+            remaining=$((QUALIFICATION_DEADLINE - $(date +%s)))
+            if [ "$remaining" -le 0 ]; then
+              status=124
+            else
+              setsid -w timeout --kill-after=30s "${remaining}s" "$@" 2>&1 | tee -a "$log"
+              status="${PIPESTATUS[0]}"
+            fi
             if [ "$status" -eq 137 ]; then
               status=124
             fi
@@ -203,7 +258,7 @@ jobs:
           echo "completed serial core gate, tests, and proof-policy"
 
       - name: Record UB Review start
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        if: ${{ needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         run: |
           mark_clock() {
             python3 -c 'import datetime,sys,time; p=sys.argv[1]; open(p+"_mono_ns","w",encoding="utf-8").write(str(time.monotonic_ns())+"\n"); open(p+"_utc","w",encoding="utf-8").write(datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")+"\n")' "$1"
@@ -213,7 +268,7 @@ jobs:
       - name: UB Review (advisory)
         id: ubreview
         timeout-minutes: 15
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        if: ${{ needs.admission.outputs.admitted == 'true' && !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
         continue-on-error: true
         uses: EffortlessMetrics/ub-review@e1e41124e0468b3714827fd32574c8c583803b72
         with:
@@ -261,56 +316,22 @@ jobs:
           RUNNER_KIND: ${{ needs.route.outputs.runner_kind }}
         run: |
           set -uo pipefail
-          # The producer step is bounded at 70 minutes. Give post-timeout
-          # cleanup a short window to publish any markers it managed to write;
-          # do not turn a bounded proof timeout into another 50-minute wait.
-          deadline=$((SECONDS + 120))
+          # The synchronous producer has already returned; missing proof is a failure.
           for marker in core_exit test_exit xtask_test_exit proof_policy_exit; do
-            while [ ! -f "target/ci-core/${marker}" ]; do
-              if [ "${SECONDS}" -ge "${deadline}" ]; then
-                echo "124" > "target/ci-core/${marker}"
-                echo "${marker}: unavailable after bounded core-proof step" >> "$GITHUB_STEP_SUMMARY"
-                break
-              fi
-              sleep 5
-            done
+            if [ ! -f "target/ci-core/${marker}" ]; then
+              echo "124" > "target/ci-core/${marker}"
+              echo "${marker}: unavailable after bounded core-proof step" >> "$GITHUB_STEP_SUMMARY"
+            fi
           done
           core_exit="$(cat target/ci-core/core_exit)"
           test_exit="$(cat target/ci-core/test_exit)"
           xtask_test_exit="$(cat target/ci-core/xtask_test_exit)"
           proof_policy_exit="$(cat target/ci-core/proof_policy_exit)"
 
-          # Self-hosted runners can exhaust CPU/RAM under concurrent cargo; retry
-          # any failed lane serially once before reporting failure.
-          if [ "${RUNNER_KIND}" = "self-hosted" ]; then
-            if [ "${core_exit}" != "0" ] && [ "${core_exit}" != "124" ]; then
-              echo "Concurrent core gate failed (exit ${core_exit}); retrying serially"
-              { echo; echo "--- serial retry ---"; } >> target/ci-core/core.log
-              cargo --locked xtask gate --check >> target/ci-core/core.log 2>&1
-              core_exit=$?
-            fi
-            if [ "${test_exit}" != "0" ] && [ "${test_exit}" != "124" ]; then
-              echo "Concurrent tests failed (exit ${test_exit}); retrying serially"
-              { echo; echo "--- serial retry ---"; } >> target/ci-core/test.log
-              cargo test --locked --all-features >> target/ci-core/test.log 2>&1
-              test_exit=$?
-            fi
-            if [ "${xtask_test_exit}" != "0" ] && [ "${xtask_test_exit}" != "124" ]; then
-              echo "Concurrent xtask tests failed (exit ${xtask_test_exit}); retrying serially"
-              { echo; echo "--- serial retry ---"; } >> target/ci-core/xtask_test.log
-              cargo test --locked -p xtask --all-features >> target/ci-core/xtask_test.log 2>&1
-              xtask_test_exit=$?
-            fi
-            if [ "${proof_policy_exit}" != "0" ] && [ "${proof_policy_exit}" != "124" ]; then
-              echo "Concurrent proof-policy failed (exit ${proof_policy_exit}); retrying serially"
-              { echo; echo "--- serial retry ---"; } >> target/ci-core/proof_policy.log
-              cargo --locked xtask proof-policy --check >> target/ci-core/proof_policy.log 2>&1
-              proof_policy_exit=$?
-            fi
-          fi
+          # The producer already runs serially. A failed proof stays failed;
+          # an unbounded retry here would escape the shared work budget.
 
-          # Persist the post-retry values so the always-run receipt reflects
-          # the final verdict rather than stale first-attempt markers.
+          # Preserve the producer outcomes in the final receipt.
           printf '%s\n' "${core_exit}" > target/ci-core/core_exit
           printf '%s\n' "${test_exit}" > target/ci-core/test_exit
           printf '%s\n' "${xtask_test_exit}" > target/ci-core/xtask_test_exit
@@ -446,7 +467,7 @@ jobs:
             --arg core_completed_utc "${core_completed_utc}" \
             --arg ub_started_utc "${ub_started_utc}" \
             --arg ub_completed_utc "${ub_completed_utc}" \
-            '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:90,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:null,selection:"not_exposed",candidates:[{provider_policy:$ub_provider_policy,model:$ub_model},{provider_policy:"opencode-fallback",model:"deepseek-v4-flash"}],outcome:$ub_outcome}}}}' \
+            '{schema_version:$schema_version,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,job:$job,head_sha:$head_sha,runner_kind:$runner_kind,observability_started_mono_ns:$job_started_mono_ns,timeout_minutes:20,terminal_reason:$terminal_reason,timeout_classification:$timeout_classification,timing_integrity:$timing_integrity,phases:{core:{started_mono_ns:$core_started_mono_ns,completed_mono_ns:$core_completed_mono_ns,started_utc:(if $core_started_utc == "" then null else $core_started_utc end),completed_utc:(if $core_completed_utc == "" then null else $core_completed_utc end),elapsed_seconds:$core_elapsed_seconds},ub_review:{started_mono_ns:$ub_started_mono_ns,completed_mono_ns:$ub_completed_mono_ns,started_utc:(if $ub_started_utc == "" then null else $ub_started_utc end),completed_utc:(if $ub_completed_utc == "" then null else $ub_completed_utc end),elapsed_seconds:$ub_elapsed_seconds,outcome:$ub_outcome,model_call:{provider_policy:$ub_provider_policy,model:null,selection:"not_exposed",candidates:[{provider_policy:$ub_provider_policy,model:$ub_model},{provider_policy:"opencode-fallback",model:"deepseek-v4-flash"}],outcome:$ub_outcome}}}}' \
             > "${receipt_dir}/ub-review-receipt.json"
 
       - name: Upload UB Review observability receipt
@@ -463,6 +484,8 @@ jobs:
   # paths change, even without an explicit label. Mirrors the routing
   # in policy/ci-risk-packs.toml.
   detect:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Detect risk packs
     runs-on: ubuntu-latest
     outputs:
@@ -536,6 +559,8 @@ jobs:
           retention-days: 14
 
   msrv:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: MSRV Check
     runs-on: ubuntu-latest
     steps:
@@ -558,12 +583,8 @@ jobs:
   # the Rust-owned `git_io` risk pack output.
   build-windows:
     name: Build & Test (Windows)
-    needs: detect
-    if: >-
-      github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'windows') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      needs.detect.outputs.windows_path == 'true'
+    needs: [admission, detect]
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
     runs-on: windows-latest
 
     steps:
@@ -584,8 +605,9 @@ jobs:
         CI: true
 
   build-macos:
+    needs: admission
     name: Build & Test (macOS)
-    if: github.event_name == 'push'
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push')
     runs-on: macos-latest
 
     steps:
@@ -607,6 +629,8 @@ jobs:
         CI: true
 
   feature-boundaries:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Feature Boundaries
     runs-on: ubuntu-latest
     steps:
@@ -727,8 +751,9 @@ jobs:
           PY
 
   affected-plan:
+    needs: admission
     name: Affected Proof Plan
-    if: github.event_name == 'pull_request'
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -808,8 +833,9 @@ jobs:
           if-no-files-found: error
 
   fast-proof-run:
+    needs: admission
     name: Fast Proof Run (Advisory)
-    if: github.event_name == 'pull_request'
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -943,12 +969,8 @@ jobs:
 
   wasm-compile:
     name: Wasm Compile & Test
-    needs: detect
-    if: >-
-      github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'wasm') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      needs.detect.outputs.wasm == 'true'
+    needs: [admission, detect]
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -988,6 +1010,8 @@ jobs:
         run: npm --prefix web/runner run check
 
   deny:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Cargo Deny
     runs-on: ubuntu-latest
     steps:
@@ -1003,6 +1027,8 @@ jobs:
         run: cargo deny --all-features check
 
   typos:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Typos
     runs-on: ubuntu-latest
     steps:
@@ -1020,13 +1046,8 @@ jobs:
 
   proptest-smoke:
     name: Proptest Smoke
-    needs: detect
-    if: >-
-      github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'property-tests') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      needs.detect.outputs.core_receipts == 'true' ||
-      needs.detect.outputs.analysis == 'true'
+    needs: [admission, detect]
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1045,6 +1066,8 @@ jobs:
           CI: true
 
   publish-plan:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Publish Surface
     runs-on: ubuntu-latest
     steps:
@@ -1061,6 +1084,8 @@ jobs:
           CI: true
 
   version-consistency:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Version consistency
     runs-on: ubuntu-latest
     steps:
@@ -1072,6 +1097,8 @@ jobs:
         run: cargo xtask version-consistency
 
   docs-check:
+    if: needs.admission.outputs.admitted == 'true'
+    needs: admission
     name: Docs Check
     runs-on: ubuntu-latest
     steps:
@@ -1124,18 +1151,11 @@ jobs:
 
   nix-pr:
     name: Nix PR Package Gate
-    needs: detect
+    needs: [admission, detect]
     # Nix package validation is publication-owned. Keep it out of the
     # tokmd-swarm workbench so swarm push/PR checks do not depend on
     # publication repo Nix state.
-    if: >-
-      github.repository == 'EffortlessMetrics/tokmd' &&
-      (github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'nix') ||
-      contains(github.event.pull_request.labels.*.name, 'release-check') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci') ||
-      needs.detect.outputs.nix == 'true' ||
-      needs.detect.outputs.release == 'true')
+    if: needs.admission.outputs.admitted == 'true' && (github.repository == 'EffortlessMetrics/tokmd' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'nix') || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.nix == 'true' || needs.detect.outputs.release == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -1164,6 +1184,7 @@ jobs:
         run: nix build -L .#tokmd
 
   mutation:
+    needs: admission
     name: Mutation Testing
     runs-on: ubuntu-latest
     # Runtime mutation testing moves to label/push-to-main so ordinary
@@ -1172,10 +1193,7 @@ jobs:
     # prices for the default PR. The "(Required)" suffix is dropped to
     # avoid implying this lane is a mandatory PR check; required-status
     # guarantees live on the `Tokmd Rust Result` gate job.
-    if: >-
-      github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'mutation') ||
-      contains(github.event.pull_request.labels.*.name, 'full-ci')
+    if: needs.admission.outputs.admitted == 'true' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'mutation') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1277,9 +1295,10 @@ jobs:
       contents: read
       actions: read
     runs-on: ubuntu-latest
-    if: always()
+    if: needs.admission.outputs.admitted == 'true' && (always())
     continue-on-error: true
     needs:
+      - admission
       - route
       - tokmd-rust-result
       - detect
