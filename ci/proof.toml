@@ -212,7 +212,9 @@ paths = [
 packages = ["xtask"]
 proof = [
   "python3 -m unittest scripts/ci_observability_clock_test.py",
-  "python3 -m unittest discover -s scripts -p ci_*_test.py",
+  # The existing clock selector owns observability; select the other controls once.
+  # A production selector test verifies that these two commands cover every module.
+  "python3 -m unittest discover -s scripts -p ci_[!o]*_test.py",
   "cargo xtask proof-policy --check",
   "cargo xtask ci-gate-contract --check --workflow fixtures/ci-gate-contract/reference-ci.yml",
   "cargo xtask ci-lane-whitelist",

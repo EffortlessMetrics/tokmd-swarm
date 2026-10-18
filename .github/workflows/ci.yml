@@ -138,7 +138,11 @@ jobs:
           ADMITTED: ${{ needs.admission.outputs.admitted }}
           ADMISSION_RESULT: ${{ needs.admission.result }}
           BASELINE_RESULT: ${{ needs.deny.result }}
-        run: test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true && test "$BASELINE_RESULT" = success
+        run: |
+          if ! { test "$ADMISSION_RESULT" = success && test "$ADMITTED" = true && test "$BASELINE_RESULT" = success; }; then
+            echo "::error::admission=$ADMISSION_RESULT admitted=$ADMITTED baseline=$BASELINE_RESULT" >&2
+            exit 1
+          fi
       - name: Anchor shared setup budget
         id: setup_budget
         env:

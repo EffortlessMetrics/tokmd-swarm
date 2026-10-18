@@ -73,7 +73,8 @@ workflow         = ".github/workflows/ci.yml"
 job              = "Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}"
 kind             = "planner"
 tier             = "frontdoor"
-default_pr       = true
+# Naming metadata for the existing Rust job is not an additional default workload.
+default_pr       = false
 blocking         = true
 runner           = "ubuntu_latest"
 base_lem         = 1

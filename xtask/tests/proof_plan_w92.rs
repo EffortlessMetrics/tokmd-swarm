@@ -1480,6 +1480,41 @@ fn coverage_workflow_uploads_status_before_failing_coverage() {
 }
 
 #[test]
+fn ci_plan_default_workload_does_not_charge_context_metadata() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let plan = directory.path().join("plan.json");
+    let plan_arg = plan.to_string_lossy().to_string();
+    let (stdout, stderr, success) = run_xtask(&[
+        "ci-plan",
+        "--base",
+        "HEAD",
+        "--head",
+        "HEAD",
+        "--json-out",
+        &plan_arg,
+        "--no-budget-annotations",
+    ]);
+    ensure!(success, "ci-plan failed: {stdout}\n{stderr}");
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(plan)?)?;
+    let selected = value["lanes_selected"]
+        .as_array()
+        .context("selected lanes")?;
+    ensure!(
+        selected
+            .iter()
+            .any(|lane| lane["id"] == "tokmd_rust_result"),
+        "existing Rust proof remains a default workload"
+    );
+    ensure!(
+        selected
+            .iter()
+            .all(|lane| lane["id"] != "qualification_context_name"),
+        "context metadata must not add a second default workload for the same job"
+    );
+    Ok(())
+}
+
+#[test]
 fn ci_plan_writes_proof_pack_route_receipt_artifact() {
     let root = workspace_root();
     let plan = root

@@ -237,7 +237,7 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
         .context("proof commands")?;
     for command in [
         "python3 -m unittest scripts/ci_observability_clock_test.py",
-        "python3 -m unittest discover -s scripts -p ci_*_test.py",
+        "python3 -m unittest discover -s scripts -p ci_[!o]*_test.py",
     ] {
         ensure!(
             commands

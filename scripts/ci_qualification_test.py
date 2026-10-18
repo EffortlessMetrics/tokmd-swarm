@@ -5,6 +5,7 @@ without PR context. Passing this suite does not establish native CI qualificatio
 """
 
 import importlib.util
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -350,8 +351,29 @@ process.stdout.write(JSON.stringify(eval(expression)));"""
         body = step_script(self.source, "Refuse unrequested or failed admission")
         for admitted, result, expected in (("", "failure", 1), ("true", "failure", 1), ("", "success", 1), ("true", "success", 0)):
             with self.subTest(admitted=admitted, result=result):
-                run = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED=admitted, ADMISSION_RESULT=result, BASELINE_RESULT="success"), timeout=3)
+                run = subprocess.run(["bash", "-e", "-c", body], env=dict(os.environ, ADMITTED=admitted, ADMISSION_RESULT=result, BASELINE_RESULT="success"),
+                                     capture_output=True, text=True, timeout=3)
                 self.assertEqual(run.returncode, expected)
+                if expected:
+                    self.assertIn(f'::error::admission={result} admitted={admitted} baseline=success', run.stderr)
+                else:
+                    self.assertEqual(run.stderr, '')
+
+    def test_control_plane_python_selectors_cover_each_module_once(self):
+        policy = (ROOT / 'ci/proof.toml').read_text()
+        scope = next(block for block in policy.split('[[scope]]') if '\nname = "proof_control_plane"\n' in block)
+        proof = scope.split('\nproof = [\n', 1)[1].split('\n]', 1)[0]
+        selected = []
+        for command in re.findall(r'^  "(python3 -m unittest .+)",$', proof, re.MULTILINE):
+            if command.startswith('python3 -m unittest discover -s scripts -p '):
+                pattern = command.split(' -p ', 1)[1]
+                selected.extend(path.name for path in (ROOT / 'scripts').glob(pattern))
+            else:
+                path = ROOT / command.removeprefix('python3 -m unittest ')
+                self.assertTrue(path.is_file(), command)
+                selected.append(path.name)
+        expected = {path.name: 1 for path in (ROOT / 'scripts').glob('ci_*_test.py')}
+        self.assertEqual(dict(Counter(selected)), expected, 'control proof duplicates or omits a test module')
 
     def test_actual_concurrency_separates_observation_and_exact_generation_without_cancellation(self):
         block = self.source.split("concurrency:\n", 1)[1].split("\nenv:\n", 1)[0]
