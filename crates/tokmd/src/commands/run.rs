@@ -215,7 +215,7 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
             effort: None,
         };
         let ctx = analysis::AnalysisContext {
-            export: export_data.clone(),
+            export: export_data,
             root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             source,
         };
