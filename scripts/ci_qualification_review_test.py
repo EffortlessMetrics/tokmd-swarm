@@ -57,8 +57,9 @@ class ReviewRegressions(unittest.TestCase):
         python.chmod(0o755)
         node = os.path.realpath(request_fixture.NODE)
         if not os.path.isabs(node) or not os.path.exists(node):
-            node = shutil.which(request_fixture.NODE)
-        self.assertIsNotNone(node)
+            found = shutil.which(request_fixture.NODE)
+            self.assertIsNotNone(found)
+            node = os.path.realpath(found)
         for status in ('0', '2'):
             with self.subTest(status=status):
                 env = dict(os.environ, PATH=str(bindir), RUNTIME_RECORD=str(record), CHILD_STATUS=status)
@@ -84,6 +85,7 @@ class ReviewRegressions(unittest.TestCase):
         for platform in ('darwin', 'win32'):
             with self.subTest(platform=platform), patch.object(Q.sys, 'platform', platform), \
                     patch.dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
+                        QUALIFICATION_DEADLINE=str(int(time.time()) + 600),
                         CI_BUDGET_MONO_NS=str(time.monotonic_ns() + 2_000_000_000)), \
                     patch.object(Q, 'run_command', side_effect=PermissionError('unsupported group observation')):
                 self.assertEqual(Q.live_refs('734'), {'refs/pull/734/head': 'a' * 40})

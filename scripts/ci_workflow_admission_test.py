@@ -108,6 +108,10 @@ const output=contexts.map(([event,action,label])=>{
                         GITHUB_SHA=context['sha'], GITHUB_WORKFLOW_SHA=context['workflow_sha'], GITHUB_OUTPUT=str(output),
                         GITHUB_ENV=str(environment), CHECKOUT_SHA=checkout,
                         SOURCE_REFS='\n'.join(f'{sha}\t{ref}' for ref, sha in source_refs.items()))
+                    # This fixture starts a new companion job, rather than
+                    # revalidating the test runner's retained native budget.
+                    env.pop('CI_BUDGET_MONO_NS', None)
+                    env.pop('QUALIFICATION_DEADLINE', None)
                     run = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', next(iter(scripts))], cwd=root, env=env,
                                          capture_output=True, text=True, timeout=3)
                     self.assertEqual(run.returncode, expected, run.stderr)
