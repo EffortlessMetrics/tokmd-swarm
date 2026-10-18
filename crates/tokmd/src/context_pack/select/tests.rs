@@ -32,6 +32,91 @@ fn make_child_row(path: &str, module: &str, lang: &str, tokens: usize, code: usi
 }
 
 #[test]
+fn budget_warning_distinguishes_budget_cap_from_other_empty_selections() {
+    let dense = make_test_row("missing-sample.rs", "src", "Rust", 100, 1);
+    let select = |rows: &[FileRow], budget, options: &SelectOptions| {
+        select_files_with_options(
+            rows,
+            budget,
+            ContextStrategy::Greedy,
+            ValueMetric::Code,
+            None,
+            options,
+        )
+    };
+    let options = SelectOptions::default();
+    let limited = select(std::slice::from_ref(&dense), 100, &options);
+    assert!(limited.selected.is_empty());
+    assert_eq!(
+        limited.budget_warning.as_deref(),
+        Some(
+            "Warning: context budget (100 tokens; per-file cap 15 tokens) leaves no usable file content. Review --budget and --max-file-pct."
+        )
+    );
+
+    let recovered = select(std::slice::from_ref(&dense), 1000, &options);
+    assert_eq!(recovered.selected.len(), 1);
+    assert!(recovered.budget_warning.is_none());
+    assert!(select(&[], 1, &options).budget_warning.is_none());
+    let child = make_child_row("missing-sample.rs", "src", "Rust", 100, 1);
+    assert!(select(&[child], 1, &options).budget_warning.is_none());
+    let lock = make_test_row("Cargo.lock", "src", "TOML", 100, 1);
+    assert!(select(&[lock], 1, &options).budget_warning.is_none());
+
+    let hard_cap = SelectOptions {
+        max_file_tokens: Some(1),
+        ..Default::default()
+    };
+    assert!(select(&[dense], 1000, &hard_cap).budget_warning.is_none());
+    let above_hard_cap = make_test_row("missing-sample.rs", "src", "Rust", 20_000, 1);
+    assert!(
+        select(&[above_hard_cap], 1, &options)
+            .budget_warning
+            .is_none()
+    );
+}
+
+#[test]
+fn budget_warning_distinguishes_zero_token_excerpts_from_empty_and_partial_content() {
+    let ordinary = make_test_row("missing-sample.rs", "src", "Rust", 10, 1);
+    for strategy in [ContextStrategy::Greedy, ContextStrategy::Spread] {
+        let select = |rows: &[FileRow]| {
+            select_files_with_options(
+                rows,
+                1,
+                strategy,
+                ValueMetric::Code,
+                None,
+                &SelectOptions::default(),
+            )
+        };
+        let limited = select(std::slice::from_ref(&ordinary));
+        assert_eq!(limited.selected.len(), 1);
+        assert_eq!(limited.selected[0].effective_tokens, Some(0));
+        assert!(limited.budget_warning.is_some());
+        let empty = make_test_row("empty.rs", "src", "Rust", 0, 0);
+        assert!(select(&[empty]).budget_warning.is_none());
+
+        let positive = make_test_row("positive.rs", "src", "Rust", 1, 1);
+        let result = select_files_with_options(
+            &[ordinary.clone(), positive],
+            10,
+            strategy,
+            ValueMetric::Code,
+            None,
+            &SelectOptions::default(),
+        );
+        assert!(
+            result
+                .selected
+                .iter()
+                .any(|file| file.effective_tokens.unwrap_or(file.tokens) > 0)
+        );
+        assert!(result.budget_warning.is_none());
+    }
+}
+
+#[test]
 fn test_normalize_path() {
     assert_eq!(normalize_path("foo/bar"), "foo/bar");
     assert_eq!(normalize_path("foo\\bar"), "foo/bar");
