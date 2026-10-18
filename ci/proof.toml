@@ -184,6 +184,12 @@ paths = [
   "xtask/src/tasks/publish.rs",
   "xtask/src/tasks/repo_graph.rs",
   "scripts/ci_observability_clock_test.py",
+  "scripts/ci_budget.py",
+  "scripts/ci_budget_test.py",
+  "scripts/ci_qualification.py",
+  "scripts/ci_qualification_review_test.py",
+  "scripts/ci_qualification_test.py",
+  "scripts/ci_workflow_admission_test.py",
   "scripts/check-no-bare-self-hosted.sh",
   "scripts/publish-release-crates.sh",
   "xtask/src/tasks/workspace.rs",
@@ -206,6 +212,9 @@ paths = [
 packages = ["xtask"]
 proof = [
   "python3 -m unittest scripts/ci_observability_clock_test.py",
+  # The existing clock selector owns observability; select the other controls once.
+  # A production selector test verifies that these two commands cover every module.
+  "python3 -m unittest discover -s scripts -p ci_[!o]*_test.py",
   "cargo xtask proof-policy --check",
   "cargo xtask ci-gate-contract --check --workflow fixtures/ci-gate-contract/reference-ci.yml",
   "cargo xtask ci-lane-whitelist",

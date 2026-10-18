@@ -2,6 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::{Context, Result};
+
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
@@ -25,6 +27,12 @@ fn run_xtask(args: &[&str]) -> (String, String, bool) {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (stdout, stderr, output.status.success())
+}
+
+fn workflow_step<'a>(job: &'a str, marker: &str) -> Result<&'a str> {
+    job.split("\n      - ")
+        .find(|step| step.starts_with(marker))
+        .with_context(|| format!("missing workflow step {marker}"))
 }
 
 #[test]
@@ -145,7 +153,7 @@ fn ci_actuals_writes_schema_stable_receipt() {
 }
 
 #[test]
-fn ci_actuals_uploads_receipt_before_advisory_summary() {
+fn ci_actuals_uploads_receipt_before_advisory_summary() -> Result<()> {
     let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))
         .expect("read ci workflow");
     let ci_actuals_idx = workflow
@@ -201,17 +209,43 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
     let upload_block = &ci_actuals[upload_idx..summary_idx];
     let summary_block = &ci_actuals[summary_idx..];
 
-    assert_eq!(
-        setup_block.matches("continue-on-error: true").count(),
-        3,
-        "checkout, toolchain, and cache should be best-effort telemetry setup"
-    );
+    for action in [
+        "uses: actions/checkout@",
+        "uses: dtolnay/rust-toolchain@stable",
+        "uses: Swatinem/rust-cache@",
+    ] {
+        assert!(
+            workflow_step(ci_actuals, action)?.contains("continue-on-error: true"),
+            "{action} should remain best-effort telemetry setup"
+        );
+    }
+    assert!(setup_block.contains("Reuse an already selected compiler"));
+    for (name, phase) in [
+        ("Generate CI timings sidecar", "phase_budget_4"),
+        ("Generate CI actuals receipt", "phase_budget_5"),
+        ("Upload CI actuals receipt", "phase_budget_6"),
+    ] {
+        let step = workflow_step(ci_actuals, &format!("name: {name}\n"))?;
+        let condition = step
+            .lines()
+            .find(|line| line.trim_start().starts_with("if:"))
+            .context("reporting step condition")?;
+        assert!(
+            condition.contains("always()")
+                && condition.contains("steps.job_budget.outcome == 'success'")
+                && condition.contains(&format!("steps.{phase}.outcome == 'success'")),
+            "{name} must report after source failures only with valid source and phase admission"
+        );
+        assert!(
+            step.contains(&format!("fromJSON(steps.{phase}.outputs.minutes || '1')")),
+            "{name} must retain its admitted native timeout"
+        );
+    }
     assert!(
         ci_actuals.contains("permissions:\n      contents: read\n      actions: read"),
         "CI actuals job should request only read permissions needed for checkout and job timing lookup"
     );
     assert!(ci_actuals.contains("continue-on-error: true"));
-    assert!(timings_block.contains("if: always()"));
     assert!(timings_block.contains("continue-on-error: true"));
     assert!(
         timings_block.contains("GITHUB_TOKEN: ${{ github.token }}"),
@@ -239,7 +273,6 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
             && timings_block.contains("record[\"runner\"] = runner"),
         "timing sidecar should preserve duration and runner label observations"
     );
-    assert!(generate_block.contains("if: always()"));
     assert!(generate_block.contains("continue-on-error: true"));
     assert!(
         generate_block.contains("printf '%s\\n' \"${NEEDS_JSON}\" > target/ci/needs.json"),
@@ -264,7 +297,6 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         generate_block.contains("--github-summary \"$GITHUB_STEP_SUMMARY\""),
         "workflow should publish a human-readable CI actuals table"
     );
-    assert!(upload_block.contains("if: always()"));
     assert!(upload_block.contains("continue-on-error: true"));
     assert!(
         upload_block.contains("name: ci-actuals"),
@@ -292,6 +324,7 @@ fn ci_actuals_uploads_receipt_before_advisory_summary() {
         !summary_block.contains("sys.exit(1)"),
         "advisory summary must not fail the job"
     );
+    Ok(())
 }
 
 #[test]

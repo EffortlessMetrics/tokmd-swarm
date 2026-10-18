@@ -2,6 +2,7 @@ name: Test Action
 
 on:
   pull_request:
+    types: [labeled]
     paths:
       - 'action.yml'
       - '.github/workflows/test-action.yml'
@@ -16,9 +17,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-action-${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   test-action:
-    name: Test tokmd-receipt Action
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test tokmd-receipt Action
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -29,7 +36,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run tokmd-receipt action
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         id: tokmd
         uses: ./
         with:
@@ -37,7 +60,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify outputs exist
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-summary.md ]; then
@@ -76,8 +107,22 @@ jobs:
           echo "--- Summary preview ---"
           head -20 tokmd-summary.md
 
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   test-formats:
-    name: Test export formats
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test export formats
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -88,7 +133,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run tokmd-receipt with ${{ matrix.format }} format
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         uses: ./
         with:
           version: 1.14.0
@@ -96,7 +157,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify output
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         run: |
           if [ ! -f "tokmd-receipt.${{ matrix.format }}" ]; then
             echo "::error::tokmd-receipt.${{ matrix.format }} not generated"
@@ -104,8 +173,22 @@ jobs:
           fi
           echo "✓ tokmd-receipt.${{ matrix.format }} generated successfully"
 
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   test-modes:
-    name: Test explicit modes
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test explicit modes
     runs-on: ubuntu-latest
 
     steps:
@@ -113,7 +196,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run module mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         id: module
         uses: ./
         with:
@@ -122,7 +221,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify module mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-summary.md ]; then
@@ -154,11 +261,27 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run export mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
         id: export
         uses: ./
         with:
@@ -167,7 +290,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify export mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_6.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_6.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-receipt.json ]; then
@@ -199,11 +330,27 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_7.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_7.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
 
+      - name: Allocate phase 8 budget
+        id: phase_budget_8
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Write gate policy
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_8.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_8.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           cat > tokmd.toml <<'TOML'
@@ -214,7 +361,15 @@ jobs:
           value = 1
           TOML
 
+      - name: Allocate phase 9 budget
+        id: phase_budget_9
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run gate mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_9.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_9.outputs.minutes || '1') || 360 }}
         id: gate
         uses: ./
         with:
@@ -223,7 +378,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 10 budget
+        id: phase_budget_10
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify gate mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_10.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_10.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-gate-verdict.json ]; then
@@ -256,7 +419,16 @@ jobs:
           fi
           grep -q '"passed": true' tokmd-gate-verdict.json
 
+      - name: Allocate phase 11 budget
+        id: phase_budget_11
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run gate mode with same-line multiple paths
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_11.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_11.outputs.minutes || '1') || 360 }}
         id: gate_same_line_paths
         continue-on-error: true
         uses: ./
@@ -267,7 +439,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 12 budget
+        id: phase_budget_12
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify same-line gate paths reject
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_12.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_12.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.gate_same_line_paths.outcome }}" != "failure" ]; then
@@ -275,7 +455,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 13 budget
+        id: phase_budget_13
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run gate mode with multiline paths
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_13.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_13.outputs.minutes || '1') || 360 }}
         id: gate_multiline_paths
         continue-on-error: true
         uses: ./
@@ -288,7 +477,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 14 budget
+        id: phase_budget_14
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify multiline gate paths reject
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_14.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_14.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.gate_multiline_paths.outcome }}" != "failure" ]; then
@@ -296,11 +493,27 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 15 budget
+        id: phase_budget_15
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_15.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_15.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
 
+      - name: Allocate phase 16 budget
+        id: phase_budget_16
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run cockpit mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_16.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_16.outputs.minutes || '1') || 360 }}
         id: cockpit
         uses: ./
         with:
@@ -311,7 +524,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 17 budget
+        id: phase_budget_17
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify cockpit mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_17.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_17.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-cockpit-report.json ]; then
@@ -348,20 +569,52 @@ jobs:
           fi
           grep -q '"mode": "cockpit"' tokmd-cockpit-report.json
 
+      - name: Allocate phase 18 budget
+        id: phase_budget_18
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_18.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_18.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-review-packet-comment.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras .tokmd target/tokmd/review-packet-check.json
 
+      - name: Allocate phase 19 budget
+        id: phase_budget_19
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Set up Rust for local review packet binary
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_19.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_19.outputs.minutes || '1') || 360 }}
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Allocate phase 20 budget
+        id: phase_budget_20
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Install local tokmd for review packet mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_20.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_20.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           cargo install --path crates/tokmd --features git --locked --force --root "$HOME/.local"
           "$HOME/.local/bin/tokmd" cockpit --help | grep -q -- '--review-packet-dir'
 
+      - name: Allocate phase 21 budget
+        id: phase_budget_21
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run cockpit mode with review packet
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_21.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_21.outputs.minutes || '1') || 360 }}
         id: cockpit_packet
         uses: ./
         with:
@@ -373,7 +626,15 @@ jobs:
           comment: 'false'
           artifact: 'true'
 
+      - name: Allocate phase 22 budget
+        id: phase_budget_22
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify cockpit review packet mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_22.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_22.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-cockpit-report.json ]; then
@@ -436,11 +697,27 @@ jobs:
           grep -q '"path": "comment.md"' target/tokmd/review-packet-check.json
           cargo xtask review-packet-check --dir .tokmd/review
 
+      - name: Allocate phase 23 budget
+        id: phase_budget_23
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_23.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_23.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-review-packet-comment.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras .tokmd target/tokmd/review-packet-check.json
 
+      - name: Allocate phase 24 budget
+        id: phase_budget_24
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run cockpit mode with inferred pull request base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_24.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_24.outputs.minutes || '1') || 360 }}
         id: cockpit_inferred_base
         uses: ./
         env:
@@ -451,7 +728,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 25 budget
+        id: phase_budget_25
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify cockpit inferred base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_25.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_25.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-cockpit-report.json ]; then
@@ -464,11 +749,27 @@ jobs:
           fi
           grep -q '"mode": "cockpit"' tokmd-cockpit-report.json
 
+      - name: Allocate phase 26 budget
+        id: phase_budget_26
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_26.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_26.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
 
+      - name: Allocate phase 27 budget
+        id: phase_budget_27
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run sensor mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_27.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_27.outputs.minutes || '1') || 360 }}
         id: sensor
         uses: ./
         with:
@@ -479,7 +780,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 28 budget
+        id: phase_budget_28
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify sensor mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_28.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_28.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-sensor-report.json ]; then
@@ -520,11 +829,27 @@ jobs:
           fi
           grep -q '"schema": "sensor.report.v1"' tokmd-sensor-report.json
 
+      - name: Allocate phase 29 budget
+        id: phase_budget_29
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_29.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_29.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras
 
+      - name: Allocate phase 30 budget
+        id: phase_budget_30
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run sensor mode with inferred pull request base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_30.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_30.outputs.minutes || '1') || 360 }}
         id: sensor_inferred_base
         uses: ./
         env:
@@ -535,7 +860,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 31 budget
+        id: phase_budget_31
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify sensor inferred base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_31.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_31.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-sensor-report.json ]; then
@@ -556,7 +889,16 @@ jobs:
           fi
           grep -q '"schema": "sensor.report.v1"' tokmd-sensor-report.json
 
+      - name: Allocate phase 32 budget
+        id: phase_budget_32
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run cockpit mode with unresolved base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_32.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_32.outputs.minutes || '1') || 360 }}
         id: cockpit_unresolved_base
         continue-on-error: true
         uses: ./
@@ -568,7 +910,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 33 budget
+        id: phase_budget_33
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify unresolved cockpit base rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_33.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_33.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.cockpit_unresolved_base.outcome }}" != "failure" ]; then
@@ -576,11 +926,27 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 34 budget
+        id: phase_budget_34
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Clean generated files
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_34.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_34.outputs.minutes || '1') || 360 }}
         shell: bash
         run: rm -rf tokmd-summary.md tokmd-receipt.* tokmd-gate-verdict.json tokmd-cockpit-report.json tokmd-sensor-report.json tokmd-baseline.json tokmd.toml comment.md extras baseline-fixture
 
+      - name: Allocate phase 35 budget
+        id: phase_budget_35
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Prepare baseline fixture
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_35.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_35.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           mkdir -p baseline-fixture/src
@@ -590,7 +956,15 @@ jobs:
           }
           RS
 
+      - name: Allocate phase 36 budget
+        id: phase_budget_36
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run baseline mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_36.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_36.outputs.minutes || '1') || 360 }}
         id: baseline
         uses: ./
         with:
@@ -600,7 +974,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 37 budget
+        id: phase_budget_37
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify baseline mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_37.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_37.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f tokmd-baseline.json ]; then
@@ -633,7 +1015,16 @@ jobs:
           fi
           grep -q '"baseline_version": 1' tokmd-baseline.json
 
+      - name: Allocate phase 38 budget
+        id: phase_budget_38
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run baseline mode with multiline paths
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_38.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_38.outputs.minutes || '1') || 360 }}
         id: baseline_multiline_paths
         continue-on-error: true
         uses: ./
@@ -646,7 +1037,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 39 budget
+        id: phase_budget_39
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify multiline baseline paths reject
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_39.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_39.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.baseline_multiline_paths.outcome }}" != "failure" ]; then
@@ -654,8 +1053,22 @@ jobs:
             exit 1
           fi
 
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
+
   test-packet:
-    name: Test packet mode
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test packet mode
     runs-on: ubuntu-latest
 
     steps:
@@ -664,17 +1077,49 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Set up Rust for local packet binary
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Install local tokmd for packet mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           cargo install --path crates/tokmd --locked --force --root "$HOME/.local"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/tokmd" packet generate --help >/dev/null
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Read workspace tokmd version
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         id: workspace_version
         shell: bash
         run: |
@@ -685,7 +1130,15 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
         id: packet
         uses: ./
         with:
@@ -698,7 +1151,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify packet mode
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_6.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_6.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           for path in \
@@ -752,7 +1213,15 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with custom output dir
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_7.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_7.outputs.minutes || '1') || 360 }}
         id: packet_custom
         uses: ./
         with:
@@ -767,7 +1236,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 8 budget
+        id: phase_budget_8
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify packet custom output dir
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_8.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_8.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ ! -f review/packet/manifest.json ]; then
@@ -783,7 +1260,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 9 budget
+        id: phase_budget_9
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with invalid fail-on
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_9.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_9.outputs.minutes || '1') || 360 }}
         id: packet_bad_fail_on
         continue-on-error: true
         uses: ./
@@ -797,7 +1283,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 10 budget
+        id: phase_budget_10
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify invalid fail-on rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_10.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_10.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.packet_bad_fail_on.outcome }}" != "failure" ]; then
@@ -805,7 +1299,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 11 budget
+        id: phase_budget_11
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with traversal output-dir
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_11.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_11.outputs.minutes || '1') || 360 }}
         id: packet_bad_output_dir
         continue-on-error: true
         uses: ./
@@ -819,7 +1322,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 12 budget
+        id: phase_budget_12
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify traversal output-dir rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_12.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_12.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.packet_bad_output_dir.outcome }}" != "failure" ]; then
@@ -827,7 +1338,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 13 budget
+        id: phase_budget_13
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with unresolved base
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_13.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_13.outputs.minutes || '1') || 360 }}
         id: packet_unresolved_base
         continue-on-error: true
         uses: ./
@@ -840,7 +1360,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 14 budget
+        id: phase_budget_14
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify unresolved packet base rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_14.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_14.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.packet_unresolved_base.outcome }}" != "failure" ]; then
@@ -848,7 +1376,15 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 15 budget
+        id: phase_budget_15
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with container runtime (verified tag)
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_15.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_15.outputs.minutes || '1') || 360 }}
         id: packet_container
         uses: ./
         with:
@@ -866,7 +1402,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 16 budget
+        id: phase_budget_16
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify container runtime packet
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_16.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_16.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           for path in \
@@ -896,7 +1440,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 17 budget
+        id: phase_budget_17
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with unverified container tag
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_17.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_17.outputs.minutes || '1') || 360 }}
         id: packet_container_unverified
         continue-on-error: true
         uses: ./
@@ -910,7 +1463,15 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 18 budget
+        id: phase_budget_18
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify unverified container tag rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_18.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_18.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.packet_container_unverified.outcome }}" != "failure" ]; then
@@ -918,7 +1479,16 @@ jobs:
             exit 1
           fi
 
+      - name: Allocate phase 19 budget
+        id: phase_budget_19
+        continue-on-error: true
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run packet mode with mutable container tag
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_19.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_19.outputs.minutes || '1') || 360 }}
         id: packet_container_latest
         continue-on-error: true
         uses: ./
@@ -932,10 +1502,31 @@ jobs:
           comment: 'false'
           artifact: 'false'
 
+      - name: Allocate phase 20 budget
+        id: phase_budget_20
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Verify mutable container tag rejects
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_20.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_20.outputs.minutes || '1') || 360 }}
         shell: bash
         run: |
           if [ "${{ steps.packet_container_latest.outcome }}" != "failure" ]; then
             echo "::error::runtime=container should reject the mutable 'latest' tag"
             exit 1
           fi
+
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"

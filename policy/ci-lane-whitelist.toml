@@ -30,7 +30,7 @@ em_ci_small        = 1.0
 [[lane]]
 id               = "msrv_check"
 workflow         = ".github/workflows/ci.yml"
-job              = "MSRV Check"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}MSRV Check"
 kind             = "compatibility"
 tier             = "frontdoor"
 default_pr       = true
@@ -48,9 +48,50 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
+id               = "admission"
+workflow         = ".github/workflows/ci.yml"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Admit explicit qualification"
+kind             = "planner"
+tier             = "frontdoor"
+default_pr       = true
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Admit only an explicit exact-source qualification request before heavyweight proof."
+failure_mode     = "Unrequested, stale or wrong-source work produces a misleading qualification."
+proof_obligation = "Validate native request, checkout, head/base/merge source refs and shared deadline; refuse unsupported dispatch proof."
+evidence         = ["job logs", "job outputs"]
+allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-10-17"
+expires          = "2027-04-17"
+
+[[lane]]
+id               = "qualification_context_name"
+workflow         = ".github/workflows/ci.yml"
+job              = "Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}"
+kind             = "planner"
+tier             = "frontdoor"
+# Naming metadata for the existing Rust job is not an additional default workload.
+default_pr       = false
+blocking         = true
+runner           = "ubuntu_latest"
+base_lem         = 1
+owner            = "release/ci"
+intent           = "Keep ordinary observation events outside the required qualification context."
+failure_mode     = "An unrelated label overwrites a qualified head or skipped work emits a passing required context."
+proof_obligation = "Name deliberate requests Tokmd Rust Result and give unrequested events a distinct observation suffix; preserve full Rust gate proof."
+evidence         = ["job logs", "native check names"]
+allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
+duplicate_of     = ["tokmd_rust_result"]
+review_after     = "2026-10-17"
+expires          = "2027-04-17"
+
+[[lane]]
 id               = "route_ci_runner"
 workflow         = ".github/workflows/ci.yml"
-job              = "Route CI runner"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Route CI runner"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -90,7 +131,7 @@ expires          = "2026-12-07"
 [[lane]]
 id               = "affected_proof_plan"
 workflow         = ".github/workflows/ci.yml"
-job              = "Affected Proof Plan"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Affected Proof Plan"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -116,7 +157,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "ci_detect_risk_packs"
 workflow         = ".github/workflows/ci.yml"
-job              = "Detect risk packs"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Detect risk packs"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -136,7 +177,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "fast_proof_run_advisory"
 workflow         = ".github/workflows/ci.yml"
-job              = "Fast Proof Run (Advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Fast Proof Run (Advisory)"
 kind             = "proof"
 tier             = "frontdoor"
 default_pr       = true
@@ -156,7 +197,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "feature_boundaries"
 workflow         = ".github/workflows/ci.yml"
-job              = "Feature Boundaries"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Feature Boundaries"
 kind             = "rust"
 tier             = "frontdoor"
 default_pr       = true
@@ -176,7 +217,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "typos"
 workflow         = ".github/workflows/ci.yml"
-job              = "Typos"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Typos"
 kind             = "lint"
 tier             = "frontdoor"
 default_pr       = true
@@ -196,7 +237,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "cargo_deny"
 workflow         = ".github/workflows/ci.yml"
-job              = "Cargo Deny"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Cargo Deny"
 kind             = "supply_chain"
 tier             = "frontdoor"
 default_pr       = true
@@ -216,7 +257,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "version_consistency"
 workflow         = ".github/workflows/ci.yml"
-job              = "Version consistency"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Version consistency"
 kind             = "release"
 tier             = "frontdoor"
 default_pr       = true
@@ -236,7 +277,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "docs_check"
 workflow         = ".github/workflows/ci.yml"
-job              = "Docs Check"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Docs Check"
 kind             = "docs"
 tier             = "frontdoor"
 default_pr       = true
@@ -265,7 +306,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "build_test_windows"
 workflow         = ".github/workflows/ci.yml"
-job              = "Build & Test (Windows)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (Windows)"
 kind             = "rust"
 tier             = "risk-gated"
 default_pr       = false
@@ -287,7 +328,7 @@ expires          = "2026-11-07"
 [[lane]]
 id                     = "wasm_compile_test"
 workflow               = ".github/workflows/ci.yml"
-job                    = "Wasm Compile & Test"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Wasm Compile & Test"
 kind                   = "wasm"
 tier                   = "risk-gated"
 default_pr             = false
@@ -309,7 +350,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "nix_pr_package_gate"
 workflow               = ".github/workflows/ci.yml"
-job                    = "Nix PR Package Gate"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Nix PR Package Gate"
 kind                   = "packaging"
 tier                   = "deep"
 default_pr             = false
@@ -331,7 +372,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "mutation_required"
 workflow               = ".github/workflows/ci.yml"
-job                    = "Mutation Testing"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Mutation Testing"
 kind                   = "mutation"
 tier                   = "deep"
 default_pr             = false
@@ -353,7 +394,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "proptest_smoke"
 workflow               = ".github/workflows/ci.yml"
-job                    = "Proptest Smoke"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Proptest Smoke"
 kind                   = "property"
 tier                   = "risk-gated"
 default_pr             = false
@@ -374,7 +415,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "publish_surface"
 workflow               = ".github/workflows/ci.yml"
-job                    = "Publish Surface"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Publish Surface"
 kind                   = "release"
 tier                   = "risk-gated"
 default_pr             = true
@@ -412,7 +453,7 @@ expires                = "2026-11-07"
 [[lane]]
 id               = "build_macos_push"
 workflow         = ".github/workflows/ci.yml"
-job              = "Build & Test (macOS)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (macOS)"
 kind             = "rust"
 tier             = "deep"
 default_pr       = false
@@ -444,7 +485,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "no_bare_self_hosted"
 workflow         = ".github/workflows/ci-policy.yml"
-job              = "No Bare Self-Hosted Routing"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}No Bare Self-Hosted Routing"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -464,7 +505,7 @@ expires          = "2026-11-21"
 [[lane]]
 id               = "ci_lane_whitelist"
 workflow         = ".github/workflows/ci-policy.yml"
-job              = "CI Lane Whitelist"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Lane Whitelist"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -484,7 +525,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "ci_gate_contract_reference"
 workflow         = ".github/workflows/ci-policy.yml"
-job              = "CI Gate Contract (reference)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Gate Contract (reference)"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -504,7 +545,7 @@ expires          = "2026-12-07"
 [[lane]]
 id               = "ci_gate_contract_live_gap"
 workflow         = ".github/workflows/ci-policy.yml"
-job              = "CI Gate Contract (live gap)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Gate Contract (live gap)"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -524,7 +565,7 @@ expires          = "2026-12-07"
 [[lane]]
 id               = "pr_cockpit_report"
 workflow         = ".github/workflows/cockpit.yml"
-job              = "PR Cockpit Report"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}PR Cockpit Report"
 kind             = "report"
 tier             = "frontdoor"
 default_pr       = true
@@ -544,7 +585,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "no_panic_family"
 workflow         = ".github/workflows/no-panic-policy.yml"
-job              = "No-panic Family"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}No-panic Family"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -564,7 +605,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "bindings_parity"
 workflow         = ".github/workflows/bindings-parity.yml"
-job              = "Bindings Parity (advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Bindings Parity (advisory)"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = false
@@ -584,7 +625,7 @@ expires          = "2026-12-07"
 [[lane]]
 id               = "clippy_exceptions"
 workflow         = ".github/workflows/clippy-exceptions-policy.yml"
-job              = "Clippy Exceptions"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Clippy Exceptions"
 kind             = "policy"
 tier             = "frontdoor"
 default_pr       = true
@@ -604,7 +645,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "pr_plan_advisory"
 workflow         = ".github/workflows/pr-plan.yml"
-job              = "PR Plan (advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}PR Plan (advisory)"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -624,7 +665,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "ripr_advisory"
 workflow         = ".github/workflows/ripr.yml"
-job              = "ripr (advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}ripr (advisory)"
 kind             = "analysis"
 tier             = "frontdoor"
 default_pr       = true
@@ -644,7 +685,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "rust_coverage"
 workflow         = ".github/workflows/coverage.yml"
-job              = "Codecov Coverage"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Codecov Coverage"
 kind             = "coverage"
 tier             = "deep"
 default_pr       = false
@@ -671,7 +712,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "scoped_coverage_executor_non_required"
 workflow         = ".github/workflows/proof-executor.yml"
-job              = "Scoped Coverage Executor (Non-Required)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Scoped Coverage Executor (Non-Required)"
 kind             = "experimental"
 tier             = "deep"
 default_pr       = true
@@ -1013,7 +1054,7 @@ expires          = "2027-02-02"
 [[lane]]
 id               = "test_action_main"
 workflow         = ".github/workflows/test-action.yml"
-job              = "Test tokmd-receipt Action"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test tokmd-receipt Action"
 kind             = "release"
 tier             = "deep"
 default_pr       = false
@@ -1033,7 +1074,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "test_action_formats"
 workflow         = ".github/workflows/test-action.yml"
-job              = "Test export formats"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test export formats"
 kind             = "release"
 tier             = "deep"
 default_pr       = false
@@ -1053,7 +1094,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "test_action_modes"
 workflow         = ".github/workflows/test-action.yml"
-job              = "Test explicit modes"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test explicit modes"
 kind             = "release"
 tier             = "deep"
 default_pr       = false
@@ -1073,7 +1114,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "test_action_packet"
 workflow         = ".github/workflows/test-action.yml"
-job              = "Test packet mode"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Test packet mode"
 kind             = "release"
 tier             = "deep"
 default_pr       = false
@@ -1133,7 +1174,7 @@ expires          = "2026-12-26"
 [[lane]]
 id               = "ci_actuals_advisory"
 workflow         = ".github/workflows/ci.yml"
-job              = "CI Actuals (Advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Actuals (Advisory)"
 kind             = "summary"
 tier             = "summary"
 default_pr       = true

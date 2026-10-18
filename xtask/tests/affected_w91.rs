@@ -229,7 +229,25 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     let workflow = affected_fixture(&[".github/workflows/ci.yml"], &after_policy)?;
     // The live control-plane command count moves with `ci/proof.toml`; the
     // guidance-scope reduction this test guards is the assertion above.
-    ensure!(array_len(scope(&workflow, "proof_control_plane")?, "proof")? == 31);
+    let control_plane = scope(&workflow, "proof_control_plane")?;
+    ensure!(array_len(control_plane, "proof")? == 32);
+    let commands = control_plane
+        .get("proof")
+        .and_then(serde_json::Value::as_array)
+        .context("proof commands")?;
+    for command in [
+        "python3 -m unittest scripts/ci_observability_clock_test.py",
+        "python3 -m unittest discover -s scripts -p ci_[!o]*_test.py",
+    ] {
+        ensure!(
+            commands
+                .iter()
+                .filter(|value| value.as_str() == Some(command))
+                .count()
+                == 1,
+            "required control proof selector must occur exactly once: {command}"
+        );
+    }
     ensure!(array_len(&workflow, "unknown_files")? == 0);
     Ok(())
 }

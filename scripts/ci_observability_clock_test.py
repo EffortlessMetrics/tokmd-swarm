@@ -116,7 +116,7 @@ class ClockBoundaryTests(unittest.TestCase):
         self.assertEqual(receipt["timing_integrity"], "valid")
         self.assertEqual(receipt["terminal_reason"], "completed")
         self.assertEqual(receipt["timeout_classification"], "not_timeout")
-        self.assertEqual(receipt["timeout_minutes"], 90)
+        self.assertEqual(receipt["timeout_minutes"], 20)
         job_started = receipt["observability_started_mono_ns"]
         self.assertIsInstance(job_started, int)
         core = receipt["phases"]["core"]

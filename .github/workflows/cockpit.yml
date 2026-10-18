@@ -2,22 +2,24 @@ name: PR Cockpit
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [labeled]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: cockpit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  group: cockpit-${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   cockpit:
-    name: PR Cockpit Report
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}PR Cockpit Report
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,20 +27,60 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Set up Rust
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Cache Rust dependencies
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: cockpit
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Build and install tokmd
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         run: cargo install --path crates/tokmd --features git --locked
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Generate cockpit report
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
         id: cockpit
         run: |
           set -euo pipefail
@@ -57,15 +99,44 @@ jobs:
             echo "<!-- /SECTION:COCKPIT -->"
           } > cockpit-comment.md
 
+      - name: Allocate phase 6 budget
+        id: phase_budget_6
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Post or update PR comment
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_6.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_6.outputs.minutes || '1') || 360 }}
         uses: thollander/actions-comment-pull-request@v3
         with:
           file-path: cockpit-comment.md
           comment-tag: SECTION:COCKPIT
 
+      - name: Allocate phase 7 budget
+        id: phase_budget_7
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload cockpit receipt
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_7.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_7.outputs.minutes || '1') || 360 }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: cockpit-receipt
           path: cockpit-receipt.json
           retention-days: 30
+
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"
