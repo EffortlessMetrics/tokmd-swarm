@@ -19,6 +19,18 @@ from ci_budget import run_command
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 REPOSITORY = "EffortlessMetrics/tokmd-swarm"
+SHARED_REPOSITORIES = frozenset((REPOSITORY, "EffortlessMetrics/tokmd"))
+
+
+def native_repository(value):
+    if not isinstance(value, str) or value not in SHARED_REPOSITORIES:
+        raise ValueError("native run repository must be a supported shared-workflow repository")
+    return value
+
+
+def match_event_repository(event, repository):
+    if event.get("repository", {}).get("full_name") != repository:
+        raise ValueError("native event repository differs from the native run repository")
 
 
 def request_inputs(event, context):
@@ -40,7 +52,9 @@ def request_inputs(event, context):
 
 
 def admit(event, context, read_refs):
+    repository = native_repository(context["repository"])
     if context["event_name"] == "push" and context["ref"] == "refs/heads/main":
+        match_event_repository(event, repository)
         return {"mode": "main-push", "head": context["sha"], "base": "", "pr": ""}
     inputs, native_pr = request_inputs(event, context)
     if not isinstance(inputs, dict):
@@ -55,13 +69,14 @@ def admit(event, context, read_refs):
         raise ValueError("generation must equal head_sha:base_sha")
     if inputs.get("expected_green") != "true":
         raise ValueError("request must explicitly assert expected-green local source and review")
-    if context["repository"] != REPOSITORY:
-        raise ValueError("native run repository must equal the requested repository")
     if native_pr is None:
         if context["sha"] != head or context["workflow_sha"] != head:
             raise ValueError("native run and workflow source must both equal the requested head")
         proof_sha = None
     else:
+        match_event_repository(event, repository)
+        if native_pr.get("base", {}).get("repo", {}).get("full_name") != repository:
+            raise ValueError("native PR base repository differs from the native run repository")
         proof_sha = inputs.get("merge_sha", "")
         if not isinstance(proof_sha, str) or not SHA.fullmatch(proof_sha):
             raise ValueError("merge_sha must be the full exact composition commit")
@@ -83,7 +98,8 @@ def admit(event, context, read_refs):
     return decision
 
 
-def live_refs(pr, request_deadline=""):
+def live_refs(pr, request_deadline="", repository=REPOSITORY):
+    repository = native_repository(repository)
     limits = [20.0]
     for deadline in (request_deadline, os.environ.get('QUALIFICATION_DEADLINE', '')):
         if deadline:
@@ -94,7 +110,7 @@ def live_refs(pr, request_deadline=""):
     timeout = min(limits)
     if timeout <= 0:
         raise ValueError('source budget exhausted before source read')
-    command = ["git", "ls-remote", f"https://github.com/{REPOSITORY}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"]
+    command = ["git", "ls-remote", f"https://github.com/{repository}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"]
     if not sys.platform.startswith('linux'):
         # The owned-group observer is verified on Linux. Other platforms use
         # the portable child timeout without attempting unsupported signals.
@@ -123,7 +139,7 @@ def main():
         )}
         def read_refs(pr):
             request, _ = request_inputs(event, context)
-            return live_refs(pr, request.get('deadline_epoch', ''))
+            return live_refs(pr, request.get('deadline_epoch', ''), context['repository'])
         decision = admit(event, context, read_refs)
     except (KeyError, ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"qualification refused: {error}", file=sys.stderr)

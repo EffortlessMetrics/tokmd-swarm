@@ -8,8 +8,10 @@ this candidate.
 
 The admission scope is the inventoried Rust/Action PR qualification workloads.
 Unmodified security-review automation still selects ordinary PR activity, and
-non-PR companion jobs retain their installed native limits. Those controls are
-outside this repair's security-change authorization. This candidate cannot claim
+non-PR companion jobs retain their installed native limits. Main CI pushes to
+main intentionally use the same 20-minute work deadline as PR qualification;
+their fallback native job limits do not renew that allowance. The unmodified
+security controls are outside this repair's security-change authorization. This candidate cannot claim
 repository-wide absence of early CI or a maximum service lifetime for every
 installed workflow. It preserves those concrete limits for the coordinating owner.
 
@@ -35,6 +37,13 @@ clock. Revalidation retains the anchor. Wrong/malformed/stale/expired subjects
 refuse before proof. The supported dispatch interface validates exact inputs but
 still refuses proof because it lacks the native PR context of the retained
 risk/affected/review obligations. Checkout labels do not change native subjects.
+
+The shared workflow supports exactly `EffortlessMetrics/tokmd-swarm` and
+`EffortlessMetrics/tokmd`. Native run, event and PR base repository identities
+must agree. Public source refs come from that validated repository; a fork head
+cannot choose the source URL. Unsupported native repositories refuse before
+source reads, including main pushes. This preserves the shared-history workflow
+contract without executing a foreign fork or expanding credentials.
 
 All ten other inventoried PR workflows with Cargo/Rust work now select labeled
 PR events and reuse the same validator before heavyweight setup. Branch/path
@@ -99,7 +108,7 @@ Linux group observer. Their native process-tree cancellation remains unverified.
 This applies to phase allocators throughout the inventoried workflows, including
 the advisory final reporter: an allocator cannot promote its following explicitly
 best-effort action into a new requirement. Advisory review reserves two minutes
-for downstream final reporting; the observed reporter takes about35 seconds, and
+for downstream final reporting; the observed reporter takes about 35 seconds, and
 native action admission itself requires a whole minute of remaining allowance.
 
 Native job setup/download, queue delay, cancellation grace and post-job actions
@@ -115,33 +124,33 @@ reporting, not merely the named Rust job.
 ## Actual retained critical-path evidence
 
 Main `0aa2dd065b51c8fbb927b752648b98b9cba124a9` has the exact tree of qualified
-#735 head `463b885fd98a9ea430e69d37b45fdbdedb4b1c10`. All returned non-skipped jobs
-of run39071174151 completed successfully. The Windows log reports **no cache
-found**, compilation from21:31:42.166 to21:38:24.174 (6m42s observed window), then
-test execution through21:48:07.828 (about9m44s). Its first/last log timestamps span
+PR #735 head `463b885fd98a9ea430e69d37b45fdbdedb4b1c10`. All returned non-skipped jobs
+of run 39071174151 completed successfully. The Windows log reports **no cache
+found**, compilation from 21:31:42.166 to 21:38:24.174 (6m42s observed window), then
+test execution through 21:48:07.828 (about 9m44s). Its first/last log timestamps span
 17m02.6s. These are log windows, not invented job timestamps.
 
-Cargo Deny's log spans9.1s, risk detection73.5s, and final CI Actuals31.6s. The
-last CI Actuals log line is21:48:46.902, 19m00.9s after the supplied run creation
+Cargo Deny's log spans 9.1s, risk detection 73.5s, and final CI Actuals 31.6s. The
+last CI Actuals log line is 21:48:46.902, 19m00.9s after the supplied run creation
 21:29:46. That is supporting chronology, not an independently read native
 workflow-completion timestamp. It includes the actual Windows path.
 
-The reporter's toolchain action spent8.6s and reported an existing, unchanged
+The reporter's toolchain action spent 8.6s and reported an existing, unchanged
 stable compiler (`rustc 1.99.1`). That supports the exact-compiler reuse path;
 no cache hit, compiler-version change or cold-build time saving is assumed.
-Local static-tool reuse used the separately pinned1.95.0 environment and is not
+Local static-tool reuse used the separately pinned 1.95.0 environment and is not
 relabeled as that native compiler proof. No full Cargo build or remote run was
-started for these controls, and active735 work was not interrupted.
+started for these controls, and active #735 work was not interrupted.
 
 The separately qualified #732 composition `67fdcbd3` subsequently passed native
-run39075087883. Its coordinating owner's native receipt gives22:26:35→22:46:37
+run 39075087883. Its coordinating owner's native receipt gives 22:26:35→22:46:37
 creation/completion (**20m02**, including queue/final accounting), with required
-Rust22:26:42→22:45:56 (**19m14**). Final reporting logs span35.0s and the captured
-cross-job work/cleanup window is19m56.5s. These distinct observations motivate
+Rust 22:26:42→22:45:56 (**19m14**). Final reporting logs span 35.0s and the captured
+cross-job work/cleanup window is 19m56.5s. These distinct observations motivate
 the reporting reserve; they do not qualify this candidate or establish a hard
 20-minute service-lifetime contract. The #732 source remains separately preserved.
 
-The first deployed request in PR#737 passed admission and Cargo Deny. It exposed
+The first deployed request in PR #737 passed admission and Cargo Deny. It exposed
 integration defects: the macOS Action guard reported an unsupported
 process-operation permission error, and the affected planner correctly rejected
 six new helper/test paths missing from the existing control-plane scope. The

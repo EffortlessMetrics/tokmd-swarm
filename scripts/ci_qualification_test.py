@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import time
@@ -96,10 +97,102 @@ class AdmissionTests(unittest.TestCase):
         request = dict(self.event["inputs"], merge_sha=merge, deadline_epoch=str(int(time.time()) + 600))
         body = "<!-- tokmd-qualification:v1\n" + json.dumps(request) + "\n-->"
         event = dict(action="labeled", label=dict(name="ci:qualify"), number=734,
-                     pull_request=dict(state="open", body=body, draft=True, head=dict(sha=HEAD), base=dict(sha=BASE, ref="main")))
+                     repository=dict(full_name=Q.REPOSITORY),
+                     pull_request=dict(state="open", body=body, draft=True, head=dict(sha=HEAD),
+                                       base=dict(sha=BASE, ref="main", repo=dict(full_name=Q.REPOSITORY))))
         context = dict(self.context, event_name="pull_request", ref="refs/pull/734/merge", sha=merge, workflow_sha=merge)
         refs = dict(self.refs, **{"refs/pull/734/merge": merge})
         return event, context, refs
+
+    def run_native_entrypoint(self, root, event, context, refs, deadline=None):
+        event_path, output, calls = (root / name for name in ('event', 'output', 'git-calls'))
+        for path in (output, calls):
+            path.unlink(missing_ok=True)
+        event_path.write_text(json.dumps(event))
+        git = root / 'git'
+        git.write_text(f'#!{sys.executable}\nimport json, os, pathlib, sys\n'
+                       'pathlib.Path(os.environ["GIT_CALLS"]).write_text(json.dumps(sys.argv[1:]))\n'
+                       'print(os.environ["SOURCE_REFS"])\n')
+        git.chmod(0o755)
+        env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                   GITHUB_EVENT_PATH=str(event_path), GITHUB_OUTPUT=str(output), GITHUB_ENV=str(root / 'environment'),
+                   GITHUB_EVENT_NAME=context['event_name'], GITHUB_REF=context['ref'], GITHUB_SHA=context['sha'],
+                   GITHUB_WORKFLOW_SHA=context['workflow_sha'], GITHUB_REPOSITORY=context['repository'],
+                   QUALIFICATION_DEADLINE=deadline or str(int(time.time()) + 600), GIT_CALLS=str(calls),
+                   SOURCE_REFS='\n'.join(f'{sha}\t{ref}' for ref, sha in refs.items()))
+        env.pop('CI_BUDGET_MONO_NS', None)
+        run = subprocess.run([sys.executable, str(ROOT / 'scripts/ci_qualification.py')], cwd=root,
+                             env=env, capture_output=True, text=True, timeout=3)
+        return run, output.read_text() if output.exists() else '', json.loads(calls.read_text()) if calls.exists() else None
+
+    def test_shared_repositories_bind_native_pr_source_reads_to_base_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for repository in ('EffortlessMetrics/tokmd-swarm', 'EffortlessMetrics/tokmd'):
+                event, context, refs = self.native_request()
+                context['repository'] = repository
+                event['repository']['full_name'] = repository
+                event['pull_request']['base']['repo']['full_name'] = repository
+                event['pull_request']['head']['repo'] = dict(full_name='contributor/fork', fork=True)
+                with self.subTest(repository=repository):
+                    run, output, calls = self.run_native_entrypoint(Path(directory), event, context, refs)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertIn('admitted=true\n', output)
+                    self.assertEqual(calls, ['ls-remote', f'https://github.com/{repository}.git',
+                                            'refs/pull/734/head', 'refs/pull/734/merge', 'refs/heads/main'])
+
+    def test_native_repository_mismatches_refuse_before_git_on_pr_and_main_push(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for kind in ('pull_request', 'push'):
+                for mismatch in ('native', 'event', 'base', 'missing-event', 'missing-base'):
+                    if kind == 'push' and mismatch in ('base', 'missing-base'):
+                        continue
+                    event, context, refs = self.native_request()
+                    if kind == 'push':
+                        context.update(event_name='push', ref='refs/heads/main')
+                    if mismatch == 'native':
+                        context['repository'] = 'contributor/fork'
+                        event['repository']['full_name'] = 'contributor/fork'
+                        event['pull_request']['base']['repo']['full_name'] = 'contributor/fork'
+                    elif mismatch == 'event':
+                        event['repository']['full_name'] = 'EffortlessMetrics/tokmd'
+                    elif mismatch == 'base':
+                        event['pull_request']['base']['repo']['full_name'] = 'EffortlessMetrics/tokmd'
+                    elif mismatch == 'missing-event':
+                        event.pop('repository')
+                    else:
+                        event['pull_request']['base'].pop('repo')
+                    with self.subTest(kind=kind, mismatch=mismatch):
+                        run, output, calls = self.run_native_entrypoint(Path(directory), event, context, refs)
+                        self.assertEqual(run.returncode, 1, run.stderr)
+                        self.assertEqual(output, '')
+                        self.assertIsNone(calls, 'invalid native repository reached Git source reads')
+
+    def test_main_push_uses_production_twenty_minute_budget_in_both_shared_repositories(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            budget = root / 'budget'
+            before = int(time.time())
+            run = subprocess.run(['bash', '-e', '-c', step_script(source, 'Start shared work budget')],
+                                 env=dict(os.environ, GITHUB_OUTPUT=str(budget)), capture_output=True, text=True, timeout=3)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            deadline = budget.read_text().strip().split('=', 1)[1]
+            self.assertGreaterEqual(int(deadline), before + 1200)
+            self.assertLessEqual(int(deadline), int(time.time()) + 1200)
+            for repository in ('EffortlessMetrics/tokmd-swarm', 'EffortlessMetrics/tokmd'):
+                context = dict(self.context, event_name='push', ref='refs/heads/main', repository=repository)
+                for valid in (True, False):
+                    with self.subTest(repository=repository, valid=valid):
+                        candidate = deadline if valid else str(int(time.time()) + 360 * 60)
+                        run, output, calls = self.run_native_entrypoint(root, dict(repository=dict(full_name=repository)),
+                                                                       context, {}, candidate)
+                        self.assertEqual(run.returncode, 0 if valid else 1, run.stderr)
+                        self.assertIsNone(calls, 'main pushes must not query PR refs')
+                        if valid:
+                            self.assertIn('mode=main-push\n', output)
+                            self.assertIn(f'deadline_epoch={deadline}\n', output)
+                        else:
+                            self.assertEqual(output, '')
 
     def test_native_explicit_request_admits_real_pr_composition_including_draft(self):
         event, context, refs = self.native_request()
@@ -143,7 +236,7 @@ class AdmissionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             event, output = root / "event", root / "output"
-            event.write_text("{}")
+            event.write_text(json.dumps(dict(repository=dict(full_name=Q.REPOSITORY))))
             deadline = str(int(time.time()) + 600)
             env = dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_OUTPUT=str(output),
                        GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main", GITHUB_SHA=HEAD,
