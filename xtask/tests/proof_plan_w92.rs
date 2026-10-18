@@ -1496,19 +1496,22 @@ fn ci_plan_default_workload_does_not_charge_context_metadata() -> Result<()> {
     ]);
     ensure!(success, "ci-plan failed: {stdout}\n{stderr}");
     let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(plan)?)?;
-    let selected = value["lanes_selected"]
-        .as_array()
+    let selected = value
+        .get("lanes_selected")
+        .and_then(serde_json::Value::as_array)
         .context("selected lanes")?;
     ensure!(
         selected
             .iter()
-            .any(|lane| lane["id"] == "tokmd_rust_result"),
+            .any(|lane| lane.get("id").and_then(serde_json::Value::as_str)
+                == Some("tokmd_rust_result")),
         "existing Rust proof remains a default workload"
     );
     ensure!(
         selected
             .iter()
-            .all(|lane| lane["id"] != "qualification_context_name"),
+            .all(|lane| lane.get("id").and_then(serde_json::Value::as_str)
+                != Some("qualification_context_name")),
         "context metadata must not add a second default workload for the same job"
     );
     Ok(())
