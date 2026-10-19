@@ -82,6 +82,9 @@ fn validate_review_packet_dir(dir: &Path) -> Result<ReviewPacketCheckReport> {
     if !dir.is_dir() {
         bail!("review packet directory does not exist: {}", dir.display());
     }
+    let packet_root = dir
+        .canonicalize()
+        .with_context(|| format!("resolve review packet directory {}", dir.display()))?;
 
     let manifest_path = dir.join("manifest.json");
     let evidence_path = dir.join("evidence.json");
@@ -112,7 +115,10 @@ fn validate_review_packet_dir(dir: &Path) -> Result<ReviewPacketCheckReport> {
         .context("manifest.json should match review packet manifest shape")?;
 
     let artifact_count = manifest.artifacts.len();
-    errors.extend(validate_manifest_artifacts(dir, &manifest.artifacts));
+    errors.extend(validate_manifest_artifacts(
+        &packet_root,
+        &manifest.artifacts,
+    ));
 
     if !errors.is_empty() {
         bail!("review packet check failed:\n- {}", errors.join("\n- "));
@@ -191,6 +197,25 @@ fn validate_manifest_artifacts(dir: &Path, artifacts: &[ReviewPacketArtifact]) -
         let artifact_path = dir.join(&relative_path);
         match fs::symlink_metadata(&artifact_path) {
             Ok(metadata) if metadata.file_type().is_file() => {
+                // A regular leaf can still be reached through a directory link.
+                // Resolve it before reading bytes to establish packet containment.
+                match artifact_path.canonicalize() {
+                    Ok(resolved) if resolved.starts_with(dir) => {}
+                    Ok(_) => {
+                        errors.push(format!(
+                            "artifact `{}` path `{display_path}` resolves outside packet directory",
+                            artifact.id
+                        ));
+                        continue;
+                    }
+                    Err(err) => {
+                        errors.push(format!(
+                            "artifact `{}` path `{display_path}` could not be resolved: {err}",
+                            artifact.id
+                        ));
+                        continue;
+                    }
+                }
                 verify_artifact_hash(&artifact_path, &display_path, artifact, &mut errors);
             }
             Ok(_) => errors.push(format!(
