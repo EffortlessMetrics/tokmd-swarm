@@ -64,15 +64,25 @@ platform lanes provide separate, deeper proof.
 
 The required workflow executes that sequence with `--locked` in
 `.github/workflows/ci.yml`, and `cargo xtask gate --check` passes `--locked` to
-its own check, clippy, and compile-only test steps. `--locked` precedes the
-`xtask` alias because `.cargo/config.toml` expands it to `run -p xtask --`, so
-the launcher resolves dependencies itself and only a global option ahead of the
-alias reaches Cargo. The gate's `cargo fmt` step is the deliberate exception and
-stays outside the claim: fmt resolves no dependencies and rejects the flag,
-which makes it the positive control. The claim covers the required gate only;
-non-required platform, coverage, mutation, and scheduled lanes are not
-represented by it, and the general developer command block above remains part of
-the broader adoption lane rather than this gate claim.
+its own check, clippy, and compile-only test steps. The workflow retains an
+explicit global `--locked` before `xtask`. The gate's `cargo fmt` step is the
+deliberate exception: fmt resolves no dependencies and rejects the flag.
+The required-gate claim does not cover non-required platform, coverage, mutation,
+and scheduled lanes.
+
+Development aliases have a separate launcher contract tracked in
+[tokmd-swarm#630](https://github.com/EffortlessMetrics/tokmd-swarm/issues/630).
+The `xtask` alias expands to `run --locked -p xtask --`, so `cargo xtask`,
+`cargo fmt-check`, `cargo fmt-fix`, `cargo gate-check`, `cargo trim-target`, and
+the sccache aliases lock their outer Cargo launch automatically. A missing or
+stale lock fails before the task starts. Arguments after `xtask` reach the task;
+placing `--locked` there cannot protect Cargo's resolution. The formatter's
+non-resolving inner command and Windows package selection are unchanged.
+The sccache wrapper still forwards the caller's Cargo arguments: use
+`cargo with-sccache test --locked --all-features` to lock that inner operation.
+No development alias is a lockfile-update exception. Intentional dependency or
+version maintenance must resolve the new graph explicitly with the dependency
+owner's direct Cargo command; the launcher contract does not authorize updates.
 
 This locked-command contract is tracked in [tokmd-swarm#604](https://github.com/EffortlessMetrics/tokmd-swarm/issues/604)
 and the shared [depguard#21](https://github.com/EffortlessMetrics/depguard/issues/21)

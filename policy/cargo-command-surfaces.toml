@@ -72,8 +72,13 @@ candidate_roots = [
 ]
 
 # Longest matching path wins.  A directory classification applies recursively.
-# Live guidance is intentionally limited to the canonical surfaces repaired by
-# #605; the remaining roots are visible adoption boundaries for follow-up work.
+# Live adoption covers canonical guidance and development alias launchers
+# (#605, #630); remaining roots are explicit follow-up boundaries.
+[[surface]]
+path = ".cargo/config.toml"
+mode = "live"
+reason = "development alias launchers resolve against the committed lock; nested task and sccache payload commands retain their own contracts"
+
 [[surface]]
 path = "AGENTS.md"
 mode = "live"

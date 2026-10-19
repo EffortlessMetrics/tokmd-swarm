@@ -253,6 +253,7 @@ coverage = false
 name = "cargo_command_surfaces"
 kind = "rust"
 paths = [
+  ".cargo/config.toml",
   "AGENTS.md",
   "agents/shared/repo.md",
   "policy/cargo-command-surfaces.toml",
