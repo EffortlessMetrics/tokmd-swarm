@@ -37,7 +37,35 @@ pub(crate) fn ignored_patterns(args: &ScanOptions, roots: &[ValidatedRoot]) -> V
         }
     }
 
+    // CLI overrides take precedence over ignore-file re-inclusions. A glob
+    // excluding every child can therefore prune the directory itself too.
+    // Keep the slash: a regular file with the same basename remains eligible.
+    let directories: Vec<_> = patterns
+        .iter()
+        .filter_map(|pattern| subtree_directory_pattern(pattern))
+        .collect();
+    patterns.extend(directories);
     patterns.into_iter().collect()
+}
+
+pub(crate) fn subtree_directory_pattern(pattern: &str) -> Option<String> {
+    // Mirror the ignore parser's unescaped trailing-whitespace handling while
+    // preserving raw glob escapes (especially absolute patterns).
+    let pattern = if pattern.ends_with("\\ ") {
+        pattern
+    } else {
+        pattern.trim_end()
+    };
+    if matches!(pattern, "*" | "**") {
+        return Some("**/".to_string());
+    }
+    let mut directory = pattern
+        .strip_suffix("/**")
+        .or_else(|| pattern.strip_suffix("/*"))?;
+    while let Some(parent) = directory.strip_suffix("/**") {
+        directory = parent;
+    }
+    Some(format!("{directory}/"))
 }
 
 fn is_absolute_pattern(pattern: &str) -> bool {
@@ -102,6 +130,18 @@ mod tests {
         let absolute = dir.path().join("target/**").to_string_lossy().to_string();
         let patterns = ignored_patterns(&scan_options(&[&absolute]), &[root]);
 
-        assert_eq!(patterns, vec![absolute]);
+        let directory = dir.path().join("target/").to_string_lossy().to_string();
+        assert_eq!(patterns, vec![directory, absolute]);
+    }
+
+    #[test]
+    fn subtree_companions_preserve_glob_escapes() {
+        assert_eq!(subtree_directory_pattern(r"/tmp/blocked\**"), None);
+        assert_eq!(subtree_directory_pattern("blocked/**\\ "), None);
+        assert_eq!(
+            subtree_directory_pattern("blocked/**/* \t"),
+            Some("blocked/".to_string())
+        );
+        assert_eq!(subtree_directory_pattern("*"), Some("**/".to_string()));
     }
 }
