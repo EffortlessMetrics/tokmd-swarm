@@ -1,9 +1,11 @@
 """Production-path regressions for the independent continuation review."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -264,6 +266,171 @@ const steps=new Proxy({}, {get:()=>({outcome:'failure'})});process.stdout.write(
                     os.kill(int(pidfile.read_text()), signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+
+
+class HeavyStepBudgetTests(unittest.TestCase):
+    CASES = (
+        ('ci', 'detect', 'Compute risk-pack output flags', 'risk-detection'),
+        ('ci', 'fast-proof-run', 'Resolve fast proof-run policy', 'fast-policy'),
+        ('coverage', 'coverage', 'Generate coverage', 'coverage'),
+    )
+
+    def run_step(self, case, *, seconds=5, event='pull_request', cargo_status=0, delay=0,
+                 startup_delay=0, expire_after_cargo=False):
+        workflow, job, name, marker = case
+        body = dict(jobs((ROOT / f'.github/workflows/{workflow}.yml').read_text()))[job]
+        indent = re.search(r'^( +)- (?:name|uses|id):', body, re.MULTILINE).group(1)
+        steps = re.split(r'^' + indent + r'- ', body, flags=re.MULTILINE)[1:]
+        step = next(value for value in steps if re.search(r'(?m)^ *name: ' + re.escape(name) + '$', value))
+        shell = re.search(r'(?m)^ +shell: (.+)$', step)
+        shell = shell.group(1) if shell else 'bash --noprofile --norc -e -o pipefail "{0}"'
+        command = textwrap.dedent(step.split('run: |\n', 1)[1])
+        command = command.replace('${{ github.event_name }}', event).replace('${{ github.base_ref }}', 'main')
+        with tempfile.TemporaryDirectory(prefix='tokmd budget step ') as directory:
+            root = Path(directory)
+            (root / 'scripts').mkdir()
+            shutil.copyfile(ROOT / 'scripts/ci_budget.py', root / 'scripts/ci_budget.py')
+            if expire_after_cargo:
+                # Execute unchanged production code with a process-local clock.
+                # Expiry waits for Cargo admission, so wrapper startup consumes
+                # none of the test's narrow timeout-observation window.
+                (root / 'scripts/ci_budget.py').rename(root / 'scripts/ci_budget_runtime.py')
+                (root / 'scripts/ci_budget.py').write_text(textwrap.dedent('''\
+                    import os, runpy, time
+                    from pathlib import Path
+
+                    real_ns = time.monotonic_ns
+                    offset = None
+
+                    def clock_ns():
+                        global offset
+                        now = real_ns()
+                        if offset is None and Path('cargo-ready').exists():
+                            offset = int(os.environ['CI_BUDGET_MONO_NS']) - now + 1_000_000_000
+                        return now + (offset or 0)
+
+                    time.monotonic_ns = clock_ns
+                    time.monotonic = lambda: clock_ns() / 1_000_000_000
+                    runpy.run_path('scripts/ci_budget_runtime.py', run_name='__main__')
+                    '''))
+            (root / 'bin').mkdir()
+            cargo = root / 'bin/cargo'
+            cargo.write_text('#!' + sys.executable + '\n' + textwrap.dedent('''\
+                import json, os, pathlib, sys, time
+                with open('calls', 'a') as output:
+                    print(json.dumps(sys.argv[1:]), file=output, flush=True)
+                # Publish readiness only after both the call and its real-clock
+                # timestamp are complete; the wrapper may terminate us next.
+                ready = pathlib.Path('cargo-ready.tmp')
+                ready.write_text(str(time.monotonic_ns()))
+                ready.replace('cargo-ready')
+                time.sleep(float(os.environ['STUB_DELAY']))
+                if int(os.environ['STUB_STATUS']):
+                    sys.exit(int(os.environ['STUB_STATUS']))
+                for flag in ('--github-output', '--output-path'):
+                    if flag in sys.argv:
+                        path = pathlib.Path(sys.argv[sys.argv.index(flag) + 1])
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text('profile=fast\\nartifact_name=fast-proof-run\\n' if flag == '--github-output' else '{}\\n')
+                print('TOTAL 1 1 100%')
+                '''))
+            cargo.chmod(0o755)
+            script_path = root / 'step.sh'
+            script_path.write_text(command)
+            env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'],
+                       GITHUB_EVENT_NAME=event, GITHUB_OUTPUT=str(root / 'output'), GITHUB_STEP_SUMMARY=str(root / 'summary'),
+                       LABELS_JSON='[]', PUSH_BEFORE='a' * 40, STUB_STATUS=str(cargo_status), STUB_DELAY=str(delay))
+            env.pop('CI_BUDGET_MONO_NS', None)
+            if event == 'pull_request' or workflow == 'ci':
+                env['CI_BUDGET_MONO_NS'] = str(time.monotonic_ns() + int(seconds * 1e9))
+            started = time.monotonic()
+            time.sleep(startup_delay)
+            run = subprocess.run(shlex.split(shell.replace('{0}', str(script_path))),
+                                 cwd=root, env=env, capture_output=True, text=True, timeout=7)
+            calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()] if (root / 'calls').exists() else []
+            receipt = root / f'target/ci-budget/{marker}.json'
+            budget_receipt = json.loads(receipt.read_text()) if receipt.exists() else None
+            if budget_receipt is not None:
+                self.assertEqual(budget_receipt['deadline_mono_ns'], env['CI_BUDGET_MONO_NS'])
+            if expire_after_cargo:
+                # Bound cleanup from admitted Cargo, independent of startup.
+                # The child interpreter retains the real monotonic clock.
+                started = int((root / 'cargo-ready').read_text()) / 1_000_000_000
+            return (run, calls, budget_receipt,
+                    (root / 'output').read_text() if (root / 'output').exists() else '', time.monotonic() - started)
+
+    def test_expired_budget_prevents_every_previously_unbounded_step(self):
+        for case in self.CASES:
+            with self.subTest(step=case[2]):
+                run, calls, receipt, _, _ = self.run_step(case, seconds=-1)
+                self.assertEqual(run.returncode, 124, run.stderr)
+                self.assertEqual(calls, [])
+                self.assertEqual(receipt['terminal_reason'], 'budget_exhausted')
+                self.assertFalse(receipt['child_started'])
+
+    def test_admitted_steps_retain_commands_outputs_and_budget_receipts(self):
+        # Independent temporary process groups can share the test run's wait for
+        # the production two-second cleanup grace; keep the 55s suite budget.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(self.run_step, self.CASES))
+        for case, count, result in zip(self.CASES, (1, 2, 5), results):
+            with self.subTest(step=case[2]):
+                run, calls, receipt, output, _ = result
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(len(calls), count)
+                self.assertEqual(receipt['terminal_reason'], 'completed')
+                if case[0] == 'coverage':
+                    self.assertIn('overall_status=0\n', output)
+                elif case[1] == 'fast-proof-run':
+                    self.assertIn('profile=fast\n', output)
+
+    def test_command_failure_and_budget_timeout_stay_non_passing(self):
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(lambda case: self.run_step(case, cargo_status=23), self.CASES))
+        for case, result in zip(self.CASES[:2], results[:2]):
+            with self.subTest(step=case[2]):
+                run, calls, receipt, _, _ = result
+                self.assertEqual(run.returncode, 23, run.stderr)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(receipt['terminal_reason'], 'source_failed')
+        run, calls, receipt, output, _ = results[2]
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(receipt['terminal_reason'], 'completed')
+        self.assertIn('overall_status=1\n', output, 'coverage command failure must retain its existing downstream failure signal')
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(lambda delay: self.run_step(self.CASES[1], seconds=60, delay=10,
+                                startup_delay=delay, expire_after_cargo=True), (0, .55, 2.2)))
+        for run, calls, receipt, output, elapsed in results:
+            self.assertEqual(run.returncode, 124, run.stderr)
+            self.assertEqual(len(calls), 1, 'a second Cargo command escaped the retained endpoint')
+            self.assertEqual(receipt['terminal_reason'], 'budget_exhausted')
+            self.assertTrue(receipt['child_started'])
+            self.assertTrue(receipt['timed_out'])
+            self.assertNotIn('profile=fast', output)
+            self.assertLess(elapsed, 4)
+
+    def test_delayed_launch_refusal_is_distinct_from_an_executed_timeout(self):
+        # Negative control: the old 2.4s fixture leaves <0.4s for startup after
+        # the unchanged production 2s grace. A delayed launch correctly refuses
+        # admission; it must never be accepted as proof of an executed timeout.
+        run, calls, receipt, output, _ = self.run_step(self.CASES[1], seconds=2.4,
+                                                    startup_delay=.55, delay=10)
+        self.assertEqual(run.returncode, 124, run.stderr)
+        self.assertEqual(calls, [])
+        self.assertEqual(receipt['terminal_reason'], 'budget_exhausted')
+        self.assertFalse(receipt['child_started'])
+        self.assertFalse(receipt['timed_out'])
+        self.assertNotIn('profile=fast', output)
+
+    def test_non_pr_coverage_still_runs_without_a_pr_budget_anchor(self):
+        for event in ('push', 'workflow_dispatch'):
+            with self.subTest(event=event):
+                run, calls, receipt, output, _ = self.run_step(self.CASES[2], event=event)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(len(calls), 5)
+                self.assertIsNone(receipt)
+                self.assertIn('overall_status=0\n', output)
 
 
 if __name__ == '__main__':

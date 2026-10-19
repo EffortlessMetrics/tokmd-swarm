@@ -633,6 +633,7 @@ jobs:
 
       - id: detect
         name: Compute risk-pack output flags
+        shell: python3 scripts/ci_budget.py run --marker target/ci-budget/risk-detection --reserve-seconds 0 -- bash --noprofile --norc -e -o pipefail "{0}"
         env:
           LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels) || '[]' }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
@@ -1305,6 +1306,7 @@ jobs:
 
       - id: proof_run_policy
         name: Resolve fast proof-run policy
+        shell: python3 scripts/ci_budget.py run --marker target/ci-budget/fast-policy --reserve-seconds 0 -- bash --noprofile --norc -e -o pipefail "{0}"
         run: |
           set -euo pipefail
           mkdir -p target/proof-run
