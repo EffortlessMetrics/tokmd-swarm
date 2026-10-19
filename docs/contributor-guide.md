@@ -18,11 +18,9 @@ Install or confirm:
 - optional `cargo-mutants` or `cargo-fuzz` only when a task specifically needs
   mutation or fuzz evidence.
 
-Then build once from the repository root:
-
-```bash
-cargo build
-```
+Run development commands from the repository root. For a small CLI change,
+start with the targeted test recipe below: Cargo builds the selected package
+and its dependencies as needed, so a separate workspace build is unnecessary.
 
 On Windows, prefer the repository wrappers for formatting:
 
@@ -80,21 +78,49 @@ proof.
    contract you changed.
 6. Run the narrowest useful proof first, then broaden only as needed.
 
-Useful local proof commands:
+Start with the affected crate and test target (see the CLI example below), then
+run the relevant documentation and affected-proof checks:
 
 ```bash
-cargo test
-cargo xtask docs --check
-cargo xtask doc-artifacts --check
-cargo xtask affected --base origin/main --head HEAD --json-output target/proof/affected.json
-cargo xtask proof --profile affected --base origin/main --head HEAD --plan --plan-json target/proof/proof-plan.json
+cargo --locked xtask docs --check
+cargo --locked xtask doc-artifacts --check
+cargo --locked xtask affected --base origin/main --head HEAD --json-output target/proof/affected.json
+cargo --locked xtask proof --profile affected --base origin/main --head HEAD --plan --plan-json target/proof/proof-plan.json
 git diff --check
 ```
 
-Use `cargo xtask doc-artifacts --check` when the change touches
+Use `cargo --locked xtask doc-artifacts --check` when the change touches
 `.tokmd-spec/**`, source-of-truth docs, specs, plans, ADRs, templates,
 `.jules/goals/**`, or documentation-control policy. For routine docs, it is
 still useful because it proves the docs-control surface stayed consistent.
+
+### A Small CLI Change
+
+For example, when changing `tokmd lang --help`, list the intended regression
+first, then execute it with the same package, target, feature and exact name:
+
+```bash
+cargo test --locked -p tokmd --test cli_error_help_w73 --features analysis help_lang_mentions_format_and_children -- --exact --list
+cargo test --locked -p tokmd --test cli_error_help_w73 --features analysis help_lang_mentions_format_and_children -- --exact
+```
+
+The list must include `help_lang_mentions_format_and_children: test`; the run
+must report `1 passed`, with no failures or ignored tests. A successful exit
+with zero tests does not validate the change: check the target, exact test name
+and feature selection before proceeding.
+
+This target requires `analysis` because its source has a crate-level feature
+gate. Defaults currently enable it, but keep `--features analysis` if you
+intentionally add `--no-default-features`; without it, Cargo can silently run
+zero tests. Other targets may require different features: inspect their
+`#![cfg(...)]` / `#[cfg(...)]` attributes and the package's `Cargo.toml` before
+adapting the command. `-- --list` also compiles the selected target, so it is a
+discovery check, not an estimate of compilation cost.
+
+This recipe exercises one help assertion. Choose the tests that cover your
+actual change, then broaden proof as needed. The full required
+[`Tokmd Rust Result` sequence](testing.md#ci-gates) still applies before
+merge; this local recipe does not replace it.
 
 ## What To Expect After Opening A PR
 

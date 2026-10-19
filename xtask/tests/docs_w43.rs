@@ -3,7 +3,68 @@
 //! Validates that docs/*.md internal links are valid, JSON schemas parse,
 //! and SCHEMA.md version references match actual source constants.
 
-use std::path::PathBuf;
+use anyhow::{Context, Result, ensure};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+#[test]
+fn contributor_cli_recipe_selects_an_enabled_exact_test() -> Result<()> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("missing workspace parent")?;
+    let guide = fs::read_to_string(root.join("docs/contributor-guide.md"))?;
+    let setup = guide
+        .split_once("## Choose A First Change")
+        .context("missing first-change section")?
+        .0;
+    ensure!(
+        !setup.contains("cargo build"),
+        "CLI contributors should reach targeted tests without a prerequisite broad build"
+    );
+    let recipe = guide
+        .split_once("### A Small CLI Change")
+        .context("missing targeted CLI recipe")?
+        .1
+        .split_once("## What To Expect After Opening A PR")
+        .context("missing next section")?
+        .0;
+    let commands = recipe
+        .split_once("```bash\n")
+        .context("missing CLI recipe commands")?
+        .1
+        .split_once("```")
+        .context("unterminated CLI recipe commands")?
+        .0;
+    let base = "cargo test --locked -p tokmd --test cli_error_help_w73 --features analysis help_lang_mentions_format_and_children -- --exact";
+    let expected = format!("{base} --list\n{base}\n");
+    ensure!(
+        commands == expected,
+        "list and execute the same locked package, target, feature and exact test"
+    );
+
+    // These are independent source landmarks, not names inferred from the docs:
+    // a renamed test or changed feature gate must trigger a recipe update.
+    let source = fs::read_to_string(root.join("crates/tokmd/tests/cli_error_help_w73.rs"))?;
+    ensure!(source.starts_with("#![cfg(feature = \"analysis\")]"));
+    ensure!(source.contains("\nfn help_lang_mentions_format_and_children() {"));
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("crates/tokmd/Cargo.toml"))?)?;
+    ensure!(
+        manifest
+            .get("features")
+            .and_then(|f| f.get("analysis"))
+            .is_some()
+    );
+    ensure!(
+        recipe.contains("--no-default-features")
+            && recipe.contains("zero tests")
+            && recipe.contains("--features analysis"),
+        "explain the feature-disabled zero-test trap"
+    );
+    Ok(())
+}
 
 /// Find the workspace root.
 fn workspace_root() -> PathBuf {
