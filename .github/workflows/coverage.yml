@@ -196,6 +196,7 @@ jobs:
 
       - id: coverage_run
         name: Generate coverage
+        shell: bash --noprofile --norc -e -o pipefail -c "if [ \"$GITHUB_EVENT_NAME\" = pull_request ]; then exec python3 scripts/ci_budget.py run --marker target/ci-budget/coverage --reserve-seconds 0 -- bash --noprofile --norc -e -o pipefail \"$1\"; else exec bash --noprofile --norc -e -o pipefail \"$1\"; fi" -- "{0}"
         env:
           CI: true
         run: |
