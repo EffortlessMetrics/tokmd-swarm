@@ -470,6 +470,79 @@ mod tests {
         assert_eq!(proof_artifact.media_type, "application/json");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn review_packet_rejects_proof_directory_symlink_escape() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let external = tempdir()?;
+        write_valid_packet(dir.path());
+        let proof_json = r#"{"schema":"tokmd.proof_run_observation.v1","entries":[]}"#;
+        fs::write(external.path().join("observation.json"), proof_json)?;
+        std::os::unix::fs::symlink(external.path(), dir.path().join("proof"))?;
+        append_proof_artifact(dir.path(), "proof/observation.json", proof_json)?;
+
+        let error = validate_review_packet_dir(dir.path())
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("external proof artifact was certified packet-local"))?;
+        let message = error.to_string();
+        anyhow::ensure!(message.contains("proof/observation.json"), "{message}");
+        anyhow::ensure!(message.contains("outside packet directory"), "{message}");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn review_packet_accepts_internal_proof_directory_symlink() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        write_valid_packet(dir.path());
+        fs::create_dir(dir.path().join("stored-proof"))?;
+        let proof_json = r#"{"schema":"tokmd.proof_run_observation.v1","entries":[]}"#;
+        fs::write(dir.path().join("stored-proof/observation.json"), proof_json)?;
+        std::os::unix::fs::symlink("stored-proof", dir.path().join("proof"))?;
+        append_proof_artifact(dir.path(), "proof/observation.json", proof_json)?;
+
+        let report = validate_review_packet_dir(dir.path())?;
+        anyhow::ensure!(report.ok && report.hashes_verified == 6);
+        anyhow::ensure!(report.artifacts.iter().any(|artifact| {
+            artifact.path == "proof/observation.json"
+                && artifact.hash == blake3::hash(proof_json.as_bytes()).to_hex().as_str()
+        }));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn review_packet_accepts_symlinked_packet_root() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let parent = tempdir()?;
+        write_valid_packet(dir.path());
+        let alias = parent.path().join("packet");
+        std::os::unix::fs::symlink(dir.path(), &alias)?;
+
+        let report = validate_review_packet_dir(&alias)?;
+        anyhow::ensure!(report.ok && report.hashes_verified == 5);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn append_proof_artifact(dir: &Path, path: &str, content: &str) -> anyhow::Result<()> {
+        let manifest_path = dir.join("manifest.json");
+        let mut manifest = super::read_json(&manifest_path, "manifest.json")?;
+        let artifacts = manifest
+            .get_mut("artifacts")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow::anyhow!("fixture manifest has no artifacts array"))?;
+        artifacts.push(artifact(
+            "proof-run-observation",
+            path,
+            "tokmd.proof_run_observation.v1",
+            "application/json",
+            content,
+        ));
+        fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+        Ok(())
+    }
+
     fn write_valid_packet(dir: &Path) {
         fs::create_dir_all(dir).expect("create packet dir");
 
