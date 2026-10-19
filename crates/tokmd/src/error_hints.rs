@@ -81,17 +81,17 @@ impl std::fmt::Display for HandoffOutputFile {
 
 impl std::error::Error for HandoffOutputFile {}
 
-/// A selected lang format has no valid fallback and already names its local repair.
+/// A selected table format has no valid fallback and already names its local repair.
 #[derive(Debug)]
-pub(crate) struct InvalidLangProfileFormat(pub(crate) String);
+pub(crate) struct InvalidTableProfileFormat(pub(crate) String);
 
-impl std::fmt::Display for InvalidLangProfileFormat {
+impl std::fmt::Display for InvalidTableProfileFormat {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(&self.0)
     }
 }
 
-impl std::error::Error for InvalidLangProfileFormat {}
+impl std::error::Error for InvalidTableProfileFormat {}
 
 // Derive the concrete parser error from a nonoptional settings interface.
 trait ResultError {
@@ -112,7 +112,7 @@ enum LocalRecovery {
     OutputDirectory,
     OutputParentNotDirectory,
     HandoffFileOutput,
-    InvalidLangProfileFormat,
+    InvalidTableProfileFormat,
     UnknownProfile,
     OutputOther,
     Json,
@@ -191,8 +191,8 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     {
         return Some(LocalRecovery::UnknownProfile);
     }
-    if err.downcast_ref::<InvalidLangProfileFormat>().is_some() {
-        return Some(LocalRecovery::InvalidLangProfileFormat);
+    if err.downcast_ref::<InvalidTableProfileFormat>().is_some() {
+        return Some(LocalRecovery::InvalidTableProfileFormat);
     }
     if let Some(directory) = err.downcast_ref::<DirectoryRead>() {
         return Some(LocalRecovery::Directory(directory.0));
@@ -386,7 +386,7 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
             &mut out,
             "Select a directory path for handoff output, then retry.",
         ),
-        LocalRecovery::InvalidLangProfileFormat
+        LocalRecovery::InvalidTableProfileFormat
         | LocalRecovery::UnknownProfile
         | LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {

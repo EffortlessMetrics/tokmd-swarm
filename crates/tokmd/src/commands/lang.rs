@@ -1,6 +1,5 @@
 use crate::cli;
 use anyhow::Result;
-use clap::ValueEnum;
 use tokmd_format as format;
 use tokmd_model as model;
 use tokmd_scan as scan;
@@ -14,28 +13,7 @@ pub(crate) fn handle(
     global: &cli::GlobalArgs,
     resolved: &ResolvedConfig,
 ) -> Result<()> {
-    if cli_args.format.is_none()
-        && let Some(value) = resolved.format()
-        && cli::TableFormat::from_str(value, true).is_err()
-    {
-        let source = if resolved
-            .toml_view
-            .and_then(|view| view.format.as_deref())
-            .is_some()
-        {
-            resolved.toml_path.map_or_else(
-                || "the selected TOML view".to_string(),
-                |path| format!("the selected TOML config {}", path.display()),
-            )
-        } else {
-            "the selected profile".to_string()
-        };
-        return Err(anyhow::Error::new(
-            crate::error_hints::InvalidLangProfileFormat(format!(
-                "Invalid lang format {value:?} in {source}; expected md, tsv, json. Fix the selected profile or pass --format json."
-            )),
-        ));
-    }
+    super::validate_table_profile_format("lang", cli_args.format, resolved)?;
 
     let args = config::resolve_lang_with_config(&cli_args, resolved);
     let scan_opts = ScanOptions::from(global);

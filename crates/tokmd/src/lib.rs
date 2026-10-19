@@ -82,7 +82,7 @@ pub fn exit_code(err: &anyhow::Error) -> i32 {
     if err.downcast_ref::<commands::UsageError>().is_some()
         || err.downcast_ref::<config::UnknownProfile>().is_some()
         || err
-            .downcast_ref::<error_hints::InvalidLangProfileFormat>()
+            .downcast_ref::<error_hints::InvalidTableProfileFormat>()
             .is_some()
     {
         2

@@ -30,6 +30,7 @@ pub(crate) mod tools;
 
 use crate::cli;
 use anyhow::{Error, Result};
+use clap::ValueEnum;
 
 use crate::config::ResolvedConfig;
 
@@ -51,6 +52,37 @@ impl std::fmt::Display for UsageError {
 }
 
 impl std::error::Error for UsageError {}
+
+/// Validate the winning profile value only when the CLI did not override it.
+fn validate_table_profile_format(
+    command: &str,
+    cli_format: Option<cli::TableFormat>,
+    resolved: &ResolvedConfig,
+) -> Result<()> {
+    if cli_format.is_none()
+        && let Some(value) = resolved.format()
+        && cli::TableFormat::from_str(value, true).is_err()
+    {
+        let source = if resolved
+            .toml_view
+            .and_then(|view| view.format.as_deref())
+            .is_some()
+        {
+            resolved.toml_path.map_or_else(
+                || "the selected TOML view".to_string(),
+                |path| format!("the selected TOML config {}", path.display()),
+            )
+        } else {
+            "the selected profile".to_string()
+        };
+        return Err(Error::new(crate::error_hints::InvalidTableProfileFormat(
+            format!(
+                "Invalid {command} format {value:?} in {source}; expected md, tsv, json. Fix the selected profile or pass --format json."
+            ),
+        )));
+    }
+    Ok(())
+}
 
 fn reject_implicit_lang_options_with_subcommand(cli: &cli::Cli) -> Result<()> {
     if cli.command.is_some()
