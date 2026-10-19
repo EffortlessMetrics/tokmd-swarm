@@ -1,10 +1,270 @@
+use anyhow::{Result, ensure};
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const POLICY: &str = include_str!("../../policy/cargo-command-surfaces.toml");
+const CARGO_CONFIG: &str = include_str!("../../.cargo/config.toml");
+
+#[derive(Deserialize)]
+struct CargoConfig {
+    alias: BTreeMap<String, Alias>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Alias {
+    Text(String),
+    Args(Vec<String>),
+}
+
+impl Alias {
+    fn tokens(&self) -> Vec<&str> {
+        match self {
+            Self::Text(text) => text.split_whitespace().collect(),
+            Self::Args(args) => args.iter().map(String::as_str).collect(),
+        }
+    }
+}
+
+// This contract handles Cargo aliases, not shell programs. Unsupported shell
+// aliases and cycles remain NotProven rather than being counted as locked.
+fn expand_aliases<'a>(tokens: &[&'a str], config: &'a CargoConfig) -> Result<Vec<&'a str>, ()> {
+    let mut expanded = tokens.to_vec();
+    let mut seen = BTreeSet::new();
+    loop {
+        let index = command_index(&expanded)?;
+        let name = *expanded.get(index).ok_or(())?;
+        let Some(alias) = config.alias.get(name) else {
+            return Ok(expanded);
+        };
+        let replacement = alias.tokens();
+        if !seen.insert(name)
+            || replacement
+                .first()
+                .is_none_or(|token| token.starts_with('!'))
+        {
+            return Err(());
+        }
+        expanded.splice(index..index + 1, replacement);
+    }
+}
+
+fn alias_fixture() -> Result<tempfile::TempDir> {
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir(fixture.path().join("src"))?;
+    fs::create_dir(fixture.path().join(".cargo"))?;
+    fs::write(fixture.path().join(".cargo/config.toml"), CARGO_CONFIG)?;
+    fs::write(
+        fixture.path().join("src/main.rs"),
+        "fn main() { for arg in std::env::args().skip(1) { println!(\"{arg}\"); } }\n",
+    )?;
+    write_alias_manifest(fixture.path(), "0.1.0")?;
+    // Generate canonical accepted bytes in this disposable dependency-free
+    // fixture before testing whether the development alias preserves them.
+    let lock = run_fixture_alias(fixture.path(), &["generate-lockfile"])?;
+    ensure!(
+        lock.status.success(),
+        "fixture lock: {}",
+        String::from_utf8_lossy(&lock.stderr)
+    );
+    Ok(fixture)
+}
+
+fn write_alias_manifest(fixture: &Path, version: &str) -> Result<()> {
+    fs::write(
+        fixture.join("Cargo.toml"),
+        format!("[package]\nname = \"xtask\"\nversion = \"{version}\"\nedition = \"2021\"\n"),
+    )?;
+    Ok(())
+}
+
+fn run_fixture_alias(fixture: &Path, args: &[&str]) -> Result<std::process::Output> {
+    Ok(Command::new(env!("CARGO"))
+        .current_dir(fixture)
+        .env("CARGO_HOME", fixture.join("cargo-home"))
+        .env("CARGO_TARGET_DIR", fixture.join("target"))
+        .env("CARGO_NET_OFFLINE", "true")
+        .args(args)
+        .output()?)
+}
+
+#[test]
+fn development_alias_preserves_valid_stale_and_missing_locks() -> Result<()> {
+    let fixture = alias_fixture()?;
+    let root = fixture.path();
+    let lock = root.join("Cargo.lock");
+    let bytes = fs::read(&lock)?;
+    // Use the committed, nested formatting alias. The tiny stand-in only
+    // echoes xtask arguments; dependency resolution is performed by real Cargo.
+    let valid = run_fixture_alias(root, &["fmt-check"])?;
+    ensure!(
+        valid.status.success(),
+        "valid lock: {}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+    ensure!(
+        String::from_utf8(valid.stdout)?
+            .lines()
+            .eq(["lint-fix", "--check", "--no-clippy"]),
+        "format alias arguments changed"
+    );
+    ensure!(fs::read(&lock)? == bytes, "valid lock changed");
+
+    write_alias_manifest(root, "0.2.0")?;
+    let stale = run_fixture_alias(root, &["fmt-check"])?;
+    ensure!(!stale.status.success(), "alias accepted stale lock");
+    ensure!(
+        String::from_utf8_lossy(&stale.stderr).contains("--locked"),
+        "missing locked diagnostic"
+    );
+    ensure!(fs::read(&lock)? == bytes, "stale lock was rewritten");
+
+    write_alias_manifest(root, "0.1.0")?;
+    fs::remove_file(&lock)?;
+    let missing = run_fixture_alias(root, &["fmt-check"])?;
+    ensure!(!missing.status.success(), "alias accepted missing lock");
+    ensure!(!lock.exists(), "alias created missing lock");
+    Ok(())
+}
+
+#[test]
+fn unlocked_and_misplaced_alias_controls_really_move_the_lock() -> Result<()> {
+    let fixture = alias_fixture()?;
+    let root = fixture.path();
+    let lock = root.join("Cargo.lock");
+    let bytes = fs::read(&lock)?;
+    fs::write(
+        root.join(".cargo/config.toml"),
+        CARGO_CONFIG.replace("run --locked -p xtask --", "run -p xtask --"),
+    )?;
+    write_alias_manifest(root, "0.2.0")?;
+    let misplaced = run_fixture_alias(root, &["xtask", "--locked"])?;
+    ensure!(
+        misplaced.status.success(),
+        "unlocked control did not run: {}",
+        String::from_utf8_lossy(&misplaced.stderr)
+    );
+    ensure!(
+        String::from_utf8(misplaced.stdout)?.trim() == "--locked",
+        "flag was not forwarded to binary"
+    );
+    ensure!(
+        fs::read(&lock)? != bytes,
+        "unlocked control did not rewrite stale lock"
+    );
+
+    fs::write(&lock, &bytes)?;
+    let global = run_fixture_alias(root, &["--locked", "xtask"])?;
+    ensure!(
+        !global.status.success(),
+        "global locked control accepted stale lock"
+    );
+    ensure!(
+        fs::read(&lock)? == bytes,
+        "global locked control changed lock"
+    );
+
+    // The formatter itself does not resolve dependencies and accepts a stale
+    // lock. Only the launcher of the convenience formatting alias needs locking.
+    fs::write(root.join("src/main.rs"), "fn main() {}\n")?;
+    let fmt = run_fixture_alias(root, &["fmt", "--", "--check"])?;
+    ensure!(
+        fmt.status.success(),
+        "formatter control failed: {}",
+        String::from_utf8_lossy(&fmt.stderr)
+    );
+    ensure!(fs::read(&lock)? == bytes, "formatter changed lock");
+    Ok(())
+}
+
+#[test]
+fn development_aliases_preserve_task_arguments() -> Result<()> {
+    let fixture = alias_fixture()?;
+    for (alias, expected) in [
+        ("xtask", vec![]),
+        ("fmt-check", vec!["lint-fix", "--check", "--no-clippy"]),
+        ("fmt-fix", vec!["lint-fix", "--no-clippy"]),
+        ("gate-check", vec!["gate", "--check"]),
+        ("trim-target", vec!["trim-target"]),
+        ("with-sccache", vec!["sccache", "--"]),
+        ("sccache-check", vec!["sccache", "--check"]),
+        ("sccache-stats", vec!["sccache", "--stats"]),
+        ("sccache-stop", vec!["sccache", "--stop"]),
+    ] {
+        let output = run_fixture_alias(fixture.path(), &[alias])?;
+        ensure!(
+            output.status.success(),
+            "{alias}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        ensure!(
+            String::from_utf8(output.stdout)?.lines().eq(expected),
+            "{alias}: changed task arguments"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn alias_scanner_checks_the_launcher_before_forwarded_arguments() -> Result<()> {
+    let locked: CargoConfig = toml::from_str(
+        "[alias]\nxtask = 'run --locked -p xtask --'\nfmt-check = 'xtask lint-fix --check --no-clippy'\n",
+    )?;
+    let unlocked: CargoConfig = toml::from_str(
+        "[alias]\nxtask = 'run -p xtask --'\nfmt-check = 'xtask lint-fix --check --no-clippy'\n",
+    )?;
+    for alias in ["xtask", "fmt-check"] {
+        let line = format!("cargo {alias}");
+        ensure!(
+            scan_live_with_aliases(&line, true, &locked) == Verdict::Pass,
+            "locked {alias}"
+        );
+        ensure!(
+            scan_live_with_aliases(&line, false, &locked) == Verdict::MissingLock,
+            "missing lock {alias}"
+        );
+        ensure!(
+            scan_live_with_aliases(&line, true, &unlocked) == Verdict::Violation,
+            "unlocked {alias}"
+        );
+        ensure!(
+            scan_live_with_aliases(&format!("{line} --locked"), true, &unlocked)
+                == Verdict::Violation,
+            "forwarded flag counted as Cargo option"
+        );
+        ensure!(
+            scan_live_with_aliases(&format!("cargo --locked {alias}"), true, &unlocked)
+                == Verdict::Pass,
+            "global lock flag lost"
+        );
+    }
+    for aliases in [
+        "[alias]\nxtask = ['run', '--locked', '-p', 'xtask', '--']\n",
+        "[alias]\nxtask = 'run --frozen -p xtask --'\n",
+    ] {
+        let config = toml::from_str(aliases)?;
+        ensure!(
+            scan_live_with_aliases("cargo xtask", true, &config) == Verdict::Pass,
+            "supported locked alias rejected"
+        );
+    }
+    for aliases in [
+        "[alias]\nxtask = 'xtask'\n",
+        "[alias]\nxtask = 'other'\nother = 'xtask'\n",
+        "[alias]\nxtask = '!cargo run --locked'\n",
+        "[alias]\nxtask = ''\n",
+    ] {
+        let config = toml::from_str(aliases)?;
+        ensure!(
+            scan_live_with_aliases("cargo xtask", true, &config) == Verdict::NotProven,
+            "unsupported alias silently passed"
+        );
+    }
+    Ok(())
+}
 
 #[derive(Debug, Deserialize)]
 struct Inventory {
@@ -126,7 +386,7 @@ fn command_tokens(line: &str) -> Option<Vec<&str>> {
     })
 }
 
-fn governed_command<'a>(tokens: &'a [&'a str]) -> Result<Option<&'a str>, ()> {
+fn command_index(tokens: &[&str]) -> Result<usize, ()> {
     let mut index = 1;
     while let Some(token) = tokens.get(index).copied() {
         if token.starts_with('+') {
@@ -159,21 +419,18 @@ fn governed_command<'a>(tokens: &'a [&'a str]) -> Result<Option<&'a str>, ()> {
         if token.starts_with('-') {
             return Err(());
         }
-        let command = token;
-        return Ok(matches!(
-            command,
-            "build"
-                | "check"
-                | "test"
-                | "clippy"
-                | "run"
-                | "install"
-                | "update"
-                | "generate-lockfile"
-        )
-        .then_some(command));
+        return Ok(index);
     }
     Err(())
+}
+
+fn governed_command<'a>(tokens: &[&'a str]) -> Result<Option<&'a str>, ()> {
+    let command = *tokens.get(command_index(tokens)?).ok_or(())?;
+    Ok(matches!(
+        command,
+        "build" | "check" | "test" | "clippy" | "run" | "install" | "update" | "generate-lockfile"
+    )
+    .then_some(command))
 }
 
 fn ambiguous_command_line(line: &str) -> bool {
@@ -226,12 +483,23 @@ fn dynamic_line(line: &str) -> bool {
 }
 
 fn scan_live(text: &str, lock_present: bool) -> Verdict {
+    let Ok(config) = toml::from_str(CARGO_CONFIG) else {
+        return Verdict::NotProven;
+    };
+    scan_live_with_aliases(text, lock_present, &config)
+}
+
+fn scan_live_with_aliases(text: &str, lock_present: bool, config: &CargoConfig) -> Verdict {
     for line in text.lines() {
         if ambiguous_command_line(line) {
             return Verdict::NotProven;
         }
         let Some(tokens) = command_tokens(line) else {
             continue;
+        };
+        let tokens = match expand_aliases(&tokens, config) {
+            Ok(tokens) => tokens,
+            Err(()) => return Verdict::NotProven,
         };
         let command = match governed_command(&tokens) {
             Ok(Some(command)) => command,
@@ -336,7 +604,9 @@ fn policy_is_closed_and_live_surfaces_are_locked() -> Result<(), Box<dyn std::er
         .iter()
         .filter(|surface| surface.mode == Mode::Live)
         .collect::<Vec<_>>();
-    assert_eq!(live.len(), 2, "only #605 canonical surfaces are adopted");
+    if live.len() != 3 {
+        return Err("canonical guidance and Cargo aliases must be adopted".into());
+    }
     assert!(live.iter().all(|surface| !surface.reason.is_empty()));
 
     let root = workspace_root()?;
@@ -358,7 +628,18 @@ fn policy_is_closed_and_live_surfaces_are_locked() -> Result<(), Box<dyn std::er
             continue;
         }
         let text = fs::read_to_string(root.join(&path))?;
-        let verdict = scan_live(&text, lock_present);
+        let verdict = if path == ".cargo/config.toml" {
+            let config: CargoConfig = toml::from_str(&text)?;
+            let invocations = config
+                .alias
+                .keys()
+                .map(|name| format!("cargo {name}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            scan_live_with_aliases(&invocations, lock_present, &config)
+        } else {
+            scan_live(&text, lock_present)
+        };
         if verdict != Verdict::Pass {
             violations.push(path);
         }

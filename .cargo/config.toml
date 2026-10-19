@@ -2,8 +2,8 @@
 # Cargo configuration file for the tokmd workspace
 
 [alias]
-# xtask alias for running development tasks
-xtask = "run -p xtask --"
+# Lock the Cargo launcher before forwarding arguments to development tasks.
+xtask = "run --locked -p xtask --"
 # Windows-safe workspace formatting aliases. `cargo fmt --all` can exceed the
 # Windows process argument budget in this repo.
 fmt-fix = "xtask lint-fix --no-clippy"
