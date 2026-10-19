@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::time::Duration;
 
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
@@ -14,6 +15,8 @@ const FORMATS: &[(&str, &str)] = &[
     ("export", "json"),
     ("export", "jsonl"),
 ];
+
+const OUTPUT_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct Fixture {
     dir: TempDir,
@@ -38,11 +41,11 @@ impl Fixture {
         Ok(())
     }
 
-    fn command(&self) -> Command {
+    fn command(&self) -> assert_cmd::Command {
         self.command_with_scan_config("none")
     }
 
-    fn command_with_scan_config(&self, mode: &str) -> Command {
+    fn command_with_scan_config(&self, mode: &str) -> assert_cmd::Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
         command.current_dir(&self.root);
         for (name, _) in std::env::vars_os() {
@@ -52,6 +55,8 @@ impl Fixture {
             }
         }
         let config = self.dir.path().join("empty-config");
+        let mut command = assert_cmd::Command::from_std(command);
+        command.timeout(OUTPUT_TIMEOUT);
         command
             .env("TOKMD_CONFIG", &config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
