@@ -122,8 +122,9 @@ fn assert_complete_with_scan_config(
             ensure!(rows.iter().all(|row| row["type"] == json!("row")));
             rows
         } else {
-            receipt["rows"]
-                .as_array()
+            receipt
+                .get("rows")
+                .and_then(Value::as_array)
                 .ok_or_else(|| anyhow::anyhow!("missing export rows: {receipt}"))?
                 .iter()
                 .collect()
@@ -134,8 +135,9 @@ fn assert_complete_with_scan_config(
                 ensure!(row["code"] == json!(1), "{row}");
                 ensure!(row["lines"] == json!(1), "{row}");
                 ensure!(row["kind"] == json!("parent"), "{row}");
-                let path = row["path"]
-                    .as_str()
+                let path = row
+                    .get("path")
+                    .and_then(Value::as_str)
                     .ok_or_else(|| anyhow::anyhow!("missing inventory path: {row}"))?;
                 // Every fixture source is Rust except the explicit Python
                 // survivor used to reject overly broad exclusion pruning.
@@ -487,7 +489,8 @@ mod unix {
         for ignore_file in [".tokeignore", ".ignore"] {
             let fixture = ignored_directory(ignore_file)?;
             let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
-            for extra in [&[][..], &["--no-ignore-vcs"][..]] {
+            let extra_args: [&[&str]; 2] = [&[], &["--no-ignore-vcs"]];
+            for extra in extra_args {
                 assert_complete(
                     fixture.run("export", "json", extra)?,
                     "export",
@@ -506,7 +509,8 @@ mod unix {
     fn gitignore_preserves_unselected_directory_and_obeys_vcs_override() -> Result<()> {
         let fixture = ignored_directory(".gitignore")?;
         let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
-        for extra in [&[][..], &["--no-ignore-dot"][..]] {
+        let extra_args: [&[&str]; 2] = [&[], &["--no-ignore-dot"]];
+        for extra in extra_args {
             assert_complete(
                 fixture.run("export", "json", extra)?,
                 "export",
@@ -554,7 +558,8 @@ mod unix {
         fixture.write("good.rs", "fn good() {}\n")?;
         fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
         let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
-        for extra in [&[][..], &["--no-ignore-vcs"][..]] {
+        let extra_args: [&[&str]; 2] = [&[], &["--no-ignore-vcs"]];
+        for extra in extra_args {
             assert_complete(
                 fixture.run("export", "json", extra)?,
                 "export",
@@ -639,7 +644,8 @@ mod unix {
         fixture.write("good.rs", "fn good() {}\n")?;
         fixture.write(".blocked/omitted.rs", "fn omitted() {}\n")?;
         let _guard = UnreadableDirectory::new(&fixture.root.join(".blocked"))?;
-        for extra in [&[][..], &["--no-ignore"][..]] {
+        let extra_args: [&[&str]; 2] = [&[], &["--no-ignore"]];
+        for extra in extra_args {
             assert_complete(
                 fixture.run("export", "json", extra)?,
                 "export",
