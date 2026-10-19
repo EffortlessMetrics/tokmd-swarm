@@ -203,11 +203,14 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     if io_kind(err, std::io::ErrorKind::TimedOut) {
         return Some(LocalRecovery::Transient);
     }
-    let output_create = has_context(chain, &["failed to create output file "]);
-    if output_create && io_kind(err, std::io::ErrorKind::IsADirectory) {
+    let file_output = has_context(
+        chain,
+        &["failed to create output file ", "failed to write badge to "],
+    );
+    if file_output && io_kind(err, std::io::ErrorKind::IsADirectory) {
         return Some(LocalRecovery::OutputDirectory);
     }
-    if output_create && io_kind(err, std::io::ErrorKind::NotADirectory) {
+    if file_output && io_kind(err, std::io::ErrorKind::NotADirectory) {
         return Some(LocalRecovery::OutputParentNotDirectory);
     }
     let git_subprocess = has_context(chain, &["failed to spawn git worktree for "]);
@@ -234,9 +237,9 @@ fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
     let native_io = err
         .chain()
         .any(|cause| cause.downcast_ref::<std::io::Error>().is_some());
-    // A typed local file-creation error takes precedence over provider words
+    // A typed local file-output error takes precedence over provider words
     // that happen to appear in the selected output pathname.
-    if output_create && native_io {
+    if file_output && native_io {
         // Inspect only the native cause; the output pathname can contain words
         // such as "timeout" or "rate_limit" without a remote failure.
         let transient_cause = err
