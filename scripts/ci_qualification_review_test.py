@@ -275,7 +275,8 @@ class HeavyStepBudgetTests(unittest.TestCase):
         ('coverage', 'coverage', 'Generate coverage', 'coverage'),
     )
 
-    def run_step(self, case, *, seconds=5, event='pull_request', cargo_status=0, delay=0):
+    def run_step(self, case, *, seconds=5, event='pull_request', cargo_status=0, delay=0,
+                 startup_delay=0, expire_after_cargo=False):
         workflow, job, name, marker = case
         body = dict(jobs((ROOT / f'.github/workflows/{workflow}.yml').read_text()))[job]
         indent = re.search(r'^( +)- (?:name|uses|id):', body, re.MULTILINE).group(1)
@@ -289,12 +290,40 @@ class HeavyStepBudgetTests(unittest.TestCase):
             root = Path(directory)
             (root / 'scripts').mkdir()
             shutil.copyfile(ROOT / 'scripts/ci_budget.py', root / 'scripts/ci_budget.py')
+            if expire_after_cargo:
+                # Execute unchanged production code with a process-local clock.
+                # Expiry waits for Cargo admission, so wrapper startup consumes
+                # none of the test's narrow timeout-observation window.
+                (root / 'scripts/ci_budget.py').rename(root / 'scripts/ci_budget_runtime.py')
+                (root / 'scripts/ci_budget.py').write_text(textwrap.dedent('''\
+                    import os, runpy, time
+                    from pathlib import Path
+
+                    real_ns = time.monotonic_ns
+                    offset = None
+
+                    def clock_ns():
+                        global offset
+                        now = real_ns()
+                        if offset is None and Path('cargo-ready').exists():
+                            offset = int(os.environ['CI_BUDGET_MONO_NS']) - now + 1_000_000_000
+                        return now + (offset or 0)
+
+                    time.monotonic_ns = clock_ns
+                    time.monotonic = lambda: clock_ns() / 1_000_000_000
+                    runpy.run_path('scripts/ci_budget_runtime.py', run_name='__main__')
+                    '''))
             (root / 'bin').mkdir()
             cargo = root / 'bin/cargo'
             cargo.write_text('#!' + sys.executable + '\n' + textwrap.dedent('''\
                 import json, os, pathlib, sys, time
                 with open('calls', 'a') as output:
                     print(json.dumps(sys.argv[1:]), file=output, flush=True)
+                # Publish readiness only after both the call and its real-clock
+                # timestamp are complete; the wrapper may terminate us next.
+                ready = pathlib.Path('cargo-ready.tmp')
+                ready.write_text(str(time.monotonic_ns()))
+                ready.replace('cargo-ready')
                 time.sleep(float(os.environ['STUB_DELAY']))
                 if int(os.environ['STUB_STATUS']):
                     sys.exit(int(os.environ['STUB_STATUS']))
@@ -315,6 +344,7 @@ class HeavyStepBudgetTests(unittest.TestCase):
             if event == 'pull_request' or workflow == 'ci':
                 env['CI_BUDGET_MONO_NS'] = str(time.monotonic_ns() + int(seconds * 1e9))
             started = time.monotonic()
+            time.sleep(startup_delay)
             run = subprocess.run(shlex.split(shell.replace('{0}', str(script_path))),
                                  cwd=root, env=env, capture_output=True, text=True, timeout=7)
             calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()] if (root / 'calls').exists() else []
@@ -322,6 +352,10 @@ class HeavyStepBudgetTests(unittest.TestCase):
             budget_receipt = json.loads(receipt.read_text()) if receipt.exists() else None
             if budget_receipt is not None:
                 self.assertEqual(budget_receipt['deadline_mono_ns'], env['CI_BUDGET_MONO_NS'])
+            if expire_after_cargo:
+                # Bound cleanup from admitted Cargo, independent of startup.
+                # The child interpreter retains the real monotonic clock.
+                started = int((root / 'cargo-ready').read_text()) / 1_000_000_000
             return (run, calls, budget_receipt,
                     (root / 'output').read_text() if (root / 'output').exists() else '', time.monotonic() - started)
 
@@ -364,13 +398,30 @@ class HeavyStepBudgetTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(receipt['terminal_reason'], 'completed')
         self.assertIn('overall_status=1\n', output, 'coverage command failure must retain its existing downstream failure signal')
-        run, calls, receipt, output, elapsed = self.run_step(self.CASES[1], seconds=2.4, delay=10)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(lambda delay: self.run_step(self.CASES[1], seconds=60, delay=10,
+                                startup_delay=delay, expire_after_cargo=True), (0, .55, 2.2)))
+        for run, calls, receipt, output, elapsed in results:
+            self.assertEqual(run.returncode, 124, run.stderr)
+            self.assertEqual(len(calls), 1, 'a second Cargo command escaped the retained endpoint')
+            self.assertEqual(receipt['terminal_reason'], 'budget_exhausted')
+            self.assertTrue(receipt['child_started'])
+            self.assertTrue(receipt['timed_out'])
+            self.assertNotIn('profile=fast', output)
+            self.assertLess(elapsed, 4)
+
+    def test_delayed_launch_refusal_is_distinct_from_an_executed_timeout(self):
+        # Negative control: the old 2.4s fixture leaves <0.4s for startup after
+        # the unchanged production 2s grace. A delayed launch correctly refuses
+        # admission; it must never be accepted as proof of an executed timeout.
+        run, calls, receipt, output, _ = self.run_step(self.CASES[1], seconds=2.4,
+                                                    startup_delay=.55, delay=10)
         self.assertEqual(run.returncode, 124, run.stderr)
-        self.assertEqual(len(calls), 1, 'a second Cargo command escaped the retained endpoint')
+        self.assertEqual(calls, [])
         self.assertEqual(receipt['terminal_reason'], 'budget_exhausted')
-        self.assertTrue(receipt['timed_out'])
+        self.assertFalse(receipt['child_started'])
+        self.assertFalse(receipt['timed_out'])
         self.assertNotIn('profile=fast', output)
-        self.assertLess(elapsed, 4)
 
     def test_non_pr_coverage_still_runs_without_a_pr_budget_anchor(self):
         for event in ('push', 'workflow_dispatch'):
