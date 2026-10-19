@@ -39,6 +39,10 @@ impl Fixture {
     }
 
     fn command(&self) -> Command {
+        self.command_with_scan_config("none")
+    }
+
+    fn command_with_scan_config(&self, mode: &str) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_tokmd"));
         command.current_dir(&self.root);
         for (name, _) in std::env::vars_os() {
@@ -53,7 +57,7 @@ impl Fixture {
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_SYSTEM", &config)
             .env("GIT_CONFIG_GLOBAL", &config)
-            .args(["--no-progress", "--config", "none"]);
+            .args(["--no-progress", "--config", mode]);
         command
     }
 
@@ -64,9 +68,34 @@ impl Fixture {
             .args(extra)
             .output()?)
     }
+
+    #[cfg(unix)]
+    fn run_with_scan_config(
+        &self,
+        mode: &str,
+        command: &str,
+        format: &str,
+        extra: &[&str],
+    ) -> Result<Output> {
+        Ok(self
+            .command_with_scan_config(mode)
+            .args([command, ".", "--format", format])
+            .args(extra)
+            .output()?)
+    }
 }
 
 fn assert_complete(output: Output, command: &str, format: &str, paths: &[&str]) -> Result<()> {
+    assert_complete_with_scan_config(output, command, format, paths, "none")
+}
+
+fn assert_complete_with_scan_config(
+    output: Output,
+    command: &str,
+    format: &str,
+    paths: &[&str],
+    config: &str,
+) -> Result<()> {
     ensure!(output.status.code() == Some(0), "{output:?}");
     ensure!(output.stderr.is_empty(), "{output:?}");
     let documents: Vec<Value> = if format == "jsonl" {
@@ -85,7 +114,7 @@ fn assert_complete(output: Output, command: &str, format: &str, paths: &[&str]) 
     ensure!(receipt["status"] == json!("complete"), "{receipt}");
     ensure!(receipt["warnings"] == json!([]), "{receipt}");
     ensure!(receipt["scan"]["paths"] == json!(["."]), "{receipt}");
-    ensure!(receipt["scan"]["config"] == json!("none"), "{receipt}");
+    ensure!(receipt["scan"]["config"] == json!(config), "{receipt}");
     if command == "export" {
         let rows: Vec<&Value> = if format == "jsonl" {
             ensure!(receipt["type"] == json!("meta"), "{receipt}");
@@ -104,11 +133,19 @@ fn assert_complete(output: Output, command: &str, format: &str, paths: &[&str]) 
             .map(|row| {
                 ensure!(row["code"] == json!(1), "{row}");
                 ensure!(row["lines"] == json!(1), "{row}");
-                ensure!(row["lang"] == json!("Rust"), "{row}");
                 ensure!(row["kind"] == json!("parent"), "{row}");
-                row["path"]
+                let path = row["path"]
                     .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("missing inventory path: {row}"))
+                    .ok_or_else(|| anyhow::anyhow!("missing inventory path: {row}"))?;
+                // Every fixture source is Rust except the explicit Python
+                // survivor used to reject overly broad exclusion pruning.
+                let language = if path.ends_with(".py") {
+                    "Python"
+                } else {
+                    "Rust"
+                };
+                ensure!(row["lang"] == json!(language), "{row}");
+                Ok(path)
             })
             .collect::<Result<_>>()?;
         actual.sort_unstable();
@@ -146,6 +183,54 @@ fn empty_and_healthy_directories_keep_exact_complete_inventory() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn subtree_directory_companion_does_not_exclude_same_named_regular_file() -> Result<()> {
+    let fixture = Fixture::new()?;
+    fixture.write("good.rs", "fn good() {}\n")?;
+    fixture.write("blocked.rs", "fn retained() {}\n")?;
+    for pattern in ["blocked.rs/**", "blocked.rs/*", "blocked.rs/**/*"] {
+        assert_complete(
+            fixture.run("export", "json", &["--exclude", pattern])?,
+            "export",
+            "json",
+            &["good.rs", "blocked.rs"],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_local_and_parent_ignore_rules_preserve_valid_neighboring_exclusion() -> Result<()> {
+    for in_parent in [false, true] {
+        let fixture = Fixture::new()?;
+        fixture.write("good.rs", "fn good() {}\n")?;
+        fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        assert_complete(
+            fixture.run("export", "json", &[])?,
+            "export",
+            "json",
+            &["good.rs", "blocked/omitted.rs"],
+        )?;
+        let ignore = if in_parent {
+            fixture.dir.path().join(".ignore")
+        } else {
+            fixture.root.join(".ignore")
+        };
+        // The reversed range is malformed, but the adjacent valid rule must
+        // still exclude a real source file. Ignoring every rule is not success.
+        fs::write(ignore, "[z-a]\nblocked/\n")?;
+        for &(command, format) in FORMATS {
+            assert_complete(
+                fixture.run(command, format, &[])?,
+                command,
+                format,
+                &["good.rs"],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 mod unix {
     use super::*;
@@ -166,7 +251,7 @@ mod unix {
                 original: fs::metadata(path)?.permissions(),
                 restored: false,
             };
-            fs::set_permissions(path, fs::Permissions::from_mode(0))?;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o000))?;
             match fs::read_dir(path) {
                 Ok(_) => anyhow::bail!(
                     "permission fault unavailable: current user can enumerate mode-000 directory {}; this is not proof of the failure contract",
@@ -251,21 +336,138 @@ mod unix {
         let fixture = Fixture::new()?;
         fixture.write("good.rs", "fn good() {}\n")?;
         fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        fixture.write("blocked/nested/deep.rs", "fn deep() {}\n")?;
+        let patterns = [
+            "blocked/",
+            "blocked/**",
+            "blocked/**/*",
+            "blocked/*",
+            "blocked/** ",
+            "blocked/*\t",
+            "./blocked/**",
+            "b*/**",
+        ];
+        // First establish actual readable membership. Matching a directory
+        // spelling is insufficient unless every descendant is unselected.
+        for pattern in patterns {
+            assert_complete(
+                fixture.run("export", "json", &["--exclude", pattern])?,
+                "export",
+                "json",
+                &["good.rs"],
+            )?;
+        }
+        let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+        for pattern in patterns {
+            for &(command, format) in FORMATS {
+                let output = fixture.run(command, format, &["--exclude", pattern])?;
+                ensure!(
+                    output.status.code() == Some(0),
+                    "{command}/{format}, exclusion {pattern:?}: {output:?}"
+                );
+                ensure!(output.stderr.is_empty(), "{output:?}");
+                let receipt: Value = if format == "jsonl" {
+                    let text = std::str::from_utf8(&output.stdout)?;
+                    serde_json::from_str(
+                        text.lines()
+                            .next()
+                            .ok_or_else(|| anyhow::anyhow!("missing JSONL meta"))?,
+                    )?
+                } else {
+                    serde_json::from_slice(&output.stdout)?
+                };
+                ensure!(receipt["scan"]["excluded"] == json!([pattern]));
+                assert_complete(output, command, format, &["good.rs"])?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn partial_file_exclusion_cannot_hide_selected_python_in_unreadable_directory() -> Result<()> {
+        let fixture = Fixture::new()?;
+        fixture.write("good.rs", "fn good() {}\n")?;
+        fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        fixture.write("blocked/keep.py", "print(1)\n")?;
+        let extra = ["--exclude", "blocked/*.rs"];
+        assert_complete(
+            fixture.run("export", "json", &extra)?,
+            "export",
+            "json",
+            &["good.rs", "blocked/keep.py"],
+        )?;
         let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
         for &(command, format) in FORMATS {
-            let output = fixture.run(command, format, &["--exclude", "blocked/**"])?;
-            let receipt: Value = if format == "jsonl" {
-                let text = std::str::from_utf8(&output.stdout)?;
-                serde_json::from_str(
-                    text.lines()
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("missing JSONL meta"))?,
-                )?
-            } else {
-                serde_json::from_slice(&output.stdout)?
-            };
-            ensure!(receipt["scan"]["excluded"] == json!(["blocked/**"]));
-            assert_complete(output, command, format, &["good.rs"])?;
+            assert_directory_error(&fixture.run(command, format, &extra)?, "blocked")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_root_requires_full_subtree_exclusion_to_omit_validation() -> Result<()> {
+        let fixture = Fixture::new()?;
+        fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+        for &(command, format) in FORMATS {
+            for pattern in ["blocked/**", "blocked/*", "blocked/**/*", "*", "**"] {
+                let output = fixture
+                    .command()
+                    .args([command, "blocked", "--format", format, "--exclude", pattern])
+                    .output()?;
+                ensure!(output.status.code() == Some(0), "{output:?}");
+                ensure!(output.stderr.is_empty(), "{output:?}");
+                let receipt: Value = serde_json::from_slice(&output.stdout)?;
+                ensure!(receipt["status"] == json!("complete"));
+                ensure!(receipt["warnings"] == json!([]));
+                ensure!(receipt["scan"]["paths"] == json!(["blocked"]));
+                if command == "export" && format == "json" {
+                    ensure!(receipt["rows"] == json!([]));
+                } else if command != "export" {
+                    ensure!(receipt["total"]["files"] == json!(0));
+                    ensure!(receipt["total"]["code"] == json!(0));
+                } else {
+                    ensure!(receipt["type"] == json!("meta"));
+                }
+            }
+            let output = fixture
+                .command()
+                .args([
+                    command,
+                    "blocked",
+                    "--format",
+                    format,
+                    "--exclude",
+                    "blocked",
+                ])
+                .output()?;
+            assert_directory_error(&output, "blocked")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unmatched_absolute_exclusion_cannot_hide_selected_directory_error() -> Result<()> {
+        let fixture = Fixture::new()?;
+        fixture.write("good.rs", "fn good() {}\n")?;
+        fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        let absolute = format!(
+            "{}/blocked/**",
+            fs::canonicalize(&fixture.root)?.to_string_lossy()
+        );
+        // These spellings do not remove readable files under the existing
+        // Tokei override contract. They must not start pruning on an error.
+        for pattern in ["/blocked/**", absolute.as_str()] {
+            assert_complete(
+                fixture.run("export", "json", &["--exclude", pattern])?,
+                "export",
+                "json",
+                &["good.rs", "blocked/omitted.rs"],
+            )?;
+            let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+            assert_directory_error(
+                &fixture.run("export", "json", &["--exclude", pattern])?,
+                "blocked",
+            )?;
         }
         Ok(())
     }
@@ -316,6 +518,119 @@ mod unix {
             assert_directory_error(&fixture.run("export", "json", &[flag])?, "blocked")?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn child_ignore_can_reinclude_files_until_cli_excludes_the_entire_subtree() -> Result<()> {
+        for ignore_file in [".tokeignore", ".ignore"] {
+            let fixture = Fixture::new()?;
+            fixture.write(ignore_file, "blocked/**\n")?;
+            fixture.write(&format!("blocked/{ignore_file}"), "!keep.rs\n")?;
+            fixture.write("blocked/keep.rs", "fn keep() {}\n")?;
+            fixture.write("blocked/omit.rs", "fn omit() {}\n")?;
+            fixture.write("good.rs", "fn good() {}\n")?;
+            assert_complete(
+                fixture.run("export", "json", &[])?,
+                "export",
+                "json",
+                &["good.rs", "blocked/keep.rs"],
+            )?;
+            let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+            assert_directory_error(&fixture.run("export", "json", &[])?, "blocked")?;
+            assert_complete(
+                fixture.run("export", "json", &["--exclude", "blocked/**"])?,
+                "export",
+                "json",
+                &["good.rs"],
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parent_ignore_is_preserved_until_no_ignore_parent_selects_directory() -> Result<()> {
+        let fixture = Fixture::new()?;
+        fs::write(fixture.dir.path().join(".ignore"), "blocked/\n")?;
+        fixture.write("good.rs", "fn good() {}\n")?;
+        fixture.write("blocked/omitted.rs", "fn omitted() {}\n")?;
+        let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+        for extra in [&[][..], &["--no-ignore-vcs"][..]] {
+            assert_complete(
+                fixture.run("export", "json", extra)?,
+                "export",
+                "json",
+                &["good.rs"],
+            )?;
+        }
+        assert_directory_error(
+            &fixture.run("export", "json", &["--no-ignore-parent"])?,
+            "blocked",
+        )
+    }
+
+    fn write_scan_config(fixture: &Fixture, hidden: bool, no_ignore_dot: bool) -> Result<()> {
+        // Explicit fields prevent inherited home/config-dir values from
+        // changing the local config controls; HOME itself is never changed.
+        fixture.write(
+            "tokei.toml",
+            &format!(
+                "hidden = {hidden}\nno_ignore = false\nno_ignore_parent = false\nno_ignore_dot = {no_ignore_dot}\nno_ignore_vcs = false\ntypes = [\"Rust\"]\n"
+            ),
+        )
+    }
+
+    #[test]
+    fn loaded_tokei_config_selects_hidden_directory_without_cli_hidden_flag() -> Result<()> {
+        let fixture = Fixture::new()?;
+        fixture.write("good.rs", "fn good() {}\n")?;
+        fixture.write(".blocked/omitted.rs", "fn omitted() {}\n")?;
+        write_scan_config(&fixture, false, false)?;
+        let _guard = UnreadableDirectory::new(&fixture.root.join(".blocked"))?;
+        let extra = ["--exclude", "tokei.toml"];
+        assert_complete_with_scan_config(
+            fixture.run_with_scan_config("auto", "export", "json", &extra)?,
+            "export",
+            "json",
+            &["good.rs"],
+            "auto",
+        )?;
+        write_scan_config(&fixture, true, false)?;
+        assert_directory_error(
+            &fixture.run_with_scan_config("auto", "export", "json", &extra)?,
+            ".blocked",
+        )?;
+        assert_complete(
+            fixture.run("export", "json", &extra)?,
+            "export",
+            "json",
+            &["good.rs"],
+        )
+    }
+
+    #[test]
+    fn loaded_tokei_config_can_disable_dot_ignore_without_cli_override() -> Result<()> {
+        let fixture = ignored_directory(".ignore")?;
+        write_scan_config(&fixture, false, false)?;
+        let _guard = UnreadableDirectory::new(&fixture.root.join("blocked"))?;
+        let extra = ["--exclude", "tokei.toml"];
+        assert_complete_with_scan_config(
+            fixture.run_with_scan_config("auto", "export", "json", &extra)?,
+            "export",
+            "json",
+            &["good.rs"],
+            "auto",
+        )?;
+        write_scan_config(&fixture, false, true)?;
+        assert_directory_error(
+            &fixture.run_with_scan_config("auto", "export", "json", &extra)?,
+            "blocked",
+        )?;
+        assert_complete(
+            fixture.run("export", "json", &extra)?,
+            "export",
+            "json",
+            &["good.rs"],
+        )
     }
 
     #[test]
