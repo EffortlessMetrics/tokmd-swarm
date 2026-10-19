@@ -101,7 +101,7 @@ jobs:
       - name: Upload no-panic policy report
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: no-panic-policy-report
           path: target/tokmd/reports/
