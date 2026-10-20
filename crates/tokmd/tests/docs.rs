@@ -465,6 +465,118 @@ fn recipe_run_and_diff() {
 }
 
 #[test]
+fn recipe_release_comparison_uses_current_saved_run() -> Result<(), Box<dyn std::error::Error>> {
+    let docs = include_str!("../../../docs/recipes.md");
+    let workflow = docs
+        .split_once("**Release comparison**:")
+        .ok_or("missing release comparison recipe")?
+        .1
+        .split_once("```bash\n")
+        .ok_or("missing release comparison commands")?
+        .1
+        .split_once("# After release:")
+        .ok_or("missing post-release boundary")?
+        .0;
+    let commands: Vec<Vec<&str>> = workflow
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            line.strip_prefix("tokmd ")
+                .map(|args| args.split_whitespace().collect())
+                .ok_or("expected a tokmd command")
+        })
+        .collect::<Result<_, _>>()?;
+    let diff_args = commands
+        .iter()
+        .find(|args| args.first() == Some(&"diff"))
+        .ok_or("missing release diff command")?;
+
+    let tmp = tempfile::tempdir()?;
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(repo.join("src"))?;
+    let source = repo.join("src/main.rs");
+    fs::write(&source, "fn main() {}\n")?;
+    let selected_config = tmp.path().join("selected.toml");
+    fs::write(&selected_config, "")?;
+    let command = || {
+        let mut cmd = tokmd_in(&repo);
+        cmd.env("TOKMD_CONFIG", &selected_config)
+            .env_remove("TOKMD_PROFILE")
+            .env_remove("TOKMD_PROGRESS_EVENTS")
+            .args(["--config", "none", "--no-ignore-parent", "--no-progress"]);
+        cmd
+    };
+    command()
+        .args([
+            "run",
+            "--analysis",
+            "receipt",
+            "--output-dir",
+            ".tokmd/baselines/v1.0.0",
+        ])
+        .assert()
+        .success();
+    let baseline_dir = repo.join(".tokmd/baselines/v1.0.0");
+    let mut baseline_files = Vec::new();
+    for entry in fs::read_dir(&baseline_dir)? {
+        let path = entry?.path();
+        baseline_files.push((path.clone(), fs::read(path)?));
+    }
+    assert!(!baseline_files.is_empty());
+    fs::write(
+        &source,
+        "fn main() {\n    let value = 1;\n    println!(\"{value}\");\n}\n",
+    )?;
+    assert!(!repo.join("lang.json").exists());
+
+    // A missing current run must fail before producing a Markdown report.
+    // The exact documented diff argv is retried after its capture step below.
+    command()
+        .args(diff_args)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("Failed to load diff source"));
+
+    let mut comparison = None;
+    for args in &commands {
+        let output = command().args(args).output()?;
+        assert!(
+            output.status.success(),
+            "documented command {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if args.first() == Some(&"diff") {
+            comparison = Some(output);
+        }
+    }
+    let comparison = comparison.ok_or("release recipe did not execute diff")?;
+    let markdown = String::from_utf8(comparison.stdout)?;
+    // Literal source oracle: the baseline has one Rust LOC, the checkout four.
+    assert!(markdown.contains("|LOC|1|4|+3|"), "{markdown}");
+    assert!(markdown.contains("|Rust|1|4|+3|"), "{markdown}");
+    assert!(comparison.stderr.is_empty());
+
+    assert_eq!(
+        fs::read_dir(&baseline_dir)?
+            .collect::<Result<Vec<_>, _>>()?
+            .len(),
+        baseline_files.len()
+    );
+    for (path, bytes) in baseline_files {
+        assert_eq!(
+            fs::read(&path)?,
+            bytes,
+            "baseline changed: {}",
+            path.display()
+        );
+    }
+    assert!(!repo.join("lang.json").exists());
+    Ok(())
+}
+
+#[test]
 fn recipe_context_budget() {
     // "tokmd context --budget 128k"
     tokmd()
