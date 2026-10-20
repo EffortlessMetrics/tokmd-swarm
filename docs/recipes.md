@@ -883,9 +883,14 @@ jobs:
 ```
 
 **Release comparison**:
+
+`tokmd diff` reads saved run directories; `.` would look for `./lang.json`
+instead of scanning the checkout. Capture the current checkout before comparing.
+
 ```bash
-# Before release: compare to last release
-tokmd diff .tokmd/baselines/v1.0.0 . --format md
+# Before release: save the current checkout, then compare the two saved runs
+tokmd run --analysis receipt --output-dir .runs/pre-release
+tokmd diff .tokmd/baselines/v1.0.0 .runs/pre-release --format md
 
 # After release: save new baseline
 tokmd run --analysis receipt --output-dir .tokmd/baselines/v1.1.0
