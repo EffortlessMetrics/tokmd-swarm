@@ -504,6 +504,7 @@ fn recipe_release_comparison_uses_current_saved_run() -> Result<(), Box<dyn std:
         cmd.env("TOKMD_CONFIG", &selected_config)
             .env_remove("TOKMD_PROFILE")
             .env_remove("TOKMD_PROGRESS_EVENTS")
+            .env("NO_COLOR", "1")
             .args(["--config", "none", "--no-ignore-parent", "--no-progress"]);
         cmd
     };
