@@ -11,7 +11,9 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SVG: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"240\" height=\"32\" role=\"img\"><rect width=\"80\" height=\"32\" fill=\"#555\"/><rect x=\"80\" width=\"160\" height=\"32\" fill=\"#4c9aff\"/><text x=\"40\" y=\"20\" fill=\"#fff\" font-family=\"Verdana\" font-size=\"12\" text-anchor=\"middle\">tokens</text><text x=\"160\" y=\"20\" fill=\"#fff\" font-family=\"Verdana\" font-size=\"12\" text-anchor=\"middle\">10</text></svg>";
 
 fn formats() -> Vec<&'static str> {
-    let formats = vec!["md", "json", "jsonld", "xml", "svg", "mermaid", "tree", "html"];
+    let formats = vec![
+        "md", "json", "jsonld", "xml", "svg", "mermaid", "tree", "html",
+    ];
     #[cfg(feature = "fun")]
     let formats = [formats, vec!["obj", "midi"]].concat();
     formats
@@ -39,8 +41,14 @@ fn command(root: &TempDir, format: &str) -> Command {
         .env_remove("CLICOLOR_FORCE")
         .env_remove("FORCE_COLOR")
         .args([
-            "--no-progress", "analyze", "source", "--preset", "receipt", "--no-git",
-            "--format", format,
+            "--no-progress",
+            "analyze",
+            "source",
+            "--preset",
+            "receipt",
+            "--no-git",
+            "--format",
+            format,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -71,14 +79,21 @@ fn finish(mut command: Command) -> io::Result<Output> {
         if Instant::now() >= deadline {
             let _ = child.kill();
             child.wait()?;
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "analysis timed out"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "analysis timed out",
+            ));
         }
         std::thread::sleep(Duration::from_millis(10));
     };
     Ok(Output {
         status,
-        stdout: stdout.join().map_err(|_| io::Error::other("stdout reader failed"))??,
-        stderr: stderr.join().map_err(|_| io::Error::other("stderr reader failed"))??,
+        stdout: stdout
+            .join()
+            .map_err(|_| io::Error::other("stdout reader failed"))??,
+        stderr: stderr
+            .join()
+            .map_err(|_| io::Error::other("stderr reader failed"))??,
     })
 }
 
@@ -107,7 +122,10 @@ fn assert_failure(output: &Output, format: &str) {
     assert_eq!(output.status.code(), Some(1), "{format}: {output:?}");
     assert!(output.stdout.is_empty(), "{format}: {output:?}");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("analysis output to stdout"), "{format}: {stderr}");
+    assert!(
+        stderr.contains("analysis output to stdout"),
+        "{format}: {stderr}"
+    );
     assert!(!stderr.contains("panicked"), "{format}: {stderr}");
 }
 
@@ -126,7 +144,10 @@ fn successful_analysis_stdout_preserves_formats_and_file_bytes() -> TestResult {
             assert!(file_output.stdout.is_empty(), "{file_output:?}");
             assert!(file_output.stderr.is_empty(), "{file_output:?}");
             let extension = if format == "midi" { "mid" } else { "svg" };
-            assert_eq!(std::fs::read(directory.join(format!("analysis.{extension}")))?, output.stdout);
+            assert_eq!(
+                std::fs::read(directory.join(format!("analysis.{extension}")))?,
+                output.stdout
+            );
         }
     }
     Ok(())
