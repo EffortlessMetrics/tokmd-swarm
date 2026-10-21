@@ -126,7 +126,10 @@ fn closed_consumer_returns_io_error_then_identical_argv_recovers() -> Result<()>
 fn full_sink_returns_io_error_then_identical_argv_recovers() -> Result<()> {
     let fixture = Fixture::new()?;
     for (args, code, expected) in CASES {
-        fixture.failed_sink(args, std::fs::OpenOptions::new().write(true).open("/dev/full")?)?;
+        fixture.failed_sink(
+            args,
+            std::fs::OpenOptions::new().write(true).open("/dev/full")?,
+        )?;
         fixture.writable(args, *code, expected)?;
     }
     Ok(())
