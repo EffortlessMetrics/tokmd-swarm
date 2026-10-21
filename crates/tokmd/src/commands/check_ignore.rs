@@ -15,27 +15,35 @@ const EXIT_IGNORED: i32 = 0;
 const EXIT_NOT_IGNORED: i32 = 1;
 
 pub(crate) fn handle(args: cli::CliCheckIgnoreArgs, global: &cli::GlobalArgs) -> Result<()> {
-    let mut any_ignored = false;
+    let exit = write_report(&args, global, &mut std::io::stdout().lock())?;
+    std::process::exit(exit);
+}
+
+fn write_report(
+    args: &cli::CliCheckIgnoreArgs,
+    global: &cli::GlobalArgs,
+    out: &mut impl Write,
+) -> Result<i32> {
     let mut any_not_ignored = false;
 
     for path in &args.paths {
         let result = check_path(path, global, args.verbose)?;
-        if result.ignored {
-            any_ignored = true;
-        } else {
+        if !result.ignored {
             any_not_ignored = true;
         }
-        print_result(&result, args.verbose);
+        write_result(out, &result, args.verbose)
+            .context("Failed to write check-ignore report to stdout")?;
     }
+
+    out.flush()
+        .context("Failed to flush check-ignore report to stdout")?;
 
     // Exit code: 0 if all ignored, 1 if any not ignored
-    if any_not_ignored {
-        std::process::exit(EXIT_NOT_IGNORED);
-    } else if any_ignored {
-        std::process::exit(EXIT_IGNORED);
-    }
-
-    Ok(())
+    Ok(if any_not_ignored {
+        EXIT_NOT_IGNORED
+    } else {
+        EXIT_IGNORED
+    })
 }
 
 struct CheckResult {
@@ -263,9 +271,9 @@ pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
     if negated { !matches } else { matches }
 }
 
-fn print_result(result: &CheckResult, verbose: bool) {
+fn write_result(out: &mut impl Write, result: &CheckResult, verbose: bool) -> std::io::Result<()> {
     if result.ignored {
-        println!("{}: ignored", result.path);
+        writeln!(out, "{}: ignored", result.path)?;
         if verbose {
             for reason in &result.reasons {
                 match reason {
@@ -275,33 +283,34 @@ fn print_result(result: &CheckResult, verbose: bool) {
                         line,
                     } => {
                         if let Some(ln) = line {
-                            println!("  gitignore: {}:{} -> {}", source, ln, pattern);
+                            writeln!(out, "  gitignore: {}:{} -> {}", source, ln, pattern)?;
                         } else {
-                            println!("  gitignore: {} -> {}", source, pattern);
+                            writeln!(out, "  gitignore: {} -> {}", source, pattern)?;
                         }
                     }
                     IgnoreReason::Tokeignore { pattern } => {
-                        println!("  .tokeignore: {}", pattern);
+                        writeln!(out, "  .tokeignore: {}", pattern)?;
                     }
                     IgnoreReason::ExcludeFlag { pattern } => {
-                        println!("  --exclude: {}", pattern);
+                        writeln!(out, "  --exclude: {}", pattern)?;
                     }
                     IgnoreReason::GitTracked => {
-                        println!("  git: tracked (gitignore rules don't apply)");
+                        writeln!(out, "  git: tracked (gitignore rules don't apply)")?;
                     }
                 }
             }
         }
     } else {
-        println!("{}: not ignored", result.path);
+        writeln!(out, "{}: not ignored", result.path)?;
         if verbose {
             for reason in &result.reasons {
                 if let IgnoreReason::GitTracked = reason {
-                    println!("  note: tracked by git; gitignore rules don't apply");
+                    writeln!(out, "  note: tracked by git; gitignore rules don't apply")?;
                 }
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -309,6 +318,150 @@ mod tests {
     use super::*;
     use crate::cli::GlobalArgs;
     use tempfile::tempdir;
+
+    #[derive(Default)]
+    struct ShortWriter {
+        bytes: Vec<u8>,
+        fail_at: Option<usize>,
+        fail_flush: bool,
+        flushes: usize,
+    }
+
+    impl Write for ShortWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.fail_at == Some(self.bytes.len()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "report write rejected",
+                ));
+            }
+            if let Some(&byte) = bytes.first() {
+                self.bytes.push(byte);
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes += 1;
+            if self.fail_flush {
+                Err(std::io::Error::other("report flush rejected"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn report_short_writes_and_failures_precede_decision_exit() -> Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("fixture.rs");
+        std::fs::write(&path, "fn fixture() {}\n")?;
+        let args = cli::CliCheckIgnoreArgs {
+            paths: vec![path.clone()],
+            verbose: false,
+        };
+        for ignored in [true, false] {
+            let global = cli::GlobalArgs {
+                excluded: if ignored {
+                    vec!["**/fixture.rs".into()]
+                } else {
+                    Vec::new()
+                },
+                ..Default::default()
+            };
+            let decision = if ignored { "ignored" } else { "not ignored" };
+            let expected = format!("{}: {decision}\n", path.display());
+            let mut out = ShortWriter::default();
+            let code = write_report(&args, &global, &mut out)?;
+            anyhow::ensure!(code == i32::from(!ignored), "decision exit: {code}");
+            anyhow::ensure!(out.bytes == expected.as_bytes(), "short write truncated");
+            anyhow::ensure!(out.flushes == 1, "missing final flush");
+
+            for offset in [0, 1, expected.len() - 1] {
+                let mut out = ShortWriter {
+                    fail_at: Some(offset),
+                    ..Default::default()
+                };
+                let err = write_report(&args, &global, &mut out)
+                    .err()
+                    .context("expected write error before returning the decision")?;
+                anyhow::ensure!(
+                    err.to_string() == "Failed to write check-ignore report to stdout",
+                    "{err:#}"
+                );
+                let cause = err.downcast_ref::<std::io::Error>().context("I/O cause")?;
+                anyhow::ensure!(cause.kind() == std::io::ErrorKind::BrokenPipe, "{err:#}");
+                anyhow::ensure!(cause.to_string() == "report write rejected", "{err:#}");
+                anyhow::ensure!(out.bytes == expected.as_bytes()[..offset]);
+                anyhow::ensure!(out.flushes == 0, "flush after failed write");
+                anyhow::ensure!(crate::exit_code(&err) == 1, "runtime error exit");
+            }
+
+            let mut out = ShortWriter {
+                fail_flush: true,
+                ..Default::default()
+            };
+            let err = write_report(&args, &global, &mut out)
+                .err()
+                .context("expected flush error before returning the decision")?;
+            anyhow::ensure!(
+                err.to_string() == "Failed to flush check-ignore report to stdout",
+                "{err:#}"
+            );
+            let cause = err.downcast_ref::<std::io::Error>().context("I/O cause")?;
+            anyhow::ensure!(cause.to_string() == "report flush rejected", "{err:#}");
+            anyhow::ensure!(out.bytes == expected.as_bytes(), "flush must follow output");
+            anyhow::ensure!(out.flushes == 1, "final flush count");
+            anyhow::ensure!(crate::exit_code(&err) == 1, "runtime error exit");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn verbose_report_reasons_keep_literal_bytes_under_short_writes() -> Result<()> {
+        let result = CheckResult {
+            path: "fixture.rs".into(),
+            ignored: true,
+            reasons: vec![
+                IgnoreReason::Git {
+                    source: ".gitignore".into(),
+                    pattern: "*.rs".into(),
+                    line: Some(3),
+                },
+                IgnoreReason::Git {
+                    source: "parent/.gitignore".into(),
+                    pattern: "fixture.rs".into(),
+                    line: None,
+                },
+                IgnoreReason::Tokeignore {
+                    pattern: "*.rs".into(),
+                },
+                IgnoreReason::ExcludeFlag {
+                    pattern: "fixture.rs".into(),
+                },
+                IgnoreReason::GitTracked,
+            ],
+        };
+        let expected = b"fixture.rs: ignored\n  gitignore: .gitignore:3 -> *.rs\n  gitignore: parent/.gitignore -> fixture.rs\n  .tokeignore: *.rs\n  --exclude: fixture.rs\n  git: tracked (gitignore rules don't apply)\n";
+        let mut out = ShortWriter::default();
+        write_result(&mut out, &result, true)?;
+        anyhow::ensure!(out.bytes == expected);
+        // A failure in any reason line must propagate, including the final newline.
+        for offset in [21, 50, 100, expected.len() - 1] {
+            let mut out = ShortWriter {
+                fail_at: Some(offset),
+                ..Default::default()
+            };
+            let err = write_result(&mut out, &result, true)
+                .err()
+                .context("expected verbose write failure")?;
+            anyhow::ensure!(err.kind() == std::io::ErrorKind::BrokenPipe);
+            anyhow::ensure!(out.bytes == expected[..offset]);
+        }
+        Ok(())
+    }
 
     #[test]
     fn matches_glob_handles_double_star() {
