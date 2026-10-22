@@ -13,6 +13,9 @@ candidate_roots = [
     "AGENTS.md",
     "agents",
     ".cargo",
+    ".changes",
+    ".changie.yaml",
+    ".changie-version",
     ".claude",
     ".codex",
     ".factory",
@@ -74,6 +77,21 @@ candidate_roots = [
 # Longest matching path wins.  A directory classification applies recursively.
 # Live guidance is intentionally limited to the canonical surfaces repaired by
 # #605; the remaining roots are visible adoption boundaries for follow-up work.
+[[surface]]
+path = ".changes"
+mode = "deferred"
+reason = "Release-note intent and header templates are validated by the changelog scope, not adopted as canonical Cargo guidance."
+
+[[surface]]
+path = ".changie.yaml"
+mode = "deferred"
+reason = "Pinned release-note vocabulary and formatting configuration do not define canonical Cargo guidance."
+
+[[surface]]
+path = ".changie-version"
+mode = "deferred"
+reason = "The pinned Changie version contains no adopted Cargo guidance."
+
 [[surface]]
 path = "AGENTS.md"
 mode = "live"
