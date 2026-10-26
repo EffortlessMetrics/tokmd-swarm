@@ -17,10 +17,11 @@ This file provides guidance to AI agents (Claude, Factory Droid, etc.) when work
 
 The canonical review and conversation-resolution process is maintained in
 [`agents/shared/repo.md`](agents/shared/repo.md#review-and-conversation-resolution).
-Substantive PRs use independent agentic review by subagents inside the working
-session; this is process evidence, not a native approval or reviewer-identity
-gate. Preserve valid earlier reviews and refresh affected subjects under that
-process. Follow [session and evidence continuity](agents/shared/repo.md#session-and-evidence-continuity)
+The owning session reviews substantive PRs in directed stages inline in its main
+context; a separate reviewer or subagent is not the default. Record the review
+criteria and evidence without calling a same-context pass independently staffed.
+Preserve actual required GitHub reviews and checks, valid earlier reviews, and
+selective refresh of affected subjects. Follow [session and evidence continuity](agents/shared/repo.md#session-and-evidence-continuity)
 for warm context, recoverable checkpoints, and exact versus carried-forward
 evidence. Optional `ub-review` capacity is not a prerequisite.
 
@@ -370,6 +371,9 @@ task through completion.
 
 Do not ask for extra permission merely because a commit, push, PR update, or
 aligned merge is needed to finish that task.
+Routine already-authorized work does not require parent approval of the exact
+payload. Preserve explicit scope limits, genuine authorization holds, and native
+merge requirements.
 
 Ask before committing, pushing, or merging only when:
 
