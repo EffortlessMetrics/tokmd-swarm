@@ -6,16 +6,24 @@ use super::inputs::{CoverageReceiptInput, ProofRunEntryInput};
 use super::model::{ProofEvidenceAvailability, ProofExecutionStatus};
 
 pub(super) fn proof_run_entry_status(entry: &ProofRunEntryInput) -> ProofExecutionStatus {
-    if !entry.skip_reason.trim().is_empty() && entry.exit_code.is_none() {
+    let status = scope_status(&entry.status, entry.exit_code.map(i64::from));
+    // Signal-terminated commands have no exit code but retain a failed status.
+    if !entry.skip_reason.trim().is_empty()
+        && entry.exit_code.is_none()
+        && status != ProofExecutionStatus::ExecutedFailed
+    {
         return ProofExecutionStatus::NotExecuted;
     }
 
-    scope_status(&entry.status, entry.exit_code.map(i64::from))
+    status
 }
 
 pub(super) fn scope_status(status: &str, exit_code: Option<i64>) -> ProofExecutionStatus {
     match status.trim().to_ascii_lowercase().as_str() {
-        "passed" | "pass" | "success" => ProofExecutionStatus::ExecutedPassed,
+        "passed" | "pass" | "success" => match exit_code {
+            Some(code) if code != 0 => ProofExecutionStatus::ExecutedFailed,
+            _ => ProofExecutionStatus::ExecutedPassed,
+        },
         "failed" | "fail" | "error" => ProofExecutionStatus::ExecutedFailed,
         "planned" => ProofExecutionStatus::Planned,
         "dry_run" | "dry-run" => ProofExecutionStatus::DryRun,
@@ -105,6 +113,92 @@ mod tests {
             scope_status("unknown", None),
             ProofExecutionStatus::NotExecuted
         );
+    }
+
+    #[test]
+    fn positive_status_with_nonzero_exit_code_is_failed() {
+        for status in ["passed", "pass", "success", " PASSED ", "Success"] {
+            for exit_code in [1, 17, -1] {
+                assert_eq!(
+                    scope_status(status, Some(exit_code)),
+                    ProofExecutionStatus::ExecutedFailed,
+                    "status={status:?}, exit_code={exit_code}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn positive_status_preserves_success_and_legacy_missing_exit_code() {
+        for status in ["passed", "pass", "success", " PASSED ", "Success"] {
+            for exit_code in [Some(0), None] {
+                assert_eq!(
+                    scope_status(status, exit_code),
+                    ProofExecutionStatus::ExecutedPassed,
+                    "status={status:?}, exit_code={exit_code:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_failed_and_unrun_statuses_keep_their_meaning() {
+        for (status, expected) in [
+            ("failed", ProofExecutionStatus::ExecutedFailed),
+            ("fail", ProofExecutionStatus::ExecutedFailed),
+            ("error", ProofExecutionStatus::ExecutedFailed),
+            ("planned", ProofExecutionStatus::Planned),
+            ("dry_run", ProofExecutionStatus::DryRun),
+            ("dry-run", ProofExecutionStatus::DryRun),
+            ("skipped", ProofExecutionStatus::NotExecuted),
+            ("not_executed", ProofExecutionStatus::NotExecuted),
+            ("not-executed", ProofExecutionStatus::NotExecuted),
+        ] {
+            for exit_code in [Some(0), None] {
+                assert_eq!(
+                    scope_status(status, exit_code),
+                    expected,
+                    "status={status:?}, exit_code={exit_code:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn proof_run_entry_preserves_failed_status_without_exit_code() {
+        for status in ["failed", "fail", "error", " FAILED "] {
+            let entry = proof_run_entry(status, "command_failed");
+            assert_eq!(
+                proof_run_entry_status(&entry),
+                ProofExecutionStatus::ExecutedFailed,
+                "status={status:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn proof_run_entry_with_skip_reason_remains_unrun() {
+        for status in ["skipped", "not_executed", "planned", "dry_run", "passed"] {
+            let entry = proof_run_entry(status, "execution_guard_disabled");
+            assert_eq!(
+                proof_run_entry_status(&entry),
+                ProofExecutionStatus::NotExecuted,
+                "status={status:?}"
+            );
+        }
+    }
+
+    fn proof_run_entry(status: &str, skip_reason: &str) -> ProofRunEntryInput {
+        ProofRunEntryInput {
+            scope: "tokmd_cockpit".into(),
+            kind: "test".into(),
+            required: true,
+            command: "fixture-command".into(),
+            artifact_path: None,
+            status: status.into(),
+            skip_reason: skip_reason.into(),
+            exit_code: None,
+        }
     }
 
     #[test]
