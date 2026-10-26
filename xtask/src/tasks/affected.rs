@@ -90,7 +90,17 @@ pub(crate) fn load_checked_policy(path: &Path) -> Result<ProofPolicy> {
 
 pub(crate) fn changed_files(base: &str, head: &str) -> Result<Vec<String>> {
     let output = Command::new("git")
-        .args(["diff", "--name-only", base, head, "--"])
+        // A rename affects both the removed and added paths. NUL framing keeps
+        // Git from quoting filenames or splitting a path at a newline.
+        .args([
+            "diff",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            base,
+            head,
+            "--",
+        ])
         .output()
         .with_context(|| format!("failed to run `git diff --name-only {base} {head} --`"))?;
 
@@ -102,11 +112,15 @@ pub(crate) fn changed_files(base: &str, head: &str) -> Result<Vec<String>> {
         );
     }
 
-    let mut files = String::from_utf8(output.stdout)
+    parse_diff_paths(output.stdout)
+}
+
+pub(crate) fn parse_diff_paths(output: Vec<u8>) -> Result<Vec<String>> {
+    let mut files = String::from_utf8(output)
         .context("`git diff --name-only` produced non-UTF-8 output")?
-        .lines()
-        .map(normalize_path)
+        .split('\0')
         .filter(|path| !path.is_empty())
+        .map(str::to_owned)
         .collect::<Vec<_>>();
 
     files.sort();
@@ -241,10 +255,6 @@ fn dedupe_preserve_order(values: Vec<String>) -> Vec<String> {
     deduped
 }
 
-fn normalize_path(path: impl AsRef<str>) -> String {
-    path.as_ref().replace('\\', "/")
-}
-
 fn is_rust_source_or_manifest(path: &str) -> bool {
     path.ends_with(".rs")
         || matches!(path, "Cargo.toml" | "Cargo.lock")
@@ -271,7 +281,7 @@ fn print_human_report(report: &AffectedReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::{affected_report, normalize_path};
+    use super::{affected_report, parse_diff_paths};
     use crate::proof::policy::parse_policy_str;
 
     fn policy_with_defaults(
@@ -494,10 +504,21 @@ coverage = false
     }
 
     #[test]
-    fn path_normalization_uses_forward_slashes() {
+    fn nul_diff_paths_preserve_filename_content_and_deduplicate() -> anyhow::Result<()> {
         assert_eq!(
-            normalize_path("crates\\tokmd\\src\\main.rs"),
-            "crates/tokmd/src/main.rs"
+            parse_diff_paths(
+                " web/with spaces \0web/café\nfile\\name\0 web/with spaces \0"
+                    .as_bytes()
+                    .to_vec()
+            )?,
+            vec![" web/with spaces ", "web/café\nfile\\name"]
         );
+        assert!(parse_diff_paths(Vec::new())?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn nul_diff_paths_reject_non_utf8() {
+        assert!(parse_diff_paths(vec![b'w', 0xff, 0]).is_err());
     }
 }
