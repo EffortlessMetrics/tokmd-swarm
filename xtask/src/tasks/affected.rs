@@ -273,14 +273,23 @@ fn print_human_report(report: &AffectedReport) {
         report.scopes.len(),
         report.unknown_files.len()
     );
-    println!("Range: {} -> {}", report.base, report.head);
+    println!(
+        "Range: {} -> {}",
+        report.base.escape_debug(),
+        report.head.escape_debug()
+    );
 
     for scope in &report.scopes {
-        println!("  - {} ({:?}): {}", scope.name, scope.kind, scope.reason);
+        println!(
+            "  - {} ({:?}): {}",
+            scope.name.escape_debug(),
+            scope.kind,
+            scope.reason.escape_debug()
+        );
     }
 
     for file in &report.unknown_files {
-        println!("  - unknown: {file}");
+        println!("  - unknown: {}", file.escape_debug());
     }
 }
 

@@ -157,6 +157,99 @@ fn path_fixture() -> Result<tempfile::TempDir> {
 }
 
 #[test]
+#[cfg(unix)]
+fn affected_human_report_escapes_matched_path_without_changing_json() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let path = "web/runner/visible\n  - unknown: forged.mjs";
+    fs::write(repo.join(path), "fixture\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "newline filename"])?;
+    let json = repo.join("affected.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
+        .arg(workspace_root().join("ci/proof.toml"))
+        .arg("--json-output")
+        .arg(&json)
+        .current_dir(repo)
+        .output()?;
+    ensure!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&fs::read(json)?)?;
+    ensure!(report["changed_files"] == serde_json::json!([path]));
+    ensure!(report["unknown_files"] == serde_json::json!([]));
+    ensure!(scope(&report, "browser_runner")?["matched_files"] == serde_json::json!([path]));
+
+    let human = String::from_utf8(output.stdout)?;
+    ensure!(
+        human.lines().count() == 3,
+        "filename must stay on its scope line: {human:?}"
+    );
+    ensure!(human.contains("matched web/runner/visible\\n  - unknown: forged.mjs"));
+    ensure!(!human.lines().any(|line| line.starts_with("  - unknown:")));
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
+fn affected_human_report_escapes_scope_fields_and_unknown_path() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let unknown = "unscoped/hidden\r\t\u{1b}[31m.txt";
+    fs::create_dir_all(repo.join("unscoped"))?;
+    fs::write(repo.join(unknown), "unknown\n")?;
+    fs::write(repo.join("web/runner/safe.mjs"), "known\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "scope and unknown controls"])?;
+    let policy = repo.join("human-policy.toml");
+    let name = "browser é\n  - unknown: scope\r\t\u{1b}[0m";
+    let mut config: toml::Value =
+        toml::from_str(&fs::read_to_string(workspace_root().join("ci/proof.toml"))?)?;
+    let browser = config
+        .get_mut("scope")
+        .and_then(toml::Value::as_array_mut)
+        .context("repo scope array")?
+        .iter_mut()
+        .find(|scope| scope.get("name").and_then(toml::Value::as_str) == Some("browser_runner"))
+        .context("browser scope")?;
+    browser["name"] = toml::Value::String(name.to_string());
+    fs::write(&policy, toml::to_string(&config)?)?;
+    let json = repo.join("affected.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
+        .arg(policy)
+        .arg("--json-output")
+        .arg(&json)
+        .current_dir(repo)
+        .output()?;
+    ensure!(
+        !output.status.success(),
+        "unknown path must remain a failure"
+    );
+    ensure!(
+        json.exists(),
+        "report missing: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&fs::read(json)?)?;
+    ensure!(report["ok"] == false);
+    ensure!(report["unknown_files"] == serde_json::json!([unknown]));
+    ensure!(scope(&report, name)?["matched_files"] == serde_json::json!(["web/runner/safe.mjs"]));
+
+    let human = String::from_utf8(output.stdout)?;
+    ensure!(
+        human.lines().count() == 4,
+        "scope and path must each stay on one line: {human:?}"
+    );
+    ensure!(
+        !human.chars().any(|c| c.is_control() && c != '\n'),
+        "raw terminal control: {human:?}"
+    );
+    ensure!(human.contains("browser é\\n  - unknown: scope\\r\\t\\u{1b}[0m"));
+    ensure!(human.contains("  - unknown: unscoped/hidden\\r\\t\\u{1b}[31m.txt"));
+    Ok(())
+}
+
+#[test]
 fn affected_detected_rename_keeps_removed_path_obligations() -> Result<()> {
     let fixture = path_fixture()?;
     let repo = fixture.path();
