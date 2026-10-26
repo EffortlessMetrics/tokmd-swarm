@@ -17,8 +17,12 @@ This file provides guidance to AI agents (Claude, Factory Droid, etc.) when work
 
 The canonical review and conversation-resolution process is maintained in
 [`agents/shared/repo.md`](agents/shared/repo.md#review-and-conversation-resolution).
-Substantive PRs use independent agentic review passes in separate lanes; this is
-process evidence, not a native approval or reviewer-identity gate.
+Substantive PRs use independent agentic review by subagents inside the working
+session; this is process evidence, not a native approval or reviewer-identity
+gate. Preserve valid earlier reviews and refresh affected subjects under that
+process. Follow [session and evidence continuity](agents/shared/repo.md#session-and-evidence-continuity)
+for warm context, recoverable checkpoints, and exact versus carried-forward
+evidence. Optional `ub-review` capacity is not a prerequisite.
 
 ## Project Overview
 
