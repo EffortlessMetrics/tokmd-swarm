@@ -218,8 +218,7 @@ jobs:
         run: |
           echo "CARGO_TARGET_DIR=${GITHUB_WORKSPACE}/target/ci-gate" >> "$GITHUB_ENV"
           mkdir -p target/ci-gate
-          # Best-effort reclaim of legacy /tmp orphans from pre-fix disposable gate runs (#309).
-          find /tmp -maxdepth 1 -type d -name 'tokmd-gate-target-*' -mmin +30 -exec rm -rf {} + 2>/dev/null || true
+          # Preserve other runs' targets; age does not establish abandonment.
 
       - name: Allocate cache budget
         id: cache_budget
