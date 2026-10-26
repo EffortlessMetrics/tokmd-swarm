@@ -380,3 +380,96 @@ fn job_extraction_stops_at_the_next_job_key() -> Result<()> {
     ensure!(required_gate_job("jobs:\n  other:\n").is_err());
     Ok(())
 }
+
+// Resource safety at the same required-gate entrypoint.
+#[cfg(unix)]
+mod target_lifecycle {
+    use anyhow::{Result, ensure};
+    use std::fs::{self, File, FileTimes};
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::{Duration, SystemTime};
+
+    fn executable(path: &Path, script: &str) -> Result<()> {
+        fs::write(path, script)?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+        Ok(())
+    }
+
+    #[test]
+    fn gate_preserves_old_targets_and_refuses_actual_disk_pressure() -> Result<()> {
+        // Refuse to exercise the historical destructive implementation even on a
+        // disposable fixture. The previous sweep must be absent before we run gate.
+        ensure!(!include_str!("../src/tasks/gate.rs").contains("cleanup_stale_scoped_dirs"));
+        ensure!(!include_str!("../src/tasks/build_guard.rs").contains("cleanup_stale_scoped_dirs"));
+
+        let floor_kib = 8 * 1024 * 1024;
+        for (available_kib, admitted) in [(floor_kib - 1, false), (floor_kib, true)] {
+            let fixture = tempfile::tempdir()?;
+            let root = fixture.path();
+            let bin = root.join("bin");
+            let tmp = root.join("tmp");
+            fs::create_dir_all(&bin)?;
+            fs::create_dir_all(root.join("ci"))?;
+            fs::write(
+                root.join("ci/proof.toml"),
+                include_str!("../../ci/proof.toml"),
+            )?;
+
+            let old = tmp.join(format!("tokmd-gate-target-{}-1", std::process::id()));
+            fs::create_dir_all(old.join("debug/deps"))?;
+            let old_time = SystemTime::now() - Duration::from_secs(4 * 60 * 60);
+            File::open(&old)?.set_times(FileTimes::new().set_modified(old_time))?;
+            let old_mtime = fs::metadata(&old)?.modified()?;
+            let output = old.join("debug/deps/recent-output");
+            fs::write(&output, "warm build evidence")?;
+            ensure!(fs::metadata(&old)?.modified()? == old_mtime);
+            ensure!(fs::metadata(&output)?.modified()? > old_mtime);
+            let unrelated = tmp.join("unrelated-evidence");
+            fs::write(&unrelated, "keep")?;
+
+            executable(&bin.join("git"), "#!/bin/sh\nexit 0\n")?;
+            executable(
+                &bin.join("cargo"),
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CALLS\"\nexit 0\n",
+            )?;
+            executable(
+                &bin.join("df"),
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DF_CALLS\"\nprintf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\nfixture 99999999 0 %s 0%% /\\n' \"$AVAILABLE_KIB\"\n",
+            )?;
+            let calls = root.join("cargo-calls");
+            let df_calls = root.join("df-calls");
+            let run = Command::new(env!("CARGO_BIN_EXE_xtask"))
+                .args(["gate", "--check"])
+                .current_dir(root)
+                .env("PATH", &bin)
+                .env("TMPDIR", &tmp)
+                .env("CALLS", &calls)
+                .env("DF_CALLS", &df_calls)
+                .env("AVAILABLE_KIB", available_kib.to_string())
+                .env_remove("CARGO_TARGET_DIR")
+                .env_remove("TOKMD_MIN_FREE_GB")
+                .output()?;
+            ensure!(
+                run.status.success() == admitted,
+                "unexpected gate result: stdout={} stderr={}",
+                String::from_utf8_lossy(&run.stdout),
+                String::from_utf8_lossy(&run.stderr)
+            );
+            let commands = fs::read_to_string(calls)?;
+            ensure!(commands.starts_with("fmt --all -- --check\n"));
+            ensure!(commands.lines().count() == if admitted { 4 } else { 1 });
+            ensure!(fs::read_to_string(df_calls)?.lines().count() == if admitted { 3 } else { 1 });
+            if !admitted {
+                ensure!(String::from_utf8_lossy(&run.stderr).contains("need at least 8.0 GiB"));
+            }
+            ensure!(fs::read_to_string(&output)? == "warm build evidence");
+            ensure!(fs::metadata(&old)?.modified()? == old_mtime);
+            ensure!(fs::read_to_string(&unrelated)? == "keep");
+            // Only the current invocation's disposable directory was removed.
+            ensure!(fs::read_dir(&tmp)?.count() == 2);
+        }
+        Ok(())
+    }
+}
