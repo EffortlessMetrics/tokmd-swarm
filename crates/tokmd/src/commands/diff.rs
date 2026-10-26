@@ -144,6 +144,17 @@ fn looks_like_missing_path(input: &str, path: &Path) -> bool {
 }
 
 fn load_lang_report_from_path(path: &Path) -> Result<LangReport> {
+    // A language receipt may itself be named receipt.json. Prefer its rows
+    // over the run-manifest convention so an unrelated sibling cannot supply
+    // metrics attributed to the explicitly selected file.
+    if path.is_file() && path.file_name().is_some_and(|name| name == "receipt.json") {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        if let Ok(receipt) = serde_json::from_str::<tokmd_types::LangReceipt>(&content) {
+            return Ok(receipt.report);
+        }
+    }
+
     let lang_path = if path.is_dir() {
         path.join("lang.json")
     } else if path
