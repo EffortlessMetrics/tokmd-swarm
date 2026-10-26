@@ -172,7 +172,7 @@ jobs:
       - name: Upload coverage route receipts
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_8.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_8.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: coverage-route
           path: |
@@ -398,7 +398,7 @@ jobs:
       - name: Upload coverage artifacts
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_14.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_14.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: coverage-report
           path: |

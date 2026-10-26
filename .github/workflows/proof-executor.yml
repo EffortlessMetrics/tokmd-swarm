@@ -292,7 +292,7 @@ jobs:
       - name: Upload proof executor artifacts
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_9.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_9.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: proof-executor-artifacts
           path: target/proof/

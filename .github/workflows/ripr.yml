@@ -163,7 +163,7 @@ jobs:
       - name: Upload RIPR PR evidence
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_11.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_11.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ripr-pr
           path: target/ripr/pr
@@ -179,7 +179,7 @@ jobs:
       - name: Upload RIPR review guidance
         timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_12.outputs.minutes || '1') || 360 }}
         if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_12.outcome == 'success') }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ripr-review
           path: target/ripr/review
