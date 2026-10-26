@@ -49,6 +49,14 @@ split or an explicit override label is present.
 The CI planner and `cargo xtask affected` retain both the removed and added
 paths of a rename. Both paths can carry proof obligations.
 
+Range selection is command-specific. `cargo xtask affected` and affected proof
+planning compare the supplied `<base>` and `<head>` trees directly; the CI
+planner uses `<base>...<head>`, from their merge base to head. With divergent
+refs, the direct comparison can include base-only differences, and those paths
+remain subject to affected policy. Native qualification checks out the actual
+composed merge candidate, whose base is a parent, so these ranges agree for that
+candidate.
+
 For `cargo xtask affected` and affected proof planning, a removed path that has
 no scope stays in `unknown_files`; when `fail_on_unknown_non_rust` is true,
 an unknown removed non-Rust path fails discovery and affected proof
