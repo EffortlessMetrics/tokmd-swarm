@@ -15,7 +15,10 @@ pub(super) fn proof_run_entry_status(entry: &ProofRunEntryInput) -> ProofExecuti
 
 pub(super) fn scope_status(status: &str, exit_code: Option<i64>) -> ProofExecutionStatus {
     match status.trim().to_ascii_lowercase().as_str() {
-        "passed" | "pass" | "success" => ProofExecutionStatus::ExecutedPassed,
+        "passed" | "pass" | "success" => match exit_code {
+            Some(code) if code != 0 => ProofExecutionStatus::ExecutedFailed,
+            _ => ProofExecutionStatus::ExecutedPassed,
+        },
         "failed" | "fail" | "error" => ProofExecutionStatus::ExecutedFailed,
         "planned" => ProofExecutionStatus::Planned,
         "dry_run" | "dry-run" => ProofExecutionStatus::DryRun,
@@ -105,6 +108,55 @@ mod tests {
             scope_status("unknown", None),
             ProofExecutionStatus::NotExecuted
         );
+    }
+
+    #[test]
+    fn positive_status_with_nonzero_exit_code_is_failed() {
+        for status in ["passed", "pass", "success", " PASSED ", "Success"] {
+            for exit_code in [1, 17, -1] {
+                assert_eq!(
+                    scope_status(status, Some(exit_code)),
+                    ProofExecutionStatus::ExecutedFailed,
+                    "status={status:?}, exit_code={exit_code}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn positive_status_preserves_success_and_legacy_missing_exit_code() {
+        for status in ["passed", "pass", "success", " PASSED ", "Success"] {
+            for exit_code in [Some(0), None] {
+                assert_eq!(
+                    scope_status(status, exit_code),
+                    ProofExecutionStatus::ExecutedPassed,
+                    "status={status:?}, exit_code={exit_code:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_failed_and_unrun_statuses_keep_their_meaning() {
+        for (status, expected) in [
+            ("failed", ProofExecutionStatus::ExecutedFailed),
+            ("fail", ProofExecutionStatus::ExecutedFailed),
+            ("error", ProofExecutionStatus::ExecutedFailed),
+            ("planned", ProofExecutionStatus::Planned),
+            ("dry_run", ProofExecutionStatus::DryRun),
+            ("dry-run", ProofExecutionStatus::DryRun),
+            ("skipped", ProofExecutionStatus::NotExecuted),
+            ("not_executed", ProofExecutionStatus::NotExecuted),
+            ("not-executed", ProofExecutionStatus::NotExecuted),
+        ] {
+            for exit_code in [Some(0), None] {
+                assert_eq!(
+                    scope_status(status, exit_code),
+                    expected,
+                    "status={status:?}, exit_code={exit_code:?}"
+                );
+            }
+        }
     }
 
     #[test]
