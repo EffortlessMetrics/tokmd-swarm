@@ -397,6 +397,43 @@ mod tests {
     }
 
     #[test]
+    fn summary_no_exit_code_distinguishes_failed_commands_from_unrun_entries() {
+        for required in [true, false] {
+            for (status, reason, expected, availability) in [
+                (
+                    "failed",
+                    "command_failed",
+                    ProofExecutionStatus::ExecutedFailed,
+                    ProofEvidenceAvailability::Available,
+                ),
+                (
+                    "skipped",
+                    "execution_guard_disabled",
+                    ProofExecutionStatus::NotExecuted,
+                    ProofEvidenceAvailability::Missing,
+                ),
+            ] {
+                let mut artifact = proof_run_summary_artifact("abc123");
+                let ProofEvidenceArtifact::ProofRunSummary(summary) = &mut artifact else {
+                    panic!("expected a proof-run summary");
+                };
+                let entry = &mut summary.entries[0];
+                entry.status = status.into();
+                entry.skip_reason = reason.into();
+                entry.exit_code = None;
+                entry.required = required;
+
+                let evidence = single_evidence(&artifact, "proof-run-summary.json", Some("abc123"));
+                assert_eq!(evidence.execution_status, expected, "status={status}");
+                assert_eq!(evidence.availability, availability);
+                assert_eq!(evidence.required, required);
+                assert_eq!(evidence.advisory, !required);
+                assert_eq!(evidence.commit_match, CommitMatch::Exact);
+            }
+        }
+    }
+
+    #[test]
     fn normalizes_proof_run_observation_scope_as_required_evidence() {
         let artifact = proof_run_observation_artifact("abc123");
         let evidence = single_evidence(&artifact, "proof-run-observation.json", Some("abc123"));

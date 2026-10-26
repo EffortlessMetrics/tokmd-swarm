@@ -1233,23 +1233,58 @@ fn scenario_write_review_packet_includes_imported_proof_evidence() {
 }
 
 #[test]
-fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
+fn scenario_review_packet_preserves_command_failure_and_source() {
     let dir = tempfile::tempdir().unwrap();
     let mut receipt = minimal_receipt();
     receipt.base_ref = "b".repeat(40);
     receipt.head_ref = "a".repeat(40);
 
-    for (exit_code, expected_status, expected_counts) in [
-        (0, "executed_passed", "1 passed, 0 failed, 0 missing"),
-        (1, "executed_failed", "0 passed, 1 failed, 0 missing"),
-    ] {
+    for (case, (exit_code, status, skip_reason, expected_status, availability, expected_counts)) in
+        [
+            (
+                Some(0),
+                "passed",
+                "",
+                "executed_passed",
+                "available",
+                "1 passed, 0 failed, 0 missing",
+            ),
+            (
+                Some(1),
+                "passed",
+                "",
+                "executed_failed",
+                "available",
+                "0 passed, 1 failed, 0 missing",
+            ),
+            (
+                None,
+                "failed",
+                "command_failed",
+                "executed_failed",
+                "available",
+                "0 passed, 1 failed, 0 missing",
+            ),
+            (
+                None,
+                "skipped",
+                "execution_guard_disabled",
+                "not_executed",
+                "missing",
+                "0 passed, 0 failed, 1 missing",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+    {
+        let executed = status != "skipped";
         let source = serde_json::json!({
             "schema": "tokmd.proof_run_summary.v1",
-            "status": "passed",
-            "execution_status": "executed",
+            "status": status,
+            "execution_status": if executed { "executed" } else { "not_executed" },
             "execution_guard": {
                 "required": true,
-                "enabled": true,
+                "enabled": executed,
                 "ci": false,
                 "allow_ci_required_execution": false,
                 "allow_local_required_execution": true,
@@ -1258,14 +1293,14 @@ fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
             "profile": "fast",
             "base": receipt.base_ref,
             "head": receipt.head_ref,
-            "ok": true,
+            "ok": status == "passed",
             "counts": {
                 "commands_total": 1,
                 "required_planned": 1,
                 "advisory_skipped": 0,
-                "executed": 1,
-                "passed": 1,
-                "failed": 0
+                "executed": usize::from(executed),
+                "passed": usize::from(status == "passed"),
+                "failed": usize::from(status == "failed")
             },
             "entries": [{
                 "scope": "tokmd_cockpit",
@@ -1273,8 +1308,8 @@ fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
                 "required": true,
                 "command": "cargo test --locked -p tokmd-cockpit",
                 "artifact_path": null,
-                "status": "passed",
-                "skip_reason": "",
+                "status": status,
+                "skip_reason": skip_reason,
                 "exit_code": exit_code
             }]
         });
@@ -1283,7 +1318,7 @@ fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
             "proof-run-summary.json",
         )
         .unwrap();
-        let out = dir.path().join(format!("exit-{exit_code}"));
+        let out = dir.path().join(format!("case-{case}"));
         tokmd_cockpit::render::write_review_packet_with_proof_evidence(&out, &receipt, &[proof])
             .unwrap();
 
@@ -1295,7 +1330,7 @@ fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
         assert_eq!(evidence["proof"][0]["required"], true);
         assert_eq!(evidence["proof"][0]["advisory"], false);
         assert_eq!(evidence["proof"][0]["commit_match"], "exact");
-        assert_eq!(evidence["proof"][0]["availability"], "available");
+        assert_eq!(evidence["proof"][0]["availability"], availability);
         assert_eq!(
             evidence["proof"][0]["refs"][0],
             "proof/proof-run-summary.json#/entries/0"
@@ -1312,7 +1347,7 @@ fn scenario_review_packet_preserves_nonzero_exit_failure_and_source() {
             let rendered = std::fs::read_to_string(out.join(path)).unwrap();
             assert!(
                 rendered.contains(&format!("Required proof: {expected_counts}")),
-                "exit_code={exit_code}, path={path}: {rendered}"
+                "case={case}, path={path}: {rendered}"
             );
         }
     }
