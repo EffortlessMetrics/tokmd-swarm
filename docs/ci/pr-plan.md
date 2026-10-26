@@ -16,7 +16,8 @@ split or an explicit override label is present.
 
 ## How it works
 
-1. Fetch the base ref and compute `git diff --name-only base...head`.
+1. Fetch the base ref and compute
+   `git diff --no-renames --name-only -z base...head --`.
 2. Read `policy/ci-lane-whitelist.toml` for the lane catalogue + budget.
 3. Read `policy/ci-risk-packs.toml` for path -> lane routing.
 4. For each non-expensive `default_pr` lane: include it in the advisory plan.
@@ -42,6 +43,28 @@ split or an explicit override label is present.
 10. Upload both receipt files as a strict artifact. A missing PR plan or route
    receipt is a workflow failure because reviewers lose the actionable routing
    evidence.
+
+## Git path identity and renames
+
+The CI planner and `cargo xtask affected` retain both the removed and added
+paths of a rename. Both paths can carry proof obligations. A removed path that
+has no scope stays in `unknown_files`; when `fail_on_unknown_non_rust` is true,
+an unknown removed non-Rust path fails affected discovery and affected proof
+planning just like an unknown added path. For example, moving an unscoped
+`docs/brand-new.md` to scoped `docs/architecture.md` still needs scope policy for
+the old path. Reporting only the destination would hide that missing evidence.
+Add a warranted specific scope mapping rather than dropping the removed path
+or widening unrelated policy globs.
+
+Git emits repository-relative paths with `/` directory separators. The NUL
+decoder preserves the actual filename for both matching and every receipt path
+field, including whitespace, embedded newlines and literal backslashes. A
+backslash in a Git filename is a filename character, not a Windows directory
+separator: `web/runner/back\slash.mjs` differs from
+`web/runner/back/slash.mjs`. The normal forward-slash separator convention does
+not authorize rewriting that character. JSON represents a literal backslash as
+`\\`; consumers must decode JSON without replacing filename characters. Paths
+that are not UTF-8 fail explicitly rather than becoming a lossy match.
 
 ## Output
 
@@ -120,10 +143,13 @@ learned estimate sample:
   that was not requested.
 - `not_selected_by_policy` means the lane matched the changed surface directly,
   but the current planner policy did not select it for this run.
-- `docs_only_change` means an expensive lane was skipped because all routed
-  files were documentation.
+- `docs_only_change` means an expensive lane was skipped with every changed
+  path routed to a recognized documentation pack and no unmatched paths. A
+  removed unmatched path prevents this claim, even if its destination is docs.
 - `not_selected_for_changed_surface` means the lane is known to the planner but
-  does not apply to the current changed surface.
+  was not selected by the current surface policy. When `unmatched_files` is
+  nonempty, routing coverage is incomplete; this reason does not establish that
+  those unmatched paths have no proof obligations or that the lane passed.
 - `no_changed_files` means the planner saw no changed paths for the comparison
   range, so expensive lanes were reported as skipped rather than silently
   omitted.

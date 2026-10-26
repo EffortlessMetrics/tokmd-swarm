@@ -1599,6 +1599,49 @@ mod tests {
     }
 
     #[test]
+    fn ci_plan_unknown_removed_path_prevents_docs_only_claim() -> Result<()> {
+        let fixture = diff_fixture()?;
+        let root = fixture.path();
+        fs::create_dir_all(root.join("legacy"))?;
+        fs::create_dir_all(root.join("docs"))?;
+        fs::write(root.join("legacy/readme.txt"), "retired documentation\n")?;
+        fixture_git(root, &["add", "."])?;
+        fixture_git(root, &["commit", "-qm", "unknown old path"])?;
+        fs::rename(
+            root.join("legacy/readme.txt"),
+            root.join("docs/architecture.md"),
+        )?;
+        fixture_git(root, &["add", "-A"])?;
+        fixture_git(root, &["commit", "-qm", "known docs destination"])?;
+        assert_eq!(
+            fixture_git(root, &["diff", "--name-status", "HEAD^", "HEAD", "--"])?,
+            "R100\tlegacy/readme.txt\tdocs/architecture.md\n"
+        );
+
+        let whitelist = route_test_whitelist();
+        let packs = route_test_risk_packs();
+        let lane_index = route_lane_index(&whitelist);
+        let selected = BTreeSet::from(["docs_check".to_string()]);
+        // Keeping only the destination would incorrectly claim all changed
+        // paths have documentation routes. An unmatched deletion stays visible.
+        let former_route =
+            route_changed_files(&["docs/architecture.md".to_string()], &packs, &lane_index)?;
+        assert!(is_docs_only_route(&former_route));
+        let changed = git_diff_names(root, "HEAD^", "HEAD")?;
+        let route = route_changed_files(&changed, &packs, &lane_index)?;
+        assert_eq!(changed, vec!["docs/architecture.md", "legacy/readme.txt"]);
+        assert_eq!(route.unmatched_files, vec!["legacy/readme.txt"]);
+        assert!(!is_docs_only_route(&route));
+        assert_eq!(route.matched_by_pack, former_route.matched_by_pack);
+        let skipped = skipped_by_policy(&whitelist, &selected, &route, &BTreeMap::new());
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "rust_coverage" && skip.reason == "not_selected_for_changed_surface"
+        }));
+        assert!(!skipped.iter().any(|skip| skip.reason == "docs_only_change"));
+        Ok(())
+    }
+
+    #[test]
     fn skipped_policy_rows_reuse_learned_estimates() {
         let whitelist = route_test_whitelist();
         let lane_index = route_lane_index(&whitelist);

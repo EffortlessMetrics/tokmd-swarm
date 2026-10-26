@@ -104,7 +104,9 @@ fn affected_bad_base_reports_git_error() {
 
     assert!(!success, "affected should fail for an invalid base ref");
     assert!(
-        stderr.contains("git diff") || stderr.contains("bad revision"),
+        stderr.contains(
+            "`git diff --no-renames --name-only -z definitely-not-a-real-ref HEAD --` failed:"
+        ),
         "stderr: {stderr}"
     );
 }
@@ -183,6 +185,52 @@ fn affected_detected_rename_keeps_removed_path_obligations() -> Result<()> {
         scope(&report, "project_readme")?["proof"]
             == serde_json::json!(["cargo xtask docs --check"])
     );
+    Ok(())
+}
+
+#[test]
+fn affected_unknown_removed_path_remains_a_policy_failure() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    fs::create_dir_all(repo.join("docs"))?;
+    fs::write(
+        repo.join("docs/brand-new.md"),
+        "unknown old documentation\n",
+    )?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "unknown old path"])?;
+    fs::rename(
+        repo.join("docs/brand-new.md"),
+        repo.join("docs/architecture.md"),
+    )?;
+    run_git(repo, &["add", "-A"])?;
+    run_git(repo, &["commit", "-qm", "known destination"])?;
+
+    // Both the standalone report and the affected proof plan must surface
+    // missing scope policy, even when the added path has known obligations.
+    for command in [
+        vec!["affected", "--json"],
+        vec!["proof", "--profile", "affected", "--plan"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args(&command)
+            .args(["--base", "HEAD^", "--head", "HEAD", "--policy"])
+            .arg(workspace_root().join("ci/proof.toml"))
+            .current_dir(repo)
+            .output()?;
+        ensure!(
+            !output.status.success(),
+            "unknown removed path must not pass: {command:?}"
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+        ensure!(report["ok"] == false);
+        ensure!(
+            report["changed_files"]
+                == serde_json::json!(["docs/architecture.md", "docs/brand-new.md"])
+        );
+        ensure!(report["unknown_files"] == serde_json::json!(["docs/brand-new.md"]));
+        ensure!(String::from_utf8(output.stderr)?.contains("unknown file(s)"));
+    }
     Ok(())
 }
 
