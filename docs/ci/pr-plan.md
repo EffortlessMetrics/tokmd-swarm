@@ -66,6 +66,13 @@ not authorize rewriting that character. JSON represents a literal backslash as
 `\\`; consumers must decode JSON without replacing filename characters. Paths
 that are not UTF-8 fail explicitly rather than becoming a lossy match.
 
+Policy patterns use glob syntax rather than raw filename spelling. On Unix,
+a glob needs `\\` to match one literal backslash. For the filename above, use
+the TOML literal-string pattern `paths = ['web/runner/back\\slash.mjs']`.
+A single-backslash pattern such as `paths = ['web/runner/back\slash.mjs']`
+escapes the `s` instead; it does not match that filename. TOML literal strings
+preserve these glob backslashes without adding another string-escape layer.
+
 ## Output
 
 The route receipt is the first artifact to open when a path did not select the

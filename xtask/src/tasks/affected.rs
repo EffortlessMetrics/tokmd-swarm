@@ -570,6 +570,14 @@ coverage = false
             report.scopes[0].matched_files,
             vec!["web/runner/back\\slash.mjs"]
         );
+
+        let mut unescaped_policy = policy;
+        unescaped_policy.scope[0].paths = vec![r"web/runner/back\slash.mjs".to_owned()];
+        let raw_path = r"web/runner/back\slash.mjs".to_owned();
+        let unmatched = affected_report(&unescaped_policy, "base", "head", vec![raw_path.clone()])?;
+        assert!(!unmatched.ok);
+        assert!(unmatched.scopes.is_empty());
+        assert_eq!(unmatched.unknown_files, vec![raw_path]);
         Ok(())
     }
 }
