@@ -664,13 +664,17 @@ quality gate does not leave a long-lived local build tree behind.
 On Unix-like systems, `cargo gate-check` also refuses to start when free disk
 drops below the `TOKMD_MIN_FREE_GB` threshold.
 
-Before creating its disposable target dir, the gate prunes stale
-`tokmd-gate-target-*` directories left in the system temp dir by earlier runs
-that were killed before their cleanup could run (for example a cancelled CI
-job). Only directories older than `TOKMD_GATE_STALE_HOURS` (default `3`) are
-removed, so a concurrently running gate is never disturbed. This prevents
-accumulated orphan target trees on long-lived self-hosted runners from tripping
-the `TOKMD_MIN_FREE_GB` guard with false failures (issue #309).
+The gate cleans up only the disposable target it creates for the current
+invocation. Targets left by interrupted runs are preserved, as are targets
+selected through `CARGO_TARGET_DIR`. Neither gate startup nor self-hosted CI
+setup deletes other runs' targets by age: fresh writes inside `debug/deps` do
+not refresh the top-level directory's modification time, so age cannot establish
+that a target is abandoned. `TOKMD_GATE_STALE_HOURS` no longer controls cleanup.
+
+Accumulated targets can still exhaust disk space. The existing
+`TOKMD_MIN_FREE_GB` guard continues to refuse builds under pressure. Arrange
+owner-directed cleanup after identifying which targets are no longer needed;
+preserve active builds, reusable caches, and evidence.
 
 This repo also defaults Windows MSVC builds to line-table debuginfo so future local builds generate much smaller symbol files than full PDB output.
 If you need full local symbols for a debugging session, use:

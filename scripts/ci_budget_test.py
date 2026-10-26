@@ -29,6 +29,41 @@ class BudgetTests(unittest.TestCase):
         return [sys.executable, str(BUDGET), 'run', '--marker', str(self.root / marker),
                 '--grace-seconds', '0.08', '--reserve-seconds', '0.1', '--', sys.executable, '-c', code]
 
+    def test_self_hosted_target_setup_never_sweeps_other_runs(self):
+        from ci_qualification_test import step_script
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        body = step_script(source, 'Use workspace gate target on self-hosted')
+        bindir = self.root / 'bin'
+        bindir.mkdir()
+        calls = self.root / 'cleanup-calls'
+        # Historical cleanup is intercepted even when testing the old workflow:
+        # neither find nor rm can touch a real target or a disposable fixture.
+        for name in ('find', 'rm'):
+            tool = bindir / name
+            tool.write_text('#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$CLEANUP_CALLS"\nexit 1\n')
+            tool.chmod(0o755)
+        old = self.root / 'tmp' / 'tokmd-gate-target-111-222'
+        nested = old / 'debug' / 'deps'
+        nested.mkdir(parents=True)
+        stamp = time.time() - 4 * 60 * 60
+        os.utime(old, (stamp, stamp))
+        mtime = old.stat().st_mtime_ns
+        output = nested / 'recent-output'
+        output.write_text('warm build evidence')
+        self.assertEqual(old.stat().st_mtime_ns, mtime)
+        self.assertGreater(output.stat().st_mtime_ns, mtime)
+        environment = self.root / 'environment'
+        run = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', body], cwd=self.root,
+            env=dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
+                     CLEANUP_CALLS=str(calls), GITHUB_WORKSPACE=str(self.root), GITHUB_ENV=str(environment)),
+            capture_output=True, text=True, timeout=3)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertFalse(calls.exists(), 'target setup attempted cross-run cleanup')
+        self.assertEqual(environment.read_text(), f'CARGO_TARGET_DIR={self.root}/target/ci-gate\n')
+        self.assertTrue((self.root / 'target/ci-gate').is_dir())
+        self.assertEqual(output.read_text(), 'warm build evidence')
+        self.assertEqual(old.stat().st_mtime_ns, mtime)
+
     def test_actual_children_consume_same_budget_across_phases(self):
         env = self.env(0.65)
         start = time.monotonic()
