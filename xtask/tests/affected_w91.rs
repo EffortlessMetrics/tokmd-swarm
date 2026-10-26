@@ -211,7 +211,7 @@ fn affected_human_report_escapes_scope_fields_and_unknown_path() -> Result<()> {
         .iter_mut()
         .find(|scope| scope.get("name").and_then(toml::Value::as_str) == Some("browser_runner"))
         .context("browser scope")?;
-    browser["name"] = toml::Value::String(name.to_string());
+    *browser.get_mut("name").context("browser scope name")? = toml::Value::String(name.to_string());
     fs::write(&policy, toml::to_string(&config)?)?;
     let json = repo.join("affected.json");
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))

@@ -572,7 +572,11 @@ coverage = false
         );
 
         let mut unescaped_policy = policy;
-        unescaped_policy.scope[0].paths = vec![r"web/runner/back\slash.mjs".to_owned()];
+        unescaped_policy
+            .scope
+            .first_mut()
+            .ok_or_else(|| anyhow::anyhow!("literal scope"))?
+            .paths = vec![r"web/runner/back\slash.mjs".to_owned()];
         let raw_path = r"web/runner/back\slash.mjs".to_owned();
         let unmatched = affected_report(&unescaped_policy, "base", "head", vec![raw_path.clone()])?;
         assert!(!unmatched.ok);
