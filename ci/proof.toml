@@ -224,6 +224,7 @@ proof = [
   "cargo test -p xtask --test xtask_contract_w65 --verbose",
   "cargo test -p xtask proof_policy --verbose",
   "cargo test -p xtask affected --verbose",
+  "cargo test --locked -p xtask ci_plan --verbose",
   "cargo test -p xtask ci_actuals --verbose",
   "cargo test -p xtask ci_route --verbose",
   "cargo test -p xtask ci_runner_health --verbose",

@@ -104,7 +104,9 @@ fn affected_bad_base_reports_git_error() {
 
     assert!(!success, "affected should fail for an invalid base ref");
     assert!(
-        stderr.contains("git diff") || stderr.contains("bad revision"),
+        stderr.contains(
+            "`git diff --no-renames --name-only -z definitely-not-a-real-ref HEAD --` failed:"
+        ),
         "stderr: {stderr}"
     );
 }
@@ -121,6 +123,261 @@ fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
         args.join(" "),
         String::from_utf8_lossy(&output.stderr)
     );
+    Ok(())
+}
+
+fn run_fixture_affected(repo: &Path, base: &str, head: &str) -> Result<serde_json::Value> {
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", base, "--head", head, "--policy"])
+        .arg(workspace_root().join("ci/proof.toml"))
+        .arg("--json")
+        .current_dir(repo)
+        .output()?;
+    ensure!(
+        output.status.success(),
+        "affected failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
+
+fn path_fixture() -> Result<tempfile::TempDir> {
+    let fixture = tempfile::tempdir()?;
+    let repo = fixture.path();
+    run_git(repo, &["init", "-q"])?;
+    run_git(repo, &["config", "user.email", "fixture@example.invalid"])?;
+    run_git(repo, &["config", "user.name", "Affected path fixture"])?;
+    run_git(repo, &["config", "commit.gpgsign", "false"])?;
+    run_git(repo, &["config", "diff.renames", "true"])?;
+    fs::create_dir_all(repo.join("web/runner"))?;
+    fs::write(repo.join("web/runner/README.md"), "browser runner\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "base"])?;
+    Ok(fixture)
+}
+
+#[test]
+#[cfg(unix)]
+fn affected_human_report_escapes_matched_path_without_changing_json() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let path = "web/runner/visible\n  - unknown: forged.mjs";
+    fs::write(repo.join(path), "fixture\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "newline filename"])?;
+    let json = repo.join("affected.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
+        .arg(workspace_root().join("ci/proof.toml"))
+        .arg("--json-output")
+        .arg(&json)
+        .current_dir(repo)
+        .output()?;
+    ensure!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&fs::read(json)?)?;
+    ensure!(report["changed_files"] == serde_json::json!([path]));
+    ensure!(report["unknown_files"] == serde_json::json!([]));
+    ensure!(scope(&report, "browser_runner")?["matched_files"] == serde_json::json!([path]));
+
+    let human = String::from_utf8(output.stdout)?;
+    ensure!(
+        human.lines().count() == 3,
+        "filename must stay on its scope line: {human:?}"
+    );
+    ensure!(human.contains("matched web/runner/visible\\n  - unknown: forged.mjs"));
+    ensure!(!human.lines().any(|line| line.starts_with("  - unknown:")));
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
+fn affected_human_report_escapes_scope_fields_and_unknown_path() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let unknown = "unscoped/hidden\r\t\u{1b}[31m.txt";
+    fs::create_dir_all(repo.join("unscoped"))?;
+    fs::write(repo.join(unknown), "unknown\n")?;
+    fs::write(repo.join("web/runner/safe.mjs"), "known\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "scope and unknown controls"])?;
+    let policy = repo.join("human-policy.toml");
+    let name = "browser é\n  - unknown: scope\r\t\u{1b}[0m";
+    let mut config: toml::Value =
+        toml::from_str(&fs::read_to_string(workspace_root().join("ci/proof.toml"))?)?;
+    let browser = config
+        .get_mut("scope")
+        .and_then(toml::Value::as_array_mut)
+        .context("repo scope array")?
+        .iter_mut()
+        .find(|scope| scope.get("name").and_then(toml::Value::as_str) == Some("browser_runner"))
+        .context("browser scope")?;
+    *browser.get_mut("name").context("browser scope name")? = toml::Value::String(name.to_string());
+    fs::write(&policy, toml::to_string(&config)?)?;
+    let json = repo.join("affected.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
+        .arg(policy)
+        .arg("--json-output")
+        .arg(&json)
+        .current_dir(repo)
+        .output()?;
+    ensure!(
+        !output.status.success(),
+        "unknown path must remain a failure"
+    );
+    ensure!(
+        json.exists(),
+        "report missing: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&fs::read(json)?)?;
+    ensure!(report["ok"] == false);
+    ensure!(report["unknown_files"] == serde_json::json!([unknown]));
+    ensure!(scope(&report, name)?["matched_files"] == serde_json::json!(["web/runner/safe.mjs"]));
+
+    let human = String::from_utf8(output.stdout)?;
+    ensure!(
+        human.lines().count() == 4,
+        "scope and path must each stay on one line: {human:?}"
+    );
+    ensure!(
+        !human.chars().any(|c| c.is_control() && c != '\n'),
+        "raw terminal control: {human:?}"
+    );
+    ensure!(human.contains("browser é\\n  - unknown: scope\\r\\t\\u{1b}[0m"));
+    ensure!(human.contains("  - unknown: unscoped/hidden\\r\\t\\u{1b}[31m.txt"));
+    Ok(())
+}
+
+#[test]
+fn affected_detected_rename_keeps_removed_path_obligations() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    fs::rename(repo.join("web/runner/README.md"), repo.join("README.md"))?;
+    run_git(repo, &["add", "-A"])?;
+    run_git(repo, &["commit", "-qm", "move browser docs"])?;
+    let witness = Command::new("git")
+        .args(["diff", "--name-status", "HEAD^", "HEAD", "--"])
+        .current_dir(repo)
+        .output()?;
+    ensure!(witness.status.success());
+    ensure!(String::from_utf8(witness.stdout)? == "R100\tweb/runner/README.md\tREADME.md\n");
+    let report = run_fixture_affected(repo, "HEAD^", "HEAD")?;
+    ensure!(report["changed_files"] == serde_json::json!(["README.md", "web/runner/README.md"]));
+    ensure!(array_len(&report, "unknown_files")? == 0);
+    ensure!(array_len(&report, "scopes")? == 2);
+    let browser = scope(&report, "browser_runner")?;
+    ensure!(
+        browser["proof"]
+            == serde_json::json!([
+                "npm --prefix web/runner test",
+                "npm --prefix web/runner run check"
+            ])
+    );
+    ensure!(
+        scope(&report, "project_readme")?["proof"]
+            == serde_json::json!(["cargo xtask docs --check"])
+    );
+    Ok(())
+}
+
+#[test]
+fn affected_unknown_removed_path_remains_a_policy_failure() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    fs::create_dir_all(repo.join("docs"))?;
+    fs::write(
+        repo.join("docs/brand-new.md"),
+        "unknown old documentation\n",
+    )?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "unknown old path"])?;
+    fs::rename(
+        repo.join("docs/brand-new.md"),
+        repo.join("docs/architecture.md"),
+    )?;
+    run_git(repo, &["add", "-A"])?;
+    run_git(repo, &["commit", "-qm", "known destination"])?;
+
+    // Both the standalone report and the affected proof plan must surface
+    // missing scope policy, even when the added path has known obligations.
+    for command in [
+        vec!["affected", "--json"],
+        vec!["proof", "--profile", "affected", "--plan"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args(&command)
+            .args(["--base", "HEAD^", "--head", "HEAD", "--policy"])
+            .arg(workspace_root().join("ci/proof.toml"))
+            .current_dir(repo)
+            .output()?;
+        ensure!(
+            !output.status.success(),
+            "unknown removed path must not pass: {command:?}"
+        );
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+        ensure!(report["ok"] == false);
+        ensure!(
+            report["changed_files"]
+                == serde_json::json!(["docs/architecture.md", "docs/brand-new.md"])
+        );
+        ensure!(report["unknown_files"] == serde_json::json!(["docs/brand-new.md"]));
+        ensure!(String::from_utf8(output.stderr)?.contains("unknown file(s)"));
+    }
+    Ok(())
+}
+
+#[test]
+fn affected_docs_modification_deletion_and_unchanged_controls() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let unchanged = run_fixture_affected(repo, "HEAD", "HEAD")?;
+    ensure!(array_len(&unchanged, "changed_files")? == 0);
+    ensure!(array_len(&unchanged, "scopes")? == 0);
+    fs::write(repo.join("README.md"), "initial docs\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "add docs"])?;
+    let added = run_fixture_affected(repo, "HEAD^", "HEAD")?;
+    ensure!(array_len(&added, "scopes")? == 1);
+    ensure!(array_len(scope(&added, "project_readme")?, "proof")? == 1);
+    fs::write(repo.join("README.md"), "updated docs\n")?;
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "update docs"])?;
+    let modified = run_fixture_affected(repo, "HEAD^", "HEAD")?;
+    ensure!(array_len(&modified, "scopes")? == 1);
+    ensure!(array_len(scope(&modified, "project_readme")?, "proof")? == 1);
+    fs::remove_file(repo.join("README.md"))?;
+    run_git(repo, &["add", "-A"])?;
+    run_git(repo, &["commit", "-qm", "remove docs"])?;
+    let deleted = run_fixture_affected(repo, "HEAD^", "HEAD")?;
+    ensure!(deleted["changed_files"] == serde_json::json!(["README.md"]));
+    ensure!(array_len(&deleted, "scopes")? == 1);
+    ensure!(array_len(scope(&deleted, "project_readme")?, "proof")? == 1);
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
+fn affected_preserves_newlines_unicode_spaces_and_backslashes() -> Result<()> {
+    let fixture = path_fixture()?;
+    let repo = fixture.path();
+    let mut paths = vec![
+        "web/runner/café.mjs",
+        "web/runner/line\nbreak.mjs",
+        "web/runner/ space ",
+        "web/runner/back\\slash.mjs",
+    ];
+    for path in &paths {
+        fs::write(repo.join(path), "fixture\n")?;
+    }
+    run_git(repo, &["add", "."])?;
+    run_git(repo, &["commit", "-qm", "unusual paths"])?;
+    let report = run_fixture_affected(repo, "HEAD^", "HEAD")?;
+    paths.sort();
+    ensure!(report["changed_files"] == serde_json::json!(paths));
+    ensure!(array_len(&report, "unknown_files")? == 0);
+    ensure!(array_len(&report, "scopes")? == 1);
+    ensure!(scope(&report, "browser_runner")?["matched_files"] == serde_json::json!(paths));
     Ok(())
 }
 
@@ -230,7 +487,7 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     // The live control-plane command count moves with `ci/proof.toml`; the
     // guidance-scope reduction this test guards is the assertion above.
     let control_plane = scope(&workflow, "proof_control_plane")?;
-    ensure!(array_len(control_plane, "proof")? == 32);
+    ensure!(array_len(control_plane, "proof")? == 33);
     let commands = control_plane
         .get("proof")
         .and_then(serde_json::Value::as_array)
@@ -238,6 +495,7 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     for command in [
         "python3 -m unittest scripts/ci_observability_clock_test.py",
         "python3 -m unittest discover -s scripts -p ci_[!o]*_test.py",
+        "cargo test --locked -p xtask ci_plan --verbose",
     ] {
         ensure!(
             commands

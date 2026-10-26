@@ -90,23 +90,42 @@ pub(crate) fn load_checked_policy(path: &Path) -> Result<ProofPolicy> {
 
 pub(crate) fn changed_files(base: &str, head: &str) -> Result<Vec<String>> {
     let output = Command::new("git")
-        .args(["diff", "--name-only", base, head, "--"])
+        // A rename affects both the removed and added paths. NUL framing keeps
+        // Git from quoting filenames or splitting a path at a newline.
+        .args([
+            "diff",
+            "--no-renames",
+            "--name-only",
+            "-z",
+            base,
+            head,
+            "--",
+        ])
         .output()
-        .with_context(|| format!("failed to run `git diff --name-only {base} {head} --`"))?;
+        .with_context(|| {
+            format!("failed to run `git diff --no-renames --name-only -z {base} {head} --`")
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!(
-            "`git diff --name-only {base} {head} --` failed: {}",
+            "`git diff --no-renames --name-only -z {base} {head} --` failed: {}",
             stderr.trim()
         );
     }
 
-    let mut files = String::from_utf8(output.stdout)
-        .context("`git diff --name-only` produced non-UTF-8 output")?
-        .lines()
-        .map(normalize_path)
+    parse_diff_paths(output.stdout)
+}
+
+// Git already uses `/` directory separators. A literal `\` in a Git filename
+// is not a separator: preserve it for matching and receipt output (see the Git
+// path identity contract in docs/ci/pr-plan.md).
+pub(crate) fn parse_diff_paths(output: Vec<u8>) -> Result<Vec<String>> {
+    let mut files = String::from_utf8(output)
+        .context("`git diff --no-renames --name-only -z` produced non-UTF-8 output")?
+        .split('\0')
         .filter(|path| !path.is_empty())
+        .map(str::to_owned)
         .collect::<Vec<_>>();
 
     files.sort();
@@ -241,10 +260,6 @@ fn dedupe_preserve_order(values: Vec<String>) -> Vec<String> {
     deduped
 }
 
-fn normalize_path(path: impl AsRef<str>) -> String {
-    path.as_ref().replace('\\', "/")
-}
-
 fn is_rust_source_or_manifest(path: &str) -> bool {
     path.ends_with(".rs")
         || matches!(path, "Cargo.toml" | "Cargo.lock")
@@ -258,20 +273,29 @@ fn print_human_report(report: &AffectedReport) {
         report.scopes.len(),
         report.unknown_files.len()
     );
-    println!("Range: {} -> {}", report.base, report.head);
+    println!(
+        "Range: {} -> {}",
+        report.base.escape_debug(),
+        report.head.escape_debug()
+    );
 
     for scope in &report.scopes {
-        println!("  - {} ({:?}): {}", scope.name, scope.kind, scope.reason);
+        println!(
+            "  - {} ({:?}): {}",
+            scope.name.escape_debug(),
+            scope.kind,
+            scope.reason.escape_debug()
+        );
     }
 
     for file in &report.unknown_files {
-        println!("  - unknown: {file}");
+        println!("  - unknown: {}", file.escape_debug());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{affected_report, normalize_path};
+    use super::{affected_report, parse_diff_paths};
     use crate::proof::policy::parse_policy_str;
 
     fn policy_with_defaults(
@@ -494,10 +518,70 @@ coverage = false
     }
 
     #[test]
-    fn path_normalization_uses_forward_slashes() {
+    fn nul_diff_paths_preserve_filename_content_and_deduplicate() -> anyhow::Result<()> {
         assert_eq!(
-            normalize_path("crates\\tokmd\\src\\main.rs"),
-            "crates/tokmd/src/main.rs"
+            parse_diff_paths(
+                " web/with spaces \0web/café\nfile\\name\0 web/with spaces \0"
+                    .as_bytes()
+                    .to_vec()
+            )?,
+            vec![" web/with spaces ", "web/café\nfile\\name"]
         );
+        assert!(parse_diff_paths(Vec::new())?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn nul_diff_paths_reject_non_utf8() {
+        assert!(parse_diff_paths(vec![b'w', 0xff, 0]).is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn literal_backslash_is_not_a_directory_separator_when_matching() -> anyhow::Result<()> {
+        let policy = parse_policy_str(
+            r#"
+schema = "tokmd.proof_policy.v1"
+[defaults]
+fail_on_unknown_non_rust = true
+[[scope]]
+name = "literal"
+kind = "non_rust"
+paths = ['web/runner/back\\slash.mjs']
+proof = ["npm --prefix web/runner test"]
+mutation = false
+coverage = false
+[[scope]]
+name = "directory"
+kind = "non_rust"
+paths = ["web/runner/back/slash.mjs"]
+proof = ["npm --prefix web/runner run check"]
+mutation = false
+coverage = false
+"#,
+        )?;
+        let changed = parse_diff_paths(b"web/runner/back\\slash.mjs\0".to_vec())?;
+        let report = affected_report(&policy, "base", "head", changed)?;
+        assert!(report.ok);
+        assert!(report.unknown_files.is_empty());
+        assert_eq!(report.scopes.len(), 1);
+        assert_eq!(report.scopes[0].name, "literal");
+        assert_eq!(
+            report.scopes[0].matched_files,
+            vec!["web/runner/back\\slash.mjs"]
+        );
+
+        let mut unescaped_policy = policy;
+        unescaped_policy
+            .scope
+            .first_mut()
+            .ok_or_else(|| anyhow::anyhow!("literal scope"))?
+            .paths = vec![r"web/runner/back\slash.mjs".to_owned()];
+        let raw_path = r"web/runner/back\slash.mjs".to_owned();
+        let unmatched = affected_report(&unescaped_policy, "base", "head", vec![raw_path.clone()])?;
+        assert!(!unmatched.ok);
+        assert!(unmatched.scopes.is_empty());
+        assert_eq!(unmatched.unknown_files, vec![raw_path]);
+        Ok(())
     }
 }
