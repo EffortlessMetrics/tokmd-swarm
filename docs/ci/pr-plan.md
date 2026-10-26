@@ -47,14 +47,21 @@ split or an explicit override label is present.
 ## Git path identity and renames
 
 The CI planner and `cargo xtask affected` retain both the removed and added
-paths of a rename. Both paths can carry proof obligations. A removed path that
-has no scope stays in `unknown_files`; when `fail_on_unknown_non_rust` is true,
-an unknown removed non-Rust path fails affected discovery and affected proof
+paths of a rename. Both paths can carry proof obligations.
+
+For `cargo xtask affected` and affected proof planning, a removed path that has
+no scope stays in `unknown_files`; when `fail_on_unknown_non_rust` is true,
+an unknown removed non-Rust path fails discovery and affected proof
 planning just like an unknown added path. For example, moving an unscoped
 `docs/brand-new.md` to scoped `docs/architecture.md` still needs scope policy for
 the old path. Reporting only the destination would hide that missing evidence.
 Add a warranted specific scope mapping rather than dropping the removed path
 or widening unrelated policy globs.
+
+The CI planner records paths with no risk-pack route in `unmatched_files` in
+`proof-pack-route.json`. An unmatched removed path prevents the planner from
+claiming `docs_only_change`; unmatched paths alone do not hard-fail the planner.
+The planner does not use `unknown_files` or `fail_on_unknown_non_rust`.
 
 Git emits repository-relative paths with `/` directory separators. The NUL
 decoder preserves the actual filename for both matching and every receipt path
