@@ -11,7 +11,19 @@ pub(crate) fn sort_module_rows(rows: &mut [ModuleRow]) {
 }
 
 pub(crate) fn sort_file_rows(rows: &mut [FileRow]) {
-    rows.sort_by(|a, b| b.code.cmp(&a.code).then_with(|| a.path.cmp(&b.path)));
+    rows.sort_by(|a, b| {
+        b.code
+            .cmp(&a.code)
+            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| a.lang.cmp(&b.lang))
+            .then_with(|| a.kind.cmp(&b.kind))
+            .then_with(|| a.module.cmp(&b.module))
+            .then_with(|| a.comments.cmp(&b.comments))
+            .then_with(|| a.blanks.cmp(&b.blanks))
+            .then_with(|| a.lines.cmp(&b.lines))
+            .then_with(|| a.bytes.cmp(&b.bytes))
+            .then_with(|| a.tokens.cmp(&b.tokens))
+    });
 }
 
 #[cfg(test)]
