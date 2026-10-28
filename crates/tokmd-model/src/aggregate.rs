@@ -115,24 +115,24 @@ pub fn create_module_report_from_rows(
     }
 
     let mut by_module: BTreeMap<&str, (Agg, BTreeSet<&str>)> = BTreeMap::new();
-    let mut total_code = 0;
-    let mut total_lines = 0;
-    let mut total_bytes = 0;
-    let mut total_tokens = 0;
+    let mut total_code = 0usize;
+    let mut total_lines = 0usize;
+    let mut total_bytes = 0usize;
+    let mut total_tokens = 0usize;
 
     for r in file_rows {
-        total_code += r.code;
-        total_lines += r.lines;
-        total_bytes += r.bytes;
-        total_tokens += r.tokens;
+        total_code = total_code.saturating_add(r.code);
+        total_lines = total_lines.saturating_add(r.lines);
+        total_bytes = total_bytes.saturating_add(r.bytes);
+        total_tokens = total_tokens.saturating_add(r.tokens);
 
         let entry = by_module
             .entry(r.module.as_str())
             .or_insert_with(|| (Agg::default(), BTreeSet::new()));
-        entry.0.code += r.code;
-        entry.0.lines += r.lines;
-        entry.0.bytes += r.bytes;
-        entry.0.tokens += r.tokens;
+        entry.0.code = entry.0.code.saturating_add(r.code);
+        entry.0.lines = entry.0.lines.saturating_add(r.lines);
+        entry.0.bytes = entry.0.bytes.saturating_add(r.bytes);
+        entry.0.tokens = entry.0.tokens.saturating_add(r.tokens);
 
         if r.kind == FileKind::Parent {
             entry.1.insert(r.path.as_str());
@@ -190,11 +190,11 @@ fn fold_other_module(rows: &[ModuleRow]) -> ModuleRow {
     let mut tokens = 0usize;
 
     for r in rows {
-        code += r.code;
-        lines += r.lines;
-        files += r.files;
-        bytes += r.bytes;
-        tokens += r.tokens;
+        code = code.saturating_add(r.code);
+        lines = lines.saturating_add(r.lines);
+        files = files.saturating_add(r.files);
+        bytes = bytes.saturating_add(r.bytes);
+        tokens = tokens.saturating_add(r.tokens);
     }
 
     ModuleRow {

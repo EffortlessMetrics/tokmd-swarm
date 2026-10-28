@@ -626,3 +626,34 @@ fn create_lang_report_from_rows_distinguishes_children_modes() {
     assert_eq!(rust_lines, 20);
     assert_eq!(js_lines, 3);
 }
+
+#[test]
+fn module_aggregation_saturates_overflowing_counts() {
+    let mut rows = fixture_rows();
+    for row in &mut rows {
+        row.code = usize::MAX;
+        row.lines = usize::MAX;
+        row.bytes = usize::MAX;
+        row.tokens = usize::MAX;
+    }
+    let mut third_module = rows[0].clone();
+    third_module.module = "third".into();
+    third_module.path = "third/file.rs".into();
+    rows.push(third_module);
+    let report = create_module_report_from_rows(&rows, &[], 1, ChildIncludeMode::Separate, 0);
+    assert_eq!(report.total.code, usize::MAX);
+    assert_eq!(report.total.lines, usize::MAX);
+    assert_eq!(report.total.bytes, usize::MAX);
+    assert_eq!(report.total.tokens, usize::MAX);
+    let web = report.rows.iter().find(|r| r.module == "web").unwrap();
+    assert_eq!(
+        (web.code, web.lines, web.bytes, web.tokens),
+        (usize::MAX, usize::MAX, usize::MAX, usize::MAX)
+    );
+    let top = create_module_report_from_rows(&rows, &[], 1, ChildIncludeMode::Separate, 1);
+    let other = top.rows.iter().find(|r| r.module == "Other").unwrap();
+    assert_eq!(
+        (other.code, other.lines, other.bytes, other.tokens),
+        (usize::MAX, usize::MAX, usize::MAX, usize::MAX)
+    );
+}
