@@ -152,6 +152,61 @@ fn analyze_health_scoped_directory_does_not_scan_unrelated_todos() {
 }
 
 #[test]
+fn analyze_limited_health_receipt_is_independent_of_input_order() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+    // Create the larger path first so directory creation order differs from
+    // the canonical selection order as well as the reversed CLI input order.
+    for (path, text) in [
+        ("z/last.rs", "pub fn last() {}\n"),
+        (
+            "a/first.rs",
+            "// TODO first\n// TODO second\npub fn first() {}\n",
+        ),
+    ] {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    let mut receipts = Vec::new();
+    for inputs in [["a", "z"], ["z", "a"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+            .current_dir(dir.path())
+            .args(["--no-progress", "analyze"])
+            .args(inputs)
+            .args([
+                "--preset",
+                "health",
+                "--format",
+                "json",
+                "--no-git",
+                "--max-files",
+                "1",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let mut receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(receipt["source"]["inputs"], serde_json::json!(inputs));
+        assert!(receipt["generated_at_ms"].is_number());
+        assert_eq!(receipt["derived"]["totals"]["files"], 2);
+        assert_eq!(receipt["derived"]["todo"]["total"], 2);
+
+        // Generation time and the caller's ordered input provenance are
+        // legitimate differences; compare every other receipt field.
+        receipt.as_object_mut().unwrap().remove("generated_at_ms");
+        receipt["source"]["inputs"] = serde_json::json!(["a", "z"]);
+        receipts.push(receipt);
+    }
+    assert_eq!(receipts[0], receipts[1]);
+}
+
+#[test]
 fn analyze_health_skips_dangling_symlink_without_partial_status() {
     let dir = tempdir().expect("should create temp dir");
     let src_dir = dir.path().join("src");
