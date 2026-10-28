@@ -1112,6 +1112,7 @@ paths = [
   "crates/tokmd/src/progress.rs",
   "fixtures/progress-events/**",
   "crates/tokmd/tests/cli_*.rs",
+  "crates/tokmd/tests/integration.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
   "crates/tokmd/tests/root_option_contract_w107.rs",
@@ -1131,6 +1132,7 @@ packages = ["tokmd"]
 proof = [
   "cargo test -p tokmd analysis_explain --verbose",
   "cargo test -p tokmd --test cli_snapshot_golden --verbose",
+  "cargo test --locked -p tokmd --test integration --verbose",
   "cargo test -p tokmd --test cli_e2e --verbose",
   "cargo test -p tokmd --test cli_parser_properties --verbose",
   "cargo test -p tokmd --test config_resolution --verbose",
