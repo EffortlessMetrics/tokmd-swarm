@@ -400,6 +400,65 @@ fn first_use_command(
     command
 }
 
+#[cfg(unix)]
+#[test]
+fn non_utf8_explicit_config_is_selected_and_missing_is_reported() -> anyhow::Result<()> {
+    use std::os::unix::ffi::OsStringExt;
+
+    let dir = tempfile::tempdir()?;
+    let selected = dir
+        .path()
+        .join(std::ffi::OsString::from_vec(b"selected-\xff.toml".to_vec()));
+    std::fs::write(&selected, "[view.chosen]\nformat = \"json\"\n")?;
+    std::fs::write(dir.path().join("tokmd.toml"), "[view.fallback]\n")?;
+    let run = || {
+        first_use_command(dir.path(), &selected)
+            .env("XDG_CONFIG_HOME", dir.path().join("user-config"))
+            .args(["--profile", "chosen", "lang"])
+            .arg(dir.path())
+            .output()
+    };
+    let output = run()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "selected config was ignored: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(
+        receipt["args"]["format"] == "json",
+        "selected view was not applied"
+    );
+
+    std::fs::write(&selected, "[view\n")?;
+    let output = run()?;
+    anyhow::ensure!(
+        !output.status.success() && output.stdout.is_empty(),
+        "malformed explicit config was ignored"
+    );
+    anyhow::ensure!(
+        String::from_utf8_lossy(&output.stderr).contains(selected.to_string_lossy().as_ref()),
+        "malformed config error omitted selected path"
+    );
+
+    std::fs::remove_file(&selected)?;
+    let output = run()?;
+    anyhow::ensure!(
+        !output.status.success() && output.stdout.is_empty(),
+        "missing explicit config was ignored"
+    );
+    anyhow::ensure!(
+        String::from_utf8_lossy(&output.stderr).contains("TOKMD_CONFIG points to a missing file"),
+        "missing explicit config was not reported: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    anyhow::ensure!(
+        String::from_utf8_lossy(&output.stderr).contains(selected.to_string_lossy().as_ref()),
+        "missing config error omitted selected path"
+    );
+    Ok(())
+}
+
 fn first_use_lang_command(
     repo: &std::path::Path,
     selected_config: &std::path::Path,

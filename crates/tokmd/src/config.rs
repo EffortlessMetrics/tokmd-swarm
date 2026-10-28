@@ -96,10 +96,15 @@ fn sanitize_selector(value: &str) -> Option<String> {
 /// 4. ~/.config/tokmd/tokmd.toml (user config)
 fn discover_toml_config(strict: bool) -> Result<Option<(TomlConfig, PathBuf)>> {
     // 1. Check TOKMD_CONFIG environment variable
-    if let Ok(config_path) = std::env::var("TOKMD_CONFIG")
-        && let Some(config_path) = sanitize_selector(&config_path)
+    if let Some(config_path) = std::env::var_os("TOKMD_CONFIG")
+        && let Some(path) = config_path.to_str().map_or_else(
+            || {
+                (!config_path.to_string_lossy().chars().any(char::is_control))
+                    .then(|| PathBuf::from(&config_path))
+            },
+            |value| sanitize_selector(value).map(PathBuf::from),
+        )
     {
-        let path = PathBuf::from(&config_path);
         if let Some(result) = try_load_toml(&path, strict)? {
             return Ok(Some(result));
         }
