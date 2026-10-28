@@ -654,7 +654,6 @@ cargo trim-target --check --keep-incremental
 
 **3. Use the low-space local gate**:
 ```bash
-cargo fmt-check
 python3 scripts/gate.py
 ```
 
