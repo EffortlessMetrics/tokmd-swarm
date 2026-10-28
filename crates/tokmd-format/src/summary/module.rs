@@ -7,6 +7,30 @@ use std::fmt::Write as FmtWrite;
 
 use tokmd_types::ModuleReport;
 
+// Encode table delimiters and HTML/Markdown escapes as character references.
+// References are decoded after the Markdown table is parsed, keeping the path
+// in one cell even when it contains a pipe or a line break.
+fn escape_module_cell(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        escaped.push_str(match ch {
+            '&' => "&amp;",
+            '<' => "&lt;",
+            '>' => "&gt;",
+            '|' => "&#124;",
+            '`' => "&#96;",
+            '\\' => "&#92;",
+            '\n' => "&#10;",
+            '\r' => "&#13;",
+            _ => {
+                escaped.push(ch);
+                continue;
+            }
+        });
+    }
+    escaped
+}
+
 pub(super) fn render_module_md(report: &ModuleReport) -> String {
     // Heuristic: (rows + 3) * 80 chars per row
     let mut s = String::with_capacity((report.rows.len() + 3) * 80);
@@ -16,7 +40,13 @@ pub(super) fn render_module_md(report: &ModuleReport) -> String {
         let _ = writeln!(
             s,
             "|{}|{}|{}|{}|{}|{}|{}|",
-            r.module, r.code, r.lines, r.files, r.bytes, r.tokens, r.avg_lines
+            escape_module_cell(&r.module),
+            r.code,
+            r.lines,
+            r.files,
+            r.bytes,
+            r.tokens,
+            r.avg_lines
         );
     }
     let _ = writeln!(

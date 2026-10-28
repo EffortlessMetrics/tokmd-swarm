@@ -133,6 +133,20 @@ mod tests {
     use tokmd_settings::ChildrenMode;
     use tokmd_types::{LangReceipt, LangRow, ModuleReceipt, ModuleRow, Totals};
 
+    #[test]
+    fn module_markdown_keeps_special_path_characters_in_one_cell() {
+        let mut report = sample_module_report();
+        report.rows[0].module = "dir/`a|b`\\c\n<file>&name".into();
+        let output = render_module_md(&report);
+        assert!(
+            output.contains(
+                "|dir/&#96;a&#124;b&#96;&#92;c&#10;&lt;file&gt;&amp;name|800|950|8|40000|2000|119|"
+            ),
+            "{output}"
+        );
+        assert_eq!(output.lines().count(), 5);
+    }
+
     fn sample_lang_report(with_files: bool) -> LangReport {
         LangReport {
             rows: vec![
