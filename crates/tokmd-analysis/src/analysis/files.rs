@@ -121,34 +121,29 @@ fn collect_scoped_files(
         if scoped.is_file {
             files.insert(scoped.relative);
         } else {
-            let remaining = max_files.map(|limit| limit.saturating_sub(files.len()));
-            if remaining == Some(0) {
-                break;
-            }
-
-            for rel in tokmd_scan::walk::list_files(&scoped.absolute, remaining)? {
+            // Each scope must contribute its smallest N paths, even when the
+            // union is already full or overlaps earlier scopes. Any omitted
+            // path has N smaller peers in this scope, so it cannot enter the
+            // global smallest N. Retain only N distinct paths as we merge.
+            for rel in tokmd_scan::walk::list_files(&scoped.absolute, max_files)? {
                 let joined = if scoped.relative.as_os_str().is_empty() {
                     rel
                 } else {
                     scoped.relative.join(rel)
                 };
                 files.insert(joined);
-                if max_files.is_some_and(|limit| files.len() >= limit) {
-                    break;
+                if max_files.is_some_and(|limit| files.len() > limit) {
+                    files.pop_last();
                 }
             }
         }
 
-        if max_files.is_some_and(|limit| files.len() >= limit) {
-            break;
+        if max_files.is_some_and(|limit| files.len() > limit) {
+            files.pop_last();
         }
     }
 
-    let mut files: Vec<PathBuf> = files.into_iter().collect();
-    if let Some(limit) = max_files {
-        files.truncate(limit);
-    }
-    Ok(files)
+    Ok(files.into_iter().collect())
 }
 
 #[cfg(feature = "walk")]
@@ -331,5 +326,54 @@ mod tests {
             vec![PathBuf::from("src/main.rs"), PathBuf::from("test/leak.rs")]
         );
         assert!(warnings.is_empty());
+    }
+
+    #[cfg(feature = "walk")]
+    #[test]
+    fn limited_scopes_select_the_smallest_paths_across_all_inputs() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        for path in ["z/last.rs", "a/second.rs", "a/first.rs", "middle.rs"] {
+            write_file(&dir.path().join(path), "fn example() {}\n");
+        }
+        fs::create_dir_all(dir.path().join(".git"))?;
+
+        let mut scopes = vec![
+            PathBuf::from("z"),
+            PathBuf::from("a"),
+            PathBuf::from("middle.rs"),
+        ];
+        let all = collect_scoped_files(dir.path(), &scopes, None)?;
+        for _ in 0..scopes.len() {
+            for limit in 0..=all.len() + 1 {
+                let expected: Vec<_> = all.iter().take(limit).cloned().collect();
+                assert_eq!(
+                    collect_scoped_files(dir.path(), &scopes, Some(limit))?,
+                    expected,
+                    "scopes {scopes:?}, limit {limit}"
+                );
+            }
+            scopes.rotate_left(1);
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "walk")]
+    #[test]
+    fn overlapping_scopes_do_not_spend_the_limit_on_duplicates() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        write_file(&dir.path().join("src/a.rs"), "fn a() {}\n");
+        write_file(&dir.path().join("src/b.rs"), "fn b() {}\n");
+        fs::create_dir_all(dir.path().join(".git"))?;
+        let scopes = [
+            PathBuf::from("src/a.rs"),
+            PathBuf::from("src"),
+            dir.path().join("src"),
+        ];
+
+        assert_eq!(
+            collect_scoped_files(dir.path(), &scopes, Some(2))?,
+            vec![PathBuf::from("src/a.rs"), PathBuf::from("src/b.rs")]
+        );
+        Ok(())
     }
 }
