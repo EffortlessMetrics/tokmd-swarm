@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::classify::{ClassKind, FileKind, classify_row, load_gitattributes, tag_name};
@@ -20,7 +20,17 @@ pub fn build_size_basis(root: &Path, export: &ExportData) -> SizeBasisResult {
     let mut by_tag: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut unknown_lines = 0usize;
 
-    for row in &export.rows {
+    // Parent totals already include their embedded-language children. Preserve
+    // orphan children from filtered exports, as the model aggregation does.
+    let parent_paths: BTreeSet<&str> = export
+        .rows
+        .iter()
+        .filter(|row| row.kind == tokmd_types::FileKind::Parent)
+        .map(|row| row.path.as_str())
+        .collect();
+    for row in export.rows.iter().filter(|row| {
+        row.kind == tokmd_types::FileKind::Parent || !parent_paths.contains(row.path.as_str())
+    }) {
         let normalized = normalize_path(&row.path, root);
         let (class, tag) = classify_row(root, &normalized, &rules, row);
 
@@ -171,6 +181,44 @@ mod tests {
         env::set_current_dir(path).expect("set current dir");
         let _restore = RestoreCurrentDir(original);
         f()
+    }
+
+    #[test]
+    fn embedded_rows_do_not_change_effort_percentages() -> std::io::Result<()> {
+        let dir = tempdir()?;
+        let row = |path: &str, kind, code| tokmd_types::FileRow {
+            path: path.to_string(),
+            module: "src".to_string(),
+            lang: "JavaScript".to_string(),
+            kind,
+            code,
+            comments: 0,
+            blanks: 0,
+            lines: code,
+            bytes: code * 10,
+            tokens: code,
+        };
+        let parent = row("src/generated.min.js", tokmd_types::FileKind::Parent, 100);
+        let authored = row("src/main.js", tokmd_types::FileKind::Parent, 100);
+        let child = row("src/generated.min.js", tokmd_types::FileKind::Child, 50);
+        let export = |rows| ExportData {
+            rows,
+            module_roots: vec!["src".into()],
+            module_depth: 1,
+            children: tokmd_types::ChildIncludeMode::Separate,
+        };
+        let control = build_size_basis(dir.path(), &export(vec![parent.clone(), authored.clone()]));
+        let embedded = build_size_basis(dir.path(), &export(vec![parent, authored, child]));
+        assert_eq!(control.basis.total_lines, 200);
+        assert_eq!(control.basis.generated_pct, 0.5);
+        assert_eq!(embedded.basis.total_lines, control.basis.total_lines);
+        assert_eq!(embedded.basis.generated_pct, control.basis.generated_pct);
+        let orphan = build_size_basis(
+            dir.path(),
+            &export(vec![row("src/orphan.js", tokmd_types::FileKind::Child, 50)]),
+        );
+        assert_eq!(orphan.basis.total_lines, 50);
+        Ok(())
     }
 
     #[test]
