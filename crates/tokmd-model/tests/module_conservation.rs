@@ -46,6 +46,9 @@ fn embedded_module_totals_match_language_and_parent_only_totals() {
         for input in [rows.clone(), rows.iter().rev().cloned().collect()] {
             let actual =
                 create_module_report_from_rows(&input, &[], 1, ChildIncludeMode::Separate, top);
+            assert_eq!(actual.total.code, 9);
+            assert_eq!(actual.total.lines, 9);
+            assert_eq!(actual.total.files, 2);
             assert_eq!(
                 serde_json::to_value(&actual.total).unwrap(),
                 serde_json::to_value(&expected.total).unwrap()
@@ -89,6 +92,9 @@ fn filesystem_module_totals_are_independent_of_child_detail() -> std::io::Result
     assert!(languages.values().any(|lang| !lang.children.is_empty()));
     let parents = create_module_report(&languages, &[], 1, ChildIncludeMode::ParentsOnly, 0);
     let separate = create_module_report(&languages, &[], 1, ChildIncludeMode::Separate, 0);
+    assert_eq!(separate.total.code, 8);
+    assert_eq!(separate.total.lines, 8);
+    assert_eq!(separate.total.files, 1);
     assert_eq!(
         serde_json::to_value(&separate.total).unwrap(),
         serde_json::to_value(&parents.total).unwrap()
@@ -112,6 +118,8 @@ fn module_preserves_children_without_a_matching_parent() {
     rows.retain(|r| r.kind == FileKind::Child);
     assert!(!rows.is_empty());
     let actual = create_module_report_from_rows(&rows, &[], 1, ChildIncludeMode::Separate, 0);
+    assert_eq!(actual.total.code, 2);
+    assert_eq!(actual.total.lines, 2);
     assert_eq!(
         actual.total.code,
         rows.iter().map(|r| r.code).sum::<usize>()
