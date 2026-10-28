@@ -152,24 +152,27 @@ fn analyze_health_scoped_directory_does_not_scan_unrelated_todos() {
 }
 
 #[test]
-fn analyze_limited_health_receipt_is_independent_of_input_order() {
-    let dir = tempdir().unwrap();
-    std::fs::create_dir_all(dir.path().join(".git")).unwrap();
+fn analyze_limited_health_receipt_is_independent_of_input_order() -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let dir = tempdir()?;
+    std::fs::create_dir_all(dir.path().join(".git"))?;
     // Create the larger path first so directory creation order differs from
     // the canonical selection order as well as the reversed CLI input order.
-    for (path, text) in [
-        ("z/last.rs", "pub fn last() {}\n"),
+    for (directory, name, text) in [
+        ("z", "last.rs", "pub fn last() {}\n"),
         (
-            "a/first.rs",
+            "a",
+            "first.rs",
             "// TODO first\n// TODO second\npub fn first() {}\n",
         ),
     ] {
-        let path = dir.path().join(path);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
+        let directory = dir.path().join(directory);
+        std::fs::create_dir_all(&directory)?;
+        std::fs::write(directory.join(name), text)?;
     }
 
-    let mut receipts = Vec::new();
+    let mut expected = None;
     for inputs in [["a", "z"], ["z", "a"]] {
         let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
             .current_dir(dir.path())
@@ -184,14 +187,13 @@ fn analyze_limited_health_receipt_is_independent_of_input_order() {
                 "--max-files",
                 "1",
             ])
-            .output()
-            .unwrap();
+            .output()?;
         assert!(
             output.status.success(),
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let mut receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let mut receipt: Value = serde_json::from_slice(&output.stdout)?;
         assert_eq!(receipt["source"]["inputs"], serde_json::json!(inputs));
         assert!(receipt["generated_at_ms"].is_number());
         assert_eq!(receipt["derived"]["totals"]["files"], 2);
@@ -199,11 +201,19 @@ fn analyze_limited_health_receipt_is_independent_of_input_order() {
 
         // Generation time and the caller's ordered input provenance are
         // legitimate differences; compare every other receipt field.
-        receipt.as_object_mut().unwrap().remove("generated_at_ms");
-        receipt["source"]["inputs"] = serde_json::json!(["a", "z"]);
-        receipts.push(receipt);
+        receipt
+            .as_object_mut()
+            .context("analysis receipt should be an object")?
+            .remove("generated_at_ms");
+        *receipt
+            .pointer_mut("/source/inputs")
+            .context("source inputs should be present")? = serde_json::json!(["a", "z"]);
+        match &expected {
+            None => expected = Some(receipt),
+            Some(expected) => assert_eq!(expected, &receipt),
+        }
     }
-    assert_eq!(receipts[0], receipts[1]);
+    Ok(())
 }
 
 #[test]

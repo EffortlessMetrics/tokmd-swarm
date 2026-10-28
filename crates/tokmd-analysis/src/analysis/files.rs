@@ -330,39 +330,40 @@ mod tests {
 
     #[cfg(feature = "walk")]
     #[test]
-    fn limited_scopes_select_the_smallest_paths_across_all_inputs() {
-        let dir = tempfile::tempdir().unwrap();
+    fn limited_scopes_select_the_smallest_paths_across_all_inputs() -> Result<()> {
+        let dir = tempfile::tempdir()?;
         for path in ["z/last.rs", "a/second.rs", "a/first.rs", "middle.rs"] {
             write_file(&dir.path().join(path), "fn example() {}\n");
         }
-        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        fs::create_dir_all(dir.path().join(".git"))?;
 
         let mut scopes = vec![
             PathBuf::from("z"),
             PathBuf::from("a"),
             PathBuf::from("middle.rs"),
         ];
-        let all = collect_scoped_files(dir.path(), &scopes, None).unwrap();
+        let all = collect_scoped_files(dir.path(), &scopes, None)?;
         for _ in 0..scopes.len() {
             for limit in 0..=all.len() + 1 {
                 let expected: Vec<_> = all.iter().take(limit).cloned().collect();
                 assert_eq!(
-                    collect_scoped_files(dir.path(), &scopes, Some(limit)).unwrap(),
+                    collect_scoped_files(dir.path(), &scopes, Some(limit))?,
                     expected,
                     "scopes {scopes:?}, limit {limit}"
                 );
             }
             scopes.rotate_left(1);
         }
+        Ok(())
     }
 
     #[cfg(feature = "walk")]
     #[test]
-    fn overlapping_scopes_do_not_spend_the_limit_on_duplicates() {
-        let dir = tempfile::tempdir().unwrap();
+    fn overlapping_scopes_do_not_spend_the_limit_on_duplicates() -> Result<()> {
+        let dir = tempfile::tempdir()?;
         write_file(&dir.path().join("src/a.rs"), "fn a() {}\n");
         write_file(&dir.path().join("src/b.rs"), "fn b() {}\n");
-        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        fs::create_dir_all(dir.path().join(".git"))?;
         let scopes = [
             PathBuf::from("src/a.rs"),
             PathBuf::from("src"),
@@ -370,8 +371,9 @@ mod tests {
         ];
 
         assert_eq!(
-            collect_scoped_files(dir.path(), &scopes, Some(2)).unwrap(),
+            collect_scoped_files(dir.path(), &scopes, Some(2))?,
             vec![PathBuf::from("src/a.rs"), PathBuf::from("src/b.rs")]
         );
+        Ok(())
     }
 }
