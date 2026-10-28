@@ -169,7 +169,22 @@ fn language_from_env_interpreter(interpreter: &str) -> Option<LanguageType> {
         // interpreter tokens; strip the leading dash defensively before matching.
         .trim_start_matches('-');
 
-    if token.starts_with("python") {
+    if token.strip_prefix("python").is_some_and(|version| {
+        version.is_empty() || {
+            // CPython's ABI flags include historical pymalloc/unicode
+            // flags as well as free-threaded and debug build flags.
+            let suffix_start = version
+                .find(|c: char| !c.is_ascii_digit() && c != '.')
+                .unwrap_or(version.len());
+            let (version, suffix) = version.split_at(suffix_start);
+            matches!(
+                suffix,
+                "" | "t" | "d" | "td" | "m" | "u" | "mu" | "dm" | "du" | "dmu"
+            ) && version
+                .split('.')
+                .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        }
+    }) {
         return LanguageType::from_file_extension("py");
     }
 

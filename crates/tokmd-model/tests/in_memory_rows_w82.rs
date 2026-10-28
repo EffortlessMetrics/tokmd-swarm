@@ -92,6 +92,44 @@ fn collect_in_memory_file_rows_supports_env_python_shebangs() {
 }
 
 #[test]
+fn env_python_interpreter_requires_a_version_boundary() {
+    let fixtures: &[(&str, &[u8])] = &[
+        ("plain", b"#!/usr/bin/env python\nprint('ok')\n"),
+        ("major", b"#!/usr/bin/env python3\nprint('ok')\n"),
+        ("minor", b"#!/usr/bin/env python3.12\nprint('ok')\n"),
+        ("threaded", b"#!/usr/bin/env python3.13t\nprint('ok')\n"),
+        ("debug", b"#!/usr/bin/env python3.13d\nprint('ok')\n"),
+        ("both", b"#!/usr/bin/env python3.14td\nprint('ok')\n"),
+        ("legacy", b"#!/usr/bin/env python2.7dmu\nprint('ok')\n"),
+        ("other", b"#!/usr/bin/env python-config\nnot python\n"),
+        ("prefix", b"#!/usr/bin/env pythonista\nnot python\n"),
+        ("bad-version", b"#!/usr/bin/env python3.foo\nnot python\n"),
+    ];
+    let inputs: Vec<_> = fixtures
+        .iter()
+        .map(|(path, bytes)| InMemoryRowInput::new(Path::new(path), bytes))
+        .collect();
+    let rows = collect_in_memory_file_rows(
+        &inputs,
+        &[],
+        1,
+        ChildIncludeMode::ParentsOnly,
+        &Config::default(),
+    );
+    let paths: Vec<_> = rows.iter().map(|row| row.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "both", "debug", "legacy", "major", "minor", "plain", "threaded"
+        ]
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row.lang == LanguageType::Python.name())
+    );
+}
+
+#[test]
 fn collect_in_memory_file_rows_supports_env_split_string_shebangs() {
     let inputs = vec![InMemoryRowInput::new(
         Path::new("script"),
