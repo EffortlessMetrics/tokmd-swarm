@@ -81,9 +81,9 @@ fn embedded_module_totals_match_language_and_parent_only_totals() {
 }
 
 #[test]
-fn filesystem_module_totals_are_independent_of_child_detail() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("index.html"), MIXED).unwrap();
+fn filesystem_module_totals_are_independent_of_child_detail() -> std::io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    std::fs::write(temp.path().join("index.html"), MIXED)?;
     let mut languages = Languages::new();
     languages.get_statistics(&[temp.path()], &[], &Config::default());
     assert!(languages.values().any(|lang| !lang.children.is_empty()));
@@ -97,6 +97,7 @@ fn filesystem_module_totals_are_independent_of_child_detail() {
         serde_json::to_value(&separate.rows).unwrap(),
         serde_json::to_value(&parents.rows).unwrap()
     );
+    Ok(())
 }
 
 #[test]
