@@ -159,7 +159,8 @@ fn load_export_from_file(
 
     // Strategy 2: Load Export Data (jsonl or json)
     let (mut export, meta) = if ext == "jsonl" {
-        load_export_jsonl_content(&content)?
+        load_export_jsonl_content(&content)
+            .with_context(|| format!("Failed to parse JSONL export {}", path.display()))?
     } else {
         load_export_json_content(&content)?
     };
@@ -182,12 +183,13 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
     let mut rows = Vec::new();
     let mut meta = ExportMetaLite::default();
 
-    for line in content.lines() {
+    for (line_index, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let value: serde_json::Value = serde_json::from_str(line)?;
+        let value: serde_json::Value = serde_json::from_str(line)
+            .with_context(|| format!("Invalid JSONL record on line {}", line_index + 1))?;
         let ty = value.get("type").and_then(|v| v.as_str()).unwrap_or("row");
         if ty == "meta" {
             if let Some(schema) = value.get("schema_version").and_then(|v| v.as_u64()) {
@@ -197,7 +199,10 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
                 meta.generated_at_ms = Some(generated as u128);
             }
             if let Some(args) = value.get("args") {
-                let parsed: tokmd_types::ExportArgsMeta = serde_json::from_value(args.clone())?;
+                let parsed: tokmd_types::ExportArgsMeta = serde_json::from_value(args.clone())
+                    .with_context(|| {
+                        format!("Invalid JSONL metadata on line {}", line_index + 1)
+                    })?;
                 meta.module_roots = parsed.module_roots.clone();
                 meta.module_depth = parsed.module_depth;
                 meta.children = parsed.children;
@@ -205,7 +210,8 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
             continue;
         }
 
-        let row: tokmd_types::FileRow = serde_json::from_value(value)?;
+        let row: tokmd_types::FileRow = serde_json::from_value(value)
+            .with_context(|| format!("Invalid JSONL row on line {}", line_index + 1))?;
         rows.push(row);
     }
 
@@ -322,6 +328,22 @@ mod tests {
         assert_eq!(meta.module_depth, 1);
         assert_eq!(export.rows.len(), 1);
         assert_eq!(export.rows[0].path, "src/main.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn jsonl_errors_identify_file_and_physical_line() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let path = dir.path().join("broken.jsonl");
+        let row = serde_json::to_string(&sample_row())?;
+        for invalid in ["{", r#"{"type":"row"}"#, r#"{"type":"meta","args":{}}"#] {
+            std::fs::write(&path, format!("{row}\n\n{invalid}\n"))?;
+            let err = load_export_from_file(&path, None, &GlobalArgs::default())
+                .expect_err("invalid record must fail");
+            let message = format!("{err:#}");
+            assert!(message.contains("broken.jsonl"), "{message}");
+            assert!(message.contains("line 3"), "{message}");
+        }
         Ok(())
     }
 
