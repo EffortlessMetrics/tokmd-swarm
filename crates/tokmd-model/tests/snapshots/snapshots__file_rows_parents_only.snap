@@ -41,7 +41,7 @@ expression: redacted
     "lang": "Rust",
     "lines_eq_sum": true,
     "module": "<root>",
-    "path": "crates/tokmd-model/src/module_key/mod.rs"
+    "path": "crates/tokmd-model/src/sorting.rs"
   },
   {
     "code_gt_zero": true,
@@ -49,6 +49,6 @@ expression: redacted
     "lang": "Rust",
     "lines_eq_sum": true,
     "module": "<root>",
-    "path": "crates/tokmd-model/src/sorting.rs"
+    "path": "crates/tokmd-model/src/module_key/mod.rs"
   }
 ]
