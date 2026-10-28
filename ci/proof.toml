@@ -929,6 +929,7 @@ packages = ["tokmd-model", "tokmd-scan"]
 proof = [
   "cargo test -p tokmd-model children --verbose",
   "cargo test -p tokmd-model normalize --verbose",
+  "cargo test --locked -p tokmd-model --test module_conservation --verbose",
   "cargo test -p tokmd-scan ignore --verbose",
   "cargo test -p tokmd-scan normalize --verbose",
 ]
@@ -1111,12 +1112,14 @@ paths = [
   "crates/tokmd/src/progress.rs",
   "fixtures/progress-events/**",
   "crates/tokmd/tests/cli_*.rs",
+  "crates/tokmd/tests/integration.rs",
   "crates/tokmd/tests/evidence_packet_*.rs",
   "crates/tokmd/tests/packet_*.rs",
   "crates/tokmd/tests/root_option_contract_w107.rs",
   "crates/tokmd/tests/ub_review_packet_*.rs",
   "crates/tokmd/tests/render_*.rs",
   "crates/tokmd/tests/snapshots/cli_*.snap",
+  "crates/tokmd/tests/snapshots/integration__golden_module_json.snap",
   "crates/tokmd/tests/config_resolution.rs",
   "crates/tokmd/tests/show_config.rs",
   "crates/tokmd/tests/error_handling.rs",
@@ -1129,6 +1132,7 @@ packages = ["tokmd"]
 proof = [
   "cargo test -p tokmd analysis_explain --verbose",
   "cargo test -p tokmd --test cli_snapshot_golden --verbose",
+  "cargo test --locked -p tokmd --test integration --verbose",
   "cargo test -p tokmd --test cli_e2e --verbose",
   "cargo test -p tokmd --test cli_parser_properties --verbose",
   "cargo test -p tokmd --test config_resolution --verbose",

@@ -42,7 +42,9 @@ pub struct CliModuleArgs {
     #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
-    /// Whether to include embedded languages (tokei "children" / blobs) in module totals [default: separate].
+    /// Whether to collect embedded-language detail rows [default: separate].
+    ///
+    /// Both modes include embedded content in parent totals and count each file once.
     #[arg(long, value_enum)]
     pub children: Option<ChildIncludeMode>,
 }

@@ -239,7 +239,7 @@
     },
     "ChildIncludeMode": {
       "enum": ["separate", "parents-only"],
-      "description": "How embedded languages are handled in module/export reports. 'separate' includes child rows, 'parents-only' excludes them."
+      "description": "Child detail collection mode. 'separate' includes embedded-language detail rows; 'parents-only' omits them. Parent totals include embedded content in both modes. Export emits collected detail rows; module summaries count each physical file once and have the same totals for complete scans."
     },
     "AnalysisReceipt": {
       "type": "object",

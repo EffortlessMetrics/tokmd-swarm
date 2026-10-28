@@ -204,11 +204,13 @@ Options:
           Implies --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.
 
       --children <CHILDREN>
-          Whether to include embedded languages (tokei "children" / blobs) in module totals [default: separate]
+          Whether to collect embedded-language detail rows [default: separate].
+
+          Both modes include embedded content in parent totals and count each file once.
 
           Possible values:
-          - separate:     Include embedded languages as separate contributions
-          - parents-only: Ignore embedded languages
+          - separate:     Include embedded-language detail rows alongside summarized parent rows
+          - parents-only: Omit child detail rows; parent totals still include embedded content
 
       --no-ignore-parent
           Don't respect ignore files in parent directories
@@ -312,11 +314,11 @@ Options:
           Implies --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.
 
       --children <CHILDREN>
-          Whether to include embedded languages (tokei "children" / blobs) [default: separate]
+          Whether to include embedded-language detail rows [default: separate]
 
           Possible values:
-          - separate:     Include embedded languages as separate contributions
-          - parents-only: Ignore embedded languages
+          - separate:     Include embedded-language detail rows alongside summarized parent rows
+          - parents-only: Omit child detail rows; parent totals still include embedded content
 
       --no-ignore-parent
           Don't respect ignore files in parent directories

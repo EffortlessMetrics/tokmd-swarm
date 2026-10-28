@@ -191,21 +191,21 @@ fn create_module_report_from_rows_manual_fixture() {
                 },
                 {
                     "module": "web",
-                    "code": 60,
-                    "lines": 74,
+                    "code": 50,
+                    "lines": 62,
                     "files": 1,
                     "bytes": 300,
                     "tokens": 75,
-                    "avg_lines": 74
+                    "avg_lines": 62
                 }
             ],
             "total": {
-                "code": 160,
-                "lines": 189,
+                "code": 150,
+                "lines": 177,
                 "files": 2,
                 "bytes": 700,
                 "tokens": 175,
-                "avg_lines": 95
+                "avg_lines": 89
             },
             "module_roots": ["src", "web"],
             "module_depth": 2,

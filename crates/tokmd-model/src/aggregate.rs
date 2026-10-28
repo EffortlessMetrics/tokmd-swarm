@@ -120,7 +120,20 @@ pub fn create_module_report_from_rows(
     let mut total_bytes = 0;
     let mut total_tokens = 0;
 
+    let parent_paths: BTreeSet<&str> = file_rows
+        .iter()
+        .filter(|row| row.kind == FileKind::Parent)
+        .map(|row| row.path.as_str())
+        .collect();
+
     for r in file_rows {
+        // Parent rows already summarize their embedded languages. Child detail
+        // must not add those contributions a second time to the module totals.
+        // Keep orphan children when callers supply a filtered row population.
+        if r.kind == FileKind::Child && parent_paths.contains(r.path.as_str()) {
+            continue;
+        }
+
         total_code += r.code;
         total_lines += r.lines;
         total_bytes += r.bytes;
