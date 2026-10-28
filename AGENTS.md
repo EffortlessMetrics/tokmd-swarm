@@ -66,6 +66,10 @@ uses Cargo's broader workspace package selection, but it is not the required
 CI sequence and does not execute libFuzzer campaigns. Scheduled fuzz and
 platform lanes provide separate, deeper proof.
 
+For a low-space local gate, run `python3 scripts/gate.py`. It supplies Cargo
+profile defaults before the xtask launcher builds, then runs the same locked
+gate. The required CI sequence above remains unchanged.
+
 The required workflow executes that sequence with `--locked` in
 `.github/workflows/ci.yml`, and `cargo xtask gate --check` passes `--locked` to
 its own check, clippy, and compile-only test steps. `--locked` precedes the

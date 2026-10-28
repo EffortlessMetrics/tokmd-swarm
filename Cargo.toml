@@ -220,12 +220,6 @@ serde_json = "1.0.150"
 tempfile = "3.27.0"
 insta = { version = "1.47.0", features = ["json"] }
 
-# Apply before Cargo builds the xtask launcher as well as its gate children.
-# The test profile inherits dev; callers can override these for debugging.
-[profile.dev]
-debug = 0
-incremental = false
-
 [profile.release]
 lto = true
 codegen-units = 1

@@ -652,20 +652,24 @@ cargo trim-target --check --keep-pdb
 cargo trim-target --check --keep-incremental
 ```
 
-**3. Prefer repo aliases for quality checks**:
+**3. Use the low-space local gate**:
 ```bash
 cargo fmt-check
-cargo gate-check
+python3 scripts/gate.py
 ```
 
-The workspace development and test profiles disable debug information and
-incremental compilation by default, including when Cargo builds the gate's
-`xtask` launcher. The gate uses a disposable temp `CARGO_TARGET_DIR` unless
-you supply one, and forces `CARGO_INCREMENTAL=0` for its child builds.
-For ordinary iterative development, `CARGO_INCREMENTAL=1` restores incremental
-compilation, at the cost of additional disk use.
+The local gate launcher defaults `CARGO_PROFILE_DEV_DEBUG=0` and
+`CARGO_INCREMENTAL=0` before Cargo builds `xtask`; the test profile inherits
+the dev debug setting. Explicit environment values are respected by the
+launcher, though the gate itself forces `CARGO_INCREMENTAL=0` for its child
+builds. The lower-level `cargo --locked xtask gate --check` and
+`cargo gate-check` commands do not set these defaults before the launcher;
+set them in the environment when using those commands under disk pressure.
+The gate uses a disposable temp `CARGO_TARGET_DIR` unless you supply one.
 On Unix-like systems the gate checks `TOKMD_MIN_FREE_GB` before each child
 build; this check runs after the launcher has been built.
+If the system temp filesystem is too small, set `CARGO_TARGET_DIR` to a
+directory on a filesystem with enough free space before running the launcher.
 
 The gate cleans up only the disposable target it creates for the current
 invocation. Targets left by interrupted runs are preserved, as are targets
@@ -679,10 +683,8 @@ Accumulated targets can still exhaust disk space. The existing
 owner-directed cleanup after identifying which targets are no longer needed;
 preserve active builds, reusable caches, and evidence.
 
-Windows MSVC target flags retain line-table debuginfo. To request full local
-symbols for a debugging session on any platform, use `RUSTFLAGS=-C debuginfo=2`
-(or `CARGO_PROFILE_DEV_DEBUG=2` where no target rustflags override it). On
-PowerShell, for example:
+This repo also defaults Windows MSVC builds to line-table debuginfo so future local builds generate much smaller symbol files than full PDB output.
+If you need full local symbols for a debugging session, use:
 ```powershell
 $env:RUSTFLAGS='-C debuginfo=2'
 cargo test ...
