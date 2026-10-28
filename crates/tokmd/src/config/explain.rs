@@ -264,6 +264,7 @@ mod tests {
         let profile = Profile {
             format: Some("json".to_string()),
             top: Some(5),
+            redact: Some(tokmd_types::RedactMode::Paths),
             ..Profile::default()
         };
         let resolved = ResolvedConfig {
@@ -281,6 +282,7 @@ mod tests {
         assert!(out.contains("matched JSON profile:  yes"), "{out}");
         assert!(out.contains("format:         json"), "{out}");
         assert!(out.contains("top:            5"), "{out}");
+        assert!(out.contains("redact:         paths"), "{out}");
         assert!(!out.contains("did not match"), "{out}");
         Ok(())
     }

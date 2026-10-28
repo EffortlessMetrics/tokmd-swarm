@@ -334,6 +334,15 @@ impl ResolvedConfig<'_> {
         self.toml_view
             .and_then(|v| v.redact.as_deref())
             .or_else(|| self.toml.and_then(|t| t.export.redact.as_deref()))
+            .or_else(|| {
+                self.json_profile
+                    .and_then(|p| p.redact)
+                    .map(|mode| match mode {
+                        tokmd_types::RedactMode::None => "none",
+                        tokmd_types::RedactMode::Paths => "paths",
+                        tokmd_types::RedactMode::All => "all",
+                    })
+            })
     }
 
     /// Get meta flag.

@@ -1349,3 +1349,106 @@ fn ordinary_handoff_file_output_reports_directory_repair_and_recovers() -> anyho
     );
     Ok(())
 }
+
+#[test]
+fn export_redaction_uses_legacy_profile_unless_overridden() {
+    use tokmd::cli::{CliExportArgs, RedactMode as CliRedactMode};
+    use tokmd::{ResolvedConfig, resolve_export_with_config};
+    use tokmd_settings::{ExportConfig, TomlConfig, ViewProfile};
+    use tokmd_types::RedactMode;
+
+    let profile = Profile {
+        redact: Some(RedactMode::Paths),
+        ..Default::default()
+    };
+    let mut config = ResolvedConfig {
+        json_profile: Some(&profile),
+        ..Default::default()
+    };
+    let mut cli = CliExportArgs {
+        paths: None,
+        format: None,
+        output: None,
+        module_roots: None,
+        module_depth: None,
+        children: None,
+        min_code: None,
+        max_rows: None,
+        redact: None,
+        meta: None,
+        strip_prefix: None,
+    };
+    assert_eq!(
+        resolve_export_with_config(&cli, &config).redact,
+        RedactMode::Paths
+    );
+
+    let toml = TomlConfig {
+        export: ExportConfig {
+            redact: Some("none".into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    config.toml = Some(&toml);
+    assert_eq!(
+        resolve_export_with_config(&cli, &config).redact,
+        RedactMode::None
+    );
+    let view = ViewProfile {
+        redact: Some("paths".into()),
+        ..Default::default()
+    };
+    config.toml_view = Some(&view);
+    assert_eq!(
+        resolve_export_with_config(&cli, &config).redact,
+        RedactMode::Paths
+    );
+    cli.redact = Some(CliRedactMode::None);
+    assert_eq!(
+        resolve_export_with_config(&cli, &config).redact,
+        RedactMode::None
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn legacy_profile_redaction_reaches_export_and_config_report() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("repo");
+    let user_config = dir.path().join("user-config");
+    let legacy = user_config.join("tokmd/config.json");
+    let toml = dir.path().join("selected.toml");
+    std::fs::create_dir(&repo)?;
+    std::fs::create_dir_all(
+        legacy
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("legacy parent"))?,
+    )?;
+    std::fs::write(&toml, "")?;
+    std::fs::write(repo.join("secret.rs"), "fn example() {}\n")?;
+    std::fs::write(
+        &legacy,
+        r#"{"profiles":{"ci":{"redact":"paths"}},"repos":{}}"#,
+    )?;
+    let output = profile_selection_command(&repo, &toml, &user_config)
+        .args(["--profile", "ci", "export", "--format", "json"])
+        .output()?;
+    anyhow::ensure!(output.status.success(), "export failed: {output:?}");
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(receipt["args"]["redact"], "paths");
+    assert_eq!(
+        receipt["rows"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("missing rows"))?
+            .len(),
+        1
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("secret.rs"));
+    let report = profile_selection_command(&repo, &toml, &user_config)
+        .args(["--profile", "ci", "--show-config"])
+        .output()?;
+    anyhow::ensure!(report.status.success(), "report failed: {report:?}");
+    assert!(String::from_utf8_lossy(&report.stdout).contains("redact:         paths"));
+    Ok(())
+}
