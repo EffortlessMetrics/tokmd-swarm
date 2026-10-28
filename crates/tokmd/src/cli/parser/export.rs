@@ -34,7 +34,7 @@ pub struct CliExportArgs {
     #[arg(long, visible_alias = "depth")]
     pub module_depth: Option<usize>,
 
-    /// Whether to include embedded languages (tokei "children" / blobs) [default: separate].
+    /// Whether to include embedded-language detail rows [default: separate].
     #[arg(long, value_enum)]
     pub children: Option<ChildIncludeMode>,
 

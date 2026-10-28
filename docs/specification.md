@@ -55,8 +55,15 @@ Receipt and stable renderer outputs are deterministic by contract.
 
 Children-mode behavior is part of the receipt contract.
 
-- `collapse` merges embedded-language children into parent totals.
-- `separate` emits embedded-language rows distinctly.
+- Language `collapse` merges embedded-language children into parent totals;
+  language `separate` emits embedded-language rows distinctly.
+- Export `separate` emits child detail rows alongside summarized parent rows.
+  `parents-only` omits child detail rows; parent rows still include embedded
+  content in their totals.
+- Module summaries count each physical file's contribution once. Child detail
+  rows do not add to a present parent's totals, so `separate` and `parents-only`
+  produce the same module totals for a complete scan. A child row without its
+  parent remains a contribution when aggregating a filtered row population.
 - Language, module, export, run, and analysis workflows SHOULD describe or
   preserve the selected children mode consistently.
 

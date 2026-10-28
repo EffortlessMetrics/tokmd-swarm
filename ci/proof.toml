@@ -929,6 +929,7 @@ packages = ["tokmd-model", "tokmd-scan"]
 proof = [
   "cargo test -p tokmd-model children --verbose",
   "cargo test -p tokmd-model normalize --verbose",
+  "cargo test --locked -p tokmd-model --test module_conservation --verbose",
   "cargo test -p tokmd-scan ignore --verbose",
   "cargo test -p tokmd-scan normalize --verbose",
 ]

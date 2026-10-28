@@ -130,9 +130,9 @@ impl From<tokmd_types::ChildrenMode> for ChildrenMode {
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChildIncludeMode {
-    /// Include embedded languages as separate contributions.
+    /// Include embedded-language detail rows alongside summarized parent rows.
     Separate,
-    /// Ignore embedded languages.
+    /// Omit child detail rows; parent totals still include embedded content.
     ParentsOnly,
 }
 
