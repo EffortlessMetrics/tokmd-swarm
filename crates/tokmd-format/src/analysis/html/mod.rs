@@ -20,11 +20,24 @@ pub fn render(receipt: &AnalysisReceipt) -> String {
     let table_rows = table::build_table_rows(receipt);
     let report_json = report_json::build_report_json(receipt);
 
-    TEMPLATE
-        .replace("{{TIMESTAMP}}", &timestamp)
-        .replace("{{METRICS_CARDS}}", &metrics_cards)
-        .replace("{{TABLE_ROWS}}", &table_rows)
-        .replace("{{REPORT_JSON}}", &report_json)
+    // Split only the template, so markers in receipt data are never interpreted
+    // as placeholders during a later substitution.
+    let (before_timestamp, rest) = TEMPLATE.split_once("{{TIMESTAMP}}").unwrap();
+    let (before_metrics, rest) = rest.split_once("{{METRICS_CARDS}}").unwrap();
+    let (before_rows, rest) = rest.split_once("{{TABLE_ROWS}}").unwrap();
+    let (before_json, after_json) = rest.split_once("{{REPORT_JSON}}").unwrap();
+    [
+        before_timestamp,
+        &timestamp,
+        before_metrics,
+        &metrics_cards,
+        before_rows,
+        &table_rows,
+        before_json,
+        &report_json,
+        after_json,
+    ]
+    .concat()
 }
 
 fn timestamp_utc() -> String {
@@ -331,6 +344,27 @@ mod tests {
     fn report_json_without_derived_is_empty_files_array() {
         let receipt = minimal_receipt();
         assert_eq!(report_json::build_report_json(&receipt), "{\"files\":[]}");
+    }
+
+    #[test]
+    fn render_preserves_template_markers_in_file_names() {
+        let mut receipt = minimal_receipt();
+        let mut derived = sample_derived();
+        derived.top.largest_lines[0].path = "{{REPORT_JSON}}<&\".rs".to_string();
+        receipt.derived = Some(derived);
+
+        let html = render(&receipt);
+        assert!(html.contains(r#"data-path="{{REPORT_JSON}}&lt;&amp;&quot;.rs""#));
+        assert!(html.contains("{{REPORT_JSON}}&lt;&amp;&quot;.rs</td>"));
+        let json = html
+            .split_once("const REPORT_DATA = ")
+            .unwrap()
+            .1
+            .split_once(';')
+            .unwrap()
+            .0;
+        let data: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(data["files"][0]["path"], "{{REPORT_JSON}}<&\".rs");
     }
 
     #[test]
