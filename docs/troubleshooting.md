@@ -658,11 +658,14 @@ cargo fmt-check
 cargo gate-check
 ```
 
-`cargo gate-check` now uses a disposable temp `CARGO_TARGET_DIR` and forces
-`CARGO_INCREMENTAL=0` unless you override `CARGO_TARGET_DIR` yourself, so the
-quality gate does not leave a long-lived local build tree behind.
-On Unix-like systems, `cargo gate-check` also refuses to start when free disk
-drops below the `TOKMD_MIN_FREE_GB` threshold.
+The workspace development and test profiles disable debug information and
+incremental compilation by default, including when Cargo builds the gate's
+`xtask` launcher. The gate uses a disposable temp `CARGO_TARGET_DIR` unless
+you supply one, and forces `CARGO_INCREMENTAL=0` for its child builds.
+For ordinary iterative development, `CARGO_INCREMENTAL=1` restores incremental
+compilation, at the cost of additional disk use.
+On Unix-like systems the gate checks `TOKMD_MIN_FREE_GB` before each child
+build; this check runs after the launcher has been built.
 
 The gate cleans up only the disposable target it creates for the current
 invocation. Targets left by interrupted runs are preserved, as are targets
@@ -676,8 +679,10 @@ Accumulated targets can still exhaust disk space. The existing
 owner-directed cleanup after identifying which targets are no longer needed;
 preserve active builds, reusable caches, and evidence.
 
-This repo also defaults Windows MSVC builds to line-table debuginfo so future local builds generate much smaller symbol files than full PDB output.
-If you need full local symbols for a debugging session, use:
+Windows MSVC target flags retain line-table debuginfo. To request full local
+symbols for a debugging session on any platform, use `RUSTFLAGS=-C debuginfo=2`
+(or `CARGO_PROFILE_DEV_DEBUG=2` where no target rustflags override it). On
+PowerShell, for example:
 ```powershell
 $env:RUSTFLAGS='-C debuginfo=2'
 cargo test ...
