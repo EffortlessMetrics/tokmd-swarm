@@ -39,8 +39,8 @@ def request_inputs(event, context):
     if context["event_name"] != "pull_request" or event.get("action") != "labeled" or event.get("label", {}).get("name") != "ci:qualify":
         raise ValueError("explicit qualification request required")
     pr = event.get("pull_request", {})
-    if pr.get("state") != "open" or pr.get("base", {}).get("ref") != "main":
-        raise ValueError("qualification requires an open PR targeting main")
+    if pr.get("draft") or pr.get("state") != "open" or pr.get("base", {}).get("ref") != "codex/tokmd-queue-canary-base":
+        raise ValueError("qualification requires an open PR targeting codex/tokmd-queue-canary-base")
     body = pr.get("body") or ""
     manifests = re.findall(r"<!-- tokmd-qualification:v1\s*\n(.*?)\n-->", body, re.DOTALL)
     if len(manifests) != 1:
@@ -53,9 +53,21 @@ def request_inputs(event, context):
 
 def admit(event, context, read_refs):
     repository = native_repository(context["repository"])
-    if context["event_name"] == "push" and context["ref"] == "refs/heads/main":
+    if context["event_name"] == "push" and context["ref"] == "refs/heads/codex/tokmd-queue-canary-base":
         match_event_repository(event, repository)
         return {"mode": "main-push", "head": context["sha"], "base": "", "pr": ""}
+    if context["event_name"] == "merge_group":
+        match_event_repository(event, repository)
+        group = event.get("merge_group", {})
+        head, base = group.get("head_sha"), group.get("base_sha")
+        if (event.get("action") != "checks_requested" or group.get("base_ref") != "refs/heads/codex/tokmd-queue-canary-base"
+                or not isinstance(head, str) or not SHA.fullmatch(head)
+                or not isinstance(base, str) or not SHA.fullmatch(base)
+                or group.get("head_ref") != context["ref"]
+                or not context["ref"].startswith("refs/heads/gh-readonly-queue/codex/tokmd-queue-canary-base/")
+                or context["sha"] != head or context["workflow_sha"] != head):
+            raise ValueError("merge group source or target does not match native context")
+        return {"mode": "merge-group", "head": head, "base": base, "pr": ""}
     inputs, native_pr = request_inputs(event, context)
     if not isinstance(inputs, dict):
         raise ValueError("qualification inputs must be an object")
@@ -91,7 +103,7 @@ def admit(event, context, read_refs):
             raise ValueError("request deadline is missing, expired or exceeds 20 minutes")
         decision["deadline_epoch"] = deadline
     refs = read_refs(pr)
-    if refs.get(f"refs/pull/{pr}/head") != head or refs.get("refs/heads/main") != base:
+    if refs.get(f"refs/pull/{pr}/head") != head or refs.get("refs/heads/codex/tokmd-queue-canary-base") != base:
         raise ValueError("requested head or base is stale")
     if proof_sha is not None and refs.get(f"refs/pull/{pr}/merge") != proof_sha:
         raise ValueError("requested merge composition is stale")
@@ -110,7 +122,7 @@ def live_refs(pr, request_deadline="", repository=REPOSITORY):
     timeout = min(limits)
     if timeout <= 0:
         raise ValueError('source budget exhausted before source read')
-    command = ["git", "ls-remote", f"https://github.com/{repository}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/main"]
+    command = ["git", "ls-remote", f"https://github.com/{repository}.git", f"refs/pull/{pr}/head", f"refs/pull/{pr}/merge", "refs/heads/codex/tokmd-queue-canary-base"]
     if not sys.platform.startswith('linux'):
         # The owned-group observer is verified on Linux. Other platforms use
         # the portable child timeout without attempting unsupported signals.

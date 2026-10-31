@@ -1163,8 +1163,8 @@ fn ci_workflow_keeps_pr_docs_evidence_routable() {
         .expect("ci workflow should be readable");
 
     assert!(
-        ci.contains("pull_request:"),
-        "CI workflow should continue to run for PRs so affected proof can classify changes"
+        ci.lines().any(|line| line == "  merge_group:") && ci.contains("types: [labeled]"),
+        "CI workflow should run on explicit label and merge groups"
     );
     assert!(
         !ci.contains("paths-ignore:"),
@@ -1909,8 +1909,9 @@ fn scoped_coverage_executor_is_pr_visible_but_not_required() {
         fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci workflow readable");
 
     assert!(
-        executor.contains("pull_request:"),
-        "proof executor should be visible on PRs"
+        executor.lines().any(|line| line == "  workflow_dispatch:")
+            && !executor.lines().any(|line| line == "  pull_request:"),
+        "proof executor should be manual rather than PR-triggered"
     );
     assert!(
         executor.contains("Scoped Coverage Executor (Non-Required)"),

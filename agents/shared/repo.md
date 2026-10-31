@@ -146,15 +146,12 @@ the packet freshness contract still applies. Required fresh checks and current
 merge-candidate statuses must satisfy the installed protections, and current
 reviews and unresolved conversations must be checked before integration.
 
-The checked-in #737 workflow admits PR proof through a deliberate `ci:qualify`
-request bound to the exact PR head, base, and merge subject. Preserve that
-admission, the four locked Cargo obligations above, and `Tokmd Rust Result`.
-Historical successful requests remain evidence for their original subjects.
-Queue-only qualification of the actual composed candidate is the selected
-integration target; this guidance does not deploy it. The checked-in workflow
-has no `merge_group` trigger. Until a separately qualified migration changes the
-installed procedure, use its existing admission and required checks. Neither
-advisory review nor carried-forward local evidence replaces those obligations.
+Run the four locked Cargo obligations above in the coding session before
+explicit merge intent and retain candidate-bound evidence. After that, request
+qualification with `ci:qualify`; the full required `Tokmd Rust Result` runs
+on the PR composition. Draft and Ready events alone do not start proof.
+The merge queue runs the same full gate and Cargo Deny on its composed commit.
+Confirm live queue behavior and required contexts before cutover.
 
 ## Codex Commit / Push Policy
 

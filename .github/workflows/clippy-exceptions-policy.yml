@@ -3,9 +3,6 @@ name: Clippy Exceptions Policy
 on:
   push:
     branches: ["main"]
-  pull_request:
-    types: [labeled]
-    branches: ["main"]
 
 permissions:
   contents: read

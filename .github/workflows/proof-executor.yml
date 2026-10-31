@@ -1,9 +1,6 @@
 name: Proof Executor Experiment
 
 on:
-  pull_request:
-    types: [labeled]
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       base_ref:

@@ -41,10 +41,47 @@ class AdmissionTests(unittest.TestCase):
                                  "generation": f"{HEAD}:{BASE}", "expected_green": "true"}}
         self.context = dict(event_name="workflow_dispatch", ref="refs/heads/topic", sha=HEAD,
                             workflow_sha=HEAD, repository=Q.REPOSITORY)
-        self.refs = {"refs/pull/734/head": HEAD, "refs/heads/main": BASE}
+        self.refs = {"refs/pull/734/head": HEAD, "refs/heads/codex/tokmd-queue-canary-base": BASE}
 
     def evaluate(self):
         return Q.admit(self.event, self.context, lambda pr: self.refs)
+
+    def test_merge_group_admits_only_exact_native_composed_source(self):
+        ref = "refs/heads/gh-readonly-queue/codex/tokmd-queue-canary-base/pr-734-" + HEAD
+        group = dict(head_sha=HEAD, base_sha=BASE, head_ref=ref, base_ref="refs/heads/codex/tokmd-queue-canary-base")
+        event = dict(action="checks_requested", repository=dict(full_name=Q.REPOSITORY), merge_group=group)
+        context = dict(self.context, event_name="merge_group", ref=ref, sha=HEAD, workflow_sha=HEAD)
+        def unexpected_read(_):
+            self.fail("queue admission does not read PR refs")
+        self.assertEqual(Q.admit(event, context, unexpected_read),
+                         dict(mode="merge-group", head=HEAD, base=BASE, pr=""))
+        for key, value in (("head_sha", "c" * 40), ("base_sha", "bad"),
+                           ("head_ref", "refs/heads/codex/tokmd-queue-canary-base"), ("base_ref", "refs/heads/other")):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                Q.admit(dict(event, merge_group=dict(group, **{key: value})), context, unexpected_read)
+        for key, value in (("sha", "c" * 40), ("workflow_sha", "c" * 40),
+                           ("ref", "refs/heads/codex/tokmd-queue-canary-base"), ("repository", "other/repo")):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                Q.admit(event, dict(context, **{key: value}), unexpected_read)
+        with self.assertRaises(ValueError):
+            Q.admit(dict(event, action="destroyed"), context, unexpected_read)
+
+    def test_merge_group_main_writes_admission_with_shared_budget(self):
+        ref = "refs/heads/gh-readonly-queue/codex/tokmd-queue-canary-base/pr-734-" + HEAD
+        event = dict(action="checks_requested", repository=dict(full_name=Q.REPOSITORY),
+                     merge_group=dict(head_sha=HEAD, base_sha=BASE, head_ref=ref, base_ref="refs/heads/codex/tokmd-queue-canary-base"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            event_path, output = root / "event", root / "output"
+            event_path.write_text(json.dumps(event))
+            env = dict(os.environ, GITHUB_EVENT_PATH=str(event_path), GITHUB_OUTPUT=str(output),
+                       GITHUB_EVENT_NAME="merge_group", GITHUB_REF=ref, GITHUB_SHA=HEAD,
+                       GITHUB_WORKFLOW_SHA=HEAD, GITHUB_REPOSITORY=Q.REPOSITORY,
+                       QUALIFICATION_DEADLINE=str(int(time.time()) + 600))
+            with patch.dict(os.environ, env, clear=True):
+                self.assertEqual(Q.main(), 0)
+            self.assertIn("mode=merge-group\n", output.read_text())
+            self.assertIn("admitted=true\n", output.read_text())
 
     def test_exact_expected_green_request_validates_its_native_source_and_generation(self):
         self.assertEqual(self.evaluate(), dict(mode="qualification", head=HEAD, base=BASE, pr="734"))
@@ -54,7 +91,7 @@ class AdmissionTests(unittest.TestCase):
             self.fail("unrequested event must not read Git source or reach proof")
         for action in ("opened", "synchronize", "ready_for_review", "converted_to_draft", "labeled"):
             with self.subTest(action=action), self.assertRaisesRegex(ValueError, "explicit qualification"):
-                Q.admit(dict(action=action, pull_request=dict(draft=True)), dict(self.context, event_name="pull_request"), forbidden)
+                Q.admit(dict(action=action, pull_request=dict(draft=False)), dict(self.context, event_name="pull_request"), forbidden)
 
     def test_malformed_missing_unreviewed_or_wrong_generation_request_is_refused(self):
         for key, value in (("pull_request", "../main"), ("head_sha", "A" * 40), ("base_sha", ""),
@@ -99,8 +136,8 @@ class AdmissionTests(unittest.TestCase):
         body = "<!-- tokmd-qualification:v1\n" + json.dumps(request) + "\n-->"
         event = dict(action="labeled", label=dict(name="ci:qualify"), number=734,
                      repository=dict(full_name=Q.REPOSITORY),
-                     pull_request=dict(state="open", body=body, draft=True, head=dict(sha=HEAD),
-                                       base=dict(sha=BASE, ref="main", repo=dict(full_name=Q.REPOSITORY))))
+                     pull_request=dict(state="open", body=body, draft=False, head=dict(sha=HEAD),
+                                       base=dict(sha=BASE, ref="codex/tokmd-queue-canary-base", repo=dict(full_name=Q.REPOSITORY))))
         context = dict(self.context, event_name="pull_request", ref="refs/pull/734/merge", sha=merge, workflow_sha=merge)
         refs = dict(self.refs, **{"refs/pull/734/merge": merge})
         return event, context, refs
@@ -139,7 +176,7 @@ class AdmissionTests(unittest.TestCase):
                     self.assertEqual(run.returncode, 0, run.stderr)
                     self.assertIn('admitted=true\n', output)
                     self.assertEqual(calls, ['ls-remote', f'https://github.com/{repository}.git',
-                                            'refs/pull/734/head', 'refs/pull/734/merge', 'refs/heads/main'])
+                                            'refs/pull/734/head', 'refs/pull/734/merge', 'refs/heads/codex/tokmd-queue-canary-base'])
 
     def test_native_repository_mismatches_refuse_before_git_on_pr_and_main_push(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -149,7 +186,7 @@ class AdmissionTests(unittest.TestCase):
                         continue
                     event, context, refs = self.native_request()
                     if kind == 'push':
-                        context.update(event_name='push', ref='refs/heads/main')
+                        context.update(event_name='push', ref='refs/heads/codex/tokmd-queue-canary-base')
                     if mismatch == 'native':
                         context['repository'] = 'contributor/fork'
                         event['repository']['full_name'] = 'contributor/fork'
@@ -181,7 +218,7 @@ class AdmissionTests(unittest.TestCase):
             self.assertGreaterEqual(int(deadline), before + 1200)
             self.assertLessEqual(int(deadline), int(time.time()) + 1200)
             for repository in ('EffortlessMetrics/tokmd-swarm', 'EffortlessMetrics/tokmd'):
-                context = dict(self.context, event_name='push', ref='refs/heads/main', repository=repository)
+                context = dict(self.context, event_name='push', ref='refs/heads/codex/tokmd-queue-canary-base', repository=repository)
                 for valid in (True, False):
                     with self.subTest(repository=repository, valid=valid):
                         candidate = deadline if valid else str(int(time.time()) + 360 * 60)
@@ -195,7 +232,7 @@ class AdmissionTests(unittest.TestCase):
                         else:
                             self.assertEqual(output, '')
 
-    def test_native_explicit_request_admits_real_pr_composition_including_draft(self):
+    def test_native_explicit_request_admits_real_pr_composition(self):
         event, context, refs = self.native_request()
         self.assertEqual(Q.admit(event, context, lambda pr: refs)["mode"], "pr-qualification")
         with tempfile.TemporaryDirectory() as directory:
@@ -212,7 +249,8 @@ class AdmissionTests(unittest.TestCase):
 
     def test_native_label_alone_closed_wrong_pr_or_stale_merge_cannot_admit(self):
         event, context, refs = self.native_request()
-        cases = [dict(event, pull_request=dict(event["pull_request"], body="")),
+        cases = [dict(event, pull_request=dict(event["pull_request"], draft=True)),
+                 dict(event, pull_request=dict(event["pull_request"], body="")),
                  dict(event, pull_request=dict(event["pull_request"], state="closed")), dict(event, number=735)]
         for candidate in cases:
             with self.subTest(candidate=candidate), self.assertRaises(ValueError):
@@ -240,7 +278,7 @@ class AdmissionTests(unittest.TestCase):
             event.write_text(json.dumps(dict(repository=dict(full_name=Q.REPOSITORY))))
             deadline = str(int(time.time()) + 600)
             env = dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_OUTPUT=str(output),
-                       GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main", GITHUB_SHA=HEAD,
+                       GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/codex/tokmd-queue-canary-base", GITHUB_SHA=HEAD,
                        GITHUB_WORKFLOW_SHA=HEAD, GITHUB_REPOSITORY=Q.REPOSITORY, QUALIFICATION_DEADLINE=deadline)
             with patch.dict(os.environ, env), patch.object(Q, "live_refs", side_effect=AssertionError("unexpected source read")):
                 self.assertEqual(Q.main(), 0)
@@ -260,15 +298,30 @@ class ProductionPathTests(unittest.TestCase):
         triggers = self.source.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
         self.assertNotRegex(triggers, r"(?m)^    (if|needs):")
 
-    def test_actual_pr_trigger_admits_explicit_label_and_keeps_ready_as_collaboration(self):
+    def test_triggers_use_explicit_label_and_merge_group(self):
         triggers = self.source.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
-        pr = triggers.split("  pull_request:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
-        types = re.search(r"^    types: \[(.+)\]$", pr, re.MULTILINE).group(1)
-        actual = {value.strip() for value in types.split(",")}
-        self.assertEqual(actual, {"opened", "reopened", "synchronize", "labeled"})
-        self.assertNotIn("ready_for_review", actual)
-        self.assertNotIn("converted_to_draft", actual)
-        self.assertIn('branches: [ "main" ]', pr)
+        self.assertIn("  pull_request:\n    types: [labeled]", triggers)
+        self.assertIn("  merge_group:\n    types: [checks_requested]", triggers)
+        self.assertNotIn("ready_for_review", triggers)
+        self.assertNotIn("synchronize", triggers)
+        self.assertIn("github.event.label.name == 'ci:qualify' && !github.event.pull_request.draft", self.source)
+        self.assertIn("github.event.pull_request.draft) && ' (qualification not requested)'", self.source)
+
+    def test_non_intent_and_draft_events_never_start_the_gate(self):
+        for job in ("admission", "tokmd-rust-result"):
+            body = self.source.split(f"  {job}:\n", 1)[1]
+            expression = re.search(r"(?m)^    if: \${{ (.+) }}$", body).group(1)
+            program = "const [exp,event,label,draft]=process.argv.slice(1);const github={event_name:event,event:{label:{name:label},pull_request:{draft:draft==='true'}}};const always=()=>true;process.stdout.write(String(eval(exp)));"
+            for event, label, draft, expected in (("pull_request", "ci:qualify", "true", "false"),
+                    ("pull_request", "ordinary", "false", "false"),
+                    ("pull_request", "ci:qualify", "false", "true"), ("merge_group", "", "false", "true")):
+                with self.subTest(job=job, event=event, label=label, draft=draft):
+                    run = subprocess.run([NODE, "-e", program, expression, event, label, draft], capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(run.stdout, expected)
+
+    def test_advisory_review_uses_artifact_only_with_read_only_token(self):
+        self.assertIn("          posting: artifact-only", self.source)
 
     def test_actual_route_keeps_forks_hosted_and_requires_same_idle_runner_capabilities(self):
         body = step_script(self.source, "Decide gate runner (self-hosted primary, gh-hosted overflow)")
@@ -293,17 +346,30 @@ class ProductionPathTests(unittest.TestCase):
                     self.assertEqual(run.returncode, 0, run.stderr)
                     self.assertIn("runner_kind=" + expected + "\n", output.read_text())
 
+    def test_merge_group_route_uses_hosted_runner_even_with_idle_self_hosted_capacity(self):
+        body = step_script(self.source, "Decide gate runner (self-hosted primary, gh-hosted overflow)")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            script = body.replace("${{ github.event_name }}", "merge_group").replace(
+                "${{ github.event.pull_request.head.repo.fork }}", "false")
+            run = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                                 env=dict(os.environ, GITHUB_OUTPUT=str(output), GH_TOKEN="test-only"),
+                                 capture_output=True, text=True, timeout=3)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn("runner_kind=github\n", output.read_text())
+        self.assertIn("github.event_name != 'merge_group' && secrets.EM_RUNNER_READ_TOKEN", self.source)
+
     def test_all_old_jobs_depend_on_real_admission_and_required_name_is_preserved(self):
         jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
         seen = 0
         for name, body in zip(jobs[1::2], jobs[2::2]):
-            if name == "admission":
+            if name in ("admission", "queue-gate"):
                 continue
             seen += 1
             self.assertRegex(body, r"(?m)^    needs:.*admission|^      - admission$")
             if name == "tokmd-rust-result":
                 self.assertIn('    name: Tokmd Rust Result${{', body)
-                self.assertIn("    if: always()\n", body)
+                self.assertIn("    if: ${{ always() &&", body)
             else:
                 self.assertIn("needs.admission.outputs.admitted == 'true'", body)
         self.assertEqual(seen, 19)
@@ -311,7 +377,7 @@ class ProductionPathTests(unittest.TestCase):
     def test_expensive_jobs_wait_for_the_blocking_baseline(self):
         jobs = re.split(r"^  ([a-z][a-z0-9-]*):\n", self.source.split("jobs:\n", 1)[1], flags=re.MULTILINE)
         for name, body in zip(jobs[1::2], jobs[2::2]):
-            if name in ("admission", "route", "deny", "detect"):
+            if name in ("admission", "route", "deny", "detect", "queue-gate"):
                 continue
             with self.subTest(job=name):
                 self.assertIn("deny", re.search(r"^    needs:(.*?)(?=^    [a-z]|\Z)", body, re.MULTILINE | re.DOTALL).group(1))
@@ -322,7 +388,7 @@ class ProductionPathTests(unittest.TestCase):
         body = self.source.split("  tokmd-rust-result:\n", 1)[1].split("  detect:\n", 1)[0]
         expression = re.search(r"^    name: (.+)$", body, re.MULTILINE).group(1)
         program = r"""const [template,event,action,label]=process.argv.slice(1);
-const github={event_name:event,event:{action,label:{name:label}}};
+const github={event_name:event,event:{action,label:{name:label},pull_request:{draft:false}}};
 process.stdout.write(template.replace(/\$\{\{ (.*?) \}\}/g,(_,expression)=>String(eval(expression))));"""
         for event, action, label, expected in (("pull_request","opened","","Tokmd Rust Result (qualification not requested)"),
             ("pull_request","ready_for_review","","Tokmd Rust Result (qualification not requested)"),

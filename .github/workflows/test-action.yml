@@ -1,11 +1,6 @@
 name: Test Action
 
 on:
-  pull_request:
-    types: [labeled]
-    paths:
-      - 'action.yml'
-      - '.github/workflows/test-action.yml'
   push:
     branches:
       - main

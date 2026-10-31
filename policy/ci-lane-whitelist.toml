@@ -30,7 +30,7 @@ em_ci_small        = 1.0
 [[lane]]
 id               = "msrv_check"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}MSRV Check"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}MSRV Check"
 kind             = "compatibility"
 tier             = "frontdoor"
 default_pr       = true
@@ -50,7 +50,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "admission"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Admit explicit qualification"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Admit explicit qualification"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -70,7 +70,7 @@ expires          = "2027-04-17"
 [[lane]]
 id               = "qualification_context_name"
 workflow         = ".github/workflows/ci.yml"
-job              = "Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}"
+job              = "Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && ' (qualification not requested)' || '' }}"
 kind             = "planner"
 tier             = "frontdoor"
 # Naming metadata for the existing Rust job is not an additional default workload.
@@ -91,7 +91,7 @@ expires          = "2027-04-17"
 [[lane]]
 id               = "route_ci_runner"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Route CI runner"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Route CI runner"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -131,7 +131,7 @@ expires          = "2026-12-07"
 [[lane]]
 id               = "affected_proof_plan"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Affected Proof Plan"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Affected Proof Plan"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -157,7 +157,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "ci_detect_risk_packs"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Detect risk packs"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Detect risk packs"
 kind             = "planner"
 tier             = "frontdoor"
 default_pr       = true
@@ -177,7 +177,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "fast_proof_run_advisory"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Fast Proof Run (Advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Fast Proof Run (Advisory)"
 kind             = "proof"
 tier             = "frontdoor"
 default_pr       = true
@@ -197,7 +197,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "feature_boundaries"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Feature Boundaries"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Feature Boundaries"
 kind             = "rust"
 tier             = "frontdoor"
 default_pr       = true
@@ -217,7 +217,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "typos"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Typos"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Typos"
 kind             = "lint"
 tier             = "frontdoor"
 default_pr       = true
@@ -237,7 +237,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "cargo_deny"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Cargo Deny"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Cargo Deny"
 kind             = "supply_chain"
 tier             = "frontdoor"
 default_pr       = true
@@ -257,7 +257,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "version_consistency"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Version consistency"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Version consistency"
 kind             = "release"
 tier             = "frontdoor"
 default_pr       = true
@@ -277,7 +277,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "docs_check"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Docs Check"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Docs Check"
 kind             = "docs"
 tier             = "frontdoor"
 default_pr       = true
@@ -306,7 +306,7 @@ expires          = "2026-11-07"
 [[lane]]
 id               = "build_test_windows"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (Windows)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Build & Test (Windows)"
 kind             = "rust"
 tier             = "risk-gated"
 default_pr       = false
@@ -328,7 +328,7 @@ expires          = "2026-11-07"
 [[lane]]
 id                     = "wasm_compile_test"
 workflow               = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Wasm Compile & Test"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Wasm Compile & Test"
 kind                   = "wasm"
 tier                   = "risk-gated"
 default_pr             = false
@@ -350,7 +350,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "nix_pr_package_gate"
 workflow               = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Nix PR Package Gate"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Nix PR Package Gate"
 kind                   = "packaging"
 tier                   = "deep"
 default_pr             = false
@@ -372,7 +372,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "mutation_required"
 workflow               = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Mutation Testing"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Mutation Testing"
 kind                   = "mutation"
 tier                   = "deep"
 default_pr             = false
@@ -394,7 +394,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "proptest_smoke"
 workflow               = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Proptest Smoke"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Proptest Smoke"
 kind                   = "property"
 tier                   = "risk-gated"
 default_pr             = false
@@ -415,7 +415,7 @@ expires                = "2026-11-07"
 [[lane]]
 id                     = "publish_surface"
 workflow               = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Publish Surface"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Publish Surface"
 kind                   = "release"
 tier                   = "risk-gated"
 default_pr             = true
@@ -453,7 +453,7 @@ expires                = "2026-11-07"
 [[lane]]
 id               = "build_macos_push"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (macOS)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Build & Test (macOS)"
 kind             = "rust"
 tier             = "deep"
 default_pr       = false
@@ -1174,7 +1174,7 @@ expires          = "2026-12-26"
 [[lane]]
 id               = "ci_actuals_advisory"
 workflow         = ".github/workflows/ci.yml"
-job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Actuals (Advisory)"
+job              = "${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}CI Actuals (Advisory)"
 kind             = "summary"
 tier             = "summary"
 default_pr       = true

@@ -1,9 +1,6 @@
 name: ripr (advisory)
 
 on:
-  pull_request:
-    types: [labeled]
-    branches: ["main"]
   workflow_dispatch:
 
 permissions:

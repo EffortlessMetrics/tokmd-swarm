@@ -110,7 +110,7 @@ jobs:
         with:
           preset: bun-ub
           mode: review-direct
-          posting: review
+          posting: artifact-only
           setup-rust: false
           tool-bundle: core
           provider-policy: minimax-primary

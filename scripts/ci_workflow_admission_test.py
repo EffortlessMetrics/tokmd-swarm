@@ -38,7 +38,7 @@ const contexts=[['pull_request','labeled','ci:qualify'],['push','',''],
   ['pull_request','opened',''],['pull_request','ready_for_review',''],
   ['pull_request','synchronize',''],['pull_request','labeled','ordinary']];
 const output=contexts.map(([event,action,label])=>{
-  const github={event_name:event,event:{action,label:{name:label}}};
+  const github={event_name:event,event:{action,label:{name:label},pull_request:{draft:false}}};
   return templates.map(([, , template])=>template.replace(/\$\{\{ (.*?) \}\}/g,(_,expression)=>String(eval(expression))));
 }); process.stdout.write(JSON.stringify(output));"""
         run = subprocess.run([NODE, '-e', program, json.dumps(templates)], capture_output=True, text=True, timeout=5)
@@ -57,9 +57,8 @@ const output=contexts.map(([event,action,label])=>{
         count = 0
         for name in WORKFLOWS:
             source = (ROOT / f'.github/workflows/{name}.yml').read_text()
-            pr = source.split('  pull_request:\n', 1)[1].split('\npermissions:', 1)[0]
-            self.assertIn('    types: [labeled]\n', pr, name)
-            self.assertNotRegex(pr, r'types:.*(?:opened|synchronize|ready_for_review|converted_to_draft)')
+            triggers = source.split('on:\n', 1)[1].split('\npermissions:', 1)[0]
+            self.assertNotIn('  pull_request:\n', triggers, name)
             for job, body in jobs(source):
                 with self.subTest(workflow=name, job=job):
                     count += 1
@@ -102,7 +101,7 @@ const output=contexts.map(([event,action,label])=>{
                     output.unlink(missing_ok=True)
                     environment.unlink(missing_ok=True)
                     event_path.write_text(json.dumps(dict(event, action=action)))
-                    source_refs = dict(refs, **({'refs/heads/main': 'e' * 40} if stale else {}))
+                    source_refs = dict(refs, **({'refs/heads/codex/tokmd-queue-canary-base': 'e' * 40} if stale else {}))
                     env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'], GITHUB_EVENT_PATH=str(event_path),
                         GITHUB_EVENT_NAME='pull_request', GITHUB_REPOSITORY=context['repository'], GITHUB_REF=context['ref'],
                         GITHUB_SHA=context['sha'], GITHUB_WORKFLOW_SHA=context['workflow_sha'], GITHUB_OUTPUT=str(output),

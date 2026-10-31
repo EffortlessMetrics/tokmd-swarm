@@ -1,11 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    types: [opened, reopened, synchronize, labeled]
-    branches: [ "main" ]
+    types: [labeled]
+    branches: [ "codex/tokmd-queue-canary-base" ]
+  merge_group:
+    types: [checks_requested]
+    branches: [ "codex/tokmd-queue-canary-base" ]
   workflow_dispatch:
     inputs:
       pull_request:
@@ -46,7 +47,8 @@ env:
 
 jobs:
   admission:
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Admit explicit qualification
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'ci:qualify' && !github.event.pull_request.draft) }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Admit explicit qualification
     runs-on: ubuntu-latest
     timeout-minutes: 1
     outputs:
@@ -73,7 +75,7 @@ jobs:
   route:
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Route CI runner
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Route CI runner
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -83,7 +85,7 @@ jobs:
       - name: Decide gate runner (self-hosted primary, gh-hosted overflow)
         id: route
         env:
-          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN }}
+          GH_TOKEN: ${{ github.event_name != 'merge_group' && secrets.EM_RUNNER_READ_TOKEN || '' }}
         run: |
           set -uo pipefail
           GH='"ubuntu-latest"'
@@ -92,6 +94,10 @@ jobs:
             echo "runner=$1" >> "$GITHUB_OUTPUT"
             echo "runner_kind=$2" >> "$GITHUB_OUTPUT"
           }
+          if [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            emit "$GH" github "merge group may include untrusted changes"
+            exit 0
+          fi
           if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.head.repo.fork }}" == "true" ]]; then
             emit "$GH" github "fork PR"
             exit 0
@@ -120,8 +126,8 @@ jobs:
           fi
 
   tokmd-rust-result:
-    if: always()
-    name: Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && ' (qualification not requested)' || '' }}
+    if: ${{ always() && (github.event_name != 'pull_request' || (github.event.label.name == 'ci:qualify' && !github.event.pull_request.draft)) }}
+    name: Tokmd Rust Result${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && ' (qualification not requested)' || '' }}
     outputs:
       source_validated: ${{ steps.source_before.outcome == 'success' && steps.source_after.outcome == 'success' }}
       rustc_version: ${{ steps.compiler_version.outputs.version }}
@@ -131,7 +137,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Refuse unrequested or failed admission
         env:
@@ -233,7 +238,7 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           cache-directories: ${{ runner.temp }}/target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
 
       - name: Record cache outcome
         if: always()
@@ -348,7 +353,7 @@ jobs:
         with:
           preset: bun-ub
           mode: review-direct
-          posting: review
+          posting: artifact-only
           setup-rust: false
           tool-bundle: core
           provider-policy: minimax-primary
@@ -368,7 +373,7 @@ jobs:
         run: |
           case "${UB_OUTCOME}" in
             success)
-              echo "ub-review advisory lane completed; see the grouped PR review." >> "$GITHUB_STEP_SUMMARY"
+              echo "ub-review advisory lane completed; see the job summary and artifacts." >> "$GITHUB_STEP_SUMMARY"
               ;;
             skipped|"")
               echo "ub-review advisory lane skipped (fork PR or non-PR event); deterministic gate verdict stands." >> "$GITHUB_STEP_SUMMARY"
@@ -595,7 +600,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Detect risk packs
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Detect risk packs
     runs-on: ubuntu-latest
     outputs:
       wasm: ${{ steps.detect.outputs.wasm }}
@@ -635,11 +640,14 @@ jobs:
         env:
           LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels) || '[]' }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha || '' }}
         run: |
           set -euo pipefail
           mkdir -p target/ci
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base_ref="origin/${{ github.base_ref }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            base_ref="${GROUP_BASE}"
           elif [ "${{ github.event_name }}" = "push" ] && [ -n "${PUSH_BEFORE}" ] && ! printf '%s' "${PUSH_BEFORE}" | grep -Eq '^0+$'; then
             base_ref="${PUSH_BEFORE}"
           elif [ "${{ github.event_name }}" = "push" ] && git rev-parse --verify HEAD^ >/dev/null 2>&1; then
@@ -714,7 +722,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}MSRV Check
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}MSRV Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -751,7 +759,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
       - name: Allocate phase 4 budget
         id: phase_budget_4
         if: ${{ steps.job_budget.outcome == 'success' }}
@@ -783,7 +791,7 @@ jobs:
 
   build-windows:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (Windows)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Build & Test (Windows)
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'windows') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.windows_path == 'true')
     runs-on: windows-latest
@@ -823,7 +831,7 @@ jobs:
       if: ${{ steps.phase_budget_3.outcome == 'success' }}
       timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
       with:
-        save-if: ${{ github.ref == 'refs/heads/main' }}
+        save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
 
     - name: Allocate phase 4 budget
       id: phase_budget_4
@@ -854,7 +862,7 @@ jobs:
   build-macos:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Build & Test (macOS)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Build & Test (macOS)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push')
     runs-on: macos-latest
 
@@ -893,7 +901,7 @@ jobs:
       if: ${{ steps.phase_budget_3.outcome == 'success' }}
       timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
       with:
-        save-if: ${{ github.ref == 'refs/heads/main' }}
+        save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
         cache-bin: false
 
     - name: Allocate phase 4 budget
@@ -926,7 +934,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Feature Boundaries
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Feature Boundaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -960,7 +968,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
           cache-directories: ${{ runner.temp }}/target
 
       - name: Allocate phase 4 budget
@@ -1117,7 +1125,7 @@ jobs:
   affected-plan:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Affected Proof Plan
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Affected Proof Plan
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
@@ -1155,7 +1163,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
 
       - name: Allocate phase 4 budget
         id: phase_budget_4
@@ -1261,7 +1269,7 @@ jobs:
   fast-proof-run:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Fast Proof Run (Advisory)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Fast Proof Run (Advisory)
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
@@ -1300,7 +1308,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
 
       - id: proof_run_policy
         name: Resolve fast proof-run policy
@@ -1449,7 +1457,7 @@ jobs:
 
   wasm-compile:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Wasm Compile & Test
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Wasm Compile & Test
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'wasm') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.wasm == 'true')
     runs-on: ubuntu-latest
@@ -1507,7 +1515,7 @@ jobs:
         if: ${{ steps.phase_budget_5.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_5.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
       - name: Allocate phase 6 budget
         id: phase_budget_6
         if: ${{ steps.job_budget.outcome == 'success' }}
@@ -1636,7 +1644,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true'
     needs: admission
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Cargo Deny
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Cargo Deny
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1700,7 +1708,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Typos
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Typos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1755,7 +1763,7 @@ jobs:
 
   proptest-smoke:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Proptest Smoke
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Proptest Smoke
     needs: [admission, deny, detect]
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'property-tests') || contains(github.event.pull_request.labels.*.name, 'full-ci') || needs.detect.outputs.core_receipts == 'true' || needs.detect.outputs.analysis == 'true')
     runs-on: ubuntu-latest
@@ -1791,7 +1799,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
       - name: Allocate phase 4 budget
         id: phase_budget_4
         if: ${{ steps.job_budget.outcome == 'success' }}
@@ -1825,7 +1833,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Publish Surface
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Publish Surface
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1859,7 +1867,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
       - name: Allocate phase 4 budget
         id: phase_budget_4
         if: ${{ steps.job_budget.outcome == 'success' }}
@@ -1890,7 +1898,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Version consistency
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Version consistency
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1942,7 +1950,7 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Docs Check
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Docs Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1976,7 +1984,7 @@ jobs:
         if: ${{ steps.phase_budget_3.outcome == 'success' }}
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
       - name: Allocate phase 4 budget
         id: phase_budget_4
         if: ${{ steps.job_budget.outcome == 'success' }}
@@ -2046,7 +2054,7 @@ jobs:
           exit "$budget_status"
 
   nix-pr:
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Nix PR Package Gate
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Nix PR Package Gate
     needs: [admission, deny, detect]
     # Nix package validation is publication-owned. Keep it out of the
     # tokmd-swarm workbench so swarm push/PR checks do not depend on
@@ -2137,7 +2145,7 @@ jobs:
   mutation:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
     needs: [admission, deny]
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}Mutation Testing
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}Mutation Testing
     runs-on: ubuntu-latest
     # Runtime mutation testing moves to label/push-to-main so ordinary
     # PRs don't pay 45 LEM by default. PR 11 adds an advisory `ripr`
@@ -2194,6 +2202,7 @@ jobs:
         id: changed
         env:
           PUSH_BEFORE: ${{ github.event.before || '' }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha || '' }}
         run: |
           set -euo pipefail
 
@@ -2317,7 +2326,7 @@ jobs:
 
   ci-actuals:
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
-    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}CI Actuals (Advisory)
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify' || github.event.pull_request.draft) && 'Observation - ' || '' }}CI Actuals (Advisory)
     permissions:
       contents: read
       actions: read
@@ -2399,7 +2408,7 @@ jobs:
         timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}
         continue-on-error: true
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/codex/tokmd-queue-canary-base' }}
 
       - name: Allocate phase 4 budget
         id: phase_budget_4

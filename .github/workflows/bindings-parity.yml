@@ -16,22 +16,6 @@ on:
       - "docs/specs/bindings-parity.md"
       - ".github/workflows/bindings-parity.yml"
       - ".github/agents/bindings-parity-keeper.agent.md"
-  pull_request:
-    types: [labeled]
-    branches: ["main"]
-    paths:
-      - "crates/tokmd-core/**"
-      - "crates/tokmd-python/**"
-      - "crates/tokmd-node/**"
-      - "crates/tokmd-envelope/**"
-      - "fixtures/bindings-parity/**"
-      - "xtask/src/tasks/bindings_parity.rs"
-      - "xtask/src/cli.rs"
-      - "xtask/src/main.rs"
-      - "xtask/src/tasks/mod.rs"
-      - "docs/specs/bindings-parity.md"
-      - ".github/workflows/bindings-parity.yml"
-      - ".github/agents/bindings-parity-keeper.agent.md"
 
 permissions:
   contents: read

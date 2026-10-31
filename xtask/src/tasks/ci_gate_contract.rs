@@ -33,7 +33,7 @@ const REQUIRED_MARKERS: &[&str] = &[
     "UB Review advisory status",
     "EffortlessMetrics/ub-review@",
     "mode: review-direct",
-    "posting: review",
+    "posting: artifact-only",
     "setup-rust: false",
     "provider-policy: minimax-primary",
     "minimax-model: MiniMax-M3",

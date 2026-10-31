@@ -15,7 +15,7 @@
 2. **One gate job** on a runner chosen by a minimal **advisory** `route` job
    (self-hosted primary, GitHub-hosted overflow).
 3. **Advisory `ub-review`** in the **same** gate job (`review-direct`,
-   `posting: review`, `continue-on-error: true`).
+   `posting: artifact-only`, `continue-on-error: true`).
 4. **Fork PRs** skip only the advisory step; the core gate still runs on
    GitHub-hosted overflow.
 5. **Advisory failures** emit concise what/why/fix notes in the job summary;
@@ -37,7 +37,7 @@ sharing one workspace `CARGO_TARGET_DIR`. Cargo's target-dir lock serialises
 overlap safely; a disk-headroom guard prevents concurrent builds from filling
 the runner.
 
-`ub-review` must never fail the merge. Its grouped PR review, gate manifest,
+`ub-review` must never fail the merge. Its advisory packet, gate manifest,
 model availability, and lane opinions are advisory only.
 
 ### Relationship to evidence packets (#280)
@@ -82,7 +82,7 @@ It does **not** prove:
 | `target/ci-core/precontext.md` | ub-review `pr-thread-context` | yes on PRs |
 | `target/ci-core/core_exit` / `core.log` | Final assert step | yes |
 | ub-review packet under `target/ub-review/` | Reviewers, ledger | advisory |
-| Grouped PR review | GitHub PR UI | advisory, same-repo only |
+| Advisory review packet | Job summary and artifacts | advisory, same-repo only |
 | Route job outputs (`runner`, `runner_kind`) | Gate `runs-on` | yes |
 
 ## Target workflow shape
@@ -103,7 +103,7 @@ jobs:
 ### Advisory ub-review pins
 
 - Action: `EffortlessMetrics/ub-review@<immutable-sha>` (bump deliberately).
-- `mode: review-direct`, `posting: review`, `setup-rust: false`,
+- `mode: review-direct`, `posting: artifact-only`, `setup-rust: false`,
   `tool-bundle: core`.
 - `provider-policy: minimax-primary`, `minimax-model: MiniMax-M3`,
   `opencode-model: deepseek-v4-flash`.
@@ -117,8 +117,9 @@ permissions:
   contents: read
 ```
 
-The gate job adds `pull-requests: write` only so ub-review can post its grouped
-advisory review.
+The gate job retains read-only contents access. UB Review writes its advisory
+packet and summary without posting a PR review; separate review workflows
+retain their own permissions.
 
 ## Compatibility
 
