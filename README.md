@@ -1,5 +1,7 @@
 <h1 align="center">tokmd</h1>
 
+<!-- Temporary isolated merge-queue canary probe. -->
+
 <p align="center">
   <a href="https://github.com/EffortlessMetrics/tokmd/actions/workflows/ci.yml"><img src="https://github.com/EffortlessMetrics/tokmd/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="https://codecov.io/gh/EffortlessMetrics/tokmd"><img src="https://codecov.io/gh/EffortlessMetrics/tokmd/graph/badge.svg?branch=main" alt="Codecov" /></a>
