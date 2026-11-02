@@ -88,6 +88,10 @@ metadata, base/head refs, packet-local artifact paths, schemas, media types,
 BLAKE3 hashes, verdict metadata, evidence availability counts, and capability
 summaries. Artifact paths must be relative to the packet directory and must not
 escape the packet root.
+The verifier resolves the packet root and each listed artifact before hashing;
+directory links are allowed only when the artifact resolves inside that root.
+A symlinked packet root is supported. This check assumes stable filesystem paths
+during verification; it is not atomic against concurrent path replacement.
 
 `cockpit.json` is the full cockpit receipt. It remains the authoritative source
 for cockpit review-plan items and cockpit gate statuses.
