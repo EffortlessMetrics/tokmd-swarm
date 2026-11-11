@@ -918,3 +918,21 @@ surface = "build"
 classification = "test"
 reason = "Execute checked-in CI clock producers and the observability receipt consumer boundary."
 covered_by = ["python3 -m unittest scripts/ci_observability_clock_test.py"]
+
+[[allow]]
+glob = "scripts/ci_swarm_image.py"
+kind = "ci_controller"
+owner = "distribution"
+surface = "build"
+classification = "production"
+reason = "Exact OCI qualification and deliberate swarm publication share one tested controller."
+covered_by = ["python3 -m unittest scripts/ci_swarm_image_test.py"]
+
+[[allow]]
+glob = "scripts/ci_swarm_image_test.py"
+kind = "ci_contract_test"
+owner = "distribution"
+surface = "build"
+classification = "test_fixture"
+reason = "Offline refusal controls exercise the production image controller and invoked workflows."
+covered_by = ["python3 -m unittest scripts/ci_swarm_image_test.py"]

@@ -1132,24 +1132,44 @@ review_after     = "2026-06-07"
 expires          = "2026-11-07"
 
 [[lane]]
-id               = "swarm_ghcr_publish"
+id               = "swarm_image_qualification"
 workflow         = ".github/workflows/swarm-ghcr.yml"
-job              = "Build and Push Swarm GHCR Image"
+job              = "Qualify Swarm OCI Image"
 kind             = "release"
 tier             = "deep"
 default_pr       = false
 blocking         = false
 runner           = "ubuntu_latest"
-base_lem         = 25
+base_lem         = 20
 owner            = "distribution/swarm-ghcr"
-intent           = "Build and push the workbench GHCR image for tokmd-swarm main."
-failure_mode     = "Swarm workbench image missing or stale on ghcr.io/effortlessmetrics/tokmd-swarm."
-proof_obligation = "Run docker buildx build and push with main and sha-* tags."
-evidence         = ["swarm-ghcr workflow logs", "registry tag or manifest visibility check"]
+intent           = "Build and smoke exact OCI bytes without registry credentials or writes."
+failure_mode     = "An unqualified or wrong-source image is admitted for explicit publication."
+proof_obligation = "Verify OCI blob/source identities, smoke the loaded config ID and retain exact bytes."
+evidence         = ["qualification.json", "immutable Actions artifact ID and digest"]
 allowed_triggers = ["push", "workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-07-22"
-expires          = "2026-12-22"
+review_after     = "2026-12-11"
+expires          = "2027-05-11"
+
+[[lane]]
+id               = "swarm_ghcr_publish"
+workflow         = ".github/workflows/swarm-ghcr-publish.yml"
+job              = "Publish Qualified Swarm OCI Image"
+kind             = "release"
+tier             = "deep"
+default_pr       = false
+blocking         = false
+runner           = "ubuntu_latest"
+base_lem         = 20
+owner            = "distribution/swarm-ghcr"
+intent           = "Publish exact retained OCI bytes only after an explicit identity-bound dispatch."
+failure_mode     = "Stale, missing or conflicting source/image authorization mutates a registry tag."
+proof_obligation = "Validate run/artifact/source and digest identity; refuse conflicts; verify each authorized write."
+evidence         = ["publication.json", "qualified archive and registry manifest digests"]
+allowed_triggers = ["workflow_dispatch"]
+duplicate_of     = []
+review_after     = "2026-12-11"
+expires          = "2027-05-11"
 
 [[lane]]
 id               = "ghcr_container_smoke"

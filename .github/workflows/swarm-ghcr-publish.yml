@@ -1,0 +1,92 @@
+name: Publish Qualified Swarm Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Authorized full main commit SHA
+        required: true
+        type: string
+      source_tree:
+        description: Authorized full source tree SHA
+        required: true
+        type: string
+      qualification_run_id:
+        description: Successful Swarm Image Qualification main run ID
+        required: true
+        type: string
+      artifact_id:
+        description: Exact retained qualification artifact ID
+        required: true
+        type: string
+      archive_sha256:
+        description: Qualified image.tar digest (sha256 prefix)
+        required: true
+        type: string
+      manifest_digest:
+        description: Qualified OCI image manifest digest (sha256 prefix)
+        required: true
+        type: string
+      move_main:
+        description: Also authorize moving the experimental main tag
+        required: true
+        type: boolean
+        default: false
+      expected_main_digest:
+        description: Prior main manifest digest, or absent; empty when move_main is false
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# All writes from this workflow serialize, including different source requests.
+# Registry APIs do not offer an atomic compare-and-swap against outside writers.
+concurrency:
+  group: swarm-ghcr-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Qualified Swarm OCI Image
+    if: github.repository == 'EffortlessMetrics/tokmd-swarm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    steps:
+      - name: Refuse non-main dispatch
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate boundary controls
+        run: python3 -m unittest scripts/ci_swarm_image_test.py
+      - name: Install OCI transport from runner package sources
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes skopeo
+      - name: Publish only requested qualified bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_swarm_image.py publish --directory "$RUNNER_TEMP/swarm-publication"
+      - name: Advisory public swarm GHCR manifest visibility
+        if: success()
+        continue-on-error: true
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          # Empty authfile makes this a public-visibility observation only.
+          printf '{"auths":{}}\n' > "$RUNNER_TEMP/swarm-public-check.json"
+          skopeo inspect --authfile "$RUNNER_TEMP/swarm-public-check.json" \
+            "docker://ghcr.io/effortlessmetrics/tokmd-swarm:sha-$SOURCE_SHA" >/dev/null
+      - name: Retain publication checkpoint
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: swarm-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/swarm-publication/publication.json
+          if-no-files-found: error
+          retention-days: 90
