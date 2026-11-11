@@ -6,12 +6,14 @@ not offer compare-and-swap; the workflow serializes its own publishers only.
 """
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -104,6 +106,7 @@ def inspect_oci(path):
     bodies = {}
     hashes = {}
     sizes = {}
+    member_paths = {}
     total = 0
     with tarfile.open(path, "r:") as archive:
         names = set()
@@ -128,6 +131,7 @@ def inspect_oci(path):
                 digest.update(block)
                 if member.size <= MAX_JSON:
                     body.extend(block)
+            member_paths[name] = member.name
             hashes[name] = "sha256:" + digest.hexdigest()
             sizes[name] = member.size
             if member.size <= MAX_JSON:
@@ -155,11 +159,33 @@ def inspect_oci(path):
         "unsupported image manifest")
     config = descriptor(manifest["config"], True)
     require(config.get("os") == "linux" and config.get("architecture") == "amd64", "unsupported image platform")
-    for layer in manifest["layers"]:
-        descriptor(layer)
+    diff_ids = []
+    expanded_bytes = 0
+    with tarfile.open(path, "r:") as archive:
+        for layer in manifest["layers"]:
+            descriptor(layer)
+            media = layer.get("mediaType", "")
+            require(media in {"application/vnd.oci.image.layer.v1.tar",
+                              "application/vnd.oci.image.layer.v1.tar+gzip",
+                              "application/vnd.docker.image.rootfs.diff.tar",
+                              "application/vnd.docker.image.rootfs.diff.tar.gzip"},
+                    "unsupported layer compression")
+            name = "blobs/sha256/" + layer["digest"].split(":")[1]
+            source = archive.extractfile(member_paths[name])
+            stream = gzip.GzipFile(fileobj=source) if media.endswith(("+gzip", ".gzip")) else source
+            digest = hashlib.sha256()
+            with stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    expanded_bytes += len(block)
+                    require(expanded_bytes <= MAX_ARCHIVE, "expanded image layers exceed limit")
+                    digest.update(block)
+            diff_ids.append("sha256:" + digest.hexdigest())
+    require(config.get("rootfs") == {"type": "layers", "diff_ids": diff_ids},
+            "image layer bytes differ from config diff IDs")
     require(set(hashes) == referenced | {"oci-layout", "index.json"}, "unreferenced OCI content")
     return {"manifest_digest": selected["digest"], "config_digest": manifest["config"]["digest"],
-            "labels": config.get("config", {}).get("Labels", {}), "platform": "linux/amd64"}
+            "labels": config.get("config", {}).get("Labels", {}), "platform": "linux/amd64",
+            "layer_diff_ids": diff_ids}
 
 
 def qualify(directory, ctx):
@@ -175,10 +201,22 @@ def qualify(directory, ctx):
     version = tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
     tag = "tokmd-swarm-qualification:" + head
     smoke = []
+    loaded = False
+    primary_error = None
     try:
         command(["skopeo", "copy", "oci-archive:" + str(archive), "docker-daemon:" + tag])
+        loaded = True
         actual_id = command(["docker", "image", "inspect", "--format", "{{.Id}}", tag]).decode().strip()
-        require(actual_id == identity["config_digest"], "loaded image does not match archive config")
+        require(DIGEST.fullmatch(actual_id) is not None, "daemon returned an invalid image ID")
+        # Docker's classic store reports a config ID; containerd can report a
+        # rewritten manifest ID. Read back this exact immutable daemon ID and
+        # verify actual config and uncompressed layer bytes, not ID spelling.
+        roundtrip = directory / "loaded-image.tar"
+        command(["skopeo", "copy", "docker-daemon:" + actual_id, "oci-archive:" + str(roundtrip)])
+        loaded_identity = inspect_oci(roundtrip)
+        require(loaded_identity["config_digest"] == identity["config_digest"] and
+                loaded_identity["layer_diff_ids"] == identity["layer_diff_ids"],
+                "loaded image config or layers differ from qualified archive")
         for argument in ("--version", "--help"):
             output = command(["docker", "run", "--rm", "--network", "none", actual_id, argument], timeout=30)
             if argument == "--version":
@@ -186,15 +224,27 @@ def qualify(directory, ctx):
             else:
                 require(b"Usage:" in output and b"tokmd" in output, "packaged help is unavailable")
             smoke.append({"argument": argument, "exit_code": 0, "stdout_sha256": sha256(output)})
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
-        command(["docker", "image", "rm", tag], timeout=30)
+        if loaded:
+            try:
+                command(["docker", "image", "rm", tag], timeout=30)
+            except BaseException:
+                if primary_error is None:
+                    raise
+                print("image cleanup failed; preserving the primary qualification failure", file=sys.stderr)
+
     receipt = {"schema": "tokmd.swarm_image_qualification.v1", "repository": REPOSITORY,
                "source_sha": head, "source_tree": tree, "workflow": QUALIFICATION_WORKFLOW,
                "run_id": ctx["run_id"], "run_attempt": ctx["run_attempt"], "event": ctx["event_name"],
                "ref": ctx["ref"], "artifact_name": artifact_name(ctx), "version": version,
                "archive_sha256": file_digest(archive), "archive_bytes": archive.stat().st_size,
                "manifest_digest": identity["manifest_digest"], "config_digest": identity["config_digest"],
-               "platform": identity["platform"], "smoke": smoke, "registry_write": False, "result": "qualified"}
+               "platform": identity["platform"], "layer_diff_ids": identity["layer_diff_ids"],
+               "daemon_image_id": actual_id, "loaded_manifest_digest": loaded_identity["manifest_digest"],
+               "loaded_identity_verified": True, "smoke": smoke, "registry_write": False, "result": "qualified"}
     write_json(directory / "qualification.json", receipt)
     return receipt
 
@@ -271,7 +321,8 @@ def validate_receipt(request, run, receipt, identity, archive):
                 "artifact_name": artifact_name({"sha": request["source_sha"], "run_id": request["qualification_run_id"],
                                                 "run_attempt": str(run["run_attempt"])}),
                 "manifest_digest": request["manifest_digest"], "archive_sha256": request["archive_sha256"],
-                "config_digest": identity["config_digest"], "platform": "linux/amd64"}
+                "config_digest": identity["config_digest"], "platform": "linux/amd64",
+                "layer_diff_ids": identity["layer_diff_ids"], "loaded_identity_verified": True}
     require(all(receipt.get(key) == value for key, value in expected.items()), "qualification receipt identity mismatch")
     require(identity["manifest_digest"] == request["manifest_digest"] and
             file_digest(archive) == request["archive_sha256"] and
@@ -279,6 +330,8 @@ def validate_receipt(request, run, receipt, identity, archive):
     require(identity["labels"].get("org.opencontainers.image.revision") == request["source_sha"] and
             identity["labels"].get("org.opencontainers.image.source") == f"https://github.com/{REPOSITORY}",
             "qualified image source differs")
+    require(DIGEST.fullmatch(receipt.get("daemon_image_id", "")) and
+            DIGEST.fullmatch(receipt.get("loaded_manifest_digest", "")), "missing verified daemon identity")
     smoke = receipt.get("smoke", [])
     require(len(smoke) == 2 and [item.get("argument") for item in smoke] == ["--version", "--help"] and
             all(item.get("exit_code") == 0 and DIGEST.fullmatch(item.get("stdout_sha256", "")) for item in smoke),

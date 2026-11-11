@@ -2,7 +2,7 @@ schema_version = "1.0"
 policy = "ci-lane-whitelist"
 owner = "release/ci"
 status = "advisory"
-updated = "2026-08-08"
+updated = "2026-11-11"
 
 # CI lane whitelist: every CI item maps to purpose, cost, trigger, owner,
 # and evidence. Reviewers and `cargo xtask ci-lane-whitelist` read from this
@@ -27,6 +27,9 @@ em_ci_small        = 1.0
 # Frontdoor / cheap default-PR lanes
 # -----------------------------------------------------------------------
 
+# The 36 November expiries were source-reviewed under #781 against bd18441b.
+# Renewal preserves behavior and cost; the PR retains lane-by-lane evidence.
+
 [[lane]]
 id               = "msrv_check"
 workflow         = ".github/workflows/ci.yml"
@@ -44,8 +47,8 @@ proof_obligation = "Run cargo check on the MSRV toolchain."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "admission"
@@ -151,8 +154,8 @@ evidence = [
 ]
 allowed_triggers = ["pull_request"]
 duplicate_of     = ["pr_plan_advisory"]
-review_after     = "2026-08-08"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "ci_detect_risk_packs"
@@ -171,8 +174,8 @@ proof_obligation = "Run the workflow path classifier and expose risk-pack output
 evidence         = ["job outputs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = ["affected_proof_plan"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "fast_proof_run_advisory"
@@ -191,8 +194,8 @@ proof_obligation = "Run cargo xtask proof --profile fast --run-required --allow-
 evidence         = ["target/proof-run/proof-run-summary.json", "target/proof-run/proof-run-observation.json"]
 allowed_triggers = ["pull_request"]
 duplicate_of     = ["tokmd_rust_result", "affected_proof_plan"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "feature_boundaries"
@@ -211,8 +214,8 @@ proof_obligation = "Retain both tokmd-analysis feature suites and boundaries-che
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "typos"
@@ -231,8 +234,8 @@ proof_obligation = "Install checksum-verified typos 1.49.0 with the pinned bound
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "cargo_deny"
@@ -251,8 +254,8 @@ proof_obligation = "Run cargo deny --all-features check."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "version_consistency"
@@ -271,8 +274,8 @@ proof_obligation = "Run cargo xtask version-consistency."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "docs_check"
@@ -291,8 +294,8 @@ proof_obligation = "Run cargo xtask docs --check."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 # -----------------------------------------------------------------------
 # Build and risk-gated CI lanes
@@ -322,8 +325,8 @@ allowed_triggers = ["pull_request", "push"]
 expensive        = true
 labels           = ["windows"]
 duplicate_of     = ["tokmd_rust_result"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id                     = "wasm_compile_test"
@@ -344,8 +347,8 @@ allowed_triggers       = ["pull_request", "push"]
 expensive              = true
 labels                 = ["wasm"]
 duplicate_of           = []
-review_after           = "2026-06-07"
-expires                = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id                     = "nix_pr_package_gate"
@@ -366,8 +369,8 @@ allowed_triggers       = ["pull_request", "push"]
 expensive              = true
 labels                 = ["nix", "release-check"]
 duplicate_of           = ["publish_surface"]
-review_after           = "2026-06-07"
-expires                = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id                     = "mutation_required"
@@ -388,8 +391,8 @@ allowed_triggers       = ["pull_request", "push"]
 expensive              = true
 labels                 = ["mutation"]
 duplicate_of           = ["ripr_advisory"]
-review_after           = "2026-06-07"
-expires                = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id                     = "proptest_smoke"
@@ -409,8 +412,8 @@ evidence               = ["job logs"]
 allowed_triggers       = ["pull_request", "push"]
 labels                 = ["property-tests"]
 duplicate_of           = []
-review_after           = "2026-08-08"
-expires                = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id                     = "publish_surface"
@@ -429,8 +432,8 @@ proof_obligation       = "Run cargo xtask publish-surface --json --verify-publis
 evidence               = ["job logs"]
 allowed_triggers       = ["pull_request", "push"]
 duplicate_of           = ["nix_pr_package_gate"]
-review_after           = "2026-08-08"
-expires                = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 # -----------------------------------------------------------------------
 # Swarm routed frontdoor lanes
@@ -469,8 +472,8 @@ allowed_triggers = ["push"]
 expensive        = true
 expensive_reason = "macOS-hosted runner minutes are billed at 10× Linux."
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 # -----------------------------------------------------------------------
 # Required summary
@@ -519,8 +522,8 @@ proof_obligation = "Run cargo xtask ci-lane-whitelist with --report-dir --strict
 evidence         = ["target/tokmd/reports/ci-lane-whitelist-report.txt"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "ci_gate_contract_reference"
@@ -573,14 +576,14 @@ blocking         = false
 runner           = "ubuntu_latest"
 base_lem         = 3
 owner            = "core/policy"
-intent           = "Post the PR cockpit metrics comment on every PR."
+intent           = "Post cockpit metrics for explicitly qualified PRs."
 failure_mode     = "Reviewers lose at-a-glance change-surface metrics."
-proof_obligation = "Generate cockpit JSON via xtask cockpit and post comment."
+proof_obligation = "Generate sections and JSON through the installed tokmd cockpit CLI, post the PR comment and retain the receipt."
 evidence         = ["PR comment thollander/actions-comment-pull-request"]
 allowed_triggers = ["pull_request"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "no_panic_family"
@@ -595,12 +598,12 @@ base_lem         = 3
 owner            = "core/policy"
 intent           = "Verify the panic-family allowlist and stale-entry policy."
 failure_mode     = "Schema, stale-entry, or expired panic-family policy drift reaches main."
-proof_obligation = "Run cargo xtask check-no-panic-family --json."
+proof_obligation = "Run cargo xtask check-no-panic-family --strict --json-output and retain the report."
 evidence         = ["target/tokmd/reports/no-panic-report.json"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = ["tokmd_rust_result"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "bindings_parity"
@@ -639,8 +642,8 @@ proof_obligation = "Run cargo xtask check-clippy-exceptions --strict."
 evidence         = ["target/tokmd/reports/clippy-exceptions-stderr.txt"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = ["tokmd_rust_result"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "pr_plan_advisory"
@@ -659,8 +662,8 @@ proof_obligation = "Run cargo xtask ci-plan --enforce and upload pr-plan plus pr
 evidence         = ["target/ci/ci-plan.json", "target/ci/proof-pack-route.json"]
 allowed_triggers = ["pull_request"]
 duplicate_of     = ["ci_detect_risk_packs"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "ripr_advisory"
@@ -679,8 +682,8 @@ proof_obligation = "Run cargo xtask ripr-pr and ripr-review-comments, then uploa
 evidence         = ["target/ripr/pr/repo-exposure.json", "target/ripr/pr/repo-exposure.md", "target/ripr/review/comments.json", "target/ripr/review/comments.md"]
 allowed_triggers = ["pull_request", "workflow_dispatch"]
 duplicate_of     = ["mutation_required"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "rust_coverage"
@@ -706,8 +709,8 @@ allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 expensive        = true
 labels           = ["coverage"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "scoped_coverage_executor_non_required"
@@ -726,8 +729,8 @@ proof_obligation = "Run cargo xtask proof --profile affected with executor opt-i
 evidence         = ["target/proof/executor-summary.json"]
 allowed_triggers = ["pull_request", "workflow_dispatch"]
 duplicate_of     = ["affected_proof_plan"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "collect_proof_executor_observations"
@@ -744,10 +747,10 @@ intent           = "Aggregate proof executor observations across recent runs."
 failure_mode     = "Observation history fragments and trend signal is lost."
 proof_obligation = "Run cargo xtask proof-execution-observations-summary against collected artifacts and the saved source-run window."
 evidence         = ["aggregated observations JSON"]
-allowed_triggers = ["workflow_dispatch", "schedule"]
+allowed_triggers = ["workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "nightly_fuzz"
@@ -767,8 +770,8 @@ evidence         = ["nightly fuzz logs and crashes/"]
 allowed_triggers = ["schedule", "workflow_dispatch"]
 expensive        = true
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "mutation_testing_calibration"
@@ -781,15 +784,15 @@ blocking         = false
 runner           = "ubuntu_latest"
 base_lem         = 90
 owner            = "testing/oracle"
-intent           = "Run cargo-mutants on a calibration cadence (label / dispatch / nightly)."
+intent           = "Run cargo-mutants over selected scopes on deliberate manual dispatch."
 failure_mode     = "Mutant survivors accumulate without anyone noticing."
 proof_obligation = "Run cargo-mutants over selected scopes."
 evidence         = ["mutants.out artifacts"]
-allowed_triggers = ["workflow_dispatch", "schedule"]
+allowed_triggers = ["workflow_dispatch"]
 expensive        = true
 duplicate_of     = ["mutation_required"]
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_build"
@@ -808,8 +811,8 @@ proof_obligation = "Run release build steps."
 evidence         = ["release artifacts"]
 allowed_triggers = ["push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_wasm"
@@ -824,12 +827,12 @@ base_lem         = 15
 owner            = "release/build"
 intent           = "Build the tokmd-wasm release artifact for tag pushes."
 failure_mode     = "WASM artifact missing from a release."
-proof_obligation = "Run wasm-pack build for tokmd-wasm."
+proof_obligation = "Build the archive-enabled WASM bundle, test the web runner and package its reproducible release artifact."
 evidence         = ["release WASM artifact"]
 allowed_triggers = ["push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_create"
@@ -844,12 +847,12 @@ base_lem         = 5
 owner            = "release/publish"
 intent           = "Create the GitHub release with attached artifacts."
 failure_mode     = "Tag exists but no release page or attached artifacts."
-proof_obligation = "Run gh release create with artifacts."
+proof_obligation = "Use softprops/action-gh-release to create the exact tagged release with the collected artifacts, without moving latest."
 evidence         = ["GitHub release page"]
 allowed_triggers = ["push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_publish_crates"
@@ -868,8 +871,8 @@ proof_obligation = "Run cargo publish in dependency order."
 evidence         = ["crates.io publish receipts"]
 allowed_triggers = ["push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_docker"
@@ -882,14 +885,14 @@ blocking         = false
 runner           = "ubuntu_latest"
 base_lem         = 20
 owner            = "release/publish"
-intent           = "Build and push the release Docker image."
+intent           = "Promote the verified candidate digest to the exact release Docker tag."
 failure_mode     = "Docker image tag missing for a published release."
-proof_obligation = "Run docker buildx build and push."
+proof_obligation = "Read the verified-candidate source digest, use docker buildx imagetools create for the exact release tag and verify digest readback."
 evidence         = ["release workflow logs", "registry tag or manifest visibility check"]
 allowed_triggers = ["push"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "release_crates_recovery"
@@ -1068,8 +1071,8 @@ proof_obligation = "Invoke action.yml against fixture repos."
 evidence         = ["action job logs"]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "test_action_formats"
@@ -1088,8 +1091,8 @@ proof_obligation = "Drive the action with --format permutations."
 evidence         = ["action job logs"]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "test_action_modes"
@@ -1108,8 +1111,8 @@ proof_obligation = "Drive the action with each --mode permutation."
 evidence         = ["action job logs"]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "test_action_packet"
@@ -1128,8 +1131,8 @@ proof_obligation = "Drive the action with mode=packet, fail-on, output-dir, and 
 evidence         = ["action job logs"]
 allowed_triggers = ["pull_request", "push", "workflow_dispatch"]
 duplicate_of     = []
-review_after     = "2026-06-07"
-expires          = "2026-11-07"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "swarm_image_qualification"

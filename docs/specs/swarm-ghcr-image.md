@@ -32,13 +32,21 @@ BuildKit exports one `linux/amd64` image, with attestations disabled so the
 archive contains one explicitly supported image manifest. The controller
 validates layout, member names, byte bounds, every blob digest and descriptor
 length before importing it into the local Docker daemon. It verifies the
-loaded image's config digest against the archive and executes that image ID,
+daemon-reported image ID by exporting that exact ID back to OCI and comparing
+the actual config digest and ordered uncompressed layer digests against the
+qualified archive. Both archives' layer bytes must match their config diff IDs.
+This supports classic config IDs and containerd's rewritten manifest IDs without
+accepting an unverified daemon ID. It executes that verified daemon image ID,
 with networking disabled, for `--version` and `--help`.
 
-Only successful smoke and cleanup produce `qualification.json`. The immutable
+Only successful smoke and cleanup produce `qualification.json`. Failed imports
+do not attempt image removal; cleanup after a primary failure cannot replace
+that original failure. Cleanup failure on an otherwise successful run still
+prevents qualification. The immutable
 Actions artifact contains exactly `image.tar` and that receipt. It names source
 SHA/tree, workflow/run/attempt, version, platform, smoke results, archive length
-and SHA-256, OCI manifest digest and config/image ID. The Actions artifact ZIP
+and SHA-256, OCI manifest/config digests, verified layer diff IDs, daemon image
+ID and readback manifest digest. The Actions artifact ZIP
 digest is a separate transport identity; it is not the image digest. Failed
 builds, missing smoke, image substitution and failed artifact retention do not
 qualify anything. A manually dispatched branch qualification can test candidate

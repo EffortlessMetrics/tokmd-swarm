@@ -1,6 +1,7 @@
 """Offline contract tests for the production swarm-image boundary controller."""
 
 import copy
+import gzip
 import io
 import json
 import re
@@ -46,7 +47,8 @@ def provenance():
 
 
 def oci_members(platform='amd64', layout='1.0.0', extra=False, descriptor_size=False,
-                manifests=1):
+                manifests=1, layer_bytes=b'synthetic layer', compressed=False,
+                bad_diff=False, revision=SOURCE):
     members = {}
 
     def blob(value):
@@ -55,9 +57,12 @@ def oci_members(platform='amd64', layout='1.0.0', extra=False, descriptor_size=F
         members['blobs/sha256/' + digest.split(':')[1]] = data
         return dict(digest=digest, size=len(data))
 
-    layer = blob(b'synthetic layer')
-    config = blob(dict(os='linux', architecture=platform, config={'Labels': {
-        'org.opencontainers.image.revision': SOURCE,
+    layer = blob(gzip.compress(layer_bytes, mtime=0) if compressed else layer_bytes)
+    layer['mediaType'] = 'application/vnd.oci.image.layer.v1.tar' + ('+gzip' if compressed else '')
+    config = blob(dict(os='linux', architecture=platform,
+                       rootfs={'type': 'layers', 'diff_ids': [OTHER if bad_diff else image.sha256(layer_bytes)]},
+                       config={'Labels': {
+        'org.opencontainers.image.revision': revision,
         'org.opencontainers.image.source': f'https://github.com/{image.REPOSITORY}'}}))
     manifest = blob(dict(schemaVersion=2, mediaType='application/vnd.oci.image.manifest.v1+json',
                          config=config, layers=[layer]))
@@ -104,6 +109,20 @@ class OCIContract(unittest.TestCase):
                 archive(self.path, oci_members(**case))
                 with self.assertRaises(ValueError):
                     image.inspect_oci(self.path)
+
+    def test_layer_diff_ids_and_expansion_bounds(self):
+        for compressed in (False, True):
+            with self.subTest(compressed=compressed):
+                archive(self.path, oci_members(compressed=compressed))
+                self.assertEqual(image.inspect_oci(self.path)['layer_diff_ids'],
+                                 [image.sha256(b'synthetic layer')])
+                archive(self.path, oci_members(compressed=compressed, bad_diff=True))
+                with self.assertRaisesRegex(ValueError, 'diff IDs'):
+                    image.inspect_oci(self.path)
+        archive(self.path, oci_members(compressed=True, layer_bytes=b'x' * 100000))
+        with patch.object(image, 'MAX_ARCHIVE', self.path.stat().st_size):
+            with self.assertRaisesRegex(ValueError, 'expanded image layers'):
+                image.inspect_oci(self.path)
 
     def test_corrupt_blob(self):
         members = oci_members()
@@ -207,6 +226,8 @@ class IdentityContract(unittest.TestCase):
                            event='push', ref='refs/heads/main', manifest_digest=req['manifest_digest'],
                            archive_sha256=req['archive_sha256'], config_digest=identity['config_digest'],
                            platform='linux/amd64', archive_bytes=path.stat().st_size,
+                           layer_diff_ids=identity['layer_diff_ids'], daemon_image_id=OTHER,
+                           loaded_manifest_digest=DIGEST, loaded_identity_verified=True,
                            smoke=[dict(argument=arg, exit_code=0, stdout_sha256=DIGEST)
                                   for arg in ('--version', '--help')])
             image.validate_receipt(req, run, receipt, identity, path)
@@ -519,35 +540,66 @@ class WorkflowContract(unittest.TestCase):
         upload = self.publish.split('      - name: Retain publication checkpoint', 1)[1]
         self.assertNotIn('continue-on-error', upload)
 
-    def test_qualification_uses_archive_config_identity_and_rejects_substitution(self):
+    def test_daemon_roundtrip_binds_classic_and_containerd_ids(self):
         version = image.tomllib.loads((self.root / 'Cargo.toml').read_text())['workspace']['package']['version']
-        for substitute in (False, True):
-            with self.subTest(substitute=substitute), tempfile.TemporaryDirectory() as directory:
-                path = Path(directory) / 'image.tar'
-                archive(path, oci_members())
-                identity = image.inspect_oci(path)
+        for daemon_kind in ('classic', 'containerd'):
+            for substitute, cleanup_fails in ((False, False), (True, False), (False, True)):
+                with self.subTest(daemon=daemon_kind, substitute=substitute, cleanup=cleanup_fails), tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / 'image.tar'
+                    archive(path, oci_members())
+                    identity = image.inspect_oci(path)
+                    actual_id = identity['config_digest'] if daemon_kind == 'classic' else OTHER
+                    calls = []
+                    def execute(args, **kwargs):
+                        calls.append(args)
+                        if args[:3] == ['docker', 'image', 'inspect']:
+                            return actual_id.encode()
+                        if args[:2] == ['skopeo', 'copy'] and args[2].startswith('docker-daemon:'):
+                            self.assertEqual(args[2], 'docker-daemon:' + actual_id)
+                            members = oci_members(revision='e' * 40 if substitute else SOURCE, compressed=True)
+                            archive(Path(args[3].removeprefix('oci-archive:')), members)
+                        if args[:3] == ['docker', 'image', 'rm'] and cleanup_fails:
+                            raise ValueError('cleanup failed after successful smoke')
+                        if args[:2] == ['docker', 'run']:
+                            self.assertIn(actual_id, args)
+                            return (f'tokmd {version}\n' if args[-1] == '--version' else 'Usage: tokmd\n').encode()
+                        return b''
+                    with patch.object(image, 'source_identity', return_value=(SOURCE, TREE)), \
+                         patch.object(image, 'command', side_effect=execute):
+                        if substitute or cleanup_fails:
+                            with self.assertRaises(ValueError):
+                                image.qualify(directory, context('push'))
+                            self.assertFalse((Path(directory) / 'qualification.json').exists())
+                            self.assertEqual(any(call[:2] == ['docker', 'run'] for call in calls), cleanup_fails)
+                        else:
+                            receipt = image.qualify(directory, context('push'))
+                            self.assertEqual(receipt['daemon_image_id'], actual_id)
+                            self.assertEqual(receipt['config_digest'], identity['config_digest'])
+                            self.assertEqual(receipt['layer_diff_ids'], identity['layer_diff_ids'])
+                            self.assertTrue(receipt['loaded_identity_verified'])
+                            self.assertFalse(receipt['registry_write'])
+                    self.assertEqual(calls[-1][:3], ['docker', 'image', 'rm'])
+
+    def test_cleanup_preserves_primary_failure_and_never_qualifies(self):
+        for import_fails in (False, True):
+            with self.subTest(import_fails=import_fails), tempfile.TemporaryDirectory() as directory:
+                archive(Path(directory) / 'image.tar', oci_members())
                 calls = []
                 def execute(args, **kwargs):
                     calls.append(args)
+                    if args[:2] == ['skopeo', 'copy'] and import_fails:
+                        raise ValueError('original import failure')
                     if args[:3] == ['docker', 'image', 'inspect']:
-                        return (OTHER if substitute else identity['config_digest']).encode()
-                    if args[0:2] == ['docker', 'run']:
-                        self.assertIn(identity['config_digest'], args)
-                        return (f'tokmd {version}\n' if args[-1] == '--version' else 'Usage: tokmd\n').encode()
+                        raise ValueError('original inspection failure')
+                    if args[:3] == ['docker', 'image', 'rm']:
+                        raise ValueError('secondary cleanup failure')
                     return b''
                 with patch.object(image, 'source_identity', return_value=(SOURCE, TREE)), \
                      patch.object(image, 'command', side_effect=execute):
-                    if substitute:
-                        with self.assertRaisesRegex(ValueError, 'config'):
-                            image.qualify(directory, context('push'))
-                        self.assertFalse((Path(directory) / 'qualification.json').exists())
-                        self.assertFalse(any(call[:2] == ['docker', 'run'] for call in calls))
-                    else:
-                        receipt = image.qualify(directory, context('push'))
-                        self.assertEqual(receipt['result'], 'qualified')
-                        self.assertEqual(receipt['config_digest'], identity['config_digest'])
-                        self.assertFalse(receipt['registry_write'])
-                    self.assertEqual(calls[-1][:3], ['docker', 'image', 'rm'])
+                    with self.assertRaisesRegex(ValueError, 'original'):
+                        image.qualify(directory, context('push'))
+                self.assertFalse((Path(directory) / 'qualification.json').exists())
+                self.assertEqual(any(c[:3] == ['docker', 'image', 'rm'] for c in calls), not import_fails)
 
 
 if __name__ == '__main__':
