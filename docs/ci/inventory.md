@@ -67,10 +67,11 @@ Selected by push to `main`, an explicit label, or a matching path risk pack.
 |---------|-----|----------|--------|----------|---------|
 | `build_macos_push` | Build & Test (macOS) | `ci.yml` | macOS | 60 | push to `main` (10× runner multiplier). |
 | `rust_coverage` | Codecov Coverage | `coverage.yml` | ubuntu | 30 | push, dispatch, `coverage`, or `full-ci`. |
-| `collect_proof_executor_observations` | Collect Proof Executor Observations | `proof-observation-collection.yml` | ubuntu | 5 | dispatch, schedule. |
+| `collect_proof_executor_observations` | Collect Proof Executor Observations | `proof-observation-collection.yml` | ubuntu | 5 | dispatch. |
 | `nightly_fuzz` | Fuzz Targets | `fuzz.yml` | ubuntu | 60 | schedule, dispatch. |
-| `mutation_testing_calibration` | Mutation Testing | `mutants.yml` | ubuntu | 90 | dispatch, schedule. |
-| `swarm_ghcr_publish` | Build and Push Swarm GHCR Image | `swarm-ghcr.yml` | ubuntu | 25 | push, dispatch. |
+| `mutation_testing_calibration` | Mutation Testing | `mutants.yml` | ubuntu | 90 | dispatch. |
+| `swarm_image_qualification` | Qualify Swarm OCI Image | `swarm-ghcr.yml` | ubuntu | 20 | matching main push, dispatch; no registry writes. |
+| `swarm_ghcr_publish` | Publish Qualified Swarm OCI Image | `swarm-ghcr-publish.yml` | ubuntu | 20 | deliberate main dispatch only. |
 | `ghcr_container_smoke` | GHCR Container Smoke | `ghcr-container-smoke.yml` | ubuntu | 4 | dispatch. |
 
 ## Release lanes (tag push)

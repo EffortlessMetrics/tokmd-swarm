@@ -129,6 +129,7 @@ paths = [
   ".github/workflows/recover-stable-crates.yml",
   ".github/workflows/release-candidate.yml",
   ".github/workflows/swarm-ghcr.yml",
+  ".github/workflows/swarm-ghcr-publish.yml",
   ".github/workflows/ripr.yml",
   ".github/workflows/sync-labels.yml",
   ".github/workflows/test-action.yml",
@@ -190,6 +191,8 @@ paths = [
   "scripts/ci_qualification_review_test.py",
   "scripts/ci_qualification_test.py",
   "scripts/ci_workflow_admission_test.py",
+  "scripts/ci_swarm_image.py",
+  "scripts/ci_swarm_image_test.py",
   "scripts/check-no-bare-self-hosted.sh",
   "scripts/publish-release-crates.sh",
   "xtask/src/tasks/workspace.rs",
@@ -1616,13 +1619,15 @@ name = "swarm_ghcr_publish"
 kind = "non_rust"
 paths = [
   ".github/workflows/swarm-ghcr.yml",
+  ".github/workflows/swarm-ghcr-publish.yml",
 ]
 proof = [
+  "python3 -m unittest scripts/ci_swarm_image_test.py",
   "cargo xtask ci-lane-whitelist --strict",
   "cargo xtask docs --check",
   "cargo xtask proof-policy --check",
 ]
-reason = "Swarm workbench GHCR publish workflow is a distribution surface; lane whitelist and docs must stay aligned with swarm-ghcr-image.md."
+reason = "Swarm image qualification and explicit publication are separate distribution surfaces; verify the invoked boundary controller, lane catalog and image contract."
 mutation = false
 coverage = false
 
