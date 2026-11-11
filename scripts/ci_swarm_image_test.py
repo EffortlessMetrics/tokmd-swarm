@@ -159,6 +159,20 @@ class IdentityContract(unittest.TestCase):
         with self.assertRaises(ValueError):
             image.validate_request(candidate, context())
 
+    def test_omitted_optional_input_is_canonical_only_for_immutable_policy(self):
+        req = request()
+        del req['expected_main_digest']
+        normalized = image.validate_request(req, context())
+        self.assertEqual(normalized['expected_main_digest'], '')
+        self.assertNotIn('expected_main_digest', req)
+        req['move_main'] = 'true'
+        with self.assertRaisesRegex(ValueError, 'main movement'):
+            image.validate_request(req, context())
+        req['move_main'] = 'false'
+        req['unknown'] = 'refuse extra input'
+        with self.assertRaisesRegex(ValueError, 'fields'):
+            image.validate_request(req, context())
+
     def test_run_and_artifact_rejections(self):
         run, artifact = provenance()
         image.validate_provenance(request(), run, artifact)
@@ -476,6 +490,22 @@ class WorkflowContract(unittest.TestCase):
             self.assertEqual(receipt['state'], 'validating_request')
             self.assertFalse(receipt['registry_write_attempted'])
             self.assertEqual(receipt['terminal'], 'failed_or_interrupted')
+
+    def test_invoked_publisher_normalizes_omitted_optional_input(self):
+        req = request()
+        del req['expected_main_digest']
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(image, 'source_identity', return_value=(SOURCE, TREE)), \
+             patch.object(image, 'current_source', side_effect=TimeoutError('API unavailable')) as check, \
+             patch.object(image, 'registry_token') as token:
+            with self.assertRaises(TimeoutError):
+                image.publish(directory, req, context())
+            self.assertEqual(check.call_args.args[0]['expected_main_digest'], '')
+            token.assert_not_called()
+            receipt = json.loads((Path(directory) / 'publication.json').read_text())
+            self.assertEqual(receipt['state'], 'validating_source')
+            self.assertEqual(receipt['request']['expected_main_digest'], '')
+            self.assertFalse(receipt['registry_write_attempted'])
 
     def test_preflight_failure_and_upload_contract_cannot_report_success(self):
         with tempfile.TemporaryDirectory() as directory:

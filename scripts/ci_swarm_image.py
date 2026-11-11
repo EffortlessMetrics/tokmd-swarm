@@ -205,6 +205,8 @@ def api(path):
 
 def validate_request(request, ctx):
     validate_context(ctx, "publish")
+    require(isinstance(request, dict), "publication request must be an object")
+    request = {"expected_main_digest": "", **request}
     require(set(request) == {"source_sha", "source_tree", "qualification_run_id", "artifact_id",
                              "archive_sha256", "manifest_digest", "move_main", "expected_main_digest"},
             "publication request fields differ from the supported contract")
@@ -220,6 +222,7 @@ def validate_request(request, ctx):
     require((request["move_main"] == "false" and previous == "") or
             (request["move_main"] == "true" and (previous == "absent" or DIGEST.fullmatch(previous))),
             "main movement requires its exact prior digest or explicit absence")
+    return request
 
 
 def validate_provenance(request, run, artifact):
@@ -372,7 +375,7 @@ def publish_verified(request, archive, receipt_path, lookup, copy, source_check)
 
 
 def publish_candidate(directory, request, ctx):
-    validate_request(request, ctx)
+    request = validate_request(request, ctx)
     checkpoint = Path(directory) / "publication.json"
     def phase(name):
         write_json(checkpoint, {"schema": "tokmd.swarm_image_publication.v1", "state": name,
