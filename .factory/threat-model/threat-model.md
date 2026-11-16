@@ -3,7 +3,8 @@
 **Generated:** 2026-08-02
 **Scope:** Repository-wide STRIDE analysis for `EffortlessMetrics/tokmd-swarm`
 **Methodology:** STRIDE (Microsoft Threat Modeling)
-**Last Reviewed:** 2026-08-02
+**Last Reviewed:** 2026-11-16
+**Regenerated:** 2026-11-16 (106 days after the 2026-08-02 review; past the 90-day cadence)
 
 ## 1. System Overview
 
@@ -41,6 +42,8 @@
 | TB-8 | Untrusted inputs (paths) → inclusion policy | `--paths`, `--include`, in-memory `inputs[]` |
 | TB-9 | In-memory mode → boundary path canonicalization | ReDoS on path normalization |
 | TB-10 | WASM host → in-memory filesystem | Sandboxed JS environment |
+| TB-11 | Composite Action `inputs.*` → runner shell | `action.yml` step `run:` bodies (`version`, `runtime`, `image`, `artifact`, `comment`) |
+| TB-12 | Consuming workflow → Action manifest | `action.yml` `env:` bindings, `output-dir` and `version` input validation |
 
 ## 3. STRIDE Analysis
 
@@ -50,7 +53,8 @@
 |--------|----------|------------|---------------|
 | Fake git history impersonation | LOW | Git is invoked as a subprocess; tokmd reads stdout, not metadata. No trust placed in commit author fields beyond display. | Author field displayed in receipts; do not gate on it. |
 | Impersonation via FFI arg fields | LOW | Strict JSON parsing with explicit type validation in `tokmd-core/src/ffi/parse.rs` rejects type mismatches. | Low — caller controls input. |
-| GitHub Action impersonation | LOW | Actions pinned by SHA (`actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2`). | Low — supply chain still trusted. |
+| GitHub Action impersonation | LOW | Actions pinned by SHA (`actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`, `EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec`). | Low — supply chain still trusted, and pinning is mixed rather than uniform (see standing defense 7). |
+| Composite Action input spoofing | LOW | `action.yml` binds every `inputs.*` value through a step `env:` block; no input expression is interpolated into a `run:` body. | Low — the consuming workflow still chooses the input values. |
 
 **Result:** Low residual risk. No `medium` or higher spoofing vectors.
 
@@ -65,6 +69,7 @@
 | Cargo lockfile tampering | MEDIUM | `tokmd-cockpit/src/supply_chain.rs` invokes `cargo audit --json` and parses structured output. `parse_audit_output` tolerates malformed JSON by returning `Pending`, never `Pass`. | LOW — supply-chain evidence is informational. |
 | Workspace lint bypass via file mutation | LOW | `cargo xtask lint-fix` and `cargo xtask gate --check` run as pre-push hooks. CI requires both. | LOW. |
 | Injection into .tokeignore / config files | LOW | `.tokeignore` patterns are passed to `tokei`/`ignore` crate, not eval'd. `ConfigMode::Auto` reads tokei config files; `ConfigMode::None` skips. | LOW. |
+| Shell injection via Action `version` input | HIGH (if reached) → MITIGATED | `action.yml` reads `version` from `TOKMD_ACTION_VERSION` (an `env:` binding), never by interpolating `${{ inputs.version }}` into the `run:` body. The binary runtime additionally validates the value against `^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$` before it is used to build a download URL. `scripts/ci_action_input_injection_test.py` enforces both properties. | LOW — mitigated at the manifest boundary. |
 
 **Result:** All `high`/medium tampering vectors are mitigated with defense in depth.
 
@@ -112,6 +117,7 @@
 | Code execution via `Command::new` arg construction | HIGH (if reached) → MITIGATED | All `Command::new` invocations use `arg()` (not `args(&[user_string])` with shell metacharacters). No use of `sh -c` or `bash -c`. Verified across `tokmd-git`, `tokmd-cockpit`. | LOW. |
 | Privilege escalation via supply chain | MEDIUM | `Cargo.lock` is committed. `deny.toml` enforces advisory check (cargo-deny). `RUSTSEC-2020-0163` (transitive `term_size`) is documented as an upstream limitation. | MEDIUM — transitive advisory remains. Observed but not at severity threshold for a finding. |
 | Code execution via WASM host | MEDIUM (if reached) → MITIGATED | `tokmd-wasm` uses `MemFs` (no host fs). Sandboxed by the WASM runtime. | LOW. |
+| Runner command execution via Action input | HIGH (if reached) → MITIGATED | All `inputs.*` values reach `run:` bodies through `env:` bindings, so a metacharacter-bearing value cannot break out of the intended quoting. `output-dir` is additionally rejected when absolute or when it contains a `..` segment. | LOW — mitigated; the consuming workflow remains the trust boundary for input values. |
 
 **Result:** All `high` elevation vectors mitigated. One supply-chain observation noted.
 
@@ -132,7 +138,7 @@ These defenses are baked into the workspace and should not regress:
 4. **Bounded path handling**: `BoundedPath` enforces canonical under-root invariant.
 5. **Strict JSON parsing**: `parse.rs` rejects type mismatches (no silent fallback to defaults).
 6. **Receipt schema versioning**: Per-family constants in `tokmd-types` (`SCHEMA_VERSION`, `COCKPIT_SCHEMA_VERSION`, etc.) — see `CLAUDE.md`.
-7. **Pinned GitHub Actions**: All third-party actions pinned by SHA with a comment naming the upstream version.
+7. **Pinned GitHub Actions**: The highest-privilege third-party surface — the custom `EffortlessMetrics/droid-action-safe` action and the `actions/*` references — is pinned by SHA with a comment naming the upstream version. Pinning is **mixed, not uniform**: `ci.yml`, `release.yml`, `ripr.yml`, `swarm-ghcr.yml`, and `test-action.yml` still reference some actions by mutable tag or branch (for example `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`, `taiki-e/install-action@v2`, `actions/upload-artifact@v7.0.1`). Treat full SHA pinning of the remaining lanes as an open hardening item rather than an existing guarantee.
 8. **License allowlist + advisory check**: `deny.toml` configures `cargo-deny`.
 9. **Branch protection policy**: the checked-in settings require 1 PR approval with CODEOWNERS review and the `Tokmd Rust Result` status check. Live protection is repository-specific control-plane state and must be queried separately; the settings file is not proof that public `main` is currently protected.
 10. **Constrained merge policy**: normal swarm and public development PRs use squash merges; the publication repository also permits deliberate two-parent merge commits for swarm imports so the shared graph is preserved. Direct pushes, unrelated merge commits, and force-pushes remain prohibited by operating policy and branch controls. `allow_merge_commit = true` and `required_linear_history = false` are topology requirements for that import path, not standing security defenses.
@@ -142,3 +148,35 @@ These defenses are baked into the workspace and should not regress:
 - **Regenerate when:** architecture changes, new external surface added, new subprocess invocation, or 90 days since last review.
 - **Source:** weekly `droid-security-scan` workflow (`.github/workflows/droid-security-scan.yml`).
 - **Owner:** EffortlessMetrics/tokmd-swarm maintainers.
+
+## 7. Regeneration Note (2026-11-16)
+
+This document was regenerated on 2026-11-16, 106 days after the 2026-08-02
+review and 21 days after the most recent commit on `main` (`07d878b`,
+2026-10-26). The refresh was driven by the 90-day cadence and by the
+weekly `droid-security-scan` workflow.
+
+Changes versus the 2026-08-02 version:
+
+- **New trust boundaries** TB-11 (composite Action `inputs.*` → runner shell)
+  and TB-12 (consuming workflow → Action manifest). The Action surface was
+  previously described only under the distribution-surfaces table.
+- **New Tampering row**: shell injection via the Action `version` input.
+  Confirmed by manual review on 2026-11-16 and now mitigated in `action.yml`;
+  the mitigation is enforced by `scripts/ci_action_input_injection_test.py`.
+- **New Spoofing row**: composite Action input spoofing.
+- **New Elevation of Privilege row**: runner command execution via an Action
+  input.
+- **Corrected standing defense 7.** The prior text claimed "All third-party
+  actions pinned by SHA". That is not true of the current tree: the
+  Droid workflows and `actions/checkout` are SHA-pinned, but `ci.yml`,
+  `release.yml`, `ripr.yml`, `swarm-ghcr.yml`, and `test-action.yml` retain
+  mutable tag or branch references. The row now states the mixed policy
+  instead of overclaiming a uniform one.
+- **Re-verified at commit `07d878b`** (unchanged conclusions): git subprocess
+  isolation (`GIT_REPO_SHAPING_ENV`), ref-name validation and
+  `--end-of-options`, FFI in-memory path validation, `BoundedPath`
+  canonicalization, redaction hashing, content read limits, the
+  fail-closed `cargo audit` supply-chain gate, RFC 6901 pointer evaluation in
+  `tokmd-gate`, and the Action's `output-dir` rejection of absolute paths and
+  `..` segments.
