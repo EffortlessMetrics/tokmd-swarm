@@ -57,7 +57,7 @@ The active owner-module batch plan lives in
 - Context receipts: `CONTEXT_SCHEMA_VERSION = 4`
 - Context bundles: `CONTEXT_BUNDLE_SCHEMA_VERSION = 2`
 - Handoff manifests: `HANDOFF_SCHEMA_VERSION = 5`
-- Analysis receipts: `ANALYSIS_SCHEMA_VERSION = 9`
+- Analysis receipts: `ANALYSIS_SCHEMA_VERSION = 10`
 - Cockpit receipts: `COCKPIT_SCHEMA_VERSION = 3`
 - Tool schemas: `TOOL_SCHEMA_VERSION = 1`
 

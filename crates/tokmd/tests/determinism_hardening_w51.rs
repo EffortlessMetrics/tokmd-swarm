@@ -485,8 +485,8 @@ fn w51_analyze_schema_version_is_9() {
     assert!(o.status.success(), "analyze command failed");
     let json: Value = serde_json::from_slice(&o.stdout).expect("valid JSON");
     assert_eq!(
-        json["schema_version"], 9,
-        "analysis schema_version must be 9"
+        json["schema_version"], 10,
+        "analysis schema_version must be 10"
     );
 }
 

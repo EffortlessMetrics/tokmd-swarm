@@ -1,10 +1,9 @@
 ---
 source: crates/tokmd-format/tests/analysis_format/snapshot_v2.rs
-assertion_line: 156
 expression: rendered
 ---
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "generated_at_ms": 0,
   "tool": {
     "name": "tokmd",
@@ -51,6 +50,28 @@ expression: rendered
   "imports": null,
   "dup": null,
   "complexity": {
+    "coverage": {
+      "status": "partial",
+      "eligible_files": 2,
+      "analyzed_files": 1,
+      "analyzed_lines": 100,
+      "outcomes": [
+        {
+          "path": "src/main.rs",
+          "outcome": "analyzed",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 100
+        },
+        {
+          "path": "src/missing.rs",
+          "outcome": "unreadable",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 0
+        }
+      ]
+    },
     "total_functions": 10,
     "avg_function_length": 25.0,
     "max_function_length": 80,

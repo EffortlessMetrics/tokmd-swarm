@@ -59,6 +59,7 @@ them. Consumers should match the top-level `schema` string first, then read nest
 
 | Version | Changes |
 |---------|---------|
+| **10** | Added same-pass complexity coverage and per-file outcomes |
 | **9** | Added effort estimation report (COCOMO-based projections, size basis, confidence, drivers) |
 | **8** | Near-dup clusters, selection metadata, max_pairs guardrail, runtime stats |
 | **7** | Coupling normalization (Jaccard similarity, Lift), commit intent classification, near-duplicate detection report |
@@ -110,7 +111,7 @@ them. Consumers should match the top-level `schema` string first, then read nest
 ### Code References
 
 - **Core**: `crates/tokmd-types/src/lib.rs` - `pub const SCHEMA_VERSION: u32 = 2;`
-- **Analysis**: `crates/tokmd-analysis-types/src/lib.rs` - `pub const ANALYSIS_SCHEMA_VERSION: u32 = 9;`
+- **Analysis**: `crates/tokmd-analysis-types/src/lib.rs` - `pub const ANALYSIS_SCHEMA_VERSION: u32 = 10;`
 - **Cockpit**: `crates/tokmd-types/src/cockpit.rs` - `pub const COCKPIT_SCHEMA_VERSION: u32 = 3;`
 - **Envelope**: `crates/tokmd-envelope/src/lib.rs` - `pub const SENSOR_REPORT_SCHEMA: &str = "sensor.report.v1";` (back-compat alias `ENVELOPE_SCHEMA` in `tokmd-analysis-types`)
 - **Baseline**: `crates/tokmd-analysis-types/src/baseline.rs` - `pub const BASELINE_VERSION: u32 = 1;`
@@ -492,15 +493,41 @@ The `total` object in language and module receipts contains aggregate metrics:
 
 Produced by `tokmd analyze --format json`.
 
-**Schema version**: 9
+**Schema version**: 10
 
 Analysis receipts contain derived metrics and optional enrichments. All sections except `source`, `args`, and `derived` are optional based on the preset used.
+
+### Complexity coverage
+
+Current file-backed complexity reports include `complexity.coverage`. The outcome
+list contains one entry per normalized parent export path in ascending path order.
+Unsupported languages are outside the eligible count. Each eligible path is
+analyzed, unreadable, unsupported content (non-text or invalid UTF-8), outside
+the selected inventory, or skipped because the total byte limit was reached or
+the per-file byte limit excluded the entire file.
+`truncated_by` is independent of the outcome. It identifies the per-file or
+remaining total-byte limit that clipped the prefix. Ties are attributed to the
+per-file limit. When a read fills its cap, the open file's size provides
+`omitted_bytes`. This is an observation of the open file at measurement time.
+Files skipped before reading contribute no byte estimate. `analyzed_lines`
+counts physical lines passed to the heuristic, including any final partial line,
+across all analyzed files before the top-file display cap. Existing scoring
+formulas continue to use the same kinds of inputs.
+
+Coverage is `unavailable` when no source lines were analyzed. It is `partial`
+when some lines were analyzed and any outcome is unmeasured or clipped.
+`complete` indicates every parent path was measured without clipping.
+When coverage is unavailable, consumers must treat complexity summary zeroes as
+unavailable and no maintainability or debt grade is emitted. Historical v9
+receipts deserialize with no coverage field. A missing field means coverage is
+unknown. Strict v9 schema consumers need to update their version check for v10.
+Rust callers constructing `ComplexityReport` directly must initialize `coverage`.
 
 ### Envelope
 
 ```json
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "generated_at_ms": 1706350000000,
   "tool": { "name": "tokmd", "version": "1.11.0" },
   "mode": "analysis",

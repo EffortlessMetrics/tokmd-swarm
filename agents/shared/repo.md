@@ -274,7 +274,7 @@ Dependency rule:
 - Update formal schema docs when structure changes.
 - Receipt families currently version independently:
   - core receipts: `SCHEMA_VERSION = 2`
-  - analysis receipts: `ANALYSIS_SCHEMA_VERSION = 9`
+  - analysis receipts: `ANALYSIS_SCHEMA_VERSION = 10`
   - cockpit receipts: `COCKPIT_SCHEMA_VERSION = 3`
   - handoff manifests: `HANDOFF_SCHEMA_VERSION = 5`
   - context receipts: `CONTEXT_SCHEMA_VERSION = 4`

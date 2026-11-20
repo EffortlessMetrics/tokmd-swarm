@@ -35,7 +35,7 @@ fn analyze_receipt_preset_json_smoke() {
     let json: Value = serde_json::from_str(&stdout).expect("invalid JSON output");
 
     assert_eq!(json["mode"], "analysis");
-    assert_eq!(json["schema_version"], 9);
+    assert_eq!(json["schema_version"], 10);
     assert!(json["generated_at_ms"].is_number());
 
     // A couple of stable "shape" checks

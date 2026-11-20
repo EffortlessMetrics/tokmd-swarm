@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use anyhow::Result;
-use tokmd_analysis_types::{ApiSurfaceReport, ComplexityReport, DuplicateReport, GitReport};
+use tokmd_analysis_types::{
+    ApiSurfaceReport, ComplexityCoverageStatus, ComplexityReport, DuplicateReport, GitReport,
+};
 use tokmd_analysis_types::{
     DerivedReport, EffortAssumptions, EffortDriver, EffortEstimateReport, EffortModel,
     EffortResults, EffortSizeBasis,
@@ -61,6 +63,14 @@ pub fn build_effort_report(
         source_confidence: basis_confidence,
     } = build_size_basis(root, export);
 
+    // Historical receipts have unknown coverage. Only an explicitly unavailable
+    // observation is equivalent to missing complexity evidence.
+    let complexity = complexity.filter(|report| {
+        report
+            .coverage
+            .as_ref()
+            .is_none_or(|coverage| coverage.status != ComplexityCoverageStatus::Unavailable)
+    });
     let drivers: Vec<EffortDriver> =
         build_drivers(&size_basis, derived, git, complexity, api_surface, dup);
 

@@ -4,7 +4,7 @@ assertion_line: 299
 expression: rendered
 ---
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "generated_at_ms": 0,
   "tool": {
     "name": "tokmd",

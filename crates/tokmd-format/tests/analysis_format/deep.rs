@@ -344,6 +344,7 @@ fn fully_populated_receipt() -> AnalysisReceipt {
         near: None,
     });
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 50,
         avg_function_length: 20.5,
         max_function_length: 100,
@@ -749,6 +750,7 @@ fn md_derived_without_todo() {
 fn md_complexity_all_optional_fields() {
     let mut r = minimal_receipt();
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 100,
         avg_function_length: 15.5,
         max_function_length: 200,
@@ -780,6 +782,7 @@ fn md_complexity_all_optional_fields() {
 fn md_complexity_without_optional_metrics() {
     let mut r = minimal_receipt();
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 10,
         avg_function_length: 8.0,
         max_function_length: 30,
@@ -808,6 +811,7 @@ fn md_complexity_without_optional_metrics() {
 fn md_complexity_file_table() {
     let mut r = minimal_receipt();
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 10,
         avg_function_length: 20.0,
         max_function_length: 50,

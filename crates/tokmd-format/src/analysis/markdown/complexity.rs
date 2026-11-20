@@ -6,10 +6,28 @@
 use std::fmt::Write;
 
 use super::fmt_f64;
-use tokmd_analysis_types::ComplexityReport;
+use tokmd_analysis_types::{ComplexityCoverageStatus, ComplexityReport};
 
 pub(super) fn render_complexity_report(out: &mut String, cx: &ComplexityReport) {
     out.push_str("## Complexity\n\n");
+    if let Some(coverage) = &cx.coverage {
+        let status = match coverage.status {
+            ComplexityCoverageStatus::Complete => "complete",
+            ComplexityCoverageStatus::Partial => "partial",
+            ComplexityCoverageStatus::Unavailable => "unavailable",
+        };
+        let _ = writeln!(
+            out,
+            "Coverage is {status}. Analyzed {} of {} eligible files across {} inventory paths ({} input lines).\n",
+            coverage.analyzed_files,
+            coverage.eligible_files,
+            coverage.outcomes.len(),
+            coverage.analyzed_lines
+        );
+        if coverage.status == ComplexityCoverageStatus::Unavailable {
+            return;
+        }
+    }
     out.push_str("|Metric|Value|\n");
     out.push_str("|---|---:|\n");
     let _ = writeln!(out, "|Total functions|{}|", cx.total_functions);

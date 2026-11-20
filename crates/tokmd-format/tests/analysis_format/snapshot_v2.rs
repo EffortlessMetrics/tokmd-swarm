@@ -79,6 +79,7 @@ fn text(output: RenderedOutput) -> String {
 fn snapshot_v2_md_with_complexity() {
     let mut receipt = minimal_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 42,
         avg_function_length: 18.5,
         max_function_length: 120,
@@ -126,6 +127,28 @@ fn snapshot_v2_md_with_complexity() {
 fn snapshot_v2_json_with_complexity() {
     let mut receipt = minimal_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: Some(ComplexityCoverage {
+            status: ComplexityCoverageStatus::Partial,
+            eligible_files: 2,
+            analyzed_files: 1,
+            analyzed_lines: 100,
+            outcomes: vec![
+                ComplexityFileObservation {
+                    path: "src/main.rs".into(),
+                    outcome: ComplexityFileOutcome::Analyzed,
+                    truncated_by: None,
+                    omitted_bytes: 0,
+                    analyzed_lines: 100,
+                },
+                ComplexityFileObservation {
+                    path: "src/missing.rs".into(),
+                    outcome: ComplexityFileOutcome::Unreadable,
+                    truncated_by: None,
+                    omitted_bytes: 0,
+                    analyzed_lines: 0,
+                },
+            ],
+        }),
         total_functions: 10,
         avg_function_length: 25.0,
         max_function_length: 80,
@@ -300,6 +323,7 @@ fn snapshot_v2_md_with_warnings() {
 fn snapshot_v2_xml_with_complexity() {
     let mut receipt = minimal_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 5,
         avg_function_length: 30.0,
         max_function_length: 60,

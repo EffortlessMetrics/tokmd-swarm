@@ -353,6 +353,7 @@ fn w58_analysis_md_health_preset() {
     r.args.preset = "health".into();
     r.derived = Some(make_derived());
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 45,
         avg_function_length: 22.0,
         max_function_length: 120,
