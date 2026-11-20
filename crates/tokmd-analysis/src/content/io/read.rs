@@ -19,6 +19,19 @@ pub(super) fn read_head(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
     read_head_from_file(&mut file, max_bytes)
 }
 
+#[cfg(all(feature = "walk", not(fuzzing)))]
+pub(super) fn read_head_with_omission(path: &Path, max_bytes: usize) -> Result<(Vec<u8>, u64)> {
+    let mut file =
+        File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let bytes = read_head_from_file(&mut file, max_bytes)?;
+    let omitted = if bytes.len() == max_bytes {
+        file.metadata()?.len().saturating_sub(max_bytes as u64)
+    } else {
+        0
+    };
+    Ok((bytes, omitted))
+}
+
 pub(super) fn read_head_tail(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
     if max_bytes == 0 {
         return Ok(Vec::new());

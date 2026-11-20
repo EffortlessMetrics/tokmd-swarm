@@ -246,7 +246,7 @@
       "description": "Output from `tokmd analyze --format json`.",
       "required": ["schema_version", "generated_at_ms", "tool", "mode", "status", "warnings", "source", "args"],
       "properties": {
-        "schema_version": { "type": "integer", "const": 9 },
+        "schema_version": { "type": "integer", "const": 10 },
         "generated_at_ms": { "type": "integer", "description": "Unix timestamp (milliseconds) when the analysis ran." },
         "tool": { "$ref": "#/definitions/ToolInfo" },
         "mode": { "type": "string", "const": "analysis" },
@@ -983,6 +983,7 @@
       "description": "Code complexity analysis.",
       "required": ["total_functions", "avg_function_length", "max_function_length", "avg_cyclomatic", "max_cyclomatic", "high_risk_files", "files"],
       "properties": {
+        "coverage": { "$ref": "#/definitions/ComplexityCoverage" },
         "total_functions": { "type": "integer", "description": "Total number of functions detected." },
         "avg_function_length": { "type": "number", "description": "Average function length in lines." },
         "max_function_length": { "type": "integer", "description": "Maximum function length in lines." },
@@ -998,6 +999,30 @@
         "maintainability_index": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/MaintainabilityIndex" }], "description": "Composite maintainability index." },
         "technical_debt": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/TechnicalDebtRatio" }], "description": "Complexity-to-size technical debt heuristic." },
         "files": { "type": "array", "items": { "$ref": "#/definitions/FileComplexity" } }
+      }
+    },
+    "ComplexityCoverage": {
+      "type": "object",
+      "required": ["status", "eligible_files", "analyzed_files", "analyzed_lines", "outcomes"],
+      "properties": {
+        "status": { "enum": ["complete", "partial", "unavailable"] },
+        "eligible_files": { "type": "integer", "minimum": 0 },
+        "analyzed_files": { "type": "integer", "minimum": 0 },
+        "analyzed_lines": { "type": "integer", "minimum": 0 },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "outcome", "truncated_by", "omitted_bytes", "analyzed_lines"],
+            "properties": {
+              "path": { "type": "string" },
+              "outcome": { "enum": ["analyzed", "unsupported_language", "unsupported_content", "unreadable", "not_selected", "byte_limit", "file_byte_limit"] },
+              "truncated_by": { "enum": [null, "file_byte_limit", "total_byte_limit"] },
+                "omitted_bytes": { "type": "integer", "minimum": 0 },
+              "analyzed_lines": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
       }
     },
     "HalsteadMetrics": {

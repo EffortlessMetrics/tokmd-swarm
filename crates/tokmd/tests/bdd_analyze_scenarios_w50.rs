@@ -46,7 +46,7 @@ fn given_project_when_analyze_receipt_then_derived_metrics_present() {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 2: JSON output has analysis_schema_version (schema_version=9)
+// Scenario 2: JSON output has analysis_schema_version (schema_version=10)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -65,8 +65,8 @@ fn given_project_when_analyze_json_then_has_schema_version() {
     )
     .expect("should decode stdout as UTF-8");
     assert_eq!(
-        json["schema_version"], 9,
-        "analysis schema_version should be 9"
+        json["schema_version"], 10,
+        "analysis schema_version should be 10"
     );
     assert!(
         json["generated_at_ms"].is_number(),

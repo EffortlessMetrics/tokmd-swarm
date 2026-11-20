@@ -22,7 +22,7 @@ proptest! {
 
     #[test]
     fn analysis_schema_version_value(_dummy in 0..1u8) {
-        prop_assert_eq!(ANALYSIS_SCHEMA_VERSION, 9u32);
+        prop_assert_eq!(ANALYSIS_SCHEMA_VERSION, 10u32);
     }
 }
 

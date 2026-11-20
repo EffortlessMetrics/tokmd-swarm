@@ -479,7 +479,7 @@ fn cli_export_json_full_pipeline() {
 #[test]
 fn cli_analyze_receipt_json_pipeline() {
     let json = run_json(&["analyze", "--preset", "receipt", "--format", "json"]);
-    assert_eq!(json["schema_version"].as_u64().unwrap(), 9);
+    assert_eq!(json["schema_version"].as_u64().unwrap(), 10);
     assert_eq!(json["mode"].as_str().unwrap(), "analysis");
     assert!(
         json["derived"].is_object(),
@@ -490,7 +490,7 @@ fn cli_analyze_receipt_json_pipeline() {
 #[test]
 fn cli_analyze_health_json_pipeline() {
     let json = run_json(&["analyze", "--preset", "health", "--format", "json"]);
-    assert_eq!(json["schema_version"].as_u64().unwrap(), 9);
+    assert_eq!(json["schema_version"].as_u64().unwrap(), 10);
     assert_eq!(json["mode"].as_str().unwrap(), "analysis");
     assert!(json["derived"].is_object());
 }

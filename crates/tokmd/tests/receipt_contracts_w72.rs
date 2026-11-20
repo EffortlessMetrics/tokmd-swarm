@@ -13,7 +13,7 @@ use serde_json::Value;
 
 // Schema version constants mirrored from the crate sources.
 const CORE_SCHEMA_VERSION: u32 = 2;
-const ANALYSIS_SCHEMA_VERSION: u32 = 9;
+const ANALYSIS_SCHEMA_VERSION: u32 = 10;
 
 // ── helpers ──────────────────────────────────────────────────────────────
 

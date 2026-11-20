@@ -98,6 +98,7 @@ fn complexity_baseline_new_defaults() {
 fn complexity_baseline_from_analysis_with_complexity() {
     let mut receipt = base_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 3,
         avg_function_length: 10.0,
         max_function_length: 20,

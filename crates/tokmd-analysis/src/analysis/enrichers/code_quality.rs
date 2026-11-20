@@ -94,17 +94,13 @@ fn run_complexity(
                 input.detail_functions,
             ) {
                 Ok(report) => {
-                    outputs.complexity = Some(report);
-                    for warning in crate::complexity::bounded_complexity_warnings(
-                        input.root,
-                        list,
-                        input.export,
-                        input.limits,
-                    ) {
-                        if warnings.iter().all(|existing| existing != &warning) {
-                            warnings.push(warning);
-                        }
+                    if let Some(coverage) = &report.coverage {
+                        warnings.extend(crate::complexity::complexity_warnings(
+                            coverage,
+                            input.limits,
+                        ));
                     }
+                    outputs.complexity = Some(report);
                 }
                 Err(err) => warnings.push(format!("complexity scan failed: {}", err)),
             }

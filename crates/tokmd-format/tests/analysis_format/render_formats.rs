@@ -716,6 +716,7 @@ fn md_renders_deps_section() {
 fn md_renders_complexity_section() {
     let mut receipt = minimal_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 50,
         avg_function_length: 15.5,
         max_function_length: 120,
@@ -760,6 +761,7 @@ fn md_renders_complexity_section() {
 fn md_renders_complexity_without_optional_fields() {
     let mut receipt = minimal_receipt();
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 10,
         avg_function_length: 8.0,
         max_function_length: 30,

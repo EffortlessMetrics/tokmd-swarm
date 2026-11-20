@@ -21,6 +21,9 @@ pub use technical_debt::{TechnicalDebtLevel, TechnicalDebtRatio};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplexityReport {
+    /// Measured input scope (absent in historical receipts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<ComplexityCoverage>,
     pub total_functions: usize,
     pub avg_function_length: f64,
     pub max_function_length: usize,
@@ -52,4 +55,52 @@ pub struct ComplexityReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub technical_debt: Option<TechnicalDebtRatio>,
     pub files: Vec<FileComplexity>,
+}
+
+/// Measurements from one complexity pass, before top-file display limits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityCoverage {
+    pub status: ComplexityCoverageStatus,
+    pub eligible_files: usize,
+    pub analyzed_files: usize,
+    pub analyzed_lines: usize,
+    pub outcomes: Vec<ComplexityFileObservation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityCoverageStatus {
+    Complete,
+    Partial,
+    Unavailable,
+}
+
+/// One outcome per normalized parent path, with clipping tracked independently.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityFileObservation {
+    pub path: String,
+    pub outcome: ComplexityFileOutcome,
+    pub truncated_by: Option<ComplexityTruncation>,
+    pub omitted_bytes: u64,
+    pub analyzed_lines: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityFileOutcome {
+    Analyzed,
+    UnsupportedLanguage,
+    UnsupportedContent,
+    Unreadable,
+    NotSelected,
+    ByteLimit,
+    FileByteLimit,
+}
+
+/// Limit that clipped the sampled prefix. Ties are attributed to the per-file limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComplexityTruncation {
+    FileByteLimit,
+    TotalByteLimit,
 }

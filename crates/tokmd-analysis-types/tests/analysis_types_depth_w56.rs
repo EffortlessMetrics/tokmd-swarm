@@ -203,7 +203,7 @@ fn file_stat_row(path: &str) -> FileStatRow {
 fn minimal_receipt_serializes_to_json() {
     let r = minimal_receipt();
     let json = serde_json::to_string(&r).unwrap();
-    assert!(json.contains("\"schema_version\":9"));
+    assert!(json.contains("\"schema_version\":10"));
     assert!(json.contains("\"mode\":\"receipt\""));
 }
 
@@ -255,7 +255,7 @@ fn receipt_source_fields_preserved() {
 
 #[test]
 fn analysis_schema_version_is_9() {
-    assert_eq!(ANALYSIS_SCHEMA_VERSION, 9);
+    assert_eq!(ANALYSIS_SCHEMA_VERSION, 10);
 }
 
 #[test]
@@ -322,6 +322,7 @@ fn receipt_with_archetype() {
 fn receipt_with_complexity_report() {
     let mut r = minimal_receipt();
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 20,
         avg_function_length: 15.0,
         max_function_length: 80,
@@ -515,6 +516,7 @@ fn complexity_baseline_from_receipt_with_complexity() {
         },
     });
     r.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 15,
         avg_function_length: 20.0,
         max_function_length: 60,

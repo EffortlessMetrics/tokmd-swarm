@@ -91,7 +91,7 @@ from `mergecode`, CI sensors, gates, perf tools, and other producers.
 
 Separate versions per receipt family:
 - Core receipts: `SCHEMA_VERSION = 2`
-- Analysis receipts: `ANALYSIS_SCHEMA_VERSION = 9`
+- Analysis receipts: `ANALYSIS_SCHEMA_VERSION = 10`
 - Cockpit receipts: `COCKPIT_SCHEMA_VERSION = 3`
 - Handoff manifests: `HANDOFF_SCHEMA_VERSION = 5`
 - Context receipts: `CONTEXT_SCHEMA_VERSION = 4`

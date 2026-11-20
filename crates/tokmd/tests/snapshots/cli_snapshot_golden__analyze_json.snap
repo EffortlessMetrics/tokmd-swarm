@@ -3,15 +3,17 @@ source: crates/tokmd/tests/cli_snapshot_golden.rs
 expression: normalize(stdout)
 ---
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "generated_at_ms":0,
   "tool": {
     "name": "tokmd",
     "version": "0.0.0"
   },
   "mode": "analysis",
-  "status": "complete",
-  "warnings": [],
+  "status": "partial",
+  "warnings": [
+    "complexity measurement is partial (4 of 4 eligible files analyzed); see complexity.coverage for file outcomes"
+  ],
   "source": {
     "inputs": [
       "."
@@ -803,6 +805,63 @@ expression: normalize(stdout)
     }
   },
   "complexity": {
+    "coverage": {
+      "status": "partial",
+      "eligible_files": 4,
+      "analyzed_files": 4,
+      "analyzed_lines": 16,
+      "outcomes": [
+        {
+          "path": "Cargo.toml",
+          "outcome": "unsupported_language",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 0
+        },
+        {
+          "path": "README.md",
+          "outcome": "unsupported_language",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 0
+        },
+        {
+          "path": "large.rs",
+          "outcome": "analyzed",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 11
+        },
+        {
+          "path": "mixed.md",
+          "outcome": "unsupported_language",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 0
+        },
+        {
+          "path": "script.js",
+          "outcome": "analyzed",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 1
+        },
+        {
+          "path": "space file.rs",
+          "outcome": "analyzed",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 1
+        },
+        {
+          "path": "src/main.rs",
+          "outcome": "analyzed",
+          "truncated_by": null,
+          "omitted_bytes": 0,
+          "analyzed_lines": 3
+        }
+      ]
+    },
     "total_functions": 3,
     "avg_function_length": 3.75,
     "max_function_length": 11,

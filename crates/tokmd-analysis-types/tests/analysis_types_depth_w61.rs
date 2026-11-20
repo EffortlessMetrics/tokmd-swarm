@@ -86,7 +86,7 @@ fn minimal_receipt() -> AnalysisReceipt {
 
 #[test]
 fn schema_version_is_9() {
-    assert_eq!(ANALYSIS_SCHEMA_VERSION, 9);
+    assert_eq!(ANALYSIS_SCHEMA_VERSION, 10);
 }
 
 #[test]
@@ -654,6 +654,7 @@ fn baseline_from_analysis_with_complexity() {
         },
     });
     receipt.complexity = Some(ComplexityReport {
+        coverage: None,
         total_functions: 10,
         avg_function_length: 20.0,
         max_function_length: 50,

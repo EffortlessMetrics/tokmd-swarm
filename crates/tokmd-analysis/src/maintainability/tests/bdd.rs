@@ -190,6 +190,7 @@ fn make_halstead(volume: f64) -> HalsteadMetrics {
 
 fn sample_complexity() -> ComplexityReport {
     ComplexityReport {
+        coverage: None,
         total_functions: 3,
         avg_function_length: 10.0,
         max_function_length: 20,

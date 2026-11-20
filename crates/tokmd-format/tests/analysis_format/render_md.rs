@@ -5,7 +5,7 @@
 //! running `analyze()` once with the following inputs:
 //! - ExportData with 3 FileRow entries (src/lib.rs, tests/lib_test.rs, Cargo.toml)
 //! - AnalysisPreset::Receipt
-//! - ANALYSIS_SCHEMA_VERSION = 9
+//! - ANALYSIS_SCHEMA_VERSION = 10
 //!
 //! To regenerate the fixture:
 //! 1. Temporarily re-add tokmd-analysis dev-dependency to Cargo.toml

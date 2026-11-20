@@ -281,6 +281,40 @@ fn test_analysis_receipt_validates_against_schema() -> Result<()> {
 }
 
 #[test]
+fn test_complexity_coverage_schema_rejects_invalid_clipping_fields() -> Result<()> {
+    let schema = load_schema()?;
+    let validator = build_validator_for_definition(&schema, "ComplexityCoverage")?;
+    let coverage = serde_json::json!({
+        "status": "partial",
+        "eligible_files": 1,
+        "analyzed_files": 1,
+        "analyzed_lines": 1,
+        "outcomes": [{
+            "path": "a.rs",
+            "outcome": "analyzed",
+            "truncated_by": "total_byte_limit",
+            "omitted_bytes": 17,
+            "analyzed_lines": 1
+        }]
+    });
+    assert!(validator.is_valid(&coverage));
+
+    for (field, invalid) in [
+        ("truncated_by", serde_json::json!("unknown")),
+        ("omitted_bytes", serde_json::json!("17")),
+        ("omitted_bytes", serde_json::json!(-1)),
+    ] {
+        let mut invalid_coverage = coverage.clone();
+        *invalid_coverage
+            .pointer_mut(&format!("/outcomes/0/{field}"))
+            .context("missing clipping field in fixture")? = invalid;
+        assert!(!validator.is_valid(&invalid_coverage), "{field}");
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_analysis_receipt_health_preset_validates() -> Result<()> {
     let schema = load_schema()?;
     let validator = build_validator_for_definition(&schema, "AnalysisReceipt")?;
@@ -505,8 +539,8 @@ fn test_schema_version_matches_constant() -> Result<()> {
         analysis_version
             .as_u64()
             .context("schema_version should be integer")?,
-        9,
-        "AnalysisReceipt schema_version should be 9"
+        10,
+        "AnalysisReceipt schema_version should be 10"
     );
 
     // Check CockpitReceipt schema_version const

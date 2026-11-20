@@ -341,6 +341,7 @@ fn api_surface_report_roundtrip() {
 #[test]
 fn complexity_report_minimal_roundtrip() {
     let report = ComplexityReport {
+        coverage: None,
         total_functions: 10,
         avg_function_length: 15.5,
         max_function_length: 50,

@@ -54,6 +54,14 @@ pub fn read_head(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
     }
 }
 
+/// Read a capped prefix and observe clipping using metadata from the same open file.
+#[cfg(all(feature = "walk", not(fuzzing)))]
+pub(crate) fn read_head_with_omission(path: &Path, max_bytes: usize) -> Result<(Vec<u8>, u64)> {
+    crate::io_trace::record(crate::io_trace::IoReadMode::Head, max_bytes, path);
+    // The prototype byte cache does not retain descriptor metadata.
+    read::read_head_with_omission(path, max_bytes)
+}
+
 pub fn read_head_tail(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
     #[cfg(not(fuzzing))]
     {

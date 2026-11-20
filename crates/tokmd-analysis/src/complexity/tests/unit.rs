@@ -1,5 +1,6 @@
 use super::risk::estimate_cyclomatic;
 use super::*;
+use tokmd_types::FileRow;
 
 #[test]
 fn test_count_rust_functions() {
@@ -357,7 +358,7 @@ fn test_compute_technical_debt_ratio_none_for_zero_code() {
 }
 
 #[test]
-fn bounded_complexity_warnings_report_default_file_cap() {
+fn bounded_complexity_warnings_report_default_file_cap() -> anyhow::Result<()> {
     // The bounded/partial signal is derived from real on-disk size (the bytes the
     // scan clips at the per-file cap), so write an actual oversized source file
     // rather than relying on the model's line-derived `row.bytes` estimate.
@@ -388,12 +389,17 @@ fn bounded_complexity_warnings_report_default_file_cap() {
         module_depth: 1,
         children: tokmd_types::ChildIncludeMode::Separate,
     };
-    let warnings = bounded_complexity_warnings(
+    let report = build_complexity_report(
         dir.path(),
         &[PathBuf::from("src/lib.rs")],
         &export,
         &AnalysisLimits::default(),
-    );
+        false,
+    )?;
+    let coverage = report
+        .coverage
+        .ok_or_else(|| anyhow::anyhow!("missing coverage"))?;
+    let warnings = complexity_warnings(&coverage, &AnalysisLimits::default());
 
     assert!(
         warnings
@@ -407,6 +413,7 @@ fn bounded_complexity_warnings_report_default_file_cap() {
             .any(|warning| warning.contains("complexity metrics are partial")),
         "{warnings:?}"
     );
+    Ok(())
 }
 
 #[test]

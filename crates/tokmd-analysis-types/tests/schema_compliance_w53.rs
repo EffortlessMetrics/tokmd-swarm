@@ -78,7 +78,7 @@ fn analysis_schema_version_is_positive() {
 
 #[test]
 fn analysis_schema_version_matches_documented_value() {
-    assert_eq!(ANALYSIS_SCHEMA_VERSION, 9);
+    assert_eq!(ANALYSIS_SCHEMA_VERSION, 10);
 }
 
 // ---------------------------------------------------------------------------

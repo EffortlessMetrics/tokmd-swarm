@@ -362,7 +362,7 @@ fn near_dup_scope_serde_roundtrip() {
 
 #[test]
 fn analysis_schema_version_is_current() {
-    assert_eq!(ANALYSIS_SCHEMA_VERSION, 9);
+    assert_eq!(ANALYSIS_SCHEMA_VERSION, 10);
 }
 
 #[test]

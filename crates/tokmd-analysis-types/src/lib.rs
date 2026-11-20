@@ -48,7 +48,8 @@ pub use baseline::{
 };
 pub use churn::{ChurnTrend, PredictiveChurnReport, TrendClass};
 pub use complexity::{
-    ComplexityHistogram, ComplexityReport, ComplexityRisk, FileComplexity,
+    ComplexityCoverage, ComplexityCoverageStatus, ComplexityFileObservation, ComplexityFileOutcome,
+    ComplexityHistogram, ComplexityReport, ComplexityRisk, ComplexityTruncation, FileComplexity,
     FunctionComplexityDetail, HalsteadMetrics, MaintainabilityIndex, TechnicalDebtLevel,
     TechnicalDebtRatio,
 };
@@ -98,7 +99,8 @@ pub use tokmd_scan::{gini_coefficient, percentile, round_f64, safe_ratio};
 /// v7: Added coupling normalization (Jaccard/Lift), commit intent classification, near-duplicate detection.
 /// v8: Near-dup clusters, selection metadata, max_pairs guardrail, runtime stats.
 /// v9: Added effort estimation report.
-pub const ANALYSIS_SCHEMA_VERSION: u32 = 9;
+/// v10: Added observed complexity coverage and file outcomes.
+pub const ANALYSIS_SCHEMA_VERSION: u32 = 10;
 
 #[cfg(test)]
 mod tests {
@@ -107,7 +109,7 @@ mod tests {
     // ── Schema version constant ───────────────────────────────────────
     #[test]
     fn analysis_schema_version_constant() -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(ANALYSIS_SCHEMA_VERSION, 9);
+        assert_eq!(ANALYSIS_SCHEMA_VERSION, 10);
         Ok(())
     }
 }

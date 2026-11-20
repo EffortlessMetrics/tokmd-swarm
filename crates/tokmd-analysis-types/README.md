@@ -24,7 +24,7 @@ fn summarize(receipt: AnalysisReceipt) -> Option<usize> {
 
 ## Integration notes
 - Pure data and serialization, with deterministic ordering at the type boundary.
-- `ANALYSIS_SCHEMA_VERSION = 9`.
+- `ANALYSIS_SCHEMA_VERSION = 10`.
 - Includes the optional sections used by the analysis preset matrix.
 
 ## Go deeper

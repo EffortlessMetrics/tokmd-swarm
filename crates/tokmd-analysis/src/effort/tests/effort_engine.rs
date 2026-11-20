@@ -28,12 +28,13 @@ use crate::effort::{
     cocomo81::estimate_with_factors,
 };
 use tokmd_analysis_types::{
-    ApiSurfaceReport, BoilerplateReport, BusFactorRow, ComplexityReport, CouplingRow,
-    DerivedReport, DerivedTotals, DistributionReport, DuplicateReport, EffortConfidenceLevel,
-    EffortDeltaClassification, FileStatRow, FreshnessReport, GitReport, HotspotRow,
-    IntegrityReport, LangPurityReport, LangPurityRow, MaxFileReport, MaxFileRow,
-    ModuleFreshnessRow, NestingReport, NestingRow, PolyglotReport, RateReport, RateRow,
-    RatioReport, RatioRow, ReadingTimeReport, TestDensityReport, TodoReport, TopOffenders,
+    ApiSurfaceReport, BoilerplateReport, BusFactorRow, ComplexityCoverage,
+    ComplexityCoverageStatus, ComplexityReport, CouplingRow, DerivedReport, DerivedTotals,
+    DistributionReport, DuplicateReport, EffortConfidenceLevel, EffortDeltaClassification,
+    FileStatRow, FreshnessReport, GitReport, HotspotRow, IntegrityReport, LangPurityReport,
+    LangPurityRow, MaxFileReport, MaxFileRow, ModuleFreshnessRow, NestingReport, NestingRow,
+    PolyglotReport, RateReport, RateRow, RatioReport, RatioRow, ReadingTimeReport,
+    TestDensityReport, TodoReport, TopOffenders,
 };
 use tokmd_types::{ChildIncludeMode, ExportData, FileKind, FileRow};
 
@@ -521,6 +522,7 @@ fn effort_driver_extraction_tracks_expected_signal_types() {
         intent: None,
     };
     let complexity = ComplexityReport {
+        coverage: None,
         total_functions: 120,
         avg_function_length: 18.0,
         max_function_length: 128,
@@ -599,7 +601,7 @@ fn effort_driver_extraction_tracks_expected_signal_types() {
 // -----------------------------------------------------------------------------
 
 #[test]
-fn effort_confidence_distinguishes_signal_coverage() {
+fn effort_confidence_distinguishes_signal_coverage() -> anyhow::Result<()> {
     let export_low = ExportData {
         rows: vec![FileRow {
             path: "mystery/random.bin".to_string(),
@@ -690,6 +692,7 @@ fn effort_confidence_distinguishes_signal_coverage() {
         intent: None,
     };
     let complexity = ComplexityReport {
+        coverage: None,
         total_functions: 20,
         avg_function_length: 10.0,
         max_function_length: 64,
@@ -739,6 +742,35 @@ fn effort_confidence_distinguishes_signal_coverage() {
     assert_eq!(high_conf.level, EffortConfidenceLevel::High);
     assert!(high_conf.reasons.is_empty());
     assert!(high_conf.data_coverage_pct.unwrap_or(0.0) > 0.72);
+
+    let unavailable = ComplexityReport {
+        coverage: Some(ComplexityCoverage {
+            status: ComplexityCoverageStatus::Unavailable,
+            eligible_files: 0,
+            analyzed_files: 0,
+            analyzed_lines: 0,
+            outcomes: vec![],
+        }),
+        avg_cyclomatic: 0.0,
+        max_cyclomatic: 0,
+        ..complexity
+    };
+    let report_unavailable = build_effort_report(
+        Path::new("."),
+        &export_low,
+        &make_derived(100, 0.0, 0),
+        None,
+        Some(&unavailable),
+        None,
+        None,
+        &req,
+    )?;
+    assert_eq!(
+        report_unavailable.confidence.data_coverage_pct,
+        low_conf.data_coverage_pct
+    );
+    assert_eq!(report_unavailable.confidence.reasons, low_conf.reasons);
+    Ok(())
 }
 
 // -----------------------------------------------------------------------------

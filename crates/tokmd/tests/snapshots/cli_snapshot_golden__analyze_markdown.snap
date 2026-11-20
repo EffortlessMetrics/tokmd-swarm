@@ -187,6 +187,8 @@ Preset: `receipt`
 
 ## Complexity
 
+Coverage is partial. Analyzed 4 of 4 eligible files across 7 inventory paths (16 input lines).
+
 |Metric|Value|
 |---|---:|
 |Total functions|3|
