@@ -117236,25 +117236,6 @@ line = 134
 column = 20
 
 [[allow]]
-id = "panic-6178"
-path = "crates/tokmd-analysis/src/complexity/tests/unit.rs"
-family = "expect"
-classification = "test_helper"
-owner = "tokmd-analysis"
-explanation = "test helper; preferred fix is fallible test utilities"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "method_call"
-container = "test_compute_technical_debt_ratio"
-callee = "expect"
-receiver_fingerprint = "compute_technical_debt_ratio (& export , & files)"
-
-[allow.last_seen]
-line = 317
-column = 15
-
-[[allow]]
 id = "panic-6179"
 path = "crates/tokmd-analysis/src/complexity/tests/unit.rs"
 family = "element_indexing"

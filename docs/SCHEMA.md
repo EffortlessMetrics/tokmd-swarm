@@ -39,7 +39,7 @@ them. Consumers should match the top-level `schema` string first, then read nest
 | **Core** | 2 | `SCHEMA_VERSION` | `lang`, `module`, `export`, `diff`, `run` |
 | **Context** | 4 | `CONTEXT_SCHEMA_VERSION` | `context` receipt |
 | **Context Bundle** | 2 | `CONTEXT_BUNDLE_SCHEMA_VERSION` | `context` bundle manifest |
-| **Analysis** | 9 | `ANALYSIS_SCHEMA_VERSION` | `analyze` |
+| **Analysis** | 10 | `ANALYSIS_SCHEMA_VERSION` | `analyze` |
 | **Cockpit** | 3 | `COCKPIT_SCHEMA_VERSION` | `cockpit` |
 | **Envelope** | `"sensor.report.v1"` | `SENSOR_REPORT_SCHEMA` | ecosystem envelope |
 | **Baseline** | 1 | `BASELINE_VERSION` | complexity/determinism baselines |
@@ -867,6 +867,16 @@ Present when the `estimate` preset is used or when explicit `--effort-*` flags r
 | `complexity` | `health`, `risk`, `deep` | Cyclomatic/cognitive metrics, maintainability, and technical-debt ratio |
 | `effort` | `estimate` or explicit `--effort-*` flags | COCOMO-based effort projections, optional base/head delta, and Monte Carlo metadata |
 | `fun` | `fun` | Novelty outputs (eco-label) |
+
+The technical-debt heuristic divides the measured complexity points by
+`coverage.analyzed_lines / 1000`. This counts physical input lines, including
+comments and blanks, within the prefix actually analyzed. Zero measured lines
+yield no ratio. A partial result describes only the measured input. Compare
+trends only for equivalent measurement scope, settings, limits and estimator
+version. The presence of `technical_debt.analyzed_lines` identifies this formula, even
+when reading v10 receipts. Older whole-export ratios omit this field. Keep historical
+receipts and establish a fresh baseline for the measured-line metric.
+
 
 ---
 

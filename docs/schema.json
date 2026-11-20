@@ -1062,7 +1062,8 @@
       "properties": {
         "ratio": { "type": "number", "description": "Complexity points per KLOC." },
         "complexity_points": { "type": "integer", "description": "Aggregate complexity points used in ratio." },
-        "code_kloc": { "type": "number", "description": "KLOC denominator used for ratio." },
+        "analyzed_lines": { "type": "integer", "minimum": 1, "description": "Exact physical lines in the measured prefix. Absent on historical whole-export ratios." },
+        "code_kloc": { "type": "number", "description": "Thousands of lines used as the denominator by the producing estimator." },
         "level": { "$ref": "#/definitions/TechnicalDebtLevel" }
       }
     },

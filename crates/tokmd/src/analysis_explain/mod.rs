@@ -70,7 +70,7 @@ const ENTRIES: &[Entry] = &[
     Entry {
         canonical: "technical_debt_ratio",
         aliases: &["debt_ratio", "technical_debt"],
-        summary: "Complexity points per KLOC as a heuristic debt signal.",
+        summary: "Complexity points per thousand analyzed input lines. Partial coverage describes only the measured input.",
     },
     Entry {
         canonical: "halstead",

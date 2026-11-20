@@ -297,6 +297,7 @@ fn technical_debt_ratio_serde_roundtrip() {
     let td = TechnicalDebtRatio {
         ratio: 12.5,
         complexity_points: 250,
+        analyzed_lines: None,
         code_kloc: 20.0,
         level: TechnicalDebtLevel::Moderate,
     };
