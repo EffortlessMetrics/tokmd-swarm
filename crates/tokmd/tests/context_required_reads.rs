@@ -147,16 +147,10 @@ fn context_pack_cli_required_reads_preserve_failure_exit_and_completion() -> Res
                                     && diagnostic.contains("Failed to read"),
                                 "missing selected path/read diagnostic: {diagnostic}"
                             );
-                            ensure!(
-                                !out.join("manifest.json").exists(),
-                                "read failure retained completion manifest"
-                            );
-                            if command == "context" {
-                                ensure!(
-                                    !out.join("receipt.json").exists(),
-                                    "read failure retained receipt"
-                                );
-                            }
+                            ensure!(fs::read(&payload_path)? == stable_bytes);
+                            let retained: Value =
+                                serde_json::from_slice(&fs::read(out.join("manifest.json"))?)?;
+                            ensure!(retained == manifest, "failure changed prior manifest");
                         }
                         fs::write(&input, &valid)?;
                         let retry = run(

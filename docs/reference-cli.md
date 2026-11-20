@@ -3170,3 +3170,26 @@ strategy = "spread"
 output = "bundle"
 compress = true
 ```
+
+### Replacing a local context or handoff bundle
+
+An output directory with existing entries requires `--force`. Both commands
+reserve `.tokmd-bundle-stage` inside the output directory, render there, and
+check the manifest inventory, byte lengths and BLAKE3 hashes before switching.
+Readers should read the manifest and verify the bytes of every referenced
+non-self artifact before use. The manifest has no self-hash. A failed read,
+missing manifest, or digest mismatch during a refresh calls for a fresh read.
+
+During replacement the writer moves the old manifest into staging first and
+installs the new manifest last. Ordinary failures roll back the moves in reverse
+order. Extra files, including optional outputs absent from the new inventory,
+stay in place. Read-only and multiply-linked artifacts block replacement. The
+writer keeps private backups of prior bytes and reuses each withdrawn file
+object, preserving ownership and access-control rules. Windows uses the system
+`icacls` utility to restrict its new empty staging directory before writing.
+Only listed artifacts belong to the current generation. Another
+writer or an interrupted run holding the staging name blocks a new refresh.
+After an interruption, preserve the staging directory and inspect its
+`previous-*` backups before recovery. Restore old payloads before their
+matching manifest and verify hashes. These filesystem moves do not guarantee
+power-loss durability. Cleanup removes individual writer-owned files only.

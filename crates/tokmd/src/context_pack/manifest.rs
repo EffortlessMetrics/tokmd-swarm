@@ -1,11 +1,12 @@
 //! Context bundle directory receipt and manifest writing.
 
-use std::fs::{self, File};
+use crate::bundle_generation::{StagedWriter, boundary, write_file};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use blake3::Hasher;
 use tokmd_types::{
     ArtifactEntry, ArtifactHash, CONTEXT_BUNDLE_SCHEMA_VERSION, CONTEXT_SCHEMA_VERSION,
@@ -14,7 +15,7 @@ use tokmd_types::{
 
 use crate::cli;
 
-use super::{CountingWriter, SelectResult, remove_completion_marker, write_bundle_output};
+use super::{CountingWriter, SelectResult, write_bundle_output};
 
 /// Write bundle to a directory with manifest.
 ///
@@ -36,28 +37,8 @@ pub(crate) fn write_bundle_directory(
     excluded_patterns: &[String],
     select_result: &SelectResult,
 ) -> Result<usize> {
-    // Check if directory exists and is non-empty.
-    if dir.exists() {
-        let is_empty = dir
-            .read_dir()
-            .map(|mut entries| entries.next().is_none())
-            .unwrap_or(false);
-        if !is_empty && !force {
-            bail!(
-                "Bundle directory is not empty: {}. Use --force to overwrite.",
-                dir.display()
-            );
-        }
-    } else {
-        fs::create_dir_all(dir)
-            .with_context(|| format!("Failed to create bundle directory: {}", dir.display()))?;
-    }
-
-    // Once payload replacement begins, a previous successful index/receipt
-    // must not remain authoritative if a selected input fails to read.
-    remove_completion_marker(&dir.join("manifest.json"))?;
-    remove_completion_marker(&dir.join("receipt.json"))?;
-
+    let generation = crate::bundle_generation::Generation::begin(dir, force)?;
+    let stage = generation.path();
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -68,7 +49,7 @@ pub(crate) fn write_bundle_directory(
     let token_estimation = tokmd_types::TokenEstimationMeta::from_bytes(total_file_bytes, 4.0);
 
     // Write receipt.json.
-    let receipt_path = dir.join("receipt.json");
+    let receipt_path = stage.join("receipt.json");
     let receipt = ContextReceipt {
         schema_version: CONTEXT_SCHEMA_VERSION,
         generated_at_ms: now_ms,
@@ -92,8 +73,8 @@ pub(crate) fn write_bundle_directory(
         bundle_audit: None,
     };
     // Write bundle.txt (concatenated content) - stream directly to file.
-    let bundle_path = dir.join("bundle.txt");
-    let bundle_file = File::create(&bundle_path)
+    let bundle_path = stage.join("bundle.txt");
+    let bundle_file = StagedWriter::create(&bundle_path)
         .with_context(|| format!("Failed to create bundle file: {}", bundle_path.display()))?;
     let mut counter = CountingWriter::new(bundle_file);
     write_bundle_output(
@@ -104,7 +85,9 @@ pub(crate) fn write_bundle_directory(
     )?;
     counter.flush()?;
     let bundle_bytes = counter.bytes() as usize;
+    drop(counter);
     let bundle_hash = hash_file(&bundle_path)?;
+    boundary("hash", &bundle_path)?;
 
     // Publish the selection receipt only after required rendering succeeds.
     let receipt_audit =
@@ -112,8 +95,11 @@ pub(crate) fn write_bundle_directory(
     let mut receipt = receipt;
     receipt.bundle_audit = Some(receipt_audit);
     let receipt_json = serde_json::to_string_pretty(&receipt)?;
-    fs::write(&receipt_path, &receipt_json)
+    write_file(&receipt_path, &receipt_json)
         .with_context(|| format!("Failed to write receipt: {}", receipt_path.display()))?;
+
+    let receipt_hash = blake3::hash(receipt_json.as_bytes()).to_hex().to_string();
+    boundary("hash", &receipt_path)?;
 
     // Build artifacts list.
     let artifacts = vec![
@@ -129,7 +115,10 @@ pub(crate) fn write_bundle_directory(
             path: "receipt.json".to_string(),
             description: "Context selection receipt".to_string(),
             bytes: receipt_json.len() as u64,
-            hash: None,
+            hash: Some(ArtifactHash {
+                algo: "blake3".into(),
+                hash: receipt_hash,
+            }),
         },
         ArtifactEntry {
             name: "bundle".to_string(),
@@ -144,7 +133,6 @@ pub(crate) fn write_bundle_directory(
     ];
 
     // Write manifest.json (authoritative index).
-    let manifest_path = dir.join("manifest.json");
     let total_file_bytes: usize = selected.iter().map(|f| f.bytes).sum();
     let bundle_estimation = tokmd_types::TokenEstimationMeta::from_bytes(total_file_bytes, 4.0);
     let bundle_audit =
@@ -176,9 +164,7 @@ pub(crate) fn write_bundle_directory(
         bundle_audit: Some(bundle_audit),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
-    fs::write(&manifest_path, &manifest_json)
-        .with_context(|| format!("Failed to write manifest: {}", manifest_path.display()))?;
-
+    generation.publish(&manifest_json, &manifest.artifacts)?;
     eprintln!("Wrote bundle to {}", dir.display());
     eprintln!("  - receipt.json ({} bytes)", receipt_json.len());
     eprintln!("  - bundle.txt ({} bytes)", bundle_bytes);
