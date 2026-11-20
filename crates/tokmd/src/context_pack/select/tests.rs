@@ -180,7 +180,7 @@ fn test_get_value_churn_with_git() {
 #[test]
 fn test_pack_greedy_empty_rows() {
     let rows: Vec<FileRow> = vec![];
-    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert!(result.is_empty());
 }
 
@@ -193,7 +193,7 @@ fn test_pack_greedy_budget_exceeded() {
     // Budget of 500 can only fit file a (500 tokens)
     // b.rs has 600 tokens which exceeds budget
     // Even though b.rs has higher value (200 > 100), it doesn't fit
-    let result = pack_greedy(&rows, 500, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 500, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
     // Should pick a.rs because b.rs doesn't fit in the budget
     assert_eq!(result[0].path, "a.rs");
@@ -205,7 +205,7 @@ fn test_pack_greedy_filters_child_rows() {
         make_test_row("parent.rs", "mod", "Rust", 100, 50),
         make_child_row("child.rs", "mod", "Rust", 50, 25),
     ];
-    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     // Only parent should be included
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].path, "parent.rs");
@@ -219,7 +219,7 @@ fn test_pack_greedy_selects_by_value() {
         make_test_row("mid.rs", "mod", "Rust", 100, 50),
     ];
     // Budget can fit all files (300 tokens total)
-    let result = pack_greedy(&rows, 300, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 300, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 3);
     // Should be sorted by value descending
     assert_eq!(result[0].path, "high.rs");
@@ -234,7 +234,7 @@ fn test_pack_greedy_respects_token_budget() {
         make_test_row("small.rs", "mod", "Rust", 100, 50),
     ];
     // Budget only allows small file
-    let result = pack_greedy(&rows, 150, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 150, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].path, "small.rs");
 }
@@ -247,14 +247,14 @@ fn test_pack_greedy_accumulates_tokens() {
         make_test_row("c.rs", "mod", "Rust", 100, 30),
     ];
     // Budget of 250 allows 2 files (200 tokens used)
-    let result = pack_greedy(&rows, 250, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 250, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 2);
 }
 
 #[test]
 fn test_pack_spread_empty_rows() {
     let rows: Vec<FileRow> = vec![];
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert!(result.is_empty());
 }
 
@@ -264,7 +264,7 @@ fn test_pack_spread_filters_child_rows() {
         make_test_row("parent.rs", "mod", "Rust", 100, 50),
         make_child_row("child.rs", "mod", "Rust", 50, 25),
     ];
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].path, "parent.rs");
 }
@@ -278,7 +278,7 @@ fn test_pack_spread_distributes_across_groups() {
         make_test_row("python2.py", "mod2", "Python", 100, 80),
     ];
     // Large budget to fit all
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 4);
 }
 
@@ -289,7 +289,7 @@ fn test_pack_spread_round_robin_fills_70_percent() {
         make_test_row("b.py", "mod2", "Python", 100, 60),
     ];
     // Budget of 200 - spread uses 70% = 140 tokens
-    let result = pack_spread(&rows, 200, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 200, ValueMetric::Code, None, |row| row.tokens);
     // Both should fit in spread phase
     assert_eq!(result.len(), 2);
 }
@@ -305,7 +305,7 @@ fn test_pack_spread_greedy_fills_remaining_30_percent() {
     // Budget 200, spread budget = 140
     // After spread: a.rs (50) + b.py (50) = 100 tokens
     // Greedy phase can add c.rs (50) since 100 + 50 = 150 <= 200
-    let result = pack_spread(&rows, 200, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 200, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 3);
 }
 
@@ -362,11 +362,11 @@ fn test_to_context_row_value_from_tokens_metric() {
 fn test_pack_greedy_budget_boundary() {
     let rows = vec![make_test_row("exact.rs", "mod", "Rust", 100, 50)];
     // Budget exactly matches tokens
-    let result = pack_greedy(&rows, 100, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 100, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
 
     // Budget one less than tokens
-    let result = pack_greedy(&rows, 99, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 99, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 0);
 }
 
@@ -381,7 +381,7 @@ fn test_pack_spread_skips_large_files_in_spread_phase() {
     // small.rs (50 tokens) fits in spread
     // After spread, remaining budget = 200 - 50 = 150
     // large.rs (200) > 150, so doesn't fit in greedy either
-    let result = pack_spread(&rows, 200, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 200, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].path, "small.rs");
 }
@@ -392,7 +392,7 @@ fn test_pack_spread_no_duplicates() {
         make_test_row("a.rs", "mod1", "Rust", 50, 100),
         make_test_row("b.rs", "mod1", "Rust", 50, 90),
     ];
-    let result = pack_spread(&rows, 500, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 500, ValueMetric::Code, None, |row| row.tokens);
     // Both should be included exactly once
     let paths: Vec<_> = result.iter().map(|r| &r.path).collect();
     assert_eq!(paths.len(), 2);
@@ -461,7 +461,7 @@ fn test_budget_invariant_greedy() {
         make_test_row("c.rs", "mod3", "Rust", 200, 30),
     ];
     let budget = 250;
-    let result = pack_greedy(&rows, budget, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, budget, ValueMetric::Code, None, |row| row.tokens);
     let total_tokens: usize = result.iter().map(|r| r.tokens).sum();
     assert!(
         total_tokens <= budget,
@@ -478,7 +478,7 @@ fn test_budget_invariant_spread() {
         make_test_row("c.rs", "mod3", "Go", 200, 30),
     ];
     let budget = 250;
-    let result = pack_spread(&rows, budget, ValueMetric::Code, None);
+    let result = pack_spread(&rows, budget, ValueMetric::Code, None, |row| row.tokens);
     let total_tokens: usize = result.iter().map(|r| r.tokens).sum();
     assert!(
         total_tokens <= budget,
@@ -495,7 +495,7 @@ fn test_parent_only_invariant_greedy() {
         make_test_row("parent2.rs", "mod", "Rust", 100, 40),
         make_child_row("child2.rs", "mod", "Rust", 50, 20),
     ];
-    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     // All selected files must be parent files
     for ctx_row in &result {
@@ -524,7 +524,7 @@ fn test_parent_only_invariant_spread() {
         make_test_row("parent2.py", "mod2", "Python", 100, 40),
         make_child_row("child2.py", "mod2", "Python", 50, 20),
     ];
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     for ctx_row in &result {
         let original = rows
@@ -549,8 +549,8 @@ fn test_determinism_greedy() {
         make_test_row("c.rs", "mod", "Rust", 100, 30),
     ];
 
-    let result1 = pack_greedy(&rows, 1000, ValueMetric::Code, None);
-    let result2 = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result1 = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
+    let result2 = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     let paths1: Vec<_> = result1.iter().map(|r| &r.path).collect();
     let paths2: Vec<_> = result2.iter().map(|r| &r.path).collect();
@@ -567,8 +567,8 @@ fn test_determinism_spread() {
         make_test_row("c.rs", "mod1", "Rust", 100, 50),
     ];
 
-    let result1 = pack_spread(&rows, 1000, ValueMetric::Code, None);
-    let result2 = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result1 = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
+    let result2 = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     let paths1: Vec<_> = result1.iter().map(|r| &r.path).collect();
     let paths2: Vec<_> = result2.iter().map(|r| &r.path).collect();
@@ -584,7 +584,7 @@ fn test_tiebreaker_by_path() {
         make_test_row("a.rs", "mod", "Rust", 100, 50), // Same value, earlier path
     ];
 
-    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     // With same values, should be sorted by path alphabetically
     assert_eq!(
@@ -608,7 +608,7 @@ fn test_spread_distributes_before_greedy_fill() {
     ];
 
     // Budget allows all files (200 tokens total, budget 300)
-    let spread_result = pack_spread(&rows, 300, ValueMetric::Code, None);
+    let spread_result = pack_spread(&rows, 300, ValueMetric::Code, None, |row| row.tokens);
 
     // First two picks should be the best from each module (round-robin)
     let first_two: Vec<_> = spread_result.iter().take(2).map(|r| &r.path).collect();
@@ -632,7 +632,7 @@ fn test_pack_spread_module_first_avoids_language_bias() {
         make_test_row("mod2/b.rs", "mod2", "Rust", 50, 80),
     ];
 
-    let result = pack_spread(&rows, 200, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 200, ValueMetric::Code, None, |row| row.tokens);
     let first_two: Vec<_> = result.iter().take(2).map(|r| r.path.as_str()).collect();
 
     assert!(
@@ -653,7 +653,7 @@ fn test_greedy_picks_highest_value_first() {
         make_test_row("high.rs", "mod", "Rust", 100, 90),
     ];
 
-    let result = pack_greedy(&rows, 100, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 100, ValueMetric::Code, None, |row| row.tokens);
 
     // Should pick high.rs (value 90) not low.rs (value 10)
     assert_eq!(result.len(), 1);
@@ -673,7 +673,7 @@ fn test_pack_greedy_skips_files_that_dont_fit() {
     ];
 
     // Budget 100: big.rs (200 tokens) doesn't fit, small.rs (50) does
-    let result = pack_greedy(&rows, 100, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 100, ValueMetric::Code, None, |row| row.tokens);
 
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].path, "small.rs");
@@ -769,7 +769,7 @@ fn test_spread_70_percent_allocation() {
     // Budget 1000, spread = 700
     // After spread phase (700 budget): can fit 2 files (700 tokens)
     // Greedy phase can add the third if total <= 1000
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
 
     // With these token sizes, should get 2 files in spread, possibly 1 more in greedy
     assert!(result.len() >= 2, "Should select at least 2 files");
@@ -797,7 +797,7 @@ fn test_pack_greedy_all_children_empty() {
         make_child_row("a.rs", "mod", "Rust", 100, 50),
         make_child_row("b.rs", "mod", "Rust", 100, 50),
     ];
-    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert!(result.is_empty());
 }
 
@@ -807,7 +807,7 @@ fn test_pack_spread_all_children_empty() {
         make_child_row("a.rs", "mod", "Rust", 100, 50),
         make_child_row("b.rs", "mod", "Rust", 100, 50),
     ];
-    let result = pack_spread(&rows, 1000, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 1000, ValueMetric::Code, None, |row| row.tokens);
     assert!(result.is_empty());
 }
 
@@ -904,7 +904,7 @@ fn test_pack_spread_70_percent_exact() {
     // Budget 100, spread = 70
     // File with 70 tokens should fit in spread phase
     let rows = vec![make_test_row("a.rs", "mod1", "Rust", 70, 50)];
-    let result = pack_spread(&rows, 100, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 100, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1);
 }
 
@@ -913,7 +913,7 @@ fn test_pack_spread_71_percent_needs_greedy() {
     // Budget 100, spread = 70, file = 71 tokens
     // Should NOT fit in spread, but DOES fit in greedy (total budget 100)
     let rows = vec![make_test_row("a.rs", "mod1", "Rust", 71, 50)];
-    let result = pack_spread(&rows, 100, ValueMetric::Code, None);
+    let result = pack_spread(&rows, 100, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 1); // Added in greedy fill phase
 }
 
@@ -927,7 +927,7 @@ fn test_pack_greedy_tiebreaker_by_path_explicit() {
         make_test_row("aaa.rs", "mod", "Rust", 100, 50),
         make_test_row("mmm.rs", "mod", "Rust", 100, 50),
     ];
-    let result = pack_greedy(&rows, 300, ValueMetric::Code, None);
+    let result = pack_greedy(&rows, 300, ValueMetric::Code, None, |row| row.tokens);
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].path, "aaa.rs");
     assert_eq!(result[1].path, "mmm.rs");
@@ -1450,4 +1450,54 @@ fn test_generated_over_cap_excluded_by_policy() {
             .iter()
             .any(|f| f.path.contains("node-types.json"))
     );
+}
+
+#[test]
+fn measured_charges_preserve_token_ranking_and_spine_order() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut rows = Vec::new();
+    // The two spine files tie on inventory cost, as do the two ranked files.
+    // Their measured costs point in the opposite direction for each sort.
+    for (name, bytes) in [
+        ("a/README.md", 1200),
+        ("z/README.md", 800),
+        ("a.rs", 4000),
+        ("z.rs", 5600),
+        ("clipped.rs", 8203),
+    ] {
+        let path = root.path().join(name);
+        std::fs::create_dir_all(path.parent().unwrap_or(root.path()))?;
+        std::fs::write(&path, vec![b'x'; bytes])?;
+        let lines = if name.ends_with(".md") { 10 } else { 50 };
+        let mut row = make_test_row(&path.to_string_lossy(), "same", "Rust", lines * 10, lines);
+        row.bytes = lines * 40;
+        rows.push(row);
+    }
+    for strategy in [ContextStrategy::Greedy, ContextStrategy::Spread] {
+        let selected = select_files(&rows, 10_000, strategy, ValueMetric::Tokens, None);
+        let actual: Vec<_> = selected
+            .iter()
+            .map(|f| {
+                (
+                    f.path.as_str(),
+                    f.value,
+                    f.tokens,
+                    f.effective_tokens,
+                    f.rank_reason.as_str(),
+                )
+            })
+            .collect();
+        anyhow::ensure!(
+            actual
+                == [
+                    (rows[0].path.as_str(), 100, 300, None, "spine"),
+                    (rows[1].path.as_str(), 100, 200, None, "spine"),
+                    (rows[4].path.as_str(), 1500, 2050, Some(1500), "tokens"),
+                    (rows[2].path.as_str(), 500, 1000, None, "tokens"),
+                    (rows[3].path.as_str(), 500, 1400, None, "tokens"),
+                ],
+            "unexpected paths, ranking values or charges: {actual:?}"
+        );
+    }
+    Ok(())
 }

@@ -248,8 +248,9 @@ pub fn select_files_with_options(
     spine_candidates.sort_by(|a, b| a.tokens.cmp(&b.tokens).then_with(|| a.path.cmp(&b.path)));
 
     for row in spine_candidates {
-        if spine_used + row.tokens <= spine_budget {
-            spine_used += row.tokens;
+        let charge = policy_selection.charge(row);
+        if charge <= spine_budget - spine_used {
+            spine_used += charge;
             spine_paths.insert(row.path.as_str());
             spine_files.push(to_context_row_with_reason(
                 row,
@@ -275,12 +276,14 @@ pub fn select_files_with_options(
             remaining_budget,
             effective_metric,
             git_scores,
+            |row| policy_selection.charge(row),
         ),
         ContextStrategy::Spread => pack_spread(
             &non_spine_rows,
             remaining_budget,
             effective_metric,
             git_scores,
+            |row| policy_selection.charge(row),
         ),
     };
 
@@ -338,7 +341,7 @@ fn budget_warning(
     let packing_omits_content = policy_selection
         .pack_rows
         .iter()
-        .any(|row| row.kind == FileKind::Parent && row.tokens > budget);
+        .any(|row| row.kind == FileKind::Parent && policy_selection.charge(row) > budget);
 
     (cap_omits_content || packing_omits_content).then(|| {
         format!(
