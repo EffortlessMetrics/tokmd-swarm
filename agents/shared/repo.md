@@ -92,34 +92,39 @@ rules.
 ## Review and Conversation Resolution
 
 Conversation resolution is part of the merge process. Every actionable inline
-comment from a bot or agent reviewer must be addressed, independently checked,
+comment from a bot or agent reviewer must be addressed, checked against evidence,
 and its review thread resolved before merge. Resolution is necessary process
 evidence, not proof by itself that the finding was fixed. A general bot summary
 comment with no review thread is not an unresolved conversation. The
-independent check is a workflow record made in the review reply, PR discussion,
-or handoff; GitHub's conversation setting only enforces the final resolved state
+directed check is a workflow record made in the review reply or PR discussion;
+GitHub's conversation setting only enforces the final resolved state
 and does not prove that the finding was fixed or that a separate identity
 performed the check.
 
 This is a single-maintainer repository: a separate human reviewer account,
 native approval, and CODEOWNERS approval are intentionally not merge
-requirements. Substantive PRs should receive independent agentic review passes
-as part of the normal review process. Use an independent subagent inside the
-working session for those passes, keeping the candidate and warm context in
-place. The reviewer leaves the candidate unchanged and may use disposable
-fixtures for focused experiments. Do not transfer the candidate to a separate
-executor just to obtain another reviewer. Routine self-challenge can stay with
-the owner; it does not replace a required independent review. Optional
-`ub-review` capacity is not a prerequisite for this process.
+requirements. The default is one owning session doing directed, staged review
+inline in its main context. Choose criteria that can falsify the proposed fix:
+check fit and owner boundaries, challenge the strongest plausible counterexample,
+then inspect whether focused proof distinguishes the defect from a passing
+control. Keep the candidate unchanged during a review pass; disposable fixtures
+are permitted. Record findings, their disposition, and remaining uncertainty.
+Do not require a subagent, external reviewer, separate executor, or ChatGPT Space
+handoff for routine review. Optional `ub-review` capacity is not a prerequisite.
+
+A same-context pass is directed review, not an independently staffed review.
+If an actual installed rule requires another actor, identify that rule and
+satisfy it; do not waive it or relabel inline review as independent evidence.
+Preserve all actual required GitHub reviews, checks, and conversation resolution.
 
 Bind the review conclusion to the exact committed candidate. Preserve valid
 earlier reviews with their original candidate and reviewed subjects. When later
-changes affect those subjects or expose new risks, obtain independent review of
-those changes and record which earlier findings or conclusions still apply and
+changes affect those subjects or expose new risks, direct review at those
+changes and record which earlier findings or conclusions still apply and
 why.
 Do not repeat an entire review solely because the head changed. A newly requested
 substantive review still needs to be completed. Actionable findings must still
-be addressed, independently checked, and conversation-resolved before merge.
+be addressed, checked against evidence, and conversation-resolved before merge.
 This is an agent workflow requirement, not a native approval or required-review
 status gate. Do not manufacture a second GitHub reviewer account, approval
 identity, or status check merely to satisfy one.
@@ -168,6 +173,9 @@ task through completion.
 
 Do not ask for extra permission merely because a commit, push, PR update, or
 aligned merge is needed to finish that task.
+Routine already-authorized work does not require parent approval of the exact
+payload. Preserve explicit scope limits, genuine authorization holds, and native
+merge requirements.
 
 Ask before committing, pushing, or merging only when:
 
