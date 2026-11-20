@@ -18,9 +18,9 @@ scoped coverage, mutation, coverage telemetry, and Codecov upload remain
 advisory unless maintainers deliberately promote them with fresh verified
 decision evidence.
 
-The active product lane is PR evidence packet workflows: make the
-`sensors/tokmd/` packet easy to generate from one local CLI command and one
-GitHub Action step before adding more analysis.
+The PR evidence packet workflow shipped in v1.14.0. Its lane plan is
+preserved below. See the [current roadmap](../ROADMAP.md#current-roadmap-status)
+for product priorities.
 
 ## Roadmap Principles
 
@@ -42,7 +42,7 @@ GitHub Action step before adding more analysis.
 
 ## Near-Term Roadmap
 
-### Active Lane: PR Evidence Packet Workflows
+### Historical Lane: PR Evidence Packet Workflows
 
 **Goal:** Make `tokmd` useful in pull request workflows and local review by
 producing the same bounded evidence packet from a one-command CLI path and a
