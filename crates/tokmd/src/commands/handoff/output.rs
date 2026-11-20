@@ -12,7 +12,7 @@ use blake3::Hasher;
 use serde_json::{Value, json};
 use tokmd_types::{
     ArtifactEntry, ArtifactHash, ContextFileRow, ExportData, FileKind, HandoffIntelligence,
-    HandoffManifest, InclusionPolicy,
+    InclusionPolicy,
 };
 
 mod linked_evidence;
@@ -173,14 +173,6 @@ pub(super) fn write_work_order(
         "Agent work order and consumption guide",
         &render_work_order(order, &linked_evidence),
     )
-}
-
-pub(super) fn write_manifest_json(out_dir: &Path, manifest: &HandoffManifest) -> Result<usize> {
-    let manifest_path = out_dir.join("manifest.json");
-    let manifest_json = serde_json::to_string_pretty(manifest)?;
-    write_file(&manifest_path, &manifest_json)
-        .with_context(|| format!("Failed to write {}", manifest_path.display()))?;
-    Ok(manifest_json.len())
 }
 
 fn write_json_artifact(

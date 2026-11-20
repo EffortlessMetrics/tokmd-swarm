@@ -133,7 +133,6 @@ pub(crate) fn write_bundle_directory(
     ];
 
     // Write manifest.json (authoritative index).
-    let manifest_path = stage.join("manifest.json");
     let total_file_bytes: usize = selected.iter().map(|f| f.bytes).sum();
     let bundle_estimation = tokmd_types::TokenEstimationMeta::from_bytes(total_file_bytes, 4.0);
     let bundle_audit =
@@ -165,10 +164,7 @@ pub(crate) fn write_bundle_directory(
         bundle_audit: Some(bundle_audit),
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
-    write_file(&manifest_path, &manifest_json)
-        .with_context(|| format!("Failed to write manifest: {}", manifest_path.display()))?;
-
-    generation.commit(&manifest.artifacts)?;
+    generation.publish(&manifest_json, &manifest.artifacts)?;
     eprintln!("Wrote bundle to {}", dir.display());
     eprintln!("  - receipt.json ({} bytes)", receipt_json.len());
     eprintln!("  - bundle.txt ({} bytes)", bundle_bytes);

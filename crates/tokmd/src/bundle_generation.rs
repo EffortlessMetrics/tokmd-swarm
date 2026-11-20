@@ -32,7 +32,14 @@ impl Generation {
     pub(crate) fn begin(dest: &Path, force: bool) -> Result<Self> {
         fs::create_dir_all(dest)?;
         let stage = dest.join(STAGE);
-        fs::create_dir(&stage).with_context(|| {
+        let builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        let builder = {
+            let mut private = builder;
+            std::os::unix::fs::DirBuilderExt::mode(&mut private, 0o700);
+            private
+        };
+        builder.create(&stage).with_context(|| {
             format!(
                 "Cannot reserve bundle staging directory {}",
                 stage.display()
@@ -59,17 +66,16 @@ impl Generation {
         &self.stage
     }
 
-    pub(crate) fn commit(mut self, expected: &[ArtifactEntry]) -> Result<()> {
-        #[derive(serde::Deserialize)]
-        struct Index {
-            artifacts: serde_json::Value,
-        }
-        let index: Index = serde_json::from_reader(File::open(self.stage.join(MANIFEST))?)?;
+    pub(crate) fn publish(self, manifest_json: &str, entries: &[ArtifactEntry]) -> Result<()> {
+        write_file(&self.stage.join(MANIFEST), manifest_json)?;
+        self.commit(manifest_json, entries)
+    }
+
+    fn commit(mut self, manifest_json: &str, entries: &[ArtifactEntry]) -> Result<()> {
         ensure!(
-            index.artifacts == serde_json::to_value(expected)?,
-            "Staged manifest inventory changed"
+            fs::read(self.stage.join(MANIFEST))? == manifest_json.as_bytes(),
+            "Staged manifest changed"
         );
-        let entries = expected;
         let mut names = Vec::new();
         for entry in entries {
             let name = entry.path.as_str();
@@ -108,6 +114,21 @@ impl Generation {
                             "Refusing to replace non-file {}",
                             path.display()
                         );
+                        ensure!(
+                            !meta.permissions().readonly(),
+                            "Read-only bundle artifact {}",
+                            path.display()
+                        );
+                        File::options().write(true).open(&path)?;
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let mode = meta.permissions().mode() & 0o777;
+                            fs::set_permissions(
+                                self.stage.join(name),
+                                fs::Permissions::from_mode(mode),
+                            )?;
+                        }
                         fs::rename(path, backup(name))?;
                         saved.push(name);
                         boundary("withdraw", &self.dest.join(name))?;
@@ -157,7 +178,12 @@ impl Drop for Generation {
             let _ = fs::remove_file(self.stage.join(name));
             let _ = fs::remove_file(self.stage.join(format!("previous-{name}")));
         }
-        let _ = fs::remove_dir(&self.stage);
+        if let Err(error) = fs::remove_dir(&self.stage) {
+            eprintln!(
+                "Bundle staging cleanup incomplete at {}: {error}",
+                self.stage.display()
+            );
+        }
     }
 }
 
@@ -207,6 +233,18 @@ thread_local! {
 
 #[cfg(test)]
 pub(crate) fn boundary(op: &str, path: &Path) -> io::Result<()> {
+    if matches!(op, "withdraw" | "install") && FAULT.with_borrow(Option::is_some) {
+        let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::other("missing destination"))?;
+        if parent.join(MANIFEST).exists() {
+            let result = tests::verify_visible(parent);
+            assert!(
+                result.is_ok(),
+                "mixed visible generation after {op}: {result:?}"
+            );
+        }
+    }
     FAULT.with_borrow_mut(|fault| {
         if let Some((fail_at, count)) = fault {
             *count += 1;
@@ -242,6 +280,28 @@ mod tests {
         Ok(files)
     }
 
+    pub(super) fn verify_visible(dir: &Path) -> Result<()> {
+        #[derive(serde::Deserialize)]
+        struct Manifest {
+            artifacts: Vec<ArtifactEntry>,
+        }
+        let manifest: Manifest = serde_json::from_slice(&fs::read(dir.join(MANIFEST))?)?;
+        for entry in manifest.artifacts {
+            if entry.path == MANIFEST {
+                continue;
+            }
+            let bytes = fs::read(dir.join(entry.path))?;
+            let hash = entry.hash.context("missing hash")?;
+            ensure!(
+                entry.bytes == bytes.len() as u64
+                    && hash.algo == "blake3"
+                    && hash.hash == blake3::hash(&bytes).to_hex().as_str(),
+                "digest mismatch"
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn failed_replacement_preserves_every_byte() -> Result<()> {
         for command in ["context", "handoff"] {
@@ -253,7 +313,7 @@ mod tests {
             fs::write(out.join("notes"), "user data")?;
             let source = input.join("demo.rs");
             let run = || -> Result<()> {
-                let cli = crate::cli::Cli::try_parse_from([
+                let mut argv = vec![
                     "tokmd",
                     "--no-progress",
                     command,
@@ -262,11 +322,53 @@ mod tests {
                     "--force",
                     "--output-dir",
                     out.to_str().context("fixture path")?,
-                ])?;
+                ];
+                if command == "handoff" {
+                    let link = input.to_str().context("fixture path")?;
+                    argv.extend([
+                        "--review-packet-dir",
+                        link,
+                        "--proof-plan",
+                        link,
+                        "--evidence-packet",
+                        link,
+                    ]);
+                }
+                let cli = crate::cli::Cli::try_parse_from(argv)?;
                 crate::commands::dispatch(cli, &crate::ResolvedConfig::default())
             };
             fs::write(&source, "fn old() {}")?;
             run()?;
+            let member = out.join(if command == "context" {
+                "receipt.json"
+            } else {
+                "map.jsonl"
+            });
+            let member_bytes = fs::read(&member)?;
+            fs::write(&member, vec![b'x'; member_bytes.len()])?;
+            ensure!(verify_visible(&out).is_err());
+            fs::remove_file(&member)?;
+            ensure!(verify_visible(&out).is_err());
+            fs::write(&member, member_bytes)?;
+            ensure!(Generation::begin(&out, false).is_err());
+            fs::create_dir(out.join(STAGE))?;
+            fs::write(out.join(STAGE).join("notes"), "keep")?;
+            ensure!(run().is_err());
+            ensure!(fs::read(out.join(STAGE).join("notes"))? == b"keep");
+            fs::remove_file(out.join(STAGE).join("notes"))?;
+            fs::remove_dir(out.join(STAGE))?;
+            let permissions = member.metadata()?.permissions();
+            let mut readonly = permissions.clone();
+            readonly.set_readonly(true);
+            fs::set_permissions(&member, readonly)?;
+            ensure!(run().is_err());
+            verify_visible(&out)?;
+            fs::set_permissions(&member, permissions)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&member, fs::Permissions::from_mode(0o600))?;
+            }
             let previous = snapshot(&out)?;
             fs::write(&source, "fn replacement() {}")?;
             for fail_at in 1.. {
@@ -289,6 +391,14 @@ mod tests {
                 "code.txt"
             };
             ensure!(fs::read_to_string(out.join(payload))?.contains("replacement"));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                ensure!(member.metadata()?.permissions().mode() & 0o777 == 0o600);
+            }
+            let old_manifest = previous.get(MANIFEST).context("old manifest")?;
+            fs::write(out.join(MANIFEST), old_manifest)?;
+            ensure!(verify_visible(&out).is_err(), "accepted stale manifest");
             ensure!(fs::read(out.join("notes"))? == b"user data");
         }
         Ok(())

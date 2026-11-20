@@ -3183,7 +3183,9 @@ missing manifest, or digest mismatch during a refresh calls for a fresh read.
 During replacement the writer moves the old manifest into staging first and
 installs the new manifest last. Ordinary failures roll back the moves in reverse
 order. Extra files, including optional outputs absent from the new inventory,
-stay in place. Only listed artifacts belong to the current generation. Another
+stay in place. A read-only artifact blocks replacement. On Unix the staging
+directory is private and replacement preserves existing read, write and execute
+mode bits. Only listed artifacts belong to the current generation. Another
 writer or an interrupted run holding the staging name blocks a new refresh.
 After an interruption, preserve the staging directory and inspect its
 `previous-*` backups before recovery. Restore old payloads before their

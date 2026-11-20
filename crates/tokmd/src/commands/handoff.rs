@@ -28,8 +28,8 @@ mod output;
 use capabilities::{detect_capabilities, should_compute_git};
 use intelligence::build_intelligence;
 use output::{
-    HandoffLinkInputs, HandoffWorkOrderInputs, write_link_artifacts, write_manifest_json,
-    write_payloads, write_work_order,
+    HandoffLinkInputs, HandoffWorkOrderInputs, write_link_artifacts, write_payloads,
+    write_work_order,
 };
 
 const DEFAULT_TREE_DEPTH: usize = 4;
@@ -245,8 +245,9 @@ fn handle_with_selection(
         code_audit: Some(code_audit),
     };
 
-    let manifest_bytes = write_manifest_json(stage, &manifest)?;
-    generation.commit(&manifest.artifacts)?;
+    let manifest_json = serde_json::to_string_pretty(&manifest)?;
+    let manifest_bytes = manifest_json.len();
+    generation.publish(&manifest_json, &manifest.artifacts)?;
 
     progress.finish_and_clear();
 
