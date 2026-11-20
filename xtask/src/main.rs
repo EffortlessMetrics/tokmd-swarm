@@ -87,6 +87,7 @@ fn main() -> Result<()> {
         Some(cli::Commands::Sccache(args)) => tasks::sccache::run(args),
         Some(cli::Commands::TrimTarget(args)) => tasks::trim_target::run(args),
         Some(cli::Commands::PerfSmoke(args)) => tasks::perf_smoke::run(args),
+        Some(cli::Commands::RustMaintainability(args)) => tasks::rust_maintainability::run(args),
         Some(cli::Commands::AstShadowCompare(args)) => tasks::ast_shadow_compare::run(args),
         Some(cli::Commands::AstShadowCheck(args)) => tasks::ast_shadow_check::run(args),
         Some(cli::Commands::Badges(args)) => tasks::badges::run(args),

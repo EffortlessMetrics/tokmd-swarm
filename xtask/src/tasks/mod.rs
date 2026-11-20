@@ -43,6 +43,7 @@ pub mod release_preflight;
 pub mod repo_graph;
 pub mod review_packet_check;
 pub mod ripr_pr;
+pub mod rust_maintainability;
 pub mod sccache;
 pub mod trim_target;
 pub mod version_consistency;
