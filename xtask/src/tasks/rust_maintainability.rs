@@ -6,6 +6,7 @@ mod tests;
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use std::{path::Path, process::Command};
+use tokmd_analysis::ast::DEFAULT_MAX_SYNTAX_BYTES;
 
 const BASE: &str = "07d878beee199568dbfa7698686ca1999addb7c8";
 const POLICY: &str = "tokmd.rust_callable_pilot.v1";
@@ -21,7 +22,7 @@ const LIMITS: Metrics = Metrics {
     parameters: 6,
     nesting: Some(4),
 };
-const OMITTED: &str = "Only the two listed source paths and admitted named Rust declarations are measured. Other paths, attributed containers/items except doc attributes, anonymous blocks' local items, closures, macro expansions, external modules and compiler-resolved identities are outside this pilot. Nesting is unavailable for bodies containing macros, closures or async/const blocks, and excludes separately owned local items. No NLOC, complexity score, boolean count, type complexity, debt ratio or maintainability index.";
+const OMITTED: &str = "Only the two listed source paths and admitted named Rust declarations are measured. Other paths, attributed containers/items except doc attributes, anonymous blocks' local items, closures, macro expansions, external modules and compiler-resolved identities are outside this pilot. Nesting is unavailable for bodies containing macros, closures, opaque parser tokens or async/const blocks, and excludes separately owned local items. No NLOC, complexity score, boolean count, type complexity, debt ratio or maintainability index.";
 
 #[derive(Serialize, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct Identity {
@@ -62,6 +63,7 @@ struct Snapshot {
     language: &'static str,
     analysis: &'static str,
     analyzer_lock_blake3: String,
+    max_source_bytes: usize,
     thresholds: Metrics,
     outside_measurement: &'static str,
     files: Vec<Source>,
@@ -107,6 +109,7 @@ fn snapshot(root: &Path, commit: &str) -> Result<Snapshot> {
         analyzer_lock_blake3: blake3::hash(include_bytes!("../../../Cargo.lock"))
             .to_hex()
             .to_string(),
+        max_source_bytes: DEFAULT_MAX_SYNTAX_BYTES,
         thresholds: LIMITS,
         outside_measurement: OMITTED,
         files,
@@ -114,7 +117,7 @@ fn snapshot(root: &Path, commit: &str) -> Result<Snapshot> {
 }
 
 fn source(root: &Path, commit: &str, path: &'static str, module: &'static str) -> Result<Source> {
-    let listing = git(root, &["ls-tree", "--full-tree", commit, "--", path])?;
+    let listing = git(root, &["ls-tree", "-l", "--full-tree", commit, "--", path])?;
     let mut source = Source {
         path,
         module,
@@ -128,7 +131,7 @@ fn source(root: &Path, commit: &str, path: &'static str, module: &'static str) -
     let entry = std::str::from_utf8(&listing)?;
     let (header, _) = entry.split_once('\t').context("invalid ls-tree record")?;
     let fields = header.split_ascii_whitespace().collect::<Vec<_>>();
-    let [mode, kind, oid] = fields.as_slice() else {
+    let [mode, kind, oid, size] = fields.as_slice() else {
         anyhow::bail!("invalid ls-tree header");
     };
     if *kind != "blob" || !matches!(*mode, "100644" | "100755") {
@@ -136,6 +139,10 @@ fn source(root: &Path, commit: &str, path: &'static str, module: &'static str) -
         return Ok(source);
     }
     source.blob = Some((*oid).into());
+    if size.parse::<u64>()? > DEFAULT_MAX_SYNTAX_BYTES as u64 {
+        source.status = "size_limit";
+        return Ok(source);
+    }
     let bytes = git(root, &["cat-file", "blob", oid])?;
     let Ok(text) = std::str::from_utf8(&bytes) else {
         source.status = "invalid_utf8";

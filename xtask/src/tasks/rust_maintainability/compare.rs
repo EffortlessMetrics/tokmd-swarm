@@ -13,6 +13,8 @@ struct Occurrence<'a> {
 struct Row<'a> {
     disposition: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    file_path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     exact_nesting_observation: Option<&'static str>,
     baseline: Vec<Occurrence<'a>>,
     candidate: Vec<Occurrence<'a>>,
@@ -32,6 +34,8 @@ struct FileScope<'a> {
 pub(super) struct Comparison<'a> {
     schema: &'static str,
     metric_policy: &'static str,
+    analyzer_lock_blake3: &'a str,
+    max_source_bytes: usize,
     mode: &'static str,
     package: &'a str,
     language: &'a str,
@@ -49,6 +53,8 @@ pub(super) fn comparison<'a>(base: &'a Snapshot, candidate: &'a Snapshot) -> Com
     let mut report = Comparison {
         schema: "tokmd.rust_callable_comparison.v1",
         metric_policy: POLICY,
+        analyzer_lock_blake3: &base.analyzer_lock_blake3,
+        max_source_bytes: base.max_source_bytes,
         mode: "advisory",
         package: base.package,
         language: base.language,
@@ -62,46 +68,13 @@ pub(super) fn comparison<'a>(base: &'a Snapshot, candidate: &'a Snapshot) -> Com
     let mut exact: Pairs<(&str, &Identity)> = BTreeMap::new();
     // Both snapshots are made from the same fixed, sorted path policy.
     for (old, new) in base.files.iter().zip(&candidate.files) {
-        report.files.push(FileScope {
-            path: old.path,
-            module: old.module,
-            baseline_status: old.status,
-            baseline_blob: &old.blob,
-            candidate_status: new.status,
-            candidate_blob: &new.blob,
-        });
-        if old.status != "parsed" || new.status != "parsed" {
-            report.rows.push(Row {
-                exact_nesting_observation: None,
-                disposition: match (old.status, new.status) {
-                    ("parsed", _) => "lost_measured_file",
-                    (_, "parsed") => "newly_measured_file",
-                    _ => "unmeasured_file",
-                },
-                baseline: occurrences(old).collect(),
-                candidate: occurrences(new).collect(),
-            });
-            continue;
-        }
-        for item in occurrences(old) {
-            exact
-                .entry((item.path, &item.symbol.id))
-                .or_default()
-                .0
-                .push(item);
-        }
-        for item in occurrences(new) {
-            exact
-                .entry((item.path, &item.symbol.id))
-                .or_default()
-                .1
-                .push(item);
-        }
+        report.collect_file(&mut exact, old, new);
     }
     let mut structural: Pairs<&str> = BTreeMap::new();
     for (_, (baseline, candidate)) in exact {
         if baseline.len() > 1 || candidate.len() > 1 {
             report.rows.push(Row {
+                file_path: None,
                 exact_nesting_observation: None,
                 disposition: "ambiguous_exact_identity",
                 baseline,
@@ -118,6 +91,7 @@ pub(super) fn comparison<'a>(base: &'a Snapshot, candidate: &'a Snapshot) -> Com
                 _ => "increased_within_threshold",
             };
             report.rows.push(Row {
+                file_path: None,
                 exact_nesting_observation: Some(observation),
                 disposition: "exact",
                 baseline,
@@ -148,6 +122,7 @@ pub(super) fn comparison<'a>(base: &'a Snapshot, candidate: &'a Snapshot) -> Com
             _ => "ambiguous_structural",
         };
         report.rows.push(Row {
+            file_path: None,
             exact_nesting_observation: None,
             disposition,
             baseline,
@@ -164,7 +139,51 @@ fn occurrences(file: &Source) -> impl Iterator<Item = Occurrence<'_>> {
     })
 }
 
-impl Comparison<'_> {
+impl<'a> Comparison<'a> {
+    fn collect_file(
+        &mut self,
+        exact: &mut Pairs<'a, (&'a str, &'a Identity)>,
+        old: &'a Source,
+        new: &'a Source,
+    ) {
+        self.files.push(FileScope {
+            path: old.path,
+            module: old.module,
+            baseline_status: old.status,
+            baseline_blob: &old.blob,
+            candidate_status: new.status,
+            candidate_blob: &new.blob,
+        });
+        if old.status != "parsed" || new.status != "parsed" {
+            self.rows.push(Row {
+                file_path: Some(old.path),
+                exact_nesting_observation: None,
+                disposition: match (old.status, new.status) {
+                    ("parsed", _) => "lost_measured_file",
+                    (_, "parsed") => "newly_measured_file",
+                    _ => "unmeasured_file",
+                },
+                baseline: occurrences(old).collect(),
+                candidate: occurrences(new).collect(),
+            });
+            return;
+        }
+        for item in occurrences(old) {
+            exact
+                .entry((item.path, &item.symbol.id))
+                .or_default()
+                .0
+                .push(item);
+        }
+        for item in occurrences(new) {
+            exact
+                .entry((item.path, &item.symbol.id))
+                .or_default()
+                .1
+                .push(item);
+        }
+    }
+
     pub(super) fn print(&self) {
         println!(
             "Advisory {} {} -> {} ({})",
@@ -180,8 +199,9 @@ impl Comparison<'_> {
         }
         for row in &self.rows {
             println!(
-                "{} {}",
+                "{} {} {}",
                 row.disposition,
+                row.file_path.unwrap_or(""),
                 row.exact_nesting_observation.unwrap_or("")
             );
             for (side, items) in [("baseline", &row.baseline), ("candidate", &row.candidate)] {

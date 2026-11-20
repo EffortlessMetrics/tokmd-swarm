@@ -7,6 +7,7 @@ impl Repo {
     fn init() -> Result<Self> {
         let repo = Self(tempfile::tempdir()?);
         git(repo.0.path(), &["init", "-q"])?;
+        fs::write(repo.0.path().join(".gitattributes"), "*.rs -text\n")?;
         fs::create_dir_all(repo.0.path().join("crates/tokmd-analysis/src/ast"))?;
         Ok(repo)
     }
@@ -16,6 +17,10 @@ impl Repo {
             fs::write(self.0.path().join(path), contents)?;
         }
         git(self.0.path(), &["add", "."])?;
+        self.commit_index()
+    }
+
+    fn commit_index(&self) -> Result<Snapshot> {
         git(
             self.0.path(),
             &[
@@ -183,5 +188,84 @@ fn admitted_syntax_thresholds_scopes_and_unmeasured_cases() -> Result<()> {
     assert!(repeat.iter().all(|s| s.metrics.parameters == 1));
     assert!(repeat.iter().any(|s| s.metrics.nesting.is_none()));
     assert_ne!(repeat[0].id.owners, repeat[1].id.owners);
+    Ok(())
+}
+
+#[test]
+fn opaque_tokens_and_size_limit_preserve_unknowns() -> Result<()> {
+    let repo = Repo::init()?;
+    let old = repo.commit(b"fn f() { if true {} } fn pattern(x: i32) {}", b"fn g() {}")?;
+    let large = vec![b' '; DEFAULT_MAX_SYNTAX_BYTES + 1];
+    let head = repo.commit(b"fn f() { become next(if true {1} else {2}); } fn pattern(x: i32) { match x { const { if true {1} else {2} } => (), _ => () } }", &large)?;
+    let result = rows(&old, &head)?;
+    assert!(result.iter().any(|r| named(r, "candidate", "pattern")
+        && r["exact_nesting_observation"] == "lost_measurement"));
+    assert_eq!(head.files[1].status, "size_limit");
+    assert!(result.iter().any(
+        |r| named(r, "candidate", "f") && r["exact_nesting_observation"] == "lost_measurement"
+    ));
+    assert!(
+        result
+            .iter()
+            .any(|r| named(r, "baseline", "g") && r["disposition"] == "lost_measured_file")
+    );
+    Ok(())
+}
+
+#[test]
+fn absent_and_nonregular_entries_keep_file_provenance_even_without_symbols() -> Result<()> {
+    let repo = Repo::init()?;
+    let old = repo.commit(b"", b"")?;
+    git(repo.0.path(), &["rm", "-q", "--", PATHS[0].0])?;
+    let blob = old.files[1].blob.as_deref().context("blob")?;
+    git(
+        repo.0.path(),
+        &["update-index", "--cacheinfo", "120000", blob, PATHS[1].0],
+    )?;
+    let head = repo.commit_index()?;
+    assert_eq!(head.files[0].status, "absent");
+    assert_eq!(head.files[1].status, "unsupported_entry");
+    let result = rows(&old, &head)?;
+    for (row, (path, _)) in result.iter().zip(PATHS) {
+        assert_eq!(row["disposition"], "lost_measured_file");
+        assert_eq!(row["file_path"], path);
+    }
+    assert_eq!(result.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn repeated_names_and_duplicate_exact_keys_have_separate_dispositions() -> Result<()> {
+    let repo = Repo::init()?;
+    let src = b"mod left { fn f() {} } mod right { fn f() {} } fn duplicate() {} fn duplicate() {}";
+    let before = repo.commit(src, b"")?;
+    let after = repo.commit(src, b"// new blob")?;
+    let result = rows(&before, &after)?;
+    assert_eq!(
+        result
+            .iter()
+            .filter(|r| r["disposition"] == "exact" && named(r, "candidate", "f"))
+            .count(),
+        2
+    );
+    let duplicate = result
+        .iter()
+        .find(|r| named(r, "baseline", "duplicate"))
+        .context("duplicate")?;
+    assert_eq!(duplicate["disposition"], "ambiguous_exact_identity");
+    assert_eq!(
+        duplicate["baseline"]
+            .as_array()
+            .context("old duplicates")?
+            .len(),
+        2
+    );
+    assert_eq!(
+        duplicate["candidate"]
+            .as_array()
+            .context("new duplicates")?
+            .len(),
+        2
+    );
     Ok(())
 }

@@ -135,7 +135,7 @@ struct ControlDepth {
 
 impl<'ast> Visit<'ast> for ControlDepth {
     fn visit_expr(&mut self, expr: &'ast Expr) {
-        if matches!(expr, Expr::Closure(_) | Expr::Async(_) | Expr::Const(_)) {
+        if matches!(expr, Expr::Closure(_) | Expr::Async(_)) {
             self.opaque = true;
             return;
         }
@@ -147,6 +147,14 @@ impl<'ast> Visit<'ast> for ControlDepth {
         self.max = self.max.max(self.current);
         syn::visit::visit_expr(self, expr);
         self.current -= control;
+    }
+
+    fn visit_expr_const(&mut self, _: &'ast syn::ExprConst) {
+        self.opaque = true;
+    }
+
+    fn visit_token_stream(&mut self, _: &'ast proc_macro2::TokenStream) {
+        self.opaque = true;
     }
 
     fn visit_macro(&mut self, _: &'ast syn::Macro) {

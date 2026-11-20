@@ -5,11 +5,12 @@
   "language": "Rust",
   "analysis": "syn / quote / proc-macro2, syntax-only v1",
   "analyzer_lock_blake3": "a203d02d99a59dd7d779532a48e4a7d47b5064e566df90dac40f0754389dfddd",
+  "max_source_bytes": 1048576,
   "thresholds": {
     "parameters": 6,
     "nesting": 4
   },
-  "outside_measurement": "Only the two listed source paths and admitted named Rust declarations are measured. Other paths, attributed containers/items except doc attributes, anonymous blocks' local items, closures, macro expansions, external modules and compiler-resolved identities are outside this pilot. Nesting is unavailable for bodies containing macros, closures or async/const blocks, and excludes separately owned local items. No NLOC, complexity score, boolean count, type complexity, debt ratio or maintainability index.",
+  "outside_measurement": "Only the two listed source paths and admitted named Rust declarations are measured. Other paths, attributed containers/items except doc attributes, anonymous blocks' local items, closures, macro expansions, external modules and compiler-resolved identities are outside this pilot. Nesting is unavailable for bodies containing macros, closures, opaque parser tokens or async/const blocks, and excludes separately owned local items. No NLOC, complexity score, boolean count, type complexity, debt ratio or maintainability index.",
   "files": [
     {
       "path": "crates/tokmd-analysis/src/ast/panic_seam.rs",
