@@ -918,3 +918,12 @@ surface = "build"
 classification = "test"
 reason = "Execute checked-in CI clock producers and the observability receipt consumer boundary."
 covered_by = ["python3 -m unittest scripts/ci_observability_clock_test.py"]
+
+[[allow]]
+glob = "scripts/ripr_metric_profile_proof.py"
+kind = "tooling"
+owner = "testing/oracle"
+surface = "test"
+classification = "test"
+reason = "Runs the local RIPR source inventory profile and two-commit corpus through the existing CLI."
+covered_by = ["docs/specs/ripr-metric-profile.md"]
