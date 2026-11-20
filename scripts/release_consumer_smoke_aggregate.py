@@ -44,31 +44,47 @@ def aggregate_entries(
 ) -> dict[str, Any]:
     entries: dict[str, dict[str, Any]] = {}
     for index, entry in enumerate(receipts):
-        kind = entry.get("kind")
-        key = entry.get("artifact") or kind
-        if kind == "binary":
-            key = entry.get("surface")
-        if not key:
+        # Valid JSON is not necessarily a receipt object. Preserve a failed
+        # observation instead of aborting aggregate generation on .get().
+        if isinstance(entry, dict):
+            kind = entry.get("kind")
+            key = entry.get("surface") if kind == "binary" else entry.get("artifact") or kind
+        else:
+            key = None
+        if not isinstance(key, str) or not key:
             key = f"invalid-receipt-{index}"
             entry = {
                 "schema": "tokmd.release_consumer_smoke.v1",
                 "kind": "invalid-receipt",
                 "status": "failed",
-                "reason": "receipt has no canonical surface key",
+                "reason": "receipt must be an object with a canonical string surface key",
             }
-        entries[key] = entry
+        if key in entries:
+            # A duplicate cannot select its own winning verdict by filesystem
+            # enumeration order, even when the last receipt reports success.
+            entries[key] = {
+                "schema": "tokmd.release_consumer_smoke.v1",
+                "kind": key,
+                "status": "failed",
+                "reason": f"multiple receipts claim surface {key}",
+            }
+        else:
+            entries[key] = dict(entry)
 
     for job, surfaces in JOB_SURFACES.items():
-        if job_results.get(job, {}).get("result") == "success":
+        result = job_results.get(job) if isinstance(job_results, dict) else None
+        if isinstance(result, dict) and result.get("result") == "success":
             continue
         for surface in surfaces:
-            if surface not in entries:
-                entries[surface] = {
-                    "schema": "tokmd.release_consumer_smoke.v1",
-                    "kind": surface,
-                    "status": "failed",
-                    "reason": f"{job} did not complete successfully or produce a receipt",
-                }
+            # Uploads can survive a later job failure or cancellation. A passed
+            # receipt alone cannot overrule the producer's terminal outcome.
+            entry = entries.get(surface, {
+                "schema": "tokmd.release_consumer_smoke.v1",
+                "kind": surface,
+            })
+            entry["status"] = "failed"
+            entry["reason"] = f"{job} did not complete successfully"
+            entries[surface] = entry
 
     for surface in REQUIRED_SURFACES:
         if surface not in entries:

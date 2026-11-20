@@ -233,6 +233,7 @@ impl GitWorktree {
             .arg("--detach")
             .arg(&path)
             .arg(revision)
+            .stdout(std::process::Stdio::null())
             .status()
             .with_context(|| format!("Failed to spawn git worktree for {}", revision))?;
 
@@ -258,6 +259,7 @@ impl Drop for GitWorktree {
             .arg("remove")
             .arg("--force")
             .arg(&self.path)
+            .stdout(std::process::Stdio::null())
             .status();
         let _ = std::fs::remove_dir_all(&self.path);
     }

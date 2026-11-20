@@ -39,7 +39,7 @@ pub(crate) fn write_to_destination(
     select_result: &SelectResult,
 ) -> Result<usize> {
     match args.output_mode {
-        cli::ContextOutput::Bundle => write_bundle_to_destination(args, selected),
+        cli::ContextOutput::Bundle => write_bundle_to_destination(args, selected, select_result),
         cli::ContextOutput::List | cli::ContextOutput::Json => {
             let content = match args.output_mode {
                 cli::ContextOutput::List => {
@@ -105,6 +105,7 @@ pub(crate) fn append_context_log_record(
 fn write_bundle_to_destination(
     args: &cli::CliContextArgs,
     selected: &[ContextFileRow],
+    select_result: &SelectResult,
 ) -> Result<usize> {
     if let Some(ref out_path) = args.output {
         let file = if args.force {
@@ -131,7 +132,12 @@ fn write_bundle_to_destination(
         })?;
 
         let mut counter = CountingWriter::new(file);
-        write_bundle_output(&mut counter, selected, args.compress)?;
+        write_bundle_output(
+            &mut counter,
+            selected,
+            args.compress,
+            args.paths.as_deref().unwrap_or_default(),
+        )?;
         counter.flush()?;
 
         let bytes = counter.bytes() as usize;
@@ -140,8 +146,25 @@ fn write_bundle_to_destination(
     } else {
         let stdout = std::io::stdout();
         let mut counter = CountingWriter::new(stdout.lock());
-        write_bundle_output(&mut counter, selected, args.compress)?;
+        write_bundle_output(
+            &mut counter,
+            selected,
+            args.compress,
+            args.paths.as_deref().unwrap_or_default(),
+        )?;
         counter.flush()?;
+        // Keep opt-in progress-event stderr machine-readable.
+        if selected.is_empty()
+            && select_result.budget_warning.is_none()
+            && std::env::var_os("TOKMD_PROGRESS_EVENTS").is_none()
+        {
+            // Informational guidance must not fail a successfully written bundle.
+            writeln!(
+                std::io::stderr().lock(),
+                "No files were selected for the context bundle. Check the scan paths and ignore rules; use `tokmd check-ignore <path>` or rerun with `--mode json`."
+            )
+            .unwrap_or_default();
+        }
         Ok(counter.bytes() as usize)
     }
 }

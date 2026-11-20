@@ -104,12 +104,57 @@ performed the check.
 This is a single-maintainer repository: a separate human reviewer account,
 native approval, and CODEOWNERS approval are intentionally not merge
 requirements. Substantive PRs should receive independent agentic review passes
-as part of the normal review process. Use separate agent lanes for those passes;
-they may leave inline findings, and the resulting conversations must be
-independently checked and resolved. This is an agent workflow requirement, not
-a native approval or required-review status gate. Do not manufacture a second
-GitHub reviewer account, approval identity, or status check merely to satisfy
-one.
+as part of the normal review process. Use an independent subagent inside the
+working session for those passes, keeping the candidate and warm context in
+place. The reviewer leaves the candidate unchanged and may use disposable
+fixtures for focused experiments. Do not transfer the candidate to a separate
+executor just to obtain another reviewer. Routine self-challenge can stay with
+the owner; it does not replace a required independent review. Optional
+`ub-review` capacity is not a prerequisite for this process.
+
+Bind the review conclusion to the exact committed candidate. Preserve valid
+earlier reviews with their original candidate and reviewed subjects. When later
+changes affect those subjects or expose new risks, obtain independent review of
+those changes and record which earlier findings or conclusions still apply and
+why.
+Do not repeat an entire review solely because the head changed. A newly requested
+substantive review still needs to be completed. Actionable findings must still
+be addressed, independently checked, and conversation-resolved before merge.
+This is an agent workflow requirement, not a native approval or required-review
+status gate. Do not manufacture a second GitHub reviewer account, approval
+identity, or status check merely to satisfy one.
+
+## Session and Evidence Continuity
+
+Keep authoring, targeted testing, challenge, and review in the working session
+while its context and caches remain useful. Keep one accountable candidate
+writer; use isolated target directories for concurrent builds. Before reset or
+retirement, preserve unique source changes, reproducers, logs, and usable Cargo
+state. Record a compact, versioned checkpoint through existing repo/PR evidence
+or `.codex/` execution state when needed, with the candidate commit/tree, saved
+patch identity if uncommitted, evidence locations, remaining work, and owner.
+Verify that the receiving session can recover it before retiring the source.
+
+For each test or review result, retain its original candidate, relevant
+base/composition, environment, command or reviewed subject, outcome, and artifact
+or run identity. Distinguish exact-candidate results from carried-forward
+evidence. Explain why an earlier result remains applicable, and refresh evidence
+affected by source, dependency, environment, or risk changes using the native
+proof scopes. A head change alone does not require broad proof replay. Do not
+rewrite historical results or relabel older packet evidence as exact/current;
+the packet freshness contract still applies. Required fresh checks and current
+merge-candidate statuses must satisfy the installed protections, and current
+reviews and unresolved conversations must be checked before integration.
+
+The checked-in #737 workflow admits PR proof through a deliberate `ci:qualify`
+request bound to the exact PR head, base, and merge subject. Preserve that
+admission, the four locked Cargo obligations above, and `Tokmd Rust Result`.
+Historical successful requests remain evidence for their original subjects.
+Queue-only qualification of the actual composed candidate is the selected
+integration target; this guidance does not deploy it. The checked-in workflow
+has no `merge_group` trigger. Until a separately qualified migration changes the
+installed procedure, use its existing admission and required checks. Neither
+advisory review nor carried-forward local evidence replaces those obligations.
 
 ## Codex Commit / Push Policy
 

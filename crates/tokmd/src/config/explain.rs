@@ -63,6 +63,17 @@ pub fn write_config_report<W: Write>(
     profile_source: ProfileSource,
     resolved: &ResolvedConfig,
 ) -> Result<()> {
+    write_config_report_with_failure(out, ctx, profile_name, profile_source, resolved, None)
+}
+
+fn write_config_report_with_failure<W: Write>(
+    out: &mut W,
+    ctx: &ConfigContext,
+    profile_name: Option<&str>,
+    profile_source: ProfileSource,
+    resolved: &ResolvedConfig,
+    legacy_failure: Option<&anyhow::Error>,
+) -> Result<()> {
     writeln!(out, "tokmd configuration")?;
     writeln!(out)?;
     writeln!(out, "Config sources (in precedence order):")?;
@@ -70,15 +81,23 @@ pub fn write_config_report<W: Write>(
         Some(path) => writeln!(out, "  TOML config:    {}", path.display())?,
         None => writeln!(out, "  TOML config:    (none found)")?,
     }
-    writeln!(
-        out,
-        "  Legacy JSON:    {}",
-        if ctx.json.is_some() {
-            "loaded (~/.config/tokmd/config.json)"
-        } else {
-            "(none)"
-        }
-    )?;
+    if let Some(failure) = legacy_failure {
+        writeln!(out, "  Legacy JSON:    {failure:#}")?;
+        writeln!(
+            out,
+            "  repair:         Repair the legacy JSON configuration and retry."
+        )?;
+    } else {
+        writeln!(
+            out,
+            "  Legacy JSON:    {}",
+            if ctx.json.is_some() {
+                "loaded (~/.config/tokmd/config.json)"
+            } else {
+                "(none)"
+            }
+        )?;
+    }
 
     writeln!(out)?;
     writeln!(out, "Active profile:")?;
@@ -142,8 +161,25 @@ pub fn print_config_report(
     profile_source: ProfileSource,
     resolved: &ResolvedConfig,
 ) -> Result<()> {
+    print_config_report_with_failure(ctx, profile_name, profile_source, resolved, None)
+}
+
+pub(crate) fn print_config_report_with_failure(
+    ctx: &ConfigContext,
+    profile_name: Option<&str>,
+    profile_source: ProfileSource,
+    resolved: &ResolvedConfig,
+    legacy_failure: Option<&anyhow::Error>,
+) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
-    write_config_report(&mut stdout, ctx, profile_name, profile_source, resolved)
+    write_config_report_with_failure(
+        &mut stdout,
+        ctx,
+        profile_name,
+        profile_source,
+        resolved,
+        legacy_failure,
+    )
 }
 
 #[cfg(test)]
@@ -151,6 +187,42 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use tokmd_settings::Profile;
+
+    #[test]
+    fn config_explain_legacy_failure_uses_captured_load() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"profiles":[]}"#)?;
+        let failure = super::super::load_json_config_from(&path).unwrap_err();
+        std::fs::write(&path, r#"{"profiles":{},"repos":{}}"#)?;
+        let ctx = ConfigContext::default();
+        let resolved = super::super::resolve_config(&ctx, Some("ci"));
+        let mut out = Vec::new();
+        write_config_report_with_failure(
+            &mut out,
+            &ctx,
+            Some("ci"),
+            ProfileSource::Cli,
+            &resolved,
+            Some(&failure),
+        )?;
+        let out = String::from_utf8(out)?;
+        assert!(
+            out.contains("Failed to parse legacy JSON configuration")
+                && out.contains(path.to_string_lossy().as_ref())
+                && out.contains("line")
+                && out.contains("column")
+                && out.contains("Repair"),
+            "{out}"
+        );
+        assert!(!out.contains("Legacy JSON:    (none)"), "{out}");
+        let public = render(&ctx, Some("ci"), ProfileSource::Cli, &resolved)?;
+        assert!(
+            public.contains("Legacy JSON:    (none)"),
+            "public renderer must not discover new files: {public}"
+        );
+        Ok(())
+    }
 
     fn render(
         ctx: &ConfigContext,

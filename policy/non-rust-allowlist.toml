@@ -909,3 +909,12 @@ surface = "release"
 classification = "test"
 reason = "Fail-closed release consumer receipt aggregation and deterministic contract fixtures."
 covered_by = ["python3 -m unittest scripts/release_consumer_smoke_aggregate_test.py"]
+
+[[allow]]
+glob = "scripts/ci_observability_clock_test.py"
+kind = "tooling"
+owner = "core/policy"
+surface = "build"
+classification = "test"
+reason = "Execute checked-in CI clock producers and the observability receipt consumer boundary."
+covered_by = ["python3 -m unittest scripts/ci_observability_clock_test.py"]

@@ -1,6 +1,22 @@
 use anyhow::Error;
 use clap::CommandFactory;
 
+const EXPLICIT_INPUT_CONTEXT: &str = "Failed to read command input";
+
+pub(crate) fn command_input_context(error: Error) -> Error {
+    let message = error.to_string();
+    let missing_path = message
+        .strip_prefix("Path not found: ")
+        .or_else(|| message.strip_prefix("Input path does not exist: "));
+    if missing_path.is_some_and(looks_like_bare_subcommand_token) {
+        // Once clap selected a command, a bare missing root is its input,
+        // even if the directory name resembles another command.
+        error.context(EXPLICIT_INPUT_CONTEXT)
+    } else {
+        error
+    }
+}
+
 /// Subcommand names as clap actually knows them, including visible aliases.
 ///
 /// Derived from the parser rather than hard-coded: the previous literal list
@@ -97,6 +113,7 @@ enum LocalRecovery {
     OutputParentNotDirectory,
     HandoffFileOutput,
     InvalidLangProfileFormat,
+    UnknownProfile,
     OutputOther,
     Json,
     Toml,
@@ -168,6 +185,12 @@ fn io_kind(err: &Error, kind: std::io::ErrorKind) -> bool {
 // Select one authoritative recovery before examining arbitrary pathname text.
 // String-only legacy and remote errors retain the fallback heuristics below.
 fn classify_recovery(err: &Error, chain: &[String]) -> Option<LocalRecovery> {
+    if err
+        .downcast_ref::<crate::config::UnknownProfile>()
+        .is_some()
+    {
+        return Some(LocalRecovery::UnknownProfile);
+    }
     if err.downcast_ref::<InvalidLangProfileFormat>().is_some() {
         return Some(LocalRecovery::InvalidLangProfileFormat);
     }
@@ -363,7 +386,9 @@ fn authoritative_hints(recovery: LocalRecovery, chain: &[String]) -> Vec<String>
             &mut out,
             "Select a directory path for handoff output, then retry.",
         ),
-        LocalRecovery::InvalidLangProfileFormat | LocalRecovery::OutputOther => {}
+        LocalRecovery::InvalidLangProfileFormat
+        | LocalRecovery::UnknownProfile
+        | LocalRecovery::OutputOther => {}
         LocalRecovery::Json => {
             if diff {
                 diff_hints(&mut out);
@@ -404,6 +429,12 @@ pub(crate) fn format(err: &Error) -> String {
 }
 
 fn missing_path_as_unrecognized_subcommand(err: &Error) -> Option<String> {
+    if err
+        .chain()
+        .any(|entry| entry.to_string() == EXPLICIT_INPUT_CONTEXT)
+    {
+        return None;
+    }
     for entry in err.chain() {
         let message = entry.to_string();
         let token = message
@@ -590,8 +621,11 @@ fn missing_path_hints(chain: &[String], out: &mut Vec<String>) -> bool {
 
     let mut extracted_bad_path = None;
 
-    // Only an explicit missing bare path can be a typoed subcommand.
-    if has_context(chain, &["path not found: ", "input path does not exist: "]) {
+    // A bare missing path can be a command typo only before a command is selected.
+    let explicit_input = chain
+        .iter()
+        .any(|message| message == EXPLICIT_INPUT_CONTEXT);
+    if !explicit_input && has_context(chain, &["path not found: ", "input path does not exist: "]) {
         // Find the original path string from the chain
         for e_str in chain {
             if let Some(bad_path) = e_str

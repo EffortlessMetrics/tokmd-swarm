@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::cli;
@@ -11,6 +12,14 @@ use crate::context_pack;
 use crate::progress::Progress;
 
 pub(crate) fn handle(args: cli::CliContextArgs, global: &cli::GlobalArgs) -> Result<()> {
+    handle_with_selection(args, global, |_| Ok(()))
+}
+
+fn handle_with_selection(
+    args: cli::CliContextArgs,
+    global: &cli::GlobalArgs,
+    after_selection: impl FnOnce(&[tokmd_types::ContextFileRow]) -> Result<()>,
+) -> Result<()> {
     let progress = Progress::new(!global.no_progress);
 
     let paths = args
@@ -124,6 +133,7 @@ pub(crate) fn handle(args: cli::CliContextArgs, global: &cli::GlobalArgs) -> Res
     }
 
     let selected = &select_result.selected;
+    after_selection(&select_result.selected)?;
 
     let used_tokens: usize = selected
         .iter()
@@ -136,6 +146,14 @@ pub(crate) fn handle(args: cli::CliContextArgs, global: &cli::GlobalArgs) -> Res
     };
 
     progress.finish_and_clear();
+
+    // Keep the opt-in machine progress stream parseable as JSON lines.
+    if std::env::var_os("TOKMD_PROGRESS_EVENTS").is_none()
+        && let Some(warning) = &select_result.budget_warning
+    {
+        // Optional guidance must not turn a successful payload into a failure.
+        writeln!(std::io::stderr().lock(), "{warning}").unwrap_or_default();
+    }
 
     // Determine output destination for logging
     let output_destination = context_pack::determine_output_destination(&args);
@@ -214,5 +232,21 @@ fn add_excluded_path(
             path: pattern,
             reason: reason.to_string(),
         });
+    }
+}
+
+#[cfg(test)]
+mod required_read_tests {
+    use super::*;
+
+    #[test]
+    fn context_pack_command_required_reads_and_completion() -> Result<()> {
+        crate::context_pack::required_reads::command_matrix("context", |cli, mutate| {
+            let args = match cli.command {
+                Some(crate::cli::Commands::Context(args)) => args,
+                _ => anyhow::bail!("wrong fixture command"),
+            };
+            handle_with_selection(args, &cli.global, mutate)
+        })
     }
 }

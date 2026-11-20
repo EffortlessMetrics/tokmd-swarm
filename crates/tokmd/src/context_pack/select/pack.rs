@@ -36,6 +36,7 @@ pub fn pack_greedy(
     budget: usize,
     metric: ValueMetric,
     git_scores: Option<&GitScores>,
+    charge: impl Fn(&FileRow) -> usize,
 ) -> Vec<ContextFileRow> {
     // Filter to parent files only and sort by value descending.
     let mut candidates: Vec<_> = rows.iter().filter(|r| r.kind == FileKind::Parent).collect();
@@ -50,8 +51,9 @@ pub fn pack_greedy(
     let mut used_tokens = 0;
 
     for row in candidates {
-        if used_tokens + row.tokens <= budget {
-            used_tokens += row.tokens;
+        let cost = charge(row);
+        if cost <= budget - used_tokens {
+            used_tokens += cost;
             selected.push(to_context_row(row, metric, git_scores));
         }
     }
@@ -65,6 +67,7 @@ pub fn pack_spread(
     budget: usize,
     metric: ValueMetric,
     git_scores: Option<&GitScores>,
+    charge: impl Fn(&FileRow) -> usize,
 ) -> Vec<ContextFileRow> {
     // Filter to parent files only.
     let parents: Vec<_> = rows.iter().filter(|r| r.kind == FileKind::Parent).collect();
@@ -99,8 +102,9 @@ pub fn pack_spread(
             let idx = group_indices.entry(key.clone()).or_insert(0);
             if *idx < group.len() {
                 let row = group[*idx];
-                if used_tokens + row.tokens <= spread_budget {
-                    used_tokens += row.tokens;
+                let cost = charge(row);
+                if cost <= spread_budget - used_tokens {
+                    used_tokens += cost;
                     selected.push(to_context_row(row, metric, git_scores));
                     *idx += 1;
                     made_progress = true;
@@ -124,8 +128,9 @@ pub fn pack_spread(
     });
 
     for row in remaining {
-        if used_tokens + row.tokens <= budget {
-            used_tokens += row.tokens;
+        let cost = charge(row);
+        if cost <= budget - used_tokens {
+            used_tokens += cost;
             selected.push(to_context_row(row, metric, git_scores));
         }
     }

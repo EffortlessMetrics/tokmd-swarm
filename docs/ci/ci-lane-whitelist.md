@@ -15,7 +15,7 @@ Each `[[lane]]` entry records:
 | `job` | yes | The job's `name:` in the workflow. |
 | `kind` | yes | `rust` / `policy` / `mutation` / `wasm` / `packaging` / `release` / `lint` / `summary` / etc. |
 | `tier` | yes | `frontdoor` (cheap default) / `risk-gated` (default with risk pack) / `deep` (label/main/nightly) / `summary`. |
-| `default_pr` | yes | Whether this lane runs on ordinary PRs today. |
+| `default_pr` | yes | Whether the PR planner selects this lane by default after workflow admission; risk gates still apply. |
 | `blocking` | yes | Whether failure currently blocks merge. |
 | `runner` | yes | Runner label for LEM multiplier; `mixed` for matrix jobs. |
 | `base_lem` | yes | Static LEM floor used until actuals exist. |
@@ -29,6 +29,12 @@ Each `[[lane]]` entry records:
 | `default_pr_exception` | optional | ID in `policy/ci-whitelist-exceptions.toml` that allows the expensive default. |
 | `duplicate_of` | optional | List of lane IDs that already cover this surface. `future:*` references are permitted to forward-declare. |
 | `review_after` / `expires` | yes | Calendar dates — when to re-review and when the entry must be re-justified. |
+
+Default selection preserves proof obligations. For workflows covered by explicit
+qualification admission, an ordinary PR event does not authorize those workloads:
+the exact-source manifest and deliberate `ci:qualify` label event are prerequisites.
+The workflow's native event/path/risk gates determine execution; `default_pr`
+alone does not trigger a run.
 
 ## Exceptions
 

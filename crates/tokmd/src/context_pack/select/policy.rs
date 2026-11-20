@@ -112,12 +112,12 @@ pub(super) fn prepare_policy_selection(
             if row.kind == FileKind::Parent
                 && let Some(meta) = file_meta_map.get(&path)
             {
-                // Packing and receipt bytes use the same policy observation.
-                // Only the effective HeadTail token charge is capped here.
+                // Preserve the pre-existing token ranking and spine sort keys.
+                // The aggregate budget uses charge() independently.
                 let tokens = if meta.policy == InclusionPolicy::HeadTail {
                     meta.original_tokens.min(file_cap)
                 } else {
-                    meta.original_tokens
+                    row.tokens
                 };
                 return FileRow {
                     tokens,
@@ -137,6 +137,15 @@ pub(super) fn prepare_policy_selection(
 }
 
 impl PolicySelection {
+    pub(super) fn charge(&self, row: &FileRow) -> usize {
+        match self.file_meta_map.get(&normalize_path(&row.path)) {
+            Some(meta) if row.kind == FileKind::Parent && meta.policy == InclusionPolicy::Full => {
+                meta.original_tokens
+            }
+            _ => row.tokens,
+        }
+    }
+
     pub(super) fn annotate_selected(&self, selected: &mut [ContextFileRow]) {
         for file in selected {
             let path = normalize_path(&file.path);
@@ -146,8 +155,8 @@ impl PolicySelection {
                 file.policy_reason = meta.policy_reason.clone();
                 if meta.policy == InclusionPolicy::HeadTail {
                     file.effective_tokens = Some(file.tokens);
-                    file.tokens = meta.original_tokens;
                 }
+                file.tokens = meta.original_tokens;
             }
         }
     }
@@ -249,7 +258,10 @@ mod tests {
                 .pack_rows
                 .first()
                 .ok_or_else(|| anyhow::anyhow!("ordinary full file was excluded"))?;
-            anyhow::ensure!(packed.tokens == 1_400, "full file retained a stale charge");
+            anyhow::ensure!(
+                selection.charge(packed) == 1_400,
+                "full file retained a stale charge"
+            );
             anyhow::ensure!(packed.bytes == disk_bytes, "policy byte observation lost");
             anyhow::ensure!(row.tokens == 500 && row.bytes == 2_000, "inventory mutated");
             let mut selected = vec![selected_row(&path, packed.tokens)];
@@ -286,7 +298,7 @@ mod tests {
         let observations = selection
             .pack_rows
             .iter()
-            .map(|row| (row.tokens, row.bytes))
+            .map(|row| (selection.charge(row), row.bytes))
             .collect::<Vec<_>>();
         anyhow::ensure!(
             observations == vec![(1_234, 5_600), (17, 5_600)],

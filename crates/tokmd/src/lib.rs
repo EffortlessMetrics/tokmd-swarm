@@ -49,7 +49,10 @@ pub use config::{
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    let config_ctx = config::load_config_checked()?;
+    let config::LoadedConfig {
+        context: config_ctx,
+        legacy_failure,
+    } = config::load_config_checked()?;
     let profile_name = config::get_profile_name(cli.profile.as_ref());
     let resolved = config::resolve_config(&config_ctx, profile_name.as_deref());
     if cli.show_config {
@@ -58,13 +61,15 @@ pub fn run() -> Result<()> {
             (None, Some(_)) => config::explain::ProfileSource::Env,
             _ => config::explain::ProfileSource::None,
         };
-        return config::explain::print_config_report(
+        return config::explain::print_config_report_with_failure(
             &config_ctx,
             profile_name.as_deref(),
             source,
             &resolved,
+            legacy_failure.as_ref(),
         );
     }
+    config::check_selected_profile(&config_ctx, profile_name.as_deref(), legacy_failure)?;
     commands::dispatch(cli, &resolved)
 }
 
@@ -75,6 +80,7 @@ pub fn format_error(err: &anyhow::Error) -> String {
 /// Return the process exit code for a CLI error.
 pub fn exit_code(err: &anyhow::Error) -> i32 {
     if err.downcast_ref::<commands::UsageError>().is_some()
+        || err.downcast_ref::<config::UnknownProfile>().is_some()
         || err
             .downcast_ref::<error_hints::InvalidLangProfileFormat>()
             .is_some()

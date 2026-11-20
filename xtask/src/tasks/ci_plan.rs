@@ -24,6 +24,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::CiPlanArgs;
+use crate::tasks::affected::parse_diff_paths;
 
 #[derive(Debug, Deserialize)]
 struct WhitelistFile {
@@ -528,8 +529,11 @@ impl LabelEntry {
 fn git_diff_names(root: &Path, base: &str, head: &str) -> Result<Vec<String>> {
     let output = Command::new("git")
         .arg("diff")
+        .arg("--no-renames")
         .arg("--name-only")
+        .arg("-z")
         .arg(format!("{base}...{head}"))
+        .arg("--")
         .current_dir(root)
         .output()
         .context("git diff")?;
@@ -540,12 +544,7 @@ fn git_diff_names(root: &Path, base: &str, head: &str) -> Result<Vec<String>> {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect())
+    parse_diff_paths(output.stdout)
 }
 
 fn match_paths(globs: &[String], files: &[String]) -> Result<Vec<String>> {
@@ -1125,6 +1124,130 @@ fn workspace_root() -> Result<PathBuf> {
 mod tests {
     use super::*;
 
+    fn fixture_git(repo: &Path, args: &[&str]) -> Result<String> {
+        let output = Command::new("git").args(args).current_dir(repo).output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
+    fn diff_fixture() -> Result<tempfile::TempDir> {
+        let fixture = tempfile::tempdir()?;
+        let root = fixture.path();
+        fixture_git(root, &["init", "-q"])?;
+        fixture_git(root, &["config", "user.name", "CI plan fixture"])?;
+        fixture_git(root, &["config", "user.email", "fixture@example.invalid"])?;
+        fixture_git(root, &["config", "commit.gpgsign", "false"])?;
+        fixture_git(root, &["config", "diff.renames", "true"])?;
+        fs::create_dir_all(root.join("web/runner"))?;
+        fs::write(root.join("web/runner/README.md"), "browser runner\n")?;
+        fixture_git(root, &["add", "."])?;
+        fixture_git(root, &["commit", "-qm", "base"])?;
+        Ok(fixture)
+    }
+
+    #[test]
+    fn ci_plan_detected_rename_preserves_both_routes_and_output_flags() -> Result<()> {
+        let fixture = diff_fixture()?;
+        let root = fixture.path();
+        fs::rename(root.join("web/runner/README.md"), root.join("README.md"))?;
+        fixture_git(root, &["add", "-A"])?;
+        fixture_git(root, &["commit", "-qm", "move browser docs"])?;
+
+        // Retain the discriminator: the former collector loses the old path
+        // for a real R100 rename, rather than an add/delete-only fixture.
+        assert_eq!(
+            fixture_git(root, &["diff", "--name-status", "HEAD^", "HEAD", "--"])?,
+            "R100\tweb/runner/README.md\tREADME.md\n"
+        );
+        assert_eq!(
+            fixture_git(root, &["diff", "--name-only", "HEAD^...HEAD", "--"])?,
+            "README.md\n"
+        );
+        let changed = git_diff_names(root, "HEAD^", "HEAD")?;
+        assert_eq!(changed, vec!["README.md", "web/runner/README.md"]);
+        let workspace = workspace_root()?;
+        let whitelist: WhitelistFile =
+            parse_toml(&workspace.join("policy/ci-lane-whitelist.toml"), "lanes")?;
+        let packs: RiskPacksFile =
+            parse_toml(&workspace.join("policy/ci-risk-packs.toml"), "packs")?;
+        let route = route_changed_files(&changed, &packs, &route_lane_index(&whitelist))?;
+        assert!(route.unmatched_files.is_empty());
+        assert_eq!(route.matched_by_pack["wasm"], vec!["web/runner/README.md"]);
+        assert!(route.matched_by_pack["docs"].contains(&"README.md".to_string()));
+        let plan = PlanOutput {
+            schema_version: 1,
+            base: "HEAD^".into(),
+            head: "HEAD".into(),
+            labels: Vec::new(),
+            changed_files: changed,
+            risk_packs_hit: route
+                .matched_by_pack
+                .into_iter()
+                .map(|(name, matched_files)| RiskPackHit {
+                    name,
+                    description: String::new(),
+                    matched_files,
+                })
+                .collect(),
+            lanes_selected: Vec::new(),
+            estimated_lem: 0,
+            band: "preferred".into(),
+            budget: BudgetView {
+                preferred_default_lem: 25,
+                default_limit_lem: 35,
+                elevated_limit_lem: 75,
+                hard_limit_lem: 125,
+            },
+        };
+        assert!(
+            render_github_outputs(&plan)
+                .lines()
+                .any(|line| line == "wasm=true")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ci_plan_git_diff_keeps_docs_controls_and_invalid_refs() -> Result<()> {
+        let fixture = diff_fixture()?;
+        let root = fixture.path();
+        assert!(git_diff_names(root, "HEAD", "HEAD")?.is_empty());
+        assert!(git_diff_names(root, "missing-ref", "HEAD").is_err());
+        fs::write(root.join("web/runner/README.md"), "updated docs\n")?;
+        fixture_git(root, &["add", "."])?;
+        fixture_git(root, &["commit", "-qm", "update docs"])?;
+        assert_eq!(
+            git_diff_names(root, "HEAD^", "HEAD")?,
+            vec!["web/runner/README.md"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ci_plan_git_diff_preserves_newlines_unicode_spaces_and_backslashes() -> Result<()> {
+        let fixture = diff_fixture()?;
+        let root = fixture.path();
+        let mut paths = vec![
+            "web/runner/café.mjs".to_string(),
+            "web/runner/line\nbreak.mjs".to_string(),
+            "web/runner/ space ".to_string(),
+            "web/runner/back\\slash.mjs".to_string(),
+        ];
+        for path in &paths {
+            fs::write(root.join(path), "fixture\n")?;
+        }
+        fixture_git(root, &["add", "."])?;
+        fixture_git(root, &["commit", "-qm", "unusual paths"])?;
+        paths.sort();
+        assert_eq!(git_diff_names(root, "HEAD^", "HEAD")?, paths);
+        Ok(())
+    }
+
     fn budget() -> Budget {
         Budget {
             preferred_default_lem: 25,
@@ -1473,6 +1596,49 @@ mod tests {
         }));
         let reason_counts = skipped_reason_counts(&skipped);
         assert_eq!(reason_counts["docs_only_change"], 2);
+    }
+
+    #[test]
+    fn ci_plan_unknown_removed_path_prevents_docs_only_claim() -> Result<()> {
+        let fixture = diff_fixture()?;
+        let root = fixture.path();
+        fs::create_dir_all(root.join("legacy"))?;
+        fs::create_dir_all(root.join("docs"))?;
+        fs::write(root.join("legacy/readme.txt"), "retired documentation\n")?;
+        fixture_git(root, &["add", "."])?;
+        fixture_git(root, &["commit", "-qm", "unknown old path"])?;
+        fs::rename(
+            root.join("legacy/readme.txt"),
+            root.join("docs/architecture.md"),
+        )?;
+        fixture_git(root, &["add", "-A"])?;
+        fixture_git(root, &["commit", "-qm", "known docs destination"])?;
+        assert_eq!(
+            fixture_git(root, &["diff", "--name-status", "HEAD^", "HEAD", "--"])?,
+            "R100\tlegacy/readme.txt\tdocs/architecture.md\n"
+        );
+
+        let whitelist = route_test_whitelist();
+        let packs = route_test_risk_packs();
+        let lane_index = route_lane_index(&whitelist);
+        let selected = BTreeSet::from(["docs_check".to_string()]);
+        // Keeping only the destination would incorrectly claim all changed
+        // paths have documentation routes. An unmatched deletion stays visible.
+        let former_route =
+            route_changed_files(&["docs/architecture.md".to_string()], &packs, &lane_index)?;
+        assert!(is_docs_only_route(&former_route));
+        let changed = git_diff_names(root, "HEAD^", "HEAD")?;
+        let route = route_changed_files(&changed, &packs, &lane_index)?;
+        assert_eq!(changed, vec!["docs/architecture.md", "legacy/readme.txt"]);
+        assert_eq!(route.unmatched_files, vec!["legacy/readme.txt"]);
+        assert!(!is_docs_only_route(&route));
+        assert_eq!(route.matched_by_pack, former_route.matched_by_pack);
+        let skipped = skipped_by_policy(&whitelist, &selected, &route, &BTreeMap::new());
+        assert!(skipped.iter().any(|skip| {
+            skip.lane == "rust_coverage" && skip.reason == "not_selected_for_changed_surface"
+        }));
+        assert!(!skipped.iter().any(|skip| skip.reason == "docs_only_change"));
+        Ok(())
     }
 
     #[test]

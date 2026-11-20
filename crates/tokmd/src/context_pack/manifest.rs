@@ -14,7 +14,7 @@ use tokmd_types::{
 
 use crate::cli;
 
-use super::{CountingWriter, SelectResult, write_bundle_output};
+use super::{CountingWriter, SelectResult, remove_completion_marker, write_bundle_output};
 
 /// Write bundle to a directory with manifest.
 ///
@@ -53,6 +53,11 @@ pub(crate) fn write_bundle_directory(
             .with_context(|| format!("Failed to create bundle directory: {}", dir.display()))?;
     }
 
+    // Once payload replacement begins, a previous successful index/receipt
+    // must not remain authoritative if a selected input fails to read.
+    remove_completion_marker(&dir.join("manifest.json"))?;
+    remove_completion_marker(&dir.join("receipt.json"))?;
+
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -86,29 +91,29 @@ pub(crate) fn write_bundle_directory(
         token_estimation: Some(token_estimation),
         bundle_audit: None,
     };
-    // Write initial receipt.json (bundle_audit populated after bundle is written).
-    let initial_receipt_json = serde_json::to_string_pretty(&receipt)?;
-    fs::write(&receipt_path, &initial_receipt_json)
-        .with_context(|| format!("Failed to write receipt: {}", receipt_path.display()))?;
-
     // Write bundle.txt (concatenated content) - stream directly to file.
     let bundle_path = dir.join("bundle.txt");
     let bundle_file = File::create(&bundle_path)
         .with_context(|| format!("Failed to create bundle file: {}", bundle_path.display()))?;
     let mut counter = CountingWriter::new(bundle_file);
-    write_bundle_output(&mut counter, selected, args.compress)?;
+    write_bundle_output(
+        &mut counter,
+        selected,
+        args.compress,
+        args.paths.as_deref().unwrap_or_default(),
+    )?;
     counter.flush()?;
     let bundle_bytes = counter.bytes() as usize;
     let bundle_hash = hash_file(&bundle_path)?;
 
-    // Deferred write: rewrite receipt.json with bundle audit.
+    // Publish the selection receipt only after required rendering succeeds.
     let receipt_audit =
         tokmd_types::TokenAudit::from_output(bundle_bytes as u64, total_file_bytes as u64);
     let mut receipt = receipt;
     receipt.bundle_audit = Some(receipt_audit);
     let receipt_json = serde_json::to_string_pretty(&receipt)?;
     fs::write(&receipt_path, &receipt_json)
-        .with_context(|| format!("Failed to rewrite receipt: {}", receipt_path.display()))?;
+        .with_context(|| format!("Failed to write receipt: {}", receipt_path.display()))?;
 
     // Build artifacts list.
     let artifacts = vec![

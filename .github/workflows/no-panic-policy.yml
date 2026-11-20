@@ -4,14 +4,16 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    types: [labeled]
     branches: ["main"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: no-panic-policy-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  group: no-panic-policy-${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci:qualify' && format('qualification-{0}-{1}', github.event.pull_request.number, github.sha) || format('observation-{0}', github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,20 +22,53 @@ env:
 
 jobs:
   check-no-panic-family:
-    name: No-panic Family
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 360 }}
+    name: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name != 'ci:qualify') && 'Observation - ' || '' }}No-panic Family
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Admit explicit PR qualification
+        shell: bash
+        id: qualification_gate
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py
+
+      - name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_2.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_2.outputs.minutes || '1') || 360 }}
+
+      - name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
 
       - uses: Swatinem/rust-cache@v2
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_3.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_3.outputs.minutes || '1') || 360 }}
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Allocate phase 4 budget
+        id: phase_budget_4
+        if: ${{ github.event_name == 'pull_request' && ((github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Run no-panic family checker (strict)
+        if: ${{ (github.event_name != 'pull_request' || steps.phase_budget_4.outcome == 'success') }}
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_4.outputs.minutes || '1') || 360 }}
         run: |
           set -euo pipefail
           mkdir -p target/tokmd/reports
@@ -57,11 +92,31 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Allocate phase 5 budget
+        id: phase_budget_5
+        if: ${{ github.event_name == 'pull_request' && (((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20
+
       - name: Upload no-panic policy report
-        if: always()
+        timeout-minutes: ${{ github.event_name == 'pull_request' && fromJSON(steps.phase_budget_5.outputs.minutes || '1') || 360 }}
+        if: ${{ ((always()) && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success')) && (github.event_name != 'pull_request' || steps.phase_budget_5.outcome == 'success') }}
         uses: actions/upload-artifact@v7.0.1
         with:
           name: no-panic-policy-report
           path: target/tokmd/reports/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Finalize explicit PR qualification budget
+        shell: bash
+        if: ${{ always() && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.qualification_gate.outcome == 'success') }}
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status"

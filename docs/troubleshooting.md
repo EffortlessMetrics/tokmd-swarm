@@ -12,8 +12,10 @@ command. A missing file produces an error before gate JSON is written to stdout.
 
 The file-recovery hints also recognize operating-system `NotFound` errors on
 Windows and in other locales. A missing file inside a command does not imply
-that the command name was misspelled; subcommand suggestions apply to explicit
-missing bare-path tokens instead.
+that the command name was misspelled. For example, `tokmd lang anolyze --format
+json` treats `anolyze` as an input directory: create or correct that path, then
+retry. Subcommand suggestions still apply to a missing bare token in command
+position, such as `tokmd anolyze`.
 
 Names such as `rate_limit` or `timeout` in a missing or inaccessible local file
 path do not call for provider retries or network backoff. Correct the selected
@@ -38,6 +40,22 @@ Gate `--policy` and `--ratchet-config` files use TOML, even when their filenames
 end in `.json`. For `Failed to parse policy TOML`, fix the selected file's TOML
 syntax and key names, then retry. Regenerating the input receipt does not repair
 these policy files. Parse failures produce no gate JSON on stdout.
+
+## Git Ref Diffs in JSON Pipelines
+
+If a diff cannot resolve a Git ref, read stderr for the selected ref and Git's
+diagnostic. Both refs must exist locally. Check them with
+`git rev-parse --verify <ref>`, fetch or correct the missing ref, then retry the
+same diff command:
+
+```bash
+tokmd --no-progress diff main HEAD --format json > diff.json
+```
+
+A successful Git-ref diff writes one JSON receipt to stdout. A ref-resolution
+failure writes no receipt or worktree status text there. Git diagnostics and
+progress use stderr; keep it separate from stdout when parsing the JSON. Worktree setup
+and cleanup do not add status lines to either JSON or Markdown reports.
 
 ## Files Not Appearing in Scans
 
@@ -382,6 +400,22 @@ Named profiles require `--profile`:
 tokmd --profile llm
 ```
 
+An unmatched `--profile`/`--view` or `TOKMD_PROFILE` exits with code 2 and
+empty stdout before running the command. The error lists available names.
+Use `tokmd --show-config` to inspect the selected configuration sources,
+then correct the selector or define that name in `[view.NAME]` (or the legacy
+JSON profiles map) and retry. `--show-config` still reports unmatched names
+successfully without scanning.
+
+If the error includes `Failed to parse legacy JSON configuration from ...` or
+`Failed to read legacy JSON configuration from ...`, repair the named JSON file
+or restore read access, then retry the same command. Parse errors include the
+line and column. `tokmd --show-config` reports this captured failure and repair
+guidance even when no profile is selected; it does not scan or produce a receipt.
+A missing legacy file remains optional. Commands without a profile selector,
+or with a matching TOML view, retain their existing successful fallback when
+the legacy file cannot be loaded.
+
 **3. Environment variable override**
 
 Check if `TOKMD_CONFIG` is set:
@@ -630,13 +664,17 @@ quality gate does not leave a long-lived local build tree behind.
 On Unix-like systems, `cargo gate-check` also refuses to start when free disk
 drops below the `TOKMD_MIN_FREE_GB` threshold.
 
-Before creating its disposable target dir, the gate prunes stale
-`tokmd-gate-target-*` directories left in the system temp dir by earlier runs
-that were killed before their cleanup could run (for example a cancelled CI
-job). Only directories older than `TOKMD_GATE_STALE_HOURS` (default `3`) are
-removed, so a concurrently running gate is never disturbed. This prevents
-accumulated orphan target trees on long-lived self-hosted runners from tripping
-the `TOKMD_MIN_FREE_GB` guard with false failures (issue #309).
+The gate cleans up only the disposable target it creates for the current
+invocation. Targets left by interrupted runs are preserved, as are targets
+selected through `CARGO_TARGET_DIR`. Neither gate startup nor self-hosted CI
+setup deletes other runs' targets by age: fresh writes inside `debug/deps` do
+not refresh the top-level directory's modification time, so age cannot establish
+that a target is abandoned. `TOKMD_GATE_STALE_HOURS` no longer controls cleanup.
+
+Accumulated targets can still exhaust disk space. The existing
+`TOKMD_MIN_FREE_GB` guard continues to refuse builds under pressure. Arrange
+owner-directed cleanup after identifying which targets are no longer needed;
+preserve active builds, reusable caches, and evidence.
 
 This repo also defaults Windows MSVC builds to line-table debuginfo so future local builds generate much smaller symbol files than full PDB output.
 If you need full local symbols for a debugging session, use:

@@ -304,9 +304,270 @@ fn typos_job_contract(workflow: &str) -> Result<()> {
     Ok(())
 }
 
+// Validate the admitted wrapper before projecting the original immutable
+// installer surface. Unknown controls remain visible to the strict parser.
+fn admitted_typos_install_surface(workflow: &str) -> Result<String> {
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("Typos job section")?;
+    let mut parts = section.split("\n      - ");
+    let header = parts.next().context("Typos job header")?;
+    let steps = parts.collect::<Vec<_>>();
+    let step_headers = steps
+        .iter()
+        .map(|step| step.lines().next().context("Typos step header"))
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        step_headers
+            == [
+                "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+                "name: Revalidate shared qualification budget",
+                "name: Allocate phase 2 budget",
+                "name: Install typos with bounded retries",
+                "name: Allocate phase 3 budget",
+                "name: Check spelling",
+                "name: Finalize shared qualification budget",
+            ],
+        "Typos controls must enclose the immutable installer in order"
+    );
+    let job_condition =
+        "    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'";
+    for (property, expected) in [
+        ("if:", job_condition),
+        ("needs:", "    needs: [admission, deny]"),
+    ] {
+        let lines = header
+            .lines()
+            .filter(|line| line.trim_start().starts_with(property))
+            .collect::<Vec<_>>();
+        ensure!(lines == [expected], "unreviewed Typos job {property}");
+    }
+    // Compare complete role-specific bodies, including all executable content.
+    for (index, expected) in [
+        (
+            1,
+            r#"name: Revalidate shared qualification budget
+        id: job_budget
+        shell: bash
+        env:
+          QUALIFICATION_DEADLINE: ${{ needs.admission.outputs.deadline_epoch }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/ci_qualification.py"#,
+        ),
+        (
+            2,
+            r#"name: Allocate phase 2 budget
+        id: phase_budget_2
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20"#,
+        ),
+        (
+            4,
+            r#"name: Allocate phase 3 budget
+        id: phase_budget_3
+        if: ${{ steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: python scripts/ci_budget.py allowance --reserve-seconds 0 --max-minutes 20"#,
+        ),
+        (
+            6,
+            r#"name: Finalize shared qualification budget
+        if: ${{ always() && steps.job_budget.outcome == 'success' }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci_qualification.py
+          source_status=$?
+          python scripts/ci_budget.py finalize --receipt target/ci-budget-finalization.json
+          budget_status=$?
+          cat target/ci-budget-finalization.json
+          if [ "$source_status" -ne 0 ]; then exit "$source_status"; fi
+          exit "$budget_status""#,
+        ),
+    ] {
+        let actual = steps.get(index).context("Typos control step")?;
+        ensure!(
+            actual.trim_end() == expected,
+            "unreviewed Typos wrapper at step {index}"
+        );
+    }
+    let mut projected_section = format!(
+        "  typos:{}",
+        header.replacen(&format!("{job_condition}\n"), "", 1)
+    );
+    for (index, phase) in [(0usize, None), (3, Some(2)), (5, Some(3))] {
+        let mut step = steps
+            .get(index)
+            .context("Typos installer surface step")?
+            .to_string();
+        if let Some(phase) = phase {
+            for (property, expected) in [
+                (
+                    "if:",
+                    format!(
+                        "        if: ${{{{ steps.phase_budget_{phase}.outcome == 'success' }}}}"
+                    ),
+                ),
+                (
+                    "timeout-minutes:",
+                    format!(
+                        "        timeout-minutes: ${{{{ fromJSON(steps.phase_budget_{phase}.outputs.minutes || '1') }}}}"
+                    ),
+                ),
+            ] {
+                let lines = step
+                    .lines()
+                    .filter(|line| line.trim_start().starts_with(property))
+                    .collect::<Vec<_>>();
+                ensure!(
+                    lines == [expected.as_str()],
+                    "unreviewed Typos step {index} {property}"
+                );
+                step = step.replacen(&format!("{expected}\n"), "", 1);
+            }
+        }
+        projected_section.push_str("\n      - ");
+        projected_section.push_str(step.trim_end());
+        projected_section.push('\n');
+    }
+    let projected = mutate_typos_job(workflow, |_| projected_section)?;
+    typos_job_contract(&projected)?;
+    Ok(projected)
+}
+
+#[test]
+fn typos_admission_wrapper_rejects_unreviewed_controls() -> Result<()> {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    admitted_typos_install_surface(&workflow)?;
+    for (original, replacement) in [
+        ("    needs: [admission, deny]\n", "    needs: [admission]\n"),
+        (
+            "    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'\n",
+            "    if: false\n",
+        ),
+        (
+            "          python scripts/ci_qualification.py\n",
+            "          echo unchecked\n",
+        ),
+        ("steps.phase_budget_2.outcome == 'success'", "false"),
+        (
+            "fromJSON(steps.phase_budget_3.outputs.minutes || '1')",
+            "20",
+        ),
+        (
+            "          QUALIFICATION_DEADLINE:",
+            "          TOKEN: ${{ secrets.TOKEN }}\n          QUALIFICATION_DEADLINE:",
+        ),
+        (
+            "        run: typos\n",
+            "        continue-on-error: true\n        run: typos\n",
+        ),
+        (
+            "        run: typos\n",
+            "        run: typos\n      - name: Extra workload\n        run: echo injected\n",
+        ),
+    ] {
+        let drifted = mutate_typos_job(&workflow, |section| {
+            section.replacen(original, replacement, 1)
+        })?;
+        ensure!(
+            drifted != workflow,
+            "Typos control fixture must mutate source"
+        );
+        ensure!(
+            admitted_typos_install_surface(&drifted).is_err(),
+            "accepted unreviewed Typos control drift from {original}"
+        );
+    }
+    let section = workflow
+        .split("  typos:")
+        .nth(1)
+        .and_then(|section| section.split("  proptest-smoke:").next())
+        .context("Typos fixture section")?;
+    for (name, destination) in [
+        (
+            "name: Revalidate shared qualification budget",
+            "      - name: Finalize shared qualification budget",
+        ),
+        (
+            "name: Finalize shared qualification budget",
+            "      - name: Install typos with bounded retries",
+        ),
+    ] {
+        let body = section
+            .split("\n      - ")
+            .find(|step| step.starts_with(name))
+            .context("Typos control fixture step")?;
+        let block = format!("      - {body}");
+        let duplicated = mutate_typos_job(&workflow, |section| {
+            section.replacen(&block, &format!("{block}{block}"), 1)
+        })?;
+        ensure!(duplicated != workflow);
+        ensure!(admitted_typos_install_surface(&duplicated).is_err());
+        let reordered = mutate_typos_job(&workflow, |section| {
+            section.replacen(&block, "", 1).replacen(
+                destination,
+                &format!("{block}{destination}"),
+                1,
+            )
+        })?;
+        ensure!(reordered != workflow);
+        ensure!(admitted_typos_install_surface(&reordered).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn typos_admission_projection_rejects_owned_step_drift() -> Result<()> {
+    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    let appended = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "          python scripts/ci_qualification.py\n\n",
+            "          python scripts/ci_qualification.py\n\n          echo unreviewed\n\n",
+            1,
+        )
+    })?;
+    let commented = mutate_typos_job(&workflow, |section| {
+        section.replacen(
+            "    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'\n",
+            "    #    if: needs.admission.outputs.admitted == 'true' && needs.deny.result == 'success'\n",
+            1,
+        )
+    })?;
+    let pair2 = "        if: ${{ steps.phase_budget_2.outcome == 'success' }}\n        timeout-minutes: ${{ fromJSON(steps.phase_budget_2.outputs.minutes || '1') }}\n";
+    let pair3 = "        if: ${{ steps.phase_budget_3.outcome == 'success' }}\n        timeout-minutes: ${{ fromJSON(steps.phase_budget_3.outputs.minutes || '1') }}\n";
+    let swapped = mutate_typos_job(&workflow, |section| {
+        section
+            .replacen(pair2, "__SWAPPED_PHASE_PAIR__", 1)
+            .replacen(pair3, pair2, 1)
+            .replacen("__SWAPPED_PHASE_PAIR__", pair3, 1)
+    })?;
+    let mut accepted = Vec::new();
+    for (name, drifted) in [
+        ("trailing source command", appended),
+        ("commented job guard", commented),
+        ("swapped phase ownership", swapped),
+    ] {
+        ensure!(drifted != workflow, "fixture must mutate source: {name}");
+        if admitted_typos_install_surface(&drifted).is_ok() {
+            accepted.push(name);
+        }
+    }
+    ensure!(
+        accepted.is_empty(),
+        "accepted raw control drift: {accepted:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn typos_install_contract_is_immutable_verified_and_fail_closed() -> Result<()> {
-    let workflow = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    let source = fs::read_to_string(workspace_root().join(".github/workflows/ci.yml"))?;
+    let workflow = admitted_typos_install_surface(&source)?;
     typos_job_contract(&workflow)?;
 
     for (original, replacement) in [
@@ -1216,6 +1477,44 @@ fn coverage_workflow_uploads_status_before_failing_coverage() {
         workflow.contains("steps.coverage_run.outputs.overall_status == '1'"),
         "coverage command failures should be re-raised after artifact upload"
     );
+}
+
+#[test]
+fn ci_plan_default_workload_does_not_charge_context_metadata() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let plan = directory.path().join("plan.json");
+    let plan_arg = plan.to_string_lossy().to_string();
+    let (stdout, stderr, success) = run_xtask(&[
+        "ci-plan",
+        "--base",
+        "HEAD",
+        "--head",
+        "HEAD",
+        "--json-out",
+        &plan_arg,
+        "--no-budget-annotations",
+    ]);
+    ensure!(success, "ci-plan failed: {stdout}\n{stderr}");
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(plan)?)?;
+    let selected = value
+        .get("lanes_selected")
+        .and_then(serde_json::Value::as_array)
+        .context("selected lanes")?;
+    ensure!(
+        selected
+            .iter()
+            .any(|lane| lane.get("id").and_then(serde_json::Value::as_str)
+                == Some("tokmd_rust_result")),
+        "existing Rust proof remains a default workload"
+    );
+    ensure!(
+        selected
+            .iter()
+            .all(|lane| lane.get("id").and_then(serde_json::Value::as_str)
+                != Some("qualification_context_name")),
+        "context metadata must not add a second default workload for the same job"
+    );
+    Ok(())
 }
 
 #[test]

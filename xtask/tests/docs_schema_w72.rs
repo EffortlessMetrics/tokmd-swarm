@@ -948,8 +948,8 @@ fn gate_user_docs_use_current_input_shape() {
         .expect("docs/troubleshooting.md must exist");
 
     assert!(
-        start_here.contains("tokmd gate .runs/current/receipt.json --policy tokmd-gate.toml"),
-        "start-here should show gate INPUT as a positional receipt path"
+        start_here.contains("tokmd gate .runs/current/analysis.json --policy tokmd-gate.toml"),
+        "start-here should gate the saved analysis metrics, not the run manifest"
     );
     assert!(
         !start_here.contains("tokmd gate --receipt"),

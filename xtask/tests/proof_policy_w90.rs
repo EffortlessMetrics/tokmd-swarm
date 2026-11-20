@@ -171,6 +171,8 @@ fn proof_policy_includes_current_product_scopes() {
     assert!(proof_control_paths.contains(".github/workflows/nix-macos.yml"));
     assert!(proof_control_paths.contains("xtask/src/tasks/workspace.rs"));
     assert!(proof_control_proof.contains("cargo xtask ci-lane-whitelist"));
+    assert!(proof_control_paths.contains("xtask/src/tasks/ci_plan.rs"));
+    assert!(proof_control_proof.contains("cargo test --locked -p xtask ci_plan --verbose"));
     assert!(!proof_control_paths.contains("AGENTS.md"));
     assert!(!proof_control_paths.contains("agents/shared/**"));
 

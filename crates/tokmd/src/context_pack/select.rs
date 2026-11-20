@@ -3,9 +3,9 @@
 use crate::cli::{ContextStrategy, ValueMetric};
 use tokmd_core::context_git::GitScores;
 use tokmd_core::context_policy::{
-    assign_policy as assign_context_policy, classify_file as classify_context_file,
-    compute_file_cap as compute_context_file_cap, is_spine_file as matches_spine_file,
-    smart_exclude_reason,
+    DEFAULT_MAX_FILE_TOKENS, assign_policy as assign_context_policy,
+    classify_file as classify_context_file, compute_file_cap as compute_context_file_cap,
+    is_spine_file as matches_spine_file, smart_exclude_reason,
 };
 use tokmd_scan::normalize_slashes as normalize_path;
 use tokmd_types::{
@@ -71,6 +71,9 @@ impl Default for SelectOptions {
 /// Result of file selection including smart-excluded files.
 pub struct SelectResult {
     pub selected: Vec<ContextFileRow>,
+    /// Budget-specific guidance when selection leaves no usable file content.
+    /// Output callers can use this to avoid suggesting an ignore/no-file cause.
+    pub budget_warning: Option<String>,
     pub smart_excluded: Vec<SmartExcludedFile>,
     /// Files excluded by per-file cap / classification policy.
     pub excluded_by_policy: Vec<PolicyExcludedFile>,
@@ -245,8 +248,9 @@ pub fn select_files_with_options(
     spine_candidates.sort_by(|a, b| a.tokens.cmp(&b.tokens).then_with(|| a.path.cmp(&b.path)));
 
     for row in spine_candidates {
-        if spine_used + row.tokens <= spine_budget {
-            spine_used += row.tokens;
+        let charge = policy_selection.charge(row);
+        if charge <= spine_budget - spine_used {
+            spine_used += charge;
             spine_paths.insert(row.path.as_str());
             spine_files.push(to_context_row_with_reason(
                 row,
@@ -272,12 +276,14 @@ pub fn select_files_with_options(
             remaining_budget,
             effective_metric,
             git_scores,
+            |row| policy_selection.charge(row),
         ),
         ContextStrategy::Spread => pack_spread(
             &non_spine_rows,
             remaining_budget,
             effective_metric,
             git_scores,
+            |row| policy_selection.charge(row),
         ),
     };
 
@@ -295,13 +301,53 @@ pub fn select_files_with_options(
     // Step 7: Annotate each selected file with policy, classifications, effective_tokens
     policy_selection.annotate_selected(&mut selected);
 
+    let budget_warning = budget_warning(&selected, &policy_selection, budget, options);
+
     SelectResult {
         selected,
+        budget_warning,
         smart_excluded,
         excluded_by_policy: policy_selection.excluded_by_policy,
         rank_by_effective: metric_name.to_string(),
         fallback_reason: resolved.fallback_reason,
     }
+}
+
+fn budget_warning(
+    selected: &[ContextFileRow],
+    policy_selection: &policy::PolicySelection,
+    budget: usize,
+    options: &SelectOptions,
+) -> Option<String> {
+    if selected
+        .iter()
+        .any(|file| file.effective_tokens.unwrap_or(file.tokens) > 0)
+    {
+        return None;
+    }
+
+    let file_cap = compute_file_cap(budget, options);
+    let hard_cap = options.max_file_tokens.unwrap_or(DEFAULT_MAX_FILE_TOKENS);
+    // A larger aggregate budget cannot repair a binding hard cap. Only label
+    // policy omissions that can fit below that cap as budget-caused.
+    let cap_omits_content = file_cap < hard_cap
+        && (selected
+            .iter()
+            .any(|file| file.tokens > 0 && file.effective_tokens == Some(0))
+            || policy_selection
+                .excluded_by_policy
+                .iter()
+                .any(|file| file.original_tokens <= hard_cap));
+    let packing_omits_content = policy_selection
+        .pack_rows
+        .iter()
+        .any(|row| row.kind == FileKind::Parent && policy_selection.charge(row) > budget);
+
+    (cap_omits_content || packing_omits_content).then(|| {
+        format!(
+            "Warning: context budget ({budget} tokens; per-file cap {file_cap} tokens) leaves no usable file content. Review --budget and --max-file-pct."
+        )
+    })
 }
 
 #[cfg(test)]
