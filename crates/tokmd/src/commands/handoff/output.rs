@@ -1,6 +1,9 @@
 //! Handoff bundle output writers.
 
-use std::fs::{self, File};
+use crate::bundle_generation::{StagedWriter, boundary, write_file};
+#[cfg(test)]
+use std::fs;
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -53,22 +56,23 @@ pub(super) fn write_payloads(
     compress: bool,
     input_paths: &[PathBuf],
 ) -> Result<HandoffPayloads> {
-    crate::context_pack::remove_completion_marker(&out_dir.join("manifest.json"))?;
-
     let map_path = out_dir.join("map.jsonl");
     let map_bytes = write_map_jsonl(&map_path, export)?;
     let map_hash = hash_file(&map_path)?;
+    boundary("hash", &map_path)?;
 
     let intelligence_path = out_dir.join("intelligence.json");
     let intelligence_json = serde_json::to_string_pretty(intelligence)?;
-    fs::write(&intelligence_path, &intelligence_json)
+    write_file(&intelligence_path, &intelligence_json)
         .with_context(|| format!("Failed to write {}", intelligence_path.display()))?;
     let intelligence_bytes = intelligence_json.len() as u64;
     let intelligence_hash = hash_bytes(intelligence_json.as_bytes());
+    boundary("hash", &intelligence_path)?;
 
     let code_path = out_dir.join("code.txt");
     let code_bytes = write_code_bundle(&code_path, selected, compress, input_paths)?;
     let code_hash = hash_file(&code_path)?;
+    boundary("hash", &code_path)?;
 
     let artifacts = vec![
         ArtifactEntry {
@@ -174,7 +178,7 @@ pub(super) fn write_work_order(
 pub(super) fn write_manifest_json(out_dir: &Path, manifest: &HandoffManifest) -> Result<usize> {
     let manifest_path = out_dir.join("manifest.json");
     let manifest_json = serde_json::to_string_pretty(manifest)?;
-    fs::write(&manifest_path, &manifest_json)
+    write_file(&manifest_path, &manifest_json)
         .with_context(|| format!("Failed to write {}", manifest_path.display()))?;
     Ok(manifest_json.len())
 }
@@ -188,7 +192,7 @@ fn write_json_artifact(
 ) -> Result<ArtifactEntry> {
     let path = out_dir.join(relative_path);
     let json = serde_json::to_string_pretty(value)?;
-    fs::write(&path, &json).with_context(|| format!("Failed to write {}", path.display()))?;
+    write_file(&path, &json).with_context(|| format!("Failed to write {}", path.display()))?;
 
     Ok(ArtifactEntry {
         name: name.to_string(),
@@ -197,7 +201,11 @@ fn write_json_artifact(
         bytes: json.len() as u64,
         hash: Some(ArtifactHash {
             algo: "blake3".to_string(),
-            hash: hash_bytes(json.as_bytes()),
+            hash: {
+                let hash = hash_bytes(json.as_bytes());
+                boundary("hash", &path)?;
+                hash
+            },
         }),
     })
 }
@@ -210,7 +218,7 @@ fn write_text_artifact(
     content: &str,
 ) -> Result<ArtifactEntry> {
     let path = out_dir.join(relative_path);
-    fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))?;
+    write_file(&path, content).with_context(|| format!("Failed to write {}", path.display()))?;
 
     Ok(ArtifactEntry {
         name: name.to_string(),
@@ -219,7 +227,11 @@ fn write_text_artifact(
         bytes: content.len() as u64,
         hash: Some(ArtifactHash {
             algo: "blake3".to_string(),
-            hash: hash_bytes(content.as_bytes()),
+            hash: {
+                let hash = hash_bytes(content.as_bytes());
+                boundary("hash", &path)?;
+                hash
+            },
         }),
     })
 }
@@ -813,8 +825,8 @@ fn policy_label(policy: InclusionPolicy) -> &'static str {
 }
 
 fn write_map_jsonl(path: &Path, export: &ExportData) -> Result<u64> {
-    let file =
-        File::create(path).with_context(|| format!("Failed to create {}", path.display()))?;
+    let file = StagedWriter::create(path)
+        .with_context(|| format!("Failed to create {}", path.display()))?;
     let mut writer = std::io::BufWriter::new(file);
     let mut bytes: u64 = 0;
 
@@ -834,8 +846,8 @@ fn write_code_bundle(
     compress: bool,
     input_paths: &[PathBuf],
 ) -> Result<u64> {
-    let file =
-        File::create(path).with_context(|| format!("Failed to create {}", path.display()))?;
+    let file = StagedWriter::create(path)
+        .with_context(|| format!("Failed to create {}", path.display()))?;
     let mut writer = crate::context_pack::CountingWriter::new(std::io::BufWriter::new(file));
     crate::context_pack::write_handoff_bundle_output(&mut writer, selected, compress, input_paths)?;
     writer.flush()?;
@@ -872,6 +884,9 @@ mod tests {
         compress: bool,
     ) -> Result<Vec<u8>> {
         let path = dir.join("code.txt");
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
         let bytes = write_code_bundle(&path, selected, compress, &[])?;
         let output = fs::read(&path)?;
         anyhow::ensure!(

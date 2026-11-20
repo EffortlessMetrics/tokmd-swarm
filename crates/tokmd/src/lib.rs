@@ -24,6 +24,7 @@
 mod analysis_explain;
 #[cfg(feature = "analysis")]
 mod analysis_utils;
+mod bundle_generation;
 pub mod cli;
 mod commands;
 pub mod config;

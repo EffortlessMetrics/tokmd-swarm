@@ -499,16 +499,8 @@ pub(crate) fn command_matrix(
                     Err(error) => error,
                 };
                 expect_io(&error, &input, true)?;
-                ensure!(
-                    !out.join("manifest.json").exists(),
-                    "{command} retained a complete-looking manifest on failure"
-                );
-                if command == "context" {
-                    ensure!(
-                        !out.join("receipt.json").exists(),
-                        "context retained completed receipt on failure"
-                    );
-                }
+                ensure!(std::fs::read(out.join(payload_name))? == stable);
+                check_completion(&out, command, &stable)?;
                 std::fs::write(&input, &content)?;
                 run(parse()?, &mut check_selection)?;
                 let retry = std::fs::read(out.join(payload_name))?;
@@ -526,10 +518,8 @@ pub(crate) fn command_matrix(
                 Err(error) => error,
             };
             expect_io(&error, &input, false)?;
-            ensure!(
-                !out.join("manifest.json").exists(),
-                "{command} retained manifest after read failure"
-            );
+            ensure!(std::fs::read(out.join(payload_name))? == stable);
+            check_completion(&out, command, &stable)?;
         }
     }
     Ok(())

@@ -217,17 +217,6 @@ fn bundle_source_path(selected_path: &str, input_paths: &[PathBuf]) -> PathBuf {
         .map_or_else(|| path.to_path_buf(), |(_, resolved)| resolved)
 }
 
-/// Invalidate a previous completion marker before rewriting any payload.
-/// This is not an atomic generation replacement or crash-safety guarantee.
-pub(crate) fn remove_completion_marker(path: &Path) -> anyhow::Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error)
-            .with_context(|| format!("Failed to remove completion marker: {}", path.display())),
-    }
-}
-
 /// Write a bounded head/tail excerpt, validating the complete input as UTF-8.
 ///
 /// The retained-source allowance is four bytes per effective token. Path

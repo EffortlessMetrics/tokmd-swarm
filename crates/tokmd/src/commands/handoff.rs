@@ -6,12 +6,11 @@
 //! - `intelligence.json`: Tree + hotspots + complexity + derived
 //! - `code.txt`: Token-budgeted code bundle
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cli;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use tokmd_model as model;
 use tokmd_scan as scan;
 use tokmd_scan::{add_exclude_pattern, normalize_exclude_pattern};
@@ -147,12 +146,8 @@ fn handle_with_selection(
 
     // Write output directory
     progress.set_message("Writing handoff bundle...");
-    fs::create_dir_all(&args.out_dir).with_context(|| {
-        format!(
-            "Failed to create output directory: {}",
-            args.out_dir.display()
-        )
-    })?;
+    let generation = crate::bundle_generation::Generation::begin(&args.out_dir, args.force)?;
+    let stage = generation.path();
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -160,7 +155,7 @@ fn handle_with_selection(
         .as_millis();
 
     let mut payloads = write_payloads(
-        &args.out_dir,
+        stage,
         &export,
         &intelligence,
         &selected,
@@ -183,7 +178,7 @@ fn handle_with_selection(
         proof_route,
         evidence_packet: args.evidence_packet.as_deref(),
     };
-    let mut link_artifacts = write_link_artifacts(&args.out_dir, &link_inputs)?;
+    let mut link_artifacts = write_link_artifacts(stage, &link_inputs)?;
     payloads.artifacts.append(&mut link_artifacts);
     let total_files = export
         .rows
@@ -195,7 +190,7 @@ fn handle_with_selection(
     let rank_by = format!("{:?}", args.rank_by).to_lowercase();
     let intelligence_preset = format!("{:?}", args.preset).to_lowercase();
     let work_order_artifact = write_work_order(
-        &args.out_dir,
+        stage,
         &HandoffWorkOrderInputs {
             inputs: &input_paths,
             budget_tokens: budget,
@@ -250,7 +245,8 @@ fn handle_with_selection(
         code_audit: Some(code_audit),
     };
 
-    let manifest_bytes = write_manifest_json(&args.out_dir, &manifest)?;
+    let manifest_bytes = write_manifest_json(stage, &manifest)?;
+    generation.commit(&manifest.artifacts)?;
 
     progress.finish_and_clear();
 

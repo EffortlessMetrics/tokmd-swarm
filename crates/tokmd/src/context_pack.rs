@@ -12,8 +12,8 @@ pub(crate) use output::{
     append_context_log_record, determine_output_destination, write_to_destination,
 };
 pub(crate) use render::{
-    CountingWriter, format_list_output, remove_completion_marker,
-    write_context_bundle_output as write_bundle_output, write_handoff_bundle_output,
+    CountingWriter, format_list_output, write_context_bundle_output as write_bundle_output,
+    write_handoff_bundle_output,
 };
 pub(crate) use select::{SelectOptions, SelectResult, select_files_with_options};
 

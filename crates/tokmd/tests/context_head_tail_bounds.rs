@@ -130,9 +130,7 @@ fn context_pack_cli_giant_head_tail_bound_and_repair() -> Result<()> {
                     );
                 }
                 let stable = verify(output.path(), command)?;
-                // Invalid UTF-8 in the omitted middle must still fail. #693's
-                // retained partial-payload behavior remains distinct from the
-                // completed-manifest contract checked here.
+                // An invalid byte in the omitted middle must preserve the previous generation.
                 let mut invalid = content.as_bytes().to_vec();
                 *invalid.get_mut(9_000).context("short fixture")? = 0xff;
                 fs::write(&path, invalid)?;
@@ -142,8 +140,8 @@ fn context_pack_cli_giant_head_tail_bound_and_repair() -> Result<()> {
                     "omitted invalid UTF-8 silently succeeded"
                 );
                 ensure!(
-                    !output.path().join("manifest.json").exists(),
-                    "failure left completion manifest"
+                    verify(output.path(), command)? == stable,
+                    "failure changed prior generation"
                 );
                 for _ in 0..2 {
                     fs::write(&path, &content)?;
