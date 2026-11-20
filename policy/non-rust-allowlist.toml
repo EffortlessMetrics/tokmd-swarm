@@ -694,6 +694,15 @@ reason = "Embedded report templates for the analysis HTML output."
 covered_by = ["cargo test -p tokmd-format --test analysis_html"]
 
 [[allow]]
+glob = "crates/tokmd-format/tests/analysis_html/treemap.spec.mjs"
+kind = "test_fixture"
+owner = "core/format"
+surface = "test"
+classification = "test_fixture"
+reason = "Browser regression for code-line counts in the HTML report."
+covered_by = ["npx playwright test crates/tokmd-format/tests/analysis_html/treemap.spec.mjs"]
+
+[[allow]]
 glob = "crates/tokmd-format/proptest-regressions/**"
 kind = "test_fixture"
 owner = "testing/oracle"

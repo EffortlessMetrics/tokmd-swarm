@@ -176,7 +176,7 @@ expression: rendered
         </div>
 
         <div class="section">
-            <h2>Code Distribution</h2>
+            <h2>Code lines by module (largest files)</h2>
             <div id="treemap"></div>
         </div>
 
@@ -322,15 +322,25 @@ expression: rendered
         container.innerHTML = '';
         container.style.position = 'relative';
 
-        // Aggregate by module
-        const moduleData = {};
-        for (const file of REPORT_DATA.files || []) {
+        const files = REPORT_DATA.files;
+        if (!files?.length || files.some(file => !Number.isInteger(file.code) || file.code < 0)) {
+            container.textContent = 'Code-line counts unavailable.';
+            return;
+        }
+
+        const moduleData = Object.create(null);
+        for (const file of files) {
+            if (file.code === 0) continue;
             const mod = file.module || '(root)';
             if (!moduleData[mod]) moduleData[mod] = { name: mod, value: 0, lang: file.lang };
-            moduleData[mod].value += file.code || file.lines || 1;
+            moduleData[mod].value += file.code;
         }
 
         const data = Object.values(moduleData).sort((a, b) => b.value - a.value).slice(0, 50);
+        if (data.length === 0) {
+            container.textContent = '0 code lines in the reported files.';
+            return;
+        }
         const rects = squarify(data, 0, 0, width, height);
 
         for (const rect of rects) {
@@ -347,7 +357,7 @@ expression: rendered
             label.textContent = rect.name + ' (' + rect.value.toLocaleString() + ')';
             div.appendChild(label);
 
-            div.title = rect.name + ': ' + rect.value.toLocaleString() + ' lines';
+            div.title = rect.name + ' — code lines: ' + rect.value.toLocaleString();
             container.appendChild(div);
         }
     }
