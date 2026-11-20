@@ -86,64 +86,58 @@ pub(super) fn build_max_file_report(rows: &[&FileRow]) -> MaxFileReport {
 }
 
 pub(super) fn build_top_offenders(rows: &[&FileRow]) -> TopOffenders {
-    let mut by_lines: Vec<&FileRow> = rows.to_vec();
-    by_lines.sort_by(|a, b| b.lines.cmp(&a.lines).then_with(|| a.path.cmp(&b.path)));
-    by_lines.truncate(TOP_N);
-
-    let mut by_tokens: Vec<&FileRow> = rows.to_vec();
-    by_tokens.sort_by(|a, b| b.tokens.cmp(&a.tokens).then_with(|| a.path.cmp(&b.path)));
-    by_tokens.truncate(TOP_N);
-
-    let mut by_bytes: Vec<&FileRow> = rows.to_vec();
-    by_bytes.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
-    by_bytes.truncate(TOP_N);
-
-    let mut least_doc: Vec<&FileRow> = rows
-        .iter()
-        .copied()
-        .filter(|r| r.lines >= MIN_DOC_LINES)
-        .collect();
-    least_doc.sort_by(|a, b| {
-        let a_doc = if a.code + a.comments == 0 {
-            0.0
-        } else {
-            safe_ratio(a.comments, a.code + a.comments)
-        };
-        let b_doc = if b.code + b.comments == 0 {
-            0.0
-        } else {
-            safe_ratio(b.comments, b.code + b.comments)
-        };
-        a_doc
-            .partial_cmp(&b_doc)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| b.lines.cmp(&a.lines))
-            .then_with(|| a.path.cmp(&b.path))
+    let by_lines = select_top(rows.iter().copied(), |a, b| {
+        b.lines.cmp(&a.lines).then_with(|| a.path.cmp(&b.path))
     });
-    least_doc.truncate(TOP_N);
 
-    let mut dense: Vec<&FileRow> = rows
-        .iter()
-        .copied()
-        .filter(|r| r.lines >= MIN_DENSE_LINES)
-        .collect();
-    dense.sort_by(|a, b| {
-        let a_rate = if a.lines == 0 {
-            0.0
-        } else {
-            safe_ratio(a.bytes, a.lines)
-        };
-        let b_rate = if b.lines == 0 {
-            0.0
-        } else {
-            safe_ratio(b.bytes, b.lines)
-        };
-        b_rate
-            .partial_cmp(&a_rate)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.path.cmp(&b.path))
+    let by_tokens = select_top(rows.iter().copied(), |a, b| {
+        b.tokens.cmp(&a.tokens).then_with(|| a.path.cmp(&b.path))
     });
-    dense.truncate(TOP_N);
+
+    let by_bytes = select_top(rows.iter().copied(), |a, b| {
+        b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path))
+    });
+
+    let least_doc = select_top(
+        rows.iter().copied().filter(|r| r.lines >= MIN_DOC_LINES),
+        |a, b| {
+            let a_doc = if a.code + a.comments == 0 {
+                0.0
+            } else {
+                safe_ratio(a.comments, a.code + a.comments)
+            };
+            let b_doc = if b.code + b.comments == 0 {
+                0.0
+            } else {
+                safe_ratio(b.comments, b.code + b.comments)
+            };
+            a_doc
+                .partial_cmp(&b_doc)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.lines.cmp(&a.lines))
+                .then_with(|| a.path.cmp(&b.path))
+        },
+    );
+
+    let dense = select_top(
+        rows.iter().copied().filter(|r| r.lines >= MIN_DENSE_LINES),
+        |a, b| {
+            let a_rate = if a.lines == 0 {
+                0.0
+            } else {
+                safe_ratio(a.bytes, a.lines)
+            };
+            let b_rate = if b.lines == 0 {
+                0.0
+            } else {
+                safe_ratio(b.bytes, b.lines)
+            };
+            b_rate
+                .partial_cmp(&a_rate)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.path.cmp(&b.path))
+        },
+    );
 
     TopOffenders {
         largest_lines: by_lines.into_iter().map(to_stat_row).collect(),
@@ -153,3 +147,36 @@ pub(super) fn build_top_offenders(rows: &[&FileRow]) -> TopOffenders {
         most_dense: dense.into_iter().map(to_stat_row).collect(),
     }
 }
+
+fn select_top<'a>(
+    mut rows: impl Iterator<Item = &'a FileRow>,
+    compare: impl Fn(&FileRow, &FileRow) -> std::cmp::Ordering,
+) -> Vec<&'a FileRow> {
+    let Some(first) = rows.next() else {
+        return Vec::new();
+    };
+    let mut top: Vec<&FileRow> = Vec::with_capacity(TOP_N);
+    top.push(first);
+    for row in rows {
+        if top.len() == TOP_N
+            && top
+                .last()
+                .is_some_and(|last| compare(row, last) != std::cmp::Ordering::Less)
+        {
+            continue;
+        }
+        // Insert after equal keys so the old stable-sort input order survives,
+        // including distinct rows with equal metrics and equal paths.
+        let position =
+            top.partition_point(|existing| compare(existing, row) != std::cmp::Ordering::Greater);
+        if top.len() == TOP_N {
+            top.pop();
+        }
+        top.insert(position, row);
+    }
+    top
+}
+
+#[cfg(test)]
+#[path = "files/tests.rs"]
+mod tests;
