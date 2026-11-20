@@ -293,6 +293,35 @@ pub fn collect_in_memory_file_rows(
     rows
 }
 
+/// Render a native report path without reinterpreting characters within file names.
+fn native_report_path(path: &Path, strip_prefix: Option<&Path>) -> String {
+    let path = path.strip_prefix(".").unwrap_or(path);
+    let relative = strip_prefix.and_then(|prefix| {
+        let prefix = prefix.strip_prefix(".").unwrap_or(prefix);
+        path.strip_prefix(prefix).ok()
+    });
+    let path = relative
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(path);
+
+    if !cfg!(unix) {
+        return normalize_path(path, None);
+    }
+
+    let mut result = String::with_capacity(path.as_os_str().len());
+    for component in path.components() {
+        use std::path::Component;
+        if matches!(component, Component::CurDir | Component::RootDir) {
+            continue;
+        }
+        if !result.is_empty() {
+            result.push('/');
+        }
+        result.push_str(&component.as_os_str().to_string_lossy());
+    }
+    result
+}
+
 /// Collect per-file contributions, optionally including embedded language reports.
 ///
 /// This returns one row per (path, lang, kind), aggregated if tokei produced multiple
@@ -309,7 +338,7 @@ pub fn collect_file_rows(
     // Parent reports
     for (lang_type, lang) in languages.iter() {
         for report in &lang.reports {
-            let path = normalize_path(&report.name, strip_prefix);
+            let path = native_report_path(&report.name, strip_prefix);
             let module = module_key_from_normalized(&path, module_roots, module_depth);
             let st = report.stats.summarise();
             let (bytes, tokens) = estimated_file_metrics(&st);
@@ -332,7 +361,7 @@ pub fn collect_file_rows(
         for lang in languages.values() {
             for (child_type, reports) in &lang.children {
                 for report in reports {
-                    let path = normalize_path(&report.name, strip_prefix);
+                    let path = native_report_path(&report.name, strip_prefix);
                     let module = module_key_from_normalized(&path, module_roots, module_depth);
                     let st = report.stats.summarise();
                     insert_row(
