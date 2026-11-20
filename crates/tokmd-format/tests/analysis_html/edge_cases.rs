@@ -401,22 +401,24 @@ fn given_zero_totals_when_rendered_then_shows_zero() {
 fn given_zero_doc_density_when_rendered_then_shows_zero_pct() {
     let mut receipt = minimal_receipt();
     let mut derived = derived_with_files(vec![make_file_row("a.rs", ".", "Rust", 100)]);
+    derived.doc_density.total.numerator = 0;
     derived.doc_density.total.ratio = 0.0;
     receipt.derived = Some(derived);
     let html = render(&receipt);
 
-    assert!(html.contains("0.0%"), "should show 0.0% for zero ratio");
+    assert!(html.contains(r#">0.0%</span><span class="label">Doc%</span>"#));
 }
 
 #[test]
 fn given_full_doc_density_when_rendered_then_shows_100_pct() {
     let mut receipt = minimal_receipt();
     let mut derived = derived_with_files(vec![make_file_row("a.rs", ".", "Rust", 100)]);
+    derived.doc_density.total.numerator = derived.doc_density.total.denominator;
     derived.doc_density.total.ratio = 1.0;
     receipt.derived = Some(derived);
     let html = render(&receipt);
 
-    assert!(html.contains("100.0%"));
+    assert!(html.contains(r#">100.0%</span><span class="label">Doc%</span>"#));
 }
 
 // ═══════════════════════════════════════════════════════════════════

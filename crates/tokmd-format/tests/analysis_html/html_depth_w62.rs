@@ -533,9 +533,11 @@ fn format_number_millions() {
 fn format_pct_renders_one_decimal() {
     let mut r = receipt_with_derived();
     let d = r.derived.as_mut().unwrap();
+    d.doc_density.total.numerator = 1;
+    d.doc_density.total.denominator = 3;
     d.doc_density.total.ratio = 0.3333;
     let html = render(&r);
-    assert!(html.contains("33.3%"));
+    assert!(html.contains(r#">33.3%</span><span class="label">Doc%</span>"#));
 }
 
 // ── 9. CSS classes ────────────────────────────────────────────────
