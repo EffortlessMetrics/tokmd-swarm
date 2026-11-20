@@ -29,7 +29,7 @@ node_dist=https://nodejs.org/dist
 node_checksum=$(curl --proto '=https' --tlsv1.2 -fsSL "$node_dist/latest/SHASUMS256.txt" |
     awk -v arch="$node_arch" '$2 ~ ("^node-v[0-9]+\\.[0-9]+\\.[0-9]+-linux-" arch "\\.tar\\.xz$") { print }')
 if [[ -z "$node_checksum" ]]; then
-    printf 'No Node.js Current Linux archive found for %s\n' "$node_arch" >&2
+    printf 'No official Node.js Linux archive found for %s\n' "$node_arch" >&2
     exit 1
 fi
 read -r _ node_archive <<< "$node_checksum"
@@ -49,6 +49,7 @@ if [[ ! -x "$node_root/$node_version/bin/node" ]]; then
         mv -T extracted "$node_root/$node_version"
     )
 fi
+"$node_root/$node_version/bin/node" --version
 ln -sfnT "$node_version" "$node_root/current"
 
 curl --proto '=https' --tlsv1.2 -fsSL https://astral.sh/uv/install.sh |

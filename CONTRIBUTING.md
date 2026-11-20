@@ -45,11 +45,15 @@ bash docs/agent-workflows/codex-cloud-setup.sh
 ```
 
 The script reuses an installed rustup or bootstraps it from the official Rust
-installer. It installs the moving Rust `stable` channel, the latest Node.js
-Current release and the latest uv. Node.js and uv go into
+installer. It installs the moving Rust `stable` channel, the latest official
+final Node.js release (which may be labeled LTS), and the latest uv. It puts
+Node.js and uv under
 `$HOME/.local/share/tokmd-codex`. Select them explicitly so the image's tools
 and workflow-specific versions remain available. The base Linux image
 supplies Git and a native C compiler for normal workspace development.
+The image also needs the libatomic runtime (`libatomic1` on Debian/Ubuntu)
+for [official Node.js 25 and later Linux binaries](https://github.com/nodejs/node/blob/v26.x/BUILDING.md#official-binary-platforms-and-toolchains).
+Setup runs the downloaded Node.js binary to verify it starts.
 
 Workspace checks use Rust `1.95.0`, the exact toolchain in the
 [required MSRV CI step](.github/workflows/ci.yml) for
