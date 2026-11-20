@@ -61,6 +61,7 @@ fn sample_complexity() -> ComplexityReport {
         technical_debt: Some(TechnicalDebtRatio {
             ratio: 20.0,
             complexity_points: 20,
+            analyzed_lines: None,
             code_kloc: 1.0,
             level: TechnicalDebtLevel::Low,
         }),

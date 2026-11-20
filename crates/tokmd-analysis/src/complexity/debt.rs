@@ -64,6 +64,7 @@ pub(super) fn compute_technical_debt_ratio(
     Some(TechnicalDebtRatio {
         ratio,
         complexity_points,
+        analyzed_lines: Some(analyzed_lines),
         code_kloc: round_f64(code_kloc, 4),
         level,
     })

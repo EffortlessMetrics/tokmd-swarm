@@ -125,6 +125,7 @@ mod tests {
             technical_debt: Some(TechnicalDebtRatio {
                 ratio: 20.0,
                 complexity_points: 20,
+                analyzed_lines: None,
                 code_kloc: 1.0,
                 level: tokmd_analysis_types::TechnicalDebtLevel::Low,
             }),

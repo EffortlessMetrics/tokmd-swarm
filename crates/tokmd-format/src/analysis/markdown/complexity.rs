@@ -51,7 +51,11 @@ pub(super) fn render_complexity_report(out: &mut String, cx: &ComplexityReport) 
     if let Some(max_nesting) = cx.max_nesting_depth {
         let _ = writeln!(out, "|Max nesting depth|{}|", max_nesting);
     }
-    if let (Some(_), Some(debt)) = (&cx.coverage, &cx.technical_debt) {
+    if let Some(debt) = cx
+        .technical_debt
+        .as_ref()
+        .filter(|d| d.analyzed_lines.is_some())
+    {
         let _ = writeln!(
             out,
             "|Debt points per thousand analyzed lines|{}|",
@@ -72,5 +76,33 @@ pub(super) fn render_complexity_report(out: &mut String, cx: &ComplexityReport) 
             );
         }
         out.push('\n');
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn historical_debt_with_coverage_keeps_its_original_meaning() {
+        let mut receipt: serde_json::Value = serde_json::from_str(r#"{
+            "coverage":{"status":"partial","eligible_files":1,"analyzed_files":1,"analyzed_lines":1000,"outcomes":[]},
+            "total_functions":1,"avg_function_length":1.0,"max_function_length":1,
+            "avg_cyclomatic":1.0,"max_cyclomatic":1,"high_risk_files":0,"files":[],
+            "technical_debt":{"ratio":6.0,"complexity_points":120,"code_kloc":20.0,"level":"low"}
+        }"#).unwrap();
+        let label = "Debt points per thousand analyzed lines";
+        let mut output = String::new();
+        render_complexity_report(
+            &mut output,
+            &serde_json::from_value(receipt.clone()).unwrap(),
+        );
+        assert!(!output.contains(label));
+        receipt["technical_debt"] = serde_json::json!({
+            "ratio":120.0,"complexity_points":120,"analyzed_lines":1000,"code_kloc":1.0,"level":"critical"
+        });
+        output.clear();
+        render_complexity_report(&mut output, &serde_json::from_value(receipt).unwrap());
+        assert!(output.contains("|Debt points per thousand analyzed lines|120|"));
     }
 }

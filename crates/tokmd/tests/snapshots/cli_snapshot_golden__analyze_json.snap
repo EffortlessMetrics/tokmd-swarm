@@ -902,6 +902,7 @@ expression: normalize(stdout)
     "technical_debt": {
       "ratio": 187.5,
       "complexity_points": 3,
+      "analyzed_lines": 16,
       "code_kloc": 0.016,
       "level": "critical"
     },

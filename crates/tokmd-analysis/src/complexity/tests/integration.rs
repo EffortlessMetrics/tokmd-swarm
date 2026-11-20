@@ -751,6 +751,7 @@ fn debt_is_invariant_to_unmeasured_lines() {
         .unwrap();
         assert_eq!(report.coverage.unwrap().analyzed_lines, 1000);
         let debt = report.technical_debt.unwrap();
+        assert_eq!(debt.analyzed_lines, Some(1000));
         assert_eq!(debt.complexity_points, 120);
         assert_eq!(debt.ratio, 120.0);
         assert_eq!(debt.code_kloc, 1.0);

@@ -39,7 +39,7 @@ them. Consumers should match the top-level `schema` string first, then read nest
 | **Core** | 2 | `SCHEMA_VERSION` | `lang`, `module`, `export`, `diff`, `run` |
 | **Context** | 4 | `CONTEXT_SCHEMA_VERSION` | `context` receipt |
 | **Context Bundle** | 2 | `CONTEXT_BUNDLE_SCHEMA_VERSION` | `context` bundle manifest |
-| **Analysis** | 9 | `ANALYSIS_SCHEMA_VERSION` | `analyze` |
+| **Analysis** | 10 | `ANALYSIS_SCHEMA_VERSION` | `analyze` |
 | **Cockpit** | 3 | `COCKPIT_SCHEMA_VERSION` | `cockpit` |
 | **Envelope** | `"sensor.report.v1"` | `SENSOR_REPORT_SCHEMA` | ecosystem envelope |
 | **Baseline** | 1 | `BASELINE_VERSION` | complexity/determinism baselines |
@@ -873,7 +873,8 @@ The technical-debt heuristic divides the measured complexity points by
 comments and blanks, within the prefix actually analyzed. Zero measured lines
 yield no ratio. A partial result describes only the measured input. Compare
 trends only for equivalent measurement scope, settings, limits and estimator
-version. Older whole-export ratios use a different denominator. Keep historical
+version. The presence of `technical_debt.analyzed_lines` identifies this formula, even
+when reading v10 receipts. Older whole-export ratios omit this field. Keep historical
 receipts and establish a fresh baseline for the measured-line metric.
 
 

@@ -11,7 +11,10 @@ pub struct TechnicalDebtRatio {
     pub ratio: f64,
     /// Aggregate complexity points used in the ratio.
     pub complexity_points: usize,
-    /// Thousands of physical input lines analyzed, including comments and blanks.
+    /// Exact physical input lines for the measured-line formula. Absent on historical ratios.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analyzed_lines: Option<usize>,
+    /// Thousands of lines used by the producing estimator.
     pub code_kloc: f64,
     /// Bucketed interpretation of debt ratio.
     pub level: TechnicalDebtLevel,
