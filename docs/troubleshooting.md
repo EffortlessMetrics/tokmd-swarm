@@ -36,6 +36,12 @@ the file named above and regenerate a truncated or hand-edited receipt with
 `tokmd run`, `tokmd export`, or `tokmd analyze`, then retry. A directory named
 `toml` does not change the receipt's JSON format.
 
+For export JSONL input, `tokmd analyze` names the selected payload and the
+physical `JSONL line` that failed, counting blank lines. The following parser
+cause may use coordinates within that single record. Correct or regenerate the
+named export and retry the same command; malformed input emits no analysis
+receipt on stdout.
+
 Gate `--policy` and `--ratchet-config` files use TOML, even when their filenames
 end in `.json`. For `Failed to parse policy TOML`, fix the selected file's TOML
 syntax and key names, then retry. Regenerating the input receipt does not repair

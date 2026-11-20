@@ -159,7 +159,8 @@ fn load_export_from_file(
 
     // Strategy 2: Load Export Data (jsonl or json)
     let (mut export, meta) = if ext == "jsonl" {
-        load_export_jsonl_content(&content)?
+        load_export_jsonl_content(&content)
+            .with_context(|| format!("Failed to parse export rows from {}", path.display()))?
     } else {
         load_export_json_content(&content)?
     };
@@ -182,12 +183,14 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
     let mut rows = Vec::new();
     let mut meta = ExportMetaLite::default();
 
-    for line in content.lines() {
+    for (index, line) in content.lines().enumerate() {
+        // Count physical lines before skipping blanks, including CRLF input.
+        let record_context = || format!("Failed to parse export JSONL line {}", index + 1);
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let value: serde_json::Value = serde_json::from_str(line)?;
+        let value: serde_json::Value = serde_json::from_str(line).with_context(record_context)?;
         let ty = value.get("type").and_then(|v| v.as_str()).unwrap_or("row");
         if ty == "meta" {
             if let Some(schema) = value.get("schema_version").and_then(|v| v.as_u64()) {
@@ -197,7 +200,8 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
                 meta.generated_at_ms = Some(generated as u128);
             }
             if let Some(args) = value.get("args") {
-                let parsed: tokmd_types::ExportArgsMeta = serde_json::from_value(args.clone())?;
+                let parsed: tokmd_types::ExportArgsMeta =
+                    serde_json::from_value(args.clone()).with_context(record_context)?;
                 meta.module_roots = parsed.module_roots.clone();
                 meta.module_depth = parsed.module_depth;
                 meta.children = parsed.children;
@@ -205,7 +209,8 @@ fn load_export_jsonl_content(content: &str) -> Result<(tokmd_types::ExportData, 
             continue;
         }
 
-        let row: tokmd_types::FileRow = serde_json::from_value(value)?;
+        let row: tokmd_types::FileRow =
+            serde_json::from_value(value).with_context(record_context)?;
         rows.push(row);
     }
 
