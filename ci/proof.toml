@@ -747,6 +747,26 @@ mutation = false
 coverage = false
 
 [[scope]]
+name = "rust_callable_baseline"
+kind = "rust"
+paths = [
+  "crates/tokmd-analysis/src/ast/panic_seam.rs",
+  "crates/tokmd-analysis/src/ast/rust.rs",
+  "docs/specs/rust-callable-baseline.md",
+  "policy/rust-callable-baseline.json",
+  "xtask/src/tasks/rust_maintainability.rs",
+  "xtask/src/tasks/rust_maintainability/**",
+]
+packages = ["xtask"]
+proof = [
+  "cargo test --locked -p xtask --bin xtask rust_maintainability",
+  "cargo --locked xtask rust-maintainability",
+]
+mutation = false
+coverage = false
+reason = "Compare the two pinned Rust source paths with the checked-out commit and exercise identity and measured-scope controls. Threshold observations stay advisory."
+
+[[scope]]
 name = "analysis_complexity"
 kind = "rust"
 paths = [

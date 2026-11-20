@@ -179,7 +179,15 @@ pub fn run(candidate: Option<&str>, emit_baseline: bool, json: bool) -> Result<(
         bytes == BASELINE,
         "committed baseline differs from pinned source and metric definitions"
     );
-    let candidate = snapshot(root, candidate.context("missing candidate")?)?;
+    let head;
+    let commit = match candidate {
+        Some(commit) => commit,
+        None => {
+            head = String::from_utf8(git(root, &["rev-parse", "--verify", "HEAD^{commit}"])?)?;
+            head.trim_end()
+        }
+    };
+    let candidate = snapshot(root, commit)?;
     let report = compare::comparison(&base, &candidate);
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);

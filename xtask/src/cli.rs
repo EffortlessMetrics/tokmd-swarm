@@ -117,12 +117,8 @@ pub enum Commands {
     PerfSmoke(PerfSmokeArgs),
     /// Compare a bounded Rust callable population at immutable Git commits (advisory)
     RustMaintainability {
-        /// Full commit ID to compare against the pinned baseline
-        #[arg(
-            long,
-            conflicts_with = "emit_baseline",
-            required_unless_present = "emit_baseline"
-        )]
+        /// Full candidate commit ID (defaults to the current checkout's resolved commit)
+        #[arg(long, conflicts_with = "emit_baseline")]
         candidate: Option<String>,
         /// Print the deterministically regenerated, pinned baseline as JSON
         #[arg(long)]

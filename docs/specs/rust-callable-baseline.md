@@ -2,7 +2,7 @@
 
 Issue [#765](https://github.com/EffortlessMetrics/tokmd-swarm/issues/765) starts with two source-controlled paths in `tokmd-analysis` at `07d878beee199568dbfa7698686ca1999addb7c8`. They cover Rust syntax landmark extraction and panic-seam analysis. The pilot reads regular blobs directly from Git, up to the repository syntax limit of 1 MiB per file. Larger blobs are recorded as unmeasured before their contents are read. Both commits must be available locally. The path-to-module mapping describes the lexical source under observation, without resolving Cargo or compiler configuration.
 
-From the repository, supply a full candidate commit ID:
+The affected-proof scope selects the comparator for the two source paths, policy, documentation and checker. With no candidate argument it resolves the checked-out commit once. To select an explicit commit or reproduce the baseline:
 
 ```sh
 cargo --locked xtask rust-maintainability --candidate "$(git rev-parse HEAD)"
@@ -29,4 +29,4 @@ An exact match requires one occurrence per side with the same path, lexical owne
 
 A missing file, unsupported Git entry, non-UTF-8 blob, excluded file or parse failure preserves its file status. Loss of a previously parsed file retains the old rows; loss of nesting inside an exact callable has its own observation. Lower syntax depth in one function alone cannot establish a whole-change improvement, for example after extracting a wrapper.
 
-The rollout remains advisory pending broader metric and scope coverage, false-positive calibration, negative controls and review of the changed-path and periodic proof routes. No blocking workflow is enabled by this slice.
+The rollout remains advisory pending broader metric and scope coverage, false-positive calibration, negative controls and periodic full-population proof. No blocking workflow is enabled by this slice.
