@@ -733,6 +733,7 @@ paths = [
   "xtask/src/main.rs",
   "xtask/src/tasks/ast_shadow_check.rs",
   "xtask/src/tasks/ast_shadow_compare.rs",
+  "xtask/src/tasks/ast_shadow_compare/**",
   "xtask/src/tasks/mod.rs",
 ]
 packages = ["tokmd-analysis", "xtask"]
