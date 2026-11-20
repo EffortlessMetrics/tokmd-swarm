@@ -44,6 +44,9 @@ for product priorities.
 
 ### Historical Lane: PR Evidence Packet Workflows
 
+**Status:** Complete. The CLI and GitHub Action packet paths shipped in v1.14.0.
+The original work packets and acceptance criteria follow.
+
 **Goal:** Make `tokmd` useful in pull request workflows and local review by
 producing the same bounded evidence packet from a one-command CLI path and a
 GitHub Action path.
