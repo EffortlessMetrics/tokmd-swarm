@@ -42,13 +42,21 @@ impl Repo {
 
 fn rows(base: &Snapshot, head: &Snapshot) -> Result<Vec<Value>> {
     let report = serde_json::to_value(compare::comparison(base, head))?;
-    Ok(report["rows"].as_array().context("rows")?.clone())
+    Ok(report
+        .get("rows")
+        .and_then(Value::as_array)
+        .context("rows")?
+        .clone())
 }
 
 fn named(row: &Value, side: &str, name: &str) -> bool {
-    row[side]
-        .as_array()
-        .is_some_and(|entries| entries.iter().any(|entry| entry["id"]["name"] == name))
+    row.get(side)
+        .and_then(Value::as_array)
+        .is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|entry| entry.pointer("/id/name").and_then(Value::as_str) == Some(name))
+        })
 }
 
 #[test]
@@ -146,7 +154,12 @@ fn loss_of_file_and_loss_inside_measured_file_stay_distinct() -> Result<()> {
     assert_eq!(invalid.files[0].status, "invalid_utf8");
     assert_eq!(invalid.files[1].status, "excluded_file_attributes");
     assert!(snapshot(repo.0.path(), "HEAD").is_err());
-    fs::write(repo.0.path().join(PATHS[0].0), b"fn local() {}")?;
+    fs::write(
+        repo.0
+            .path()
+            .join(old.files.first().context("first source")?.path),
+        b"fn local() {}",
+    )?;
     assert_eq!(
         baseline_json(&snapshot(repo.0.path(), &old.commit)?)?,
         baseline_json(&old)?
@@ -171,15 +184,17 @@ fn admitted_syntax_thresholds_scopes_and_unmeasured_cases() -> Result<()> {
         debt["candidate"][0]["metrics"],
         serde_json::json!({"parameters":7,"nesting":5})
     );
-    for symbol in &base.files[1].symbols {
-        let range = symbol.bytes[0]..symbol.bytes[1];
+    let measured = base.files.get(1).context("measured source")?;
+    for symbol in &measured.symbols {
+        let [start, end] = symbol.bytes;
+        let range = start..end;
         assert!(
             src.get(range)
                 .context("byte span")?
                 .starts_with(&format!("fn {}", symbol.id.name))
         );
     }
-    let repeat: Vec<_> = base.files[1]
+    let repeat: Vec<_> = measured
         .symbols
         .iter()
         .filter(|s| s.id.name == "repeat")
@@ -216,11 +231,16 @@ fn opaque_tokens_and_size_limit_preserve_unknowns() -> Result<()> {
 fn absent_and_nonregular_entries_keep_file_provenance_even_without_symbols() -> Result<()> {
     let repo = Repo::init()?;
     let old = repo.commit(b"", b"")?;
-    git(repo.0.path(), &["rm", "-q", "--", PATHS[0].0])?;
-    let blob = old.files[1].blob.as_deref().context("blob")?;
+    let [(deleted, _), (link, _)] = PATHS;
+    git(repo.0.path(), &["rm", "-q", "--", deleted])?;
+    let blob = old
+        .files
+        .get(1)
+        .and_then(|f| f.blob.as_deref())
+        .context("blob")?;
     git(
         repo.0.path(),
-        &["update-index", "--cacheinfo", "120000", blob, PATHS[1].0],
+        &["update-index", "--cacheinfo", "120000", blob, link],
     )?;
     let head = repo.commit_index()?;
     assert_eq!(head.files[0].status, "absent");
