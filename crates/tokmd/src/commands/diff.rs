@@ -11,7 +11,7 @@ use tokmd_model as model;
 use tokmd_scan as scan;
 use tokmd_types::LangReport;
 
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 #[cfg(feature = "git")]
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -39,25 +39,30 @@ pub(crate) fn handle(args: cli::DiffArgs, global: &cli::GlobalArgs) -> Result<()
     // Clear the stderr spinner before the report is written to stdout.
     progress.finish_and_clear();
 
-    match args.format {
+    let output = match args.format {
         cli::DiffFormat::Md => {
             let color = resolve_color_mode(args.color);
             let render_options = DiffRenderOptions {
                 compact: args.compact,
                 color,
             };
-            print!(
-                "{}",
-                render_diff_md_with_options(&from, &to, &diff_rows, &totals, render_options)
-            );
+            render_diff_md_with_options(&from, &to, &diff_rows, &totals, render_options)
         }
         cli::DiffFormat::Json => {
             let receipt = create_diff_receipt(&from, &to, diff_rows, totals);
-            println!("{}", serde_json::to_string(&receipt)?);
+            let mut json = serde_json::to_string(&receipt)?;
+            json.push('\n');
+            json
         }
-    }
+    };
 
-    Ok(())
+    write_output(&mut io::stdout().lock(), &output)
+}
+
+fn write_output(out: &mut impl Write, output: &str) -> Result<()> {
+    out.write_all(output.as_bytes())
+        .context("Failed to write diff to stdout")?;
+    out.flush().context("Failed to flush diff to stdout")
 }
 
 fn resolve_color_mode(mode: cli::ColorMode) -> DiffColorMode {
@@ -284,4 +289,114 @@ fn make_temp_dir(prefix: &str) -> Result<PathBuf> {
     }
 
     bail!("Failed to create a unique temp directory for diff")
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::write_output;
+    use anyhow::{Context, Result, ensure};
+    use std::io::{self, Write};
+
+    struct Writer {
+        bytes: Vec<u8>,
+        fail_at: Option<usize>,
+        fail_flush: bool,
+        flushes: usize,
+    }
+
+    impl Write for Writer {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.fail_at == Some(self.bytes.len()) {
+                return Err(io::ErrorKind::BrokenPipe.into());
+            }
+            let Some(&byte) = bytes.first() else {
+                return Ok(0);
+            };
+            self.bytes.push(byte);
+            Ok(1)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushes += 1;
+            if self.fail_flush {
+                Err(io::Error::other("flush rejected"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn writer(fail_at: Option<usize>, fail_flush: bool) -> Writer {
+        Writer {
+            bytes: Vec::new(),
+            fail_at,
+            fail_flush,
+            flushes: 0,
+        }
+    }
+
+    #[test]
+    fn short_writes_preserve_bytes_and_flush() -> Result<()> {
+        let mut out = writer(None, false);
+        write_output(&mut out, "{}\n")?;
+        ensure!(
+            out.bytes == b"{}\n",
+            "short write lost output: {:?}",
+            out.bytes
+        );
+        ensure!(out.flushes == 1, "output was not flushed once");
+        Ok(())
+    }
+
+    #[test]
+    fn initial_partial_and_newline_errors_keep_native_cause() -> Result<()> {
+        for offset in [0, 1, 2] {
+            let mut out = writer(Some(offset), false);
+            let error = write_output(&mut out, "{}\n")
+                .err()
+                .context("expected write failure")?;
+            ensure!(
+                error.to_string() == "Failed to write diff to stdout",
+                "{error:#}"
+            );
+            ensure!(
+                error
+                    .downcast_ref::<io::Error>()
+                    .context("I/O cause")?
+                    .kind()
+                    == io::ErrorKind::BrokenPipe,
+                "native I/O cause lost: {error:#}"
+            );
+            ensure!(crate::exit_code(&error) == 1, "incorrect I/O exit code");
+            ensure!(
+                out.bytes == b"{}\n".get(..offset).context("output prefix")?,
+                "incorrect output prefix"
+            );
+            ensure!(out.flushes == 0, "flushed after a write failure");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn flush_error_is_returned_after_complete_output() -> Result<()> {
+        let mut out = writer(None, true);
+        let error = write_output(&mut out, "{}\n")
+            .err()
+            .context("expected flush failure")?;
+        ensure!(
+            error.to_string() == "Failed to flush diff to stdout",
+            "{error:#}"
+        );
+        let cause = error.downcast_ref::<io::Error>().context("I/O cause")?;
+        ensure!(
+            cause.kind() == io::ErrorKind::Other && cause.to_string() == "flush rejected",
+            "native flush cause lost: {error:#}"
+        );
+        ensure!(crate::exit_code(&error) == 1, "incorrect flush exit code");
+        ensure!(
+            out.bytes == b"{}\n" && out.flushes == 1,
+            "flush did not follow complete output"
+        );
+        Ok(())
+    }
 }
