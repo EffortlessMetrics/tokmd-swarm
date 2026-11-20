@@ -60,31 +60,31 @@ Preset: `receipt`
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/lib.rs|Rust|620|500|18000|1250|16.0%|29.03|
+|src/lib.rs|Rust|620|500|18000|1250|13.8%|29.03|
 
 ### Largest files by tokens
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/lib.rs|Rust|620|500|18000|1250|16.0%|29.03|
+|src/lib.rs|Rust|620|500|18000|1250|13.8%|29.03|
 
 ### Largest files by bytes
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/lib.rs|Rust|620|500|18000|1250|16.0%|29.03|
+|src/lib.rs|Rust|620|500|18000|1250|13.8%|29.03|
 
 ### Least documented (min LOC)
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/lib.rs|Rust|620|500|18000|1250|16.0%|29.03|
+|src/lib.rs|Rust|620|500|18000|1250|13.8%|29.03|
 
 ### Most dense (bytes/line)
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/lib.rs|Rust|620|500|18000|1250|16.0%|29.03|
+|src/lib.rs|Rust|620|500|18000|1250|13.8%|29.03|
 
 ## Structure
 

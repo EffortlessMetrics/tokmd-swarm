@@ -44,6 +44,45 @@ fn analyze_receipt_preset_json_smoke() {
 }
 
 #[test]
+fn analyze_renders_density_percentages_from_exact_counts() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    for module in ["alpha", "beta"] {
+        std::fs::create_dir(dir.path().join(module))?;
+    }
+    let rust_source = format!("// One comment\n\n{}", "const _: () = ();\n".repeat(25));
+    std::fs::write(dir.path().join("alpha/lib.rs"), rust_source)?;
+    std::fs::write(dir.path().join("beta/mod.py"), "x = 1\ny = 2\nz = 3\n")?;
+
+    let analyze = |format: &str| -> anyhow::Result<String> {
+        let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+            .current_dir(dir.path())
+            .args(["analyze", ".", "--preset", "receipt", "--format", format])
+            .assert()
+            .success();
+        Ok(String::from_utf8(output.get_output().stdout.clone())?)
+    };
+
+    // alpha contributes 1/26 for both densities, beta contributes 0/3.
+    let md = analyze("md")?;
+    for row in [
+        "|Doc density|3.4%|",
+        "|Whitespace ratio|3.4%|",
+        "|Rust|3.8%|1|25|",
+        "|Rust|3.8%|1|26|",
+        "|Python|0.0%|0|3|",
+    ] {
+        assert!(md.lines().any(|line| line == row), "missing {row}");
+    }
+    assert!(
+        md.lines()
+            .any(|line| line.starts_with("|alpha/lib.rs|") && line.contains("|3.8%|"))
+    );
+    let html = analyze("html")?;
+    assert!(html.contains(r#">3.4%</span><span class="label">Doc%</span>"#));
+    Ok(())
+}
+
+#[test]
 fn analyze_help_lists_bun_ub_preset() {
     let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
         .arg("analyze")

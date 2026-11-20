@@ -2,6 +2,15 @@
 use super::*;
 use tokmd_analysis_types::*;
 
+#[test]
+fn count_percentages_round_ties_to_even_and_handle_zero() {
+    assert_eq!(format_count_pct(1, 16), "6.2%");
+    assert_eq!(format_count_pct(3, 16), "18.8%");
+    assert_eq!(format_count_pct(2, 1), "200.0%");
+    assert_eq!(format_count_pct(1, 0), "0.0%");
+    assert_eq!(format_count_pct(usize::MAX, usize::MAX as u128), "100.0%");
+}
+
 fn minimal_receipt() -> AnalysisReceipt {
     AnalysisReceipt {
         schema_version: 2,

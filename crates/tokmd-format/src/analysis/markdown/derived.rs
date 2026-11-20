@@ -6,6 +6,7 @@
 use std::fmt::Write;
 
 use super::{effort, fmt_f64, fmt_pct};
+use crate::analysis::{format_count_pct, format_ratio_pct};
 use tokmd_analysis_types::{DerivedReport, EffortEstimateReport, FileStatRow};
 
 pub(super) fn render_derived_report(
@@ -34,12 +35,12 @@ pub(super) fn render_derived_report(
     let _ = writeln!(
         out,
         "|Doc density|{}|",
-        fmt_pct(derived.doc_density.total.ratio)
+        format_ratio_pct(&derived.doc_density.total)
     );
     let _ = writeln!(
         out,
         "|Whitespace ratio|{}|",
-        fmt_pct(derived.whitespace.total.ratio)
+        format_ratio_pct(&derived.whitespace.total)
     );
     let _ = writeln!(
         out,
@@ -55,7 +56,7 @@ pub(super) fn render_derived_report(
             out,
             "|{}|{}|{}|{}|",
             row.key,
-            fmt_pct(row.ratio),
+            format_ratio_pct(row),
             row.numerator,
             row.denominator.saturating_sub(row.numerator)
         );
@@ -70,7 +71,7 @@ pub(super) fn render_derived_report(
             out,
             "|{}|{}|{}|{}|",
             row.key,
-            fmt_pct(row.ratio),
+            format_ratio_pct(row),
             row.numerator,
             row.denominator
         );
@@ -252,7 +253,9 @@ fn render_file_table(rows: &[FileStatRow]) -> String {
             row.code,
             row.bytes,
             row.tokens,
-            row.doc_pct.map(fmt_pct).unwrap_or_else(|| "-".to_string()),
+            row.doc_pct
+                .map(|_| format_count_pct(row.comments, row.comments as u128 + row.code as u128))
+                .unwrap_or_else(|| "-".to_string()),
             row.bytes_per_line
                 .map(|v| fmt_f64(v, 2))
                 .unwrap_or_else(|| "-".to_string())

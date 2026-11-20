@@ -1,6 +1,7 @@
 //! Metric-card rendering for analysis HTML reports.
 
 use super::format::{format_number, format_pct};
+use crate::analysis::format_ratio_pct;
 use tokmd_analysis_types::AnalysisReceipt;
 
 pub(super) fn build_metrics_cards(receipt: &AnalysisReceipt) -> String {
@@ -12,7 +13,7 @@ pub(super) fn build_metrics_cards(receipt: &AnalysisReceipt) -> String {
             ("Lines", format_number(derived.totals.lines)),
             ("Code", format_number(derived.totals.code)),
             ("Tokens", format_number(derived.totals.tokens)),
-            ("Doc%", format_pct(derived.doc_density.total.ratio)),
+            ("Doc%", format_ratio_pct(&derived.doc_density.total)),
         ];
 
         for (label, value) in metrics {

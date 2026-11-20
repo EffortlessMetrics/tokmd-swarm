@@ -56,7 +56,7 @@ Preset: `receipt`
 
 |Path|Lang|Lines|Code|Bytes|Tokens|Doc%|B/Line|
 |---|---|---:|---:|---:|---:|---:|---:|
-|src/main.rs|Rust|250|200|8000|1200|10.0%|32.00|
+|src/main.rs|Rust|250|200|8000|1200|9.1%|32.00|
 
 ### Largest files by tokens
 

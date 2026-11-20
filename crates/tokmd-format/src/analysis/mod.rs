@@ -30,7 +30,7 @@
 //! * Analysis computation (use tokmd-analysis)
 
 use anyhow::Result;
-use tokmd_analysis_types::AnalysisReceipt;
+use tokmd_analysis_types::{AnalysisReceipt, RatioRow};
 use tokmd_types::AnalysisFormat;
 
 mod fun_outputs;
@@ -60,6 +60,24 @@ pub fn render(receipt: &AnalysisReceipt, format: AnalysisFormat) -> Result<Rende
         AnalysisFormat::Tree => Ok(RenderedOutput::Text(tree::render(receipt))),
         AnalysisFormat::Html => Ok(RenderedOutput::Text(render_html(receipt))),
     }
+}
+
+fn format_ratio_pct(row: &RatioRow) -> String {
+    format_count_pct(row.numerator, row.denominator as u128)
+}
+
+/// Format an exact count ratio as a percentage rounded to tenths, ties to even.
+fn format_count_pct(numerator: usize, denominator: u128) -> String {
+    let Some(divisor) = std::num::NonZeroU128::new(denominator) else {
+        return "0.0%".to_owned();
+    };
+    let scaled = numerator as u128 * 1000;
+    let tenths = scaled / divisor;
+    let remainder = scaled % divisor;
+    let complement = denominator - remainder;
+    let round_up = remainder > complement || (remainder == complement && !tenths.is_multiple_of(2));
+    let rounded = tenths + u128::from(round_up);
+    format!("{}.{}%", rounded / 10, rounded % 10)
 }
 
 fn render_md(receipt: &AnalysisReceipt) -> String {
