@@ -115,6 +115,22 @@ pub enum Commands {
     TrimTarget(TrimTargetArgs),
     /// Emit a small phase-timing receipt for core inventory and optional analysis workflows
     PerfSmoke(PerfSmokeArgs),
+    /// Compare a bounded Rust callable population at immutable Git commits (advisory)
+    RustMaintainability {
+        /// Full commit ID to compare against the pinned baseline
+        #[arg(
+            long,
+            conflicts_with = "emit_baseline",
+            required_unless_present = "emit_baseline"
+        )]
+        candidate: Option<String>,
+        /// Print the deterministically regenerated, pinned baseline as JSON
+        #[arg(long)]
+        emit_baseline: bool,
+        /// Print the comparison as machine-readable JSON
+        #[arg(long, conflicts_with = "emit_baseline")]
+        json: bool,
+    },
     /// Compare heuristic and AST-backed Rust landmarks for explicit files
     AstShadowCompare(AstShadowCompareArgs),
     /// Verify AST shadow artifact shape and summary counts

@@ -1,0 +1,1105 @@
+{
+  "schema": "tokmd.rust_callable_pilot.v1",
+  "commit": "07d878beee199568dbfa7698686ca1999addb7c8",
+  "package": "tokmd-analysis",
+  "language": "Rust",
+  "analysis": "syn / quote / proc-macro2, syntax-only v1",
+  "analyzer_lock_blake3": "a203d02d99a59dd7d779532a48e4a7d47b5064e566df90dac40f0754389dfddd",
+  "thresholds": {
+    "parameters": 6,
+    "nesting": 4
+  },
+  "outside_measurement": "Only the two listed source paths and admitted named Rust declarations are measured. Other paths, attributed containers/items except doc attributes, anonymous blocks' local items, closures, macro expansions, external modules and compiler-resolved identities are outside this pilot. Nesting is unavailable for bodies containing macros, closures or async/const blocks, and excludes separately owned local items. No NLOC, complexity score, boolean count, type complexity, debt ratio or maintainability index.",
+  "files": [
+    {
+      "path": "crates/tokmd-analysis/src/ast/panic_seam.rs",
+      "module": "ast::panic_seam",
+      "blob": "699cb31891758c127c0bd5c15463cf8397d2c3bf",
+      "status": "parsed",
+      "symbols": [
+        {
+          "id": {
+            "owners": [],
+            "name": "classify_input_source",
+            "signature": "fn classify_input_source (language : Option < AstLanguage > , containing : Option < & SyntaxSymbol > , hints : & [String] , evidence : & str ,) -> InputSource"
+          },
+          "lines": [
+            316,
+            335
+          ],
+          "bytes": [
+            8400,
+            8904
+          ],
+          "fingerprint": "beafba88a960a31d22e16a8555b1c53266f55557136a80802ccb5c6eaf474b52",
+          "metrics": {
+            "parameters": 4,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "containing_symbol",
+            "signature": "fn containing_symbol (symbols : & [SyntaxSymbol] , seam_span : SyntaxSpan) -> Option < & SyntaxSymbol >"
+          },
+          "lines": [
+            215,
+            223
+          ],
+          "bytes": [
+            5807,
+            6147
+          ],
+          "fingerprint": "532dbb129c6369e96c55f69547321d162adbed42bdb10c70f893ff318a2bf8ae",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "evidence_contains_identifier",
+            "signature": "fn evidence_contains_identifier (evidence : & str , identifier : & str) -> bool"
+          },
+          "lines": [
+            264,
+            268
+          ],
+          "bytes": [
+            7241,
+            7441
+          ],
+          "fingerprint": "f8c15791fb18f7d9529f5e4b13986e2238c537184b01e3e8a7e824e001f30638",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "failure_mode_for",
+            "signature": "fn failure_mode_for (kind : & str) -> FailureMode"
+          },
+          "lines": [
+            337,
+            351
+          ],
+          "bytes": [
+            8906,
+            9387
+          ],
+          "fingerprint": "b84f8e48e1740f3d2516069672729db89a70aae8122fba2bd7783562f7beb06d",
+          "metrics": {
+            "parameters": 1,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "guard_status_for",
+            "signature": "fn guard_status_for (seam_span : SyntaxSpan , guard_spans : & [SyntaxSpan]) -> GuardStatus"
+          },
+          "lines": [
+            225,
+            234
+          ],
+          "bytes": [
+            6149,
+            6484
+          ],
+          "fingerprint": "9ef5b15d7359cbc106bd818764c06499bae9aad910908b4f53ba7deae355b17f",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "input_hints_from_evidence",
+            "signature": "fn input_hints_from_evidence (evidence : & str , containing : Option < & SyntaxSymbol >) -> Vec < String >"
+          },
+          "lines": [
+            236,
+            262
+          ],
+          "bytes": [
+            6486,
+            7239
+          ],
+          "fingerprint": "455624588f9f49282eecabd71fa8b7afaf9b935fa720e33ff3acd3be8c694b89",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "looks_like_parameter",
+            "signature": "fn looks_like_parameter (token : & str) -> bool"
+          },
+          "lines": [
+            270,
+            314
+          ],
+          "bytes": [
+            7443,
+            8398
+          ],
+          "fingerprint": "57fcb9077487b57369aa6ddbacbde33587a69be5ea2e016fa3d612b811c3491b",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl FailureMode { }"
+            ],
+            "name": "as_str",
+            "signature": "const fn as_str (self) -> & 'static str"
+          },
+          "lines": [
+            62,
+            70
+          ],
+          "bytes": [
+            1269,
+            1577
+          ],
+          "fingerprint": "cc944a6ccb441483f6667463875503f311fbd3915500c1cd278e53d7ef3075bd",
+          "metrics": {
+            "parameters": 0,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl GuardStatus { }"
+            ],
+            "name": "as_str",
+            "signature": "const fn as_str (self) -> & 'static str"
+          },
+          "lines": [
+            25,
+            30
+          ],
+          "bytes": [
+            522,
+            676
+          ],
+          "fingerprint": "3bbfb3042355b9408f59d7c49ae5acb15ff0b06f3912121f77b1e33a9953b83e",
+          "metrics": {
+            "parameters": 0,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl InputSource { }"
+            ],
+            "name": "as_str",
+            "signature": "const fn as_str (self) -> & 'static str"
+          },
+          "lines": [
+            42,
+            49
+          ],
+          "bytes": [
+            837,
+            1087
+          ],
+          "fingerprint": "cfc405fe38c452f0b88c7381837e55a624ff3c805b4163ffe902809ef5914b19",
+          "metrics": {
+            "parameters": 0,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl PanicSeamCounts { }"
+            ],
+            "name": "to_value",
+            "signature": "fn to_value (& self) -> Value"
+          },
+          "lines": [
+            112,
+            120
+          ],
+          "bytes": [
+            2635,
+            2910
+          ],
+          "fingerprint": "537119d33146e4b198f72ab33b218d6686b9176636a945e386c1cc04b4612f01",
+          "metrics": {
+            "parameters": 0,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl PanicSeamEntry { }"
+            ],
+            "name": "to_value",
+            "signature": "fn to_value (& self) -> Value"
+          },
+          "lines": [
+            87,
+            99
+          ],
+          "bytes": [
+            1918,
+            2414
+          ],
+          "fingerprint": "82c58a20cbc10e423be24df6e69f769989d9667b6fa56a5b8048bad41946054c",
+          "metrics": {
+            "parameters": 0,
+            "nesting": null
+          }
+        }
+      ]
+    },
+    {
+      "path": "crates/tokmd-analysis/src/ast/rust.rs",
+      "module": "ast::rust",
+      "blob": "e7602ff4b2f2fb7c65600234e3cff6c95d83723f",
+      "status": "parsed",
+      "symbols": [
+        {
+          "id": {
+            "owners": [],
+            "name": "attribute_text_is_cfg_test",
+            "signature": "fn attribute_text_is_cfg_test (source : & str , attribute : Node < '_ >) -> bool"
+          },
+          "lines": [
+            331,
+            334
+          ],
+          "bytes": [
+            10531,
+            10762
+          ],
+          "fingerprint": "c8149b17aaca579f205746bfb48344a3a7203518a157c7d7f045b0a656a0edd5",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "attribute_text_is_test",
+            "signature": "fn attribute_text_is_test (source : & str , attribute : Node < '_ >) -> bool"
+          },
+          "lines": [
+            326,
+            329
+          ],
+          "bytes": [
+            10314,
+            10529
+          ],
+          "fingerprint": "865445ab1596dbf2b23eae646a09f19a99fb10880d39c54ad523e5a8e4c11974",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "collect_landmarks",
+            "signature": "fn collect_landmarks (node : Node < '_ > , source : & [u8] , landmarks : & mut Vec < RustLandmark >)"
+          },
+          "lines": [
+            346,
+            374
+          ],
+          "bytes": [
+            11006,
+            11968
+          ],
+          "fingerprint": "01906a954f65207e0ad647060bc0d5a8d8c17ce007fcf19c24b209bd87db8d4f",
+          "metrics": {
+            "parameters": 3,
+            "nesting": 2
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "compact_text",
+            "signature": "fn compact_text (text : & str) -> String"
+          },
+          "lines": [
+            447,
+            455
+          ],
+          "bytes": [
+            14118,
+            14411
+          ],
+          "fingerprint": "94f830b0787023f2ea03622aeceb6539704f6f3a49765e86f90141dec515bd3c",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "control_flow_name",
+            "signature": "fn control_flow_name (kind : & str) -> Option < & 'static str >"
+          },
+          "lines": [
+            545,
+            554
+          ],
+          "bytes": [
+            17330,
+            17645
+          ],
+          "fingerprint": "8be396a37f0064987092acfaf92b4acb8934400d452fc67169b4ba800034708d",
+          "metrics": {
+            "parameters": 1,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "first_identifier_text",
+            "signature": "fn first_identifier_text (node : Node < '_ > , source : & str) -> Option < String >"
+          },
+          "lines": [
+            410,
+            421
+          ],
+          "bytes": [
+            13029,
+            13406
+          ],
+          "fingerprint": "3e5da8b60e2923cd5bd39ffbbcf1ecc074bb458dd09e9cc89a9bc2be14d33218",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "first_named_child_text",
+            "signature": "fn first_named_child_text (node : Node < '_ > , source : & str) -> Option < String >"
+          },
+          "lines": [
+            423,
+            428
+          ],
+          "bytes": [
+            13408,
+            13633
+          ],
+          "fingerprint": "a76a0f901acda80f6ede687c50b2af04f196c4a17cbfcce19d82824df51c4400",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "function_name",
+            "signature": "fn function_name (node : Node < '_ > , source : & [u8]) -> Option < String >"
+          },
+          "lines": [
+            376,
+            380
+          ],
+          "bytes": [
+            11970,
+            12158
+          ],
+          "fingerprint": "1df5322e1928999a979cdaabe835009db5015bf642b16389d15db63f5d97d999",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "function_parameters",
+            "signature": "fn function_parameters (node : Node < '_ > , source : & str) -> Vec < String >"
+          },
+          "lines": [
+            474,
+            489
+          ],
+          "bytes": [
+            14959,
+            15421
+          ],
+          "fingerprint": "389daeed095e5f719bf61c5ae478dfbf64e49be33780e3e426f381c1d0fdf7dc",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 2
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_capacity_callee",
+            "signature": "fn is_capacity_callee (callee : & str) -> bool"
+          },
+          "lines": [
+            517,
+            527
+          ],
+          "bytes": [
+            16324,
+            16775
+          ],
+          "fingerprint": "4328e48c0f508ed7ba51d790af80fb3e13c85049db56cdce8975c390a63df077",
+          "metrics": {
+            "parameters": 1,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_fallible_conversion_callee",
+            "signature": "fn is_fallible_conversion_callee (callee : & str) -> bool"
+          },
+          "lines": [
+            529,
+            531
+          ],
+          "bytes": [
+            16777,
+            16904
+          ],
+          "fingerprint": "69393caae537e655276fead4b983aa25c6ed50b2c8ea1493de792c1bea51532e",
+          "metrics": {
+            "parameters": 1,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_ffi_entry",
+            "signature": "fn is_ffi_entry (node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            466,
+            472
+          ],
+          "bytes": [
+            14697,
+            14957
+          ],
+          "fingerprint": "c510548ed2bca10e061a3c8614b548bbd893e7d47824c8be6a53c552b35f9f1d",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_public_surface",
+            "signature": "fn is_public_surface (node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            457,
+            464
+          ],
+          "bytes": [
+            14413,
+            14695
+          ],
+          "fingerprint": "7ea0995be32de6b34572ac7216fb48b5dd07ff8ce77ec4e8fa022df2253640fe",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_rust_test_container",
+            "signature": "fn is_rust_test_container (node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            273,
+            287
+          ],
+          "bytes": [
+            8606,
+            9176
+          ],
+          "fingerprint": "ac8f69680effc5b8d2d57e0ebec916b86d5fbbb716271b1dbfcb8184838a2ac6",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_rust_test_context",
+            "signature": "fn is_rust_test_context (mut node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            261,
+            271
+          ],
+          "bytes": [
+            8315,
+            8604
+          ],
+          "fingerprint": "b07be824d4c3a6521f0cef79cc3485f0a80307bf50fc266686f51e92f64652fe",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 2
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "is_tests_module",
+            "signature": "fn is_tests_module (node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            315,
+            318
+          ],
+          "bytes": [
+            9920,
+            10081
+          ],
+          "fingerprint": "60cdcf3dcdd04a7d17f901a48a497b528695a9571566ed15cb07e4fb41942a7e",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "last_path_segment",
+            "signature": "fn last_path_segment (text : & str) -> & str"
+          },
+          "lines": [
+            437,
+            439
+          ],
+          "bytes": [
+            13834,
+            13942
+          ],
+          "fingerprint": "3928e7134fe1d6ce43dab40ac4837c03f6906e34d1ebdc1e67c1318fda101028",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "macro_name_from_text",
+            "signature": "fn macro_name_from_text (text : & str) -> Option < String >"
+          },
+          "lines": [
+            441,
+            445
+          ],
+          "bytes": [
+            13944,
+            14116
+          ],
+          "fingerprint": "5288a6b5f85d9b5ea9087154007cf48e07917a4635276de2fb2dc55360479825",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "method_name_from_callee",
+            "signature": "fn method_name_from_callee (callee : & str) -> Option < String >"
+          },
+          "lines": [
+            430,
+            435
+          ],
+          "bytes": [
+            13635,
+            13832
+          ],
+          "fingerprint": "266811a6a69e9d48a775d9fda1f5000e4d671c7035ffdbbe4226695dc076d2c3",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "nearest_guard",
+            "signature": "fn nearest_guard (mut node : Node < '_ >) -> Option < Node < '_ > >"
+          },
+          "lines": [
+            336,
+            344
+          ],
+          "bytes": [
+            10764,
+            11004
+          ],
+          "fingerprint": "400b72895d5bdb6e46fafc5b977376bb3c3e946479eb9bdc2d403e9020e652a6",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "node_has_test_attribute",
+            "signature": "fn node_has_test_attribute (node : Node < '_ > , source : & str) -> bool"
+          },
+          "lines": [
+            320,
+            324
+          ],
+          "bytes": [
+            10083,
+            10312
+          ],
+          "fingerprint": "ed7150de9273450a12ef7f68ed858a89fe664fab015bdc5de072dc9b64eacfac",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "node_text",
+            "signature": "fn node_text < 'source > (source : & 'source str , node : Node < '_ >) -> & 'source str"
+          },
+          "lines": [
+            398,
+            400
+          ],
+          "bytes": [
+            12634,
+            12761
+          ],
+          "fingerprint": "b32008cc9bd5ca398417111c9b73e405ab0f6f14010955feee0f52e91d94bf21",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "node_text_checked",
+            "signature": "fn node_text_checked < 'source > (source : & 'source str , node : Node < '_ >) -> Option < & 'source str >"
+          },
+          "lines": [
+            402,
+            404
+          ],
+          "bytes": [
+            12763,
+            12892
+          ],
+          "fingerprint": "5b863e109f74d8489eeb5c901fbf74f0f52b58f0ab19296fb6c90c6e3da407c1",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "normalized_node_text",
+            "signature": "fn normalized_node_text (node : Node < '_ > , source : & [u8]) -> Option < String >"
+          },
+          "lines": [
+            392,
+            396
+          ],
+          "bytes": [
+            12440,
+            12632
+          ],
+          "fingerprint": "2d58a38eb96dccf023b77fed409c57b464ce67cffc9fcd0a083c267301de2060",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "normalized_node_text_str",
+            "signature": "fn normalized_node_text_str (node : Node < '_ > , source : & str) -> Option < String >"
+          },
+          "lines": [
+            406,
+            408
+          ],
+          "bytes": [
+            12894,
+            13027
+          ],
+          "fingerprint": "8780276c14c59dada74d91aa53022b1be15820c692f1144413c95241fedb0484",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "outer_attributes_match",
+            "signature": "fn outer_attributes_match (node : Node < '_ > , source : & str , predicate : impl Fn (& str , Node < '_ >) -> bool ,) -> bool"
+          },
+          "lines": [
+            289,
+            313
+          ],
+          "bytes": [
+            9178,
+            9918
+          ],
+          "fingerprint": "d6ff11b40f1b2775e57c62490e74ae636edc9c928e7309f48f8885943ae83948",
+          "metrics": {
+            "parameters": 3,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "parameter_name",
+            "signature": "fn parameter_name (node : Node < '_ > , source : & str) -> Option < String >"
+          },
+          "lines": [
+            491,
+            502
+          ],
+          "bytes": [
+            15423,
+            15828
+          ],
+          "fingerprint": "7377a1945132a018663e1fd624ff4d9d137e9e1dbdef804d67a29b8e6b822bef",
+          "metrics": {
+            "parameters": 2,
+            "nesting": 2
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "parameter_pattern_name",
+            "signature": "fn parameter_pattern_name (node : Node < '_ > , source : & str) -> Option < String >"
+          },
+          "lines": [
+            504,
+            515
+          ],
+          "bytes": [
+            15830,
+            16322
+          ],
+          "fingerprint": "108e38d867d97f78cd9405a06be23735b26861bc1529deb142e8bf8e8cca1d51",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "parse_rust_landmarks",
+            "signature": "fn parse_rust_landmarks (source : & str) -> Result < RustAstShadow , RustAstError >"
+          },
+          "lines": [
+            61,
+            84
+          ],
+          "bytes": [
+            1578,
+            2356
+          ],
+          "fingerprint": "fe7cc091febfa5952691093515a3d924f78b82fdaa12fa57028e3f76d9db80d3",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_guard_evidence",
+            "signature": "fn push_guard_evidence (node : Node < '_ > , source : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            249,
+            259
+          ],
+          "bytes": [
+            7906,
+            8313
+          ],
+          "fingerprint": "65d87309fe32a3c8723c998577a8d65aa7ed9f27fb62bcf789f7a10e8960d264",
+          "metrics": {
+            "parameters": 3,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_landmark",
+            "signature": "fn push_landmark (node : Node < '_ > , kind : RustLandmarkKind , name : String , landmarks : & mut Vec < RustLandmark > ,)"
+          },
+          "lines": [
+            556,
+            572
+          ],
+          "bytes": [
+            17647,
+            18059
+          ],
+          "fingerprint": "5d3caf57006ef5b09d8878c0d1c607a730e943245140ee32397e34a44f32e203",
+          "metrics": {
+            "parameters": 4,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_rust_call",
+            "signature": "fn push_rust_call (node : Node < '_ > , source : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            163,
+            209
+          ],
+          "bytes": [
+            4948,
+            6687
+          ],
+          "fingerprint": "58c85b03f2f4968e2353760e3645936784b0246f4b3de5581ad44323175ba687",
+          "metrics": {
+            "parameters": 3,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_rust_import",
+            "signature": "fn push_rust_import (node : Node < '_ > , source : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            145,
+            161
+          ],
+          "bytes": [
+            4384,
+            4946
+          ],
+          "fingerprint": "afbbf43590a9611cb8475b9c31d27439b8f0c40570037662342d10bc94c64815",
+          "metrics": {
+            "parameters": 3,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_rust_macro",
+            "signature": "fn push_rust_macro (node : Node < '_ > , source : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            211,
+            232
+          ],
+          "bytes": [
+            6689,
+            7550
+          ],
+          "fingerprint": "e1cabcd171172817146d59ac4218bef14067b6063ff9c7e8f14c6b3b279b96ea",
+          "metrics": {
+            "parameters": 3,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_rust_risk",
+            "signature": "fn push_rust_risk (kind : & str , evidence : & str , node : Node < '_ > , source : & str , facts : & mut SyntaxFacts ,)"
+          },
+          "lines": [
+            234,
+            247
+          ],
+          "bytes": [
+            7552,
+            7904
+          ],
+          "fingerprint": "a58acdf509f7133010d72363f4163bff811ac65a80e53523ac46db00549ecc06",
+          "metrics": {
+            "parameters": 5,
+            "nesting": 0
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "push_rust_symbol",
+            "signature": "fn push_rust_symbol (node : Node < '_ > , source : & str , kind : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            116,
+            143
+          ],
+          "bytes": [
+            3519,
+            4382
+          ],
+          "fingerprint": "ceae88620744516ae680daf1f0ae817f74368d494e243d39bd93b7704445a9a8",
+          "metrics": {
+            "parameters": 4,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "risky_macro_kind",
+            "signature": "fn risky_macro_kind (name : & str) -> Option < & 'static str >"
+          },
+          "lines": [
+            533,
+            543
+          ],
+          "bytes": [
+            16906,
+            17328
+          ],
+          "fingerprint": "d878de7ad188a56490757d1a020381f9365abac1b7abed1c58f2727dcfc42839",
+          "metrics": {
+            "parameters": 1,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "use_declaration_name",
+            "signature": "fn use_declaration_name (node : Node < '_ > , source : & [u8]) -> Option < String >"
+          },
+          "lines": [
+            382,
+            390
+          ],
+          "bytes": [
+            12160,
+            12438
+          ],
+          "fingerprint": "cba3f8b61c1a9e436d0e21ac1d136c5690ea00094a589d892559aefd253dddf6",
+          "metrics": {
+            "parameters": 2,
+            "nesting": null
+          }
+        },
+        {
+          "id": {
+            "owners": [],
+            "name": "visit_syntax_node",
+            "signature": "fn visit_syntax_node (node : Node < '_ > , source : & str , facts : & mut SyntaxFacts)"
+          },
+          "lines": [
+            94,
+            114
+          ],
+          "bytes": [
+            2572,
+            3517
+          ],
+          "fingerprint": "1eccdad166b0490999a73d802e55ea82fa0841b8785665707cd657abdfa8a00b",
+          "metrics": {
+            "parameters": 3,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl Error for RustAstError { }"
+            ],
+            "name": "source",
+            "signature": "fn source (& self) -> Option < & (dyn Error + 'static) >"
+          },
+          "lines": [
+            53,
+            58
+          ],
+          "bytes": [
+            1392,
+            1570
+          ],
+          "fingerprint": "4ffe460e5b96f74e60dc175de92d3635b38775807c3b3852d69bdd203da0d4a1",
+          "metrics": {
+            "parameters": 0,
+            "nesting": 1
+          }
+        },
+        {
+          "id": {
+            "owners": [
+              "impl fmt :: Display for RustAstError { }"
+            ],
+            "name": "fmt",
+            "signature": "fn fmt (& self , f : & mut fmt :: Formatter < '_ >) -> fmt :: Result"
+          },
+          "lines": [
+            44,
+            49
+          ],
+          "bytes": [
+            1081,
+            1354
+          ],
+          "fingerprint": "6a97aaf576d34a0ac80515f5ddda0dadda06277175cef362b28237389f6f1ee7",
+          "metrics": {
+            "parameters": 1,
+            "nesting": null
+          }
+        }
+      ]
+    }
+  ]
+}
