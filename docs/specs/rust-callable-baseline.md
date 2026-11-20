@@ -1,6 +1,13 @@
 # Advisory Rust callable baseline
 
+- Status: draft
+- Related proof scope: `rust_callable_baseline`
+
+## Contract
+
 Issue [#765](https://github.com/EffortlessMetrics/tokmd-swarm/issues/765) starts with two source-controlled paths in `tokmd-analysis` at `07d878beee199568dbfa7698686ca1999addb7c8`. They cover Rust syntax landmark extraction and panic-seam analysis. The pilot reads regular blobs directly from Git, up to the repository syntax limit of 1 MiB per file. Larger blobs are recorded as unmeasured before their contents are read. Both commits must be available locally. The path-to-module mapping describes the lexical source under observation, without resolving Cargo or compiler configuration.
+
+## Inputs
 
 The affected-proof scope selects the comparator for the two source paths, policy, documentation and checker. With no candidate argument it resolves the checked-out commit once. To select an explicit commit or reproduce the baseline:
 
@@ -13,7 +20,7 @@ git diff --no-index -- policy/rust-callable-baseline.json target/rust-callable-b
 
 Comparison regenerates the pinned receipt and verifies its bytes against the committed copy. A reviewable baseline change includes the immutable source, metric/policy version, analyzer lock identity, changed population and supporting controls. The analyzer records a digest of its compiled-in Cargo.lock. A lock change requires reviewing the baseline even when the measured sources are unchanged. The checker never writes the baseline. Missing Git objects or a stale baseline stop the command. Threshold observations, identity ambiguity and scope changes remain advisory.
 
-## Measurement
+## Outputs
 
 The v1 receipt records the source commit, file blob, module, package, language, analyzer identity and per-file read/parse status. Source lines are one-based and inclusive. Byte ranges are zero-based and half-open, from the `fn` token through the closing brace or end of a bodyless signature. All offsets refer to the original blob.
 
@@ -23,10 +30,18 @@ The v1 receipt records the source commit, file blob, module, package, language, 
 
 The pilot measures neither boolean parameters/fields, NLOC, cognitive complexity, type complexity nor a maintainability index. It computes no debt ratio, coverage-adjusted grade or cross-population improvement. The heuristic complexity receipt and its coverage/denominator work in #688/#689 stay separate.
 
-## Reading a comparison
+### Reading a comparison
 
 An exact match requires one occurrence per side with the same path, lexical owners and token-normalized signature. Lines and byte ranges are evidence attached to the match. After exact matching, the checker groups unresolved symbols by a BLAKE3 fingerprint of the signature with its name replaced and the normalized body tokens. One-to-one matches are possible moves or renames for review. Multiple plausible pairings are ambiguous. An unmatched baseline row remains unresolved, including after a signature change, truncation that still parses, or a move outside the two files. The report makes no deletion or debt-retirement inference.
 
 A missing file, unsupported Git entry, non-UTF-8 blob, excluded file or parse failure preserves its file status. Loss of a previously parsed file retains the old rows; loss of nesting inside an exact callable has its own observation. Lower syntax depth in one function alone cannot establish a whole-change improvement, for example after extracting a wrapper.
+
+## Compatibility
+
+The baseline uses `tokmd.rust_callable_pilot.v1`; the comparison uses `tokmd.rust_callable_comparison.v1`. Metric definitions, admission and population changes require a reviewed version and baseline decision. Existing AST shadow and product complexity receipts retain their own schemas.
+
+## Proof Requirements
+
+Run `cargo test --locked -p xtask --bin xtask rust_maintainability` and compare the pinned baseline bytes. Exercise line shifts, enclosing renames, ambiguous structural matches, parse/scope loss and exact source spans. The affected proof plan selects the checker and these controls.
 
 The rollout remains advisory pending broader metric and scope coverage, false-positive calibration, negative controls and periodic full-population proof. No blocking workflow is enabled by this slice.
