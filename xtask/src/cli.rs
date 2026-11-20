@@ -116,17 +116,7 @@ pub enum Commands {
     /// Emit a small phase-timing receipt for core inventory and optional analysis workflows
     PerfSmoke(PerfSmokeArgs),
     /// Compare a bounded Rust callable population at immutable Git commits (advisory)
-    RustMaintainability {
-        /// Full candidate commit ID (defaults to the current checkout's resolved commit)
-        #[arg(long, conflicts_with = "emit_baseline")]
-        candidate: Option<String>,
-        /// Print the deterministically regenerated, pinned baseline as JSON
-        #[arg(long)]
-        emit_baseline: bool,
-        /// Print the comparison as machine-readable JSON
-        #[arg(long, conflicts_with = "emit_baseline")]
-        json: bool,
-    },
+    RustMaintainability(RustMaintainabilityArgs),
     /// Compare heuristic and AST-backed Rust landmarks for explicit files
     AstShadowCompare(AstShadowCompareArgs),
     /// Verify AST shadow artifact shape and summary counts
@@ -139,6 +129,19 @@ pub enum Commands {
     RiprReviewComments(RiprReviewCommentsArgs),
     /// Emit GitHub workflow annotations from RIPR review guidance JSON
     RiprAnnotations(RiprAnnotationsArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RustMaintainabilityArgs {
+    /// Full candidate commit ID (defaults to the current checkout's resolved commit)
+    #[arg(long, conflicts_with = "emit_baseline")]
+    pub candidate: Option<String>,
+    /// Print the deterministically regenerated, pinned baseline as JSON
+    #[arg(long)]
+    pub emit_baseline: bool,
+    /// Print the comparison as machine-readable JSON
+    #[arg(long, conflicts_with = "emit_baseline")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]

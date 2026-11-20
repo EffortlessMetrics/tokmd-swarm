@@ -165,13 +165,13 @@ fn baseline_json(baseline: &Snapshot) -> Result<String> {
     Ok(format!("{}\n", serde_json::to_string_pretty(baseline)?))
 }
 
-pub fn run(candidate: Option<&str>, emit_baseline: bool, json: bool) -> Result<()> {
+pub fn run(args: crate::cli::RustMaintainabilityArgs) -> Result<()> {
     let current = std::env::current_dir()?;
     let root = git(&current, &["rev-parse", "--show-toplevel"])?;
     let root = Path::new(std::str::from_utf8(&root)?.trim_end_matches(['\r', '\n']));
     let base = snapshot(root, BASE)?;
     let bytes = baseline_json(&base)?;
-    if emit_baseline {
+    if args.emit_baseline {
         print!("{bytes}");
         return Ok(());
     }
@@ -180,7 +180,7 @@ pub fn run(candidate: Option<&str>, emit_baseline: bool, json: bool) -> Result<(
         "committed baseline differs from pinned source and metric definitions"
     );
     let head;
-    let commit = match candidate {
+    let commit = match args.candidate.as_deref() {
         Some(commit) => commit,
         None => {
             head = String::from_utf8(git(root, &["rev-parse", "--verify", "HEAD^{commit}"])?)?;
@@ -189,7 +189,7 @@ pub fn run(candidate: Option<&str>, emit_baseline: bool, json: bool) -> Result<(
     };
     let candidate = snapshot(root, commit)?;
     let report = compare::comparison(&base, &candidate);
-    if json {
+    if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         report.print();
