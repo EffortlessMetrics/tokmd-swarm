@@ -156,7 +156,7 @@ fn build_simple_derived(export: &ExportData) -> HandoffDerived {
         .iter()
         .max_by_key(|(_, code)| *code)
         .map(|(lang, code)| (lang.clone(), *code))
-        .unwrap_or_else(|| ("Unknown".to_string(), 0));
+        .unwrap_or_default();
 
     let dominant_pct = if total_code > 0 {
         (dominant_code as f64 / total_code as f64) * 100.0
@@ -180,8 +180,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_simple_derived_empty() {
-        let export = ExportData {
+    fn no_parent_rows_and_an_unknown_language_are_distinct() {
+        let mut export = ExportData {
             rows: vec![],
             module_roots: vec![],
             module_depth: 2,
@@ -191,5 +191,24 @@ mod tests {
         assert_eq!(derived.total_files, 0);
         assert_eq!(derived.total_code, 0);
         assert_eq!(derived.lang_count, 0);
+        assert_eq!(derived.dominant_lang, "");
+
+        export.rows.push(FileRow {
+            path: "file".into(),
+            module: "(root)".into(),
+            lang: "Unknown".into(),
+            kind: FileKind::Parent,
+            code: 0,
+            comments: 1,
+            blanks: 0,
+            lines: 1,
+            bytes: 4,
+            tokens: 1,
+        });
+        let derived = build_simple_derived(&export);
+        assert_eq!(derived.total_files, 1);
+        assert_eq!(derived.lang_count, 1);
+        assert_eq!(derived.dominant_lang, "Unknown");
+        assert_eq!(derived.dominant_pct, 0.0);
     }
 }

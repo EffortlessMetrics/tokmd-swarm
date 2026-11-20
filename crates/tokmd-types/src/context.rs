@@ -420,6 +420,7 @@ pub struct HandoffDerived {
     pub total_lines: usize,
     pub total_tokens: usize,
     pub lang_count: usize,
+    /// Empty when the inventory contains no parent file rows.
     pub dominant_lang: String,
     pub dominant_pct: f64,
 }
