@@ -33,6 +33,66 @@ guidance.
     cargo build
     ```
 
+### Codex Cloud (Linux)
+
+For the `EffortlessMetrics/tokmd-swarm` environment, open **Settings >
+Codex Cloud > Environments**, choose **Edit** from the environment menu, and
+put this line in **Install script**. Use a setup checkout that contains the
+script and run it from the repository root.
+
+```bash
+bash docs/agent-workflows/codex-cloud-setup.sh
+```
+
+The script reuses an installed rustup or bootstraps it from the official Rust
+installer. It installs the moving Rust `stable` channel, the latest official
+final Node.js release (which may be labeled LTS), and the latest uv. It puts
+Node.js and uv under
+`$HOME/.local/share/tokmd-codex`. Select them explicitly so the image's tools
+and workflow-specific versions remain available. The base Linux image
+supplies Git and a native C compiler for normal workspace development.
+The image also needs the libatomic runtime (`libatomic1` on Debian/Ubuntu)
+for [official Node.js 25 and later Linux binaries](https://github.com/nodejs/node/blob/v26.x/BUILDING.md#official-binary-platforms-and-toolchains).
+Setup runs the downloaded Node.js binary to verify it starts.
+
+Workspace checks use Rust `1.95.0`, the exact toolchain in the
+[required MSRV CI step](.github/workflows/ci.yml) for
+`rust-version = "1.95"` in [Cargo.toml](Cargo.toml). Rustup selects that
+version per command. Browser release proof continues to use Node.js 22 from
+[release preflight](.github/workflows/release-preflight.yml). The workspace
+has no uv pin for this setup.
+
+The install phase needs approved access to the official Rust, Node.js and
+Astral release endpoints and the Cargo registry. It warms the Cargo cache
+with `cargo fetch --locked`. If a task checkout changes `Cargo.lock`, rerun
+setup with approved package access for that checkout. The runtime preflight
+below works offline. See the
+[Codex Cloud environment guide](https://learn.chatgpt.com/docs/environments/cloud-environments#customize-installation-and-startup).
+
+After setup, run this read-only preflight from the repository root:
+
+```bash
+(
+    export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+    export RUSTUP_AUTO_INSTALL=0
+    tools="$HOME/.local/share/tokmd-codex"
+    git --version &&
+        cc --version &&
+        "$tools/node/current/bin/node" --version &&
+        "$tools/uv/uv" --version &&
+        rustup run stable cargo --version &&
+        rustup run 1.95.0 rustc --version &&
+        rustup run 1.95.0 cargo --version &&
+        rustup run 1.95.0 cargo metadata --locked --offline --format-version 1 >/dev/null
+)
+```
+
+The preflight checks the tools and locked dependency cache without compiling.
+Rustup automatic installation is disabled for this check. If a toolchain is
+missing, rerun the Install script with approved setup access. Cargo Deny,
+whitelist checks, and PR admission run separately under the repository's proof
+policy.
+
 ### Optional Local Compiler Cache
 
 For repeated local rebuilds, `sccache` is supported as an opt-in wrapper rather than a repo default.
