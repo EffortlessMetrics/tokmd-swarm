@@ -394,20 +394,8 @@ fn check_case_insensitive_path_collisions(workspace_root: &Path) -> Result<()> {
 }
 
 fn find_workspace_root() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        let cargo_toml = dir.join("Cargo.toml");
-        if cargo_toml.exists() {
-            let content = fs::read_to_string(&cargo_toml)
-                .with_context(|| format!("Failed to read {}", cargo_toml.display()))?;
-            if content.contains("[workspace]") {
-                return Ok(dir);
-            }
-        }
-        if !dir.pop() {
-            bail!("Could not find workspace root (Cargo.toml with [workspace])");
-        }
-    }
+    let start = std::env::current_dir().context("Failed to get current directory")?;
+    super::workspace::find_workspace_root(&start)
 }
 
 fn load_workspace_version(workspace_root: &Path) -> Result<String> {
