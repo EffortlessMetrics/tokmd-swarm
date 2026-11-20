@@ -13,6 +13,7 @@ use chrono::Utc;
 use serde_json::Value as JsonValue;
 
 use super::action_manifest::update_action_default_version;
+use super::workspace::find_workspace_root;
 use crate::cli::BumpArgs;
 
 /// Schema version location for updating.
@@ -76,7 +77,8 @@ pub fn run(args: BumpArgs) -> Result<()> {
     // Validate version format
     validate_semver(&args.version)?;
 
-    let workspace_root = find_workspace_root()?;
+    let start = std::env::current_dir().context("Failed to get current directory")?;
+    let workspace_root = find_workspace_root(&start)?;
     let cargo_toml_path = workspace_root.join("Cargo.toml");
 
     // Read current Cargo.toml
@@ -241,23 +243,6 @@ struct NodeManifestUpdate {
     path: String,
     updated_content: String,
     changes: Vec<String>,
-}
-
-/// Find the workspace root by looking for Cargo.toml with [workspace].
-fn find_workspace_root() -> Result<std::path::PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        let cargo_toml = dir.join("Cargo.toml");
-        if cargo_toml.exists() {
-            let content = fs::read_to_string(&cargo_toml)?;
-            if content.contains("[workspace]") {
-                return Ok(dir);
-            }
-        }
-        if !dir.pop() {
-            bail!("Could not find workspace root (Cargo.toml with [workspace])");
-        }
-    }
 }
 
 /// Validate that a version string is valid semver.
