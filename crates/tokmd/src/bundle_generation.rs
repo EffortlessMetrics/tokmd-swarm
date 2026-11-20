@@ -50,6 +50,20 @@ impl Generation {
             stage,
             keep: false,
         };
+        #[cfg(windows)]
+        {
+            // Restrict only the new empty reservation before any payload is created.
+            let status = std::process::Command::new(
+                PathBuf::from(
+                    std::env::var_os("SystemRoot").context("Missing Windows system root")?,
+                )
+                .join("System32/icacls.exe"),
+            )
+            .arg(&generation.stage)
+            .args(["/inheritance:r", "/grant:r", "*S-1-3-4:(OI)(CI)F", "/Q"])
+            .status()?;
+            ensure!(status.success(), "Cannot make bundle staging private");
+        }
         if !force {
             for entry in fs::read_dir(dest)? {
                 ensure!(
@@ -103,6 +117,8 @@ impl Generation {
         names.push(MANIFEST);
         let mut saved = Vec::new();
         let mut installed = Vec::new();
+        let mut rewritten = Vec::new();
+        let original = |name: &str| self.stage.join(format!("original-{name}"));
         let backup = |name: &str| self.stage.join(format!("previous-{name}"));
         let switch = (|| -> Result<()> {
             for &name in names.iter().rev() {
@@ -119,17 +135,18 @@ impl Generation {
                             "Read-only bundle artifact {}",
                             path.display()
                         );
-                        File::options().write(true).open(&path)?;
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            let mode = meta.permissions().mode() & 0o777;
-                            fs::set_permissions(
-                                self.stage.join(name),
-                                fs::Permissions::from_mode(mode),
-                            )?;
-                        }
-                        fs::rename(path, backup(name))?;
+                        let old = File::options().read(true).write(true).open(&path)?;
+                        ensure_single_link(&old)?;
+                        // Preserve the existing file object, including its access control
+                        // and ownership. The private backup retains the original bytes.
+                        let backup_path = backup(name);
+                        let mut copy = StagedWriter::create(&backup_path)?;
+                        io::copy(&mut &old, &mut copy)?;
+                        copy.flush()?;
+                        drop(copy);
+                        drop(old);
+                        verify_copy(&path, &backup_path)?;
+                        fs::rename(path, original(name))?;
                         saved.push(name);
                         boundary("withdraw", &self.dest.join(name))?;
                     }
@@ -138,7 +155,15 @@ impl Generation {
                 }
             }
             for &name in &names {
-                fs::rename(self.stage.join(name), self.dest.join(name))?;
+                let source = if saved.contains(&name) {
+                    let path = original(name);
+                    rewritten.push(name);
+                    overwrite_existing(&self.stage.join(name), &path)?;
+                    path
+                } else {
+                    self.stage.join(name)
+                };
+                fs::rename(source, self.dest.join(name))?;
                 installed.push(name);
                 boundary("install", &self.dest.join(name))?;
             }
@@ -149,10 +174,17 @@ impl Generation {
             self.keep = true;
             let rollback = (|| -> io::Result<()> {
                 for name in installed.into_iter().rev() {
-                    fs::remove_file(self.dest.join(name))?;
+                    if saved.contains(&name) {
+                        fs::rename(self.dest.join(name), original(name))?;
+                    } else {
+                        fs::remove_file(self.dest.join(name))?;
+                    }
                 }
                 for name in saved.into_iter().rev() {
-                    fs::rename(backup(name), self.dest.join(name))?;
+                    if rewritten.contains(&name) {
+                        overwrite_existing(&backup(name), &original(name))?;
+                    }
+                    fs::rename(original(name), self.dest.join(name))?;
                 }
                 Ok(())
             })();
@@ -169,6 +201,58 @@ impl Generation {
     }
 }
 
+fn overwrite_existing(source: &Path, dest: &Path) -> io::Result<()> {
+    let mut input = File::open(source)?;
+    let mut output = StagedWriter {
+        file: File::options().write(true).truncate(true).open(dest)?,
+        path: dest,
+    };
+    io::copy(&mut input, &mut output)?;
+    output.flush()?;
+    drop(output);
+    verify_copy(source, dest)
+}
+
+fn verify_copy(source: &Path, dest: &Path) -> io::Result<()> {
+    fn digest(path: &Path) -> io::Result<blake3::Hash> {
+        let hash = blake3::Hasher::new()
+            .update_reader(File::open(path)?)?
+            .finalize();
+        boundary("copy hash", path)?;
+        Ok(hash)
+    }
+    if digest(source)? != digest(dest)? {
+        return Err(io::Error::other(format!(
+            "Bundle copy mismatch at {}",
+            dest.display()
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_single_link(file: &File) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = file.metadata()?;
+        ensure!(
+            metadata.nlink() == 1 && metadata.mode() & 0o7000 == 0,
+            "Refusing to rewrite a multiply-linked or special-mode artifact"
+        );
+    }
+    #[cfg(windows)]
+    ensure!(
+        winapi_util::file::information(file)?.number_of_links() == 1,
+        "Refusing to rewrite a multiply-linked artifact"
+    );
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = file;
+        bail!("Cannot verify output file links on this platform");
+    }
+    Ok(())
+}
+
 impl Drop for Generation {
     fn drop(&mut self) {
         if self.keep {
@@ -177,6 +261,7 @@ impl Drop for Generation {
         for name in MEMBERS {
             let _ = fs::remove_file(self.stage.join(name));
             let _ = fs::remove_file(self.stage.join(format!("previous-{name}")));
+            let _ = fs::remove_file(self.stage.join(format!("original-{name}")));
         }
         if let Err(error) = fs::remove_dir(&self.stage) {
             eprintln!(
@@ -369,6 +454,13 @@ mod tests {
                 use std::os::unix::fs::PermissionsExt;
                 fs::set_permissions(&member, fs::Permissions::from_mode(0o600))?;
             }
+            let alias = tmp.path().join("alias");
+            fs::hard_link(&member, &alias)?;
+            ensure!(run().is_err(), "accepted multiply-linked output");
+            ensure!(fs::read(&alias)? == fs::read(&member)?);
+            fs::remove_file(alias)?;
+            #[cfg(unix)]
+            let original_inode = std::os::unix::fs::MetadataExt::ino(&member.metadata()?);
             let previous = snapshot(&out)?;
             fs::write(&source, "fn replacement() {}")?;
             for fail_at in 1.. {
@@ -395,6 +487,7 @@ mod tests {
             {
                 use std::os::unix::fs::PermissionsExt;
                 ensure!(member.metadata()?.permissions().mode() & 0o777 == 0o600);
+                ensure!(std::os::unix::fs::MetadataExt::ino(&member.metadata()?) == original_inode);
             }
             let old_manifest = previous.get(MANIFEST).context("old manifest")?;
             fs::write(out.join(MANIFEST), old_manifest)?;
