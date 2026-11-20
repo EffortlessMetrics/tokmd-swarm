@@ -868,6 +868,15 @@ Present when the `estimate` preset is used or when explicit `--effort-*` flags r
 | `effort` | `estimate` or explicit `--effort-*` flags | COCOMO-based effort projections, optional base/head delta, and Monte Carlo metadata |
 | `fun` | `fun` | Novelty outputs (eco-label) |
 
+The technical-debt heuristic divides the measured complexity points by
+`coverage.analyzed_lines / 1000`. This counts physical input lines, including
+comments and blanks, within the prefix actually analyzed. Zero measured lines
+yield no ratio. A partial result describes only the measured input. Compare
+trends only for equivalent measurement scope, settings, limits and estimator
+version. Older whole-export ratios use a different denominator. Keep historical
+receipts and establish a fresh baseline for the measured-line metric.
+
+
 ---
 
 ---

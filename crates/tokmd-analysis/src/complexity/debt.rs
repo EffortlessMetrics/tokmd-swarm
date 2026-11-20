@@ -37,20 +37,10 @@ pub(super) fn average_parent_loc(export: &ExportData) -> Option<f64> {
 ///
 /// Ratio = (sum cyclomatic + cognitive complexity points) / KLOC
 pub(super) fn compute_technical_debt_ratio(
-    export: &ExportData,
+    analyzed_lines: usize,
     file_complexities: &[FileComplexity],
 ) -> Option<TechnicalDebtRatio> {
-    if file_complexities.is_empty() {
-        return None;
-    }
-
-    let total_code: usize = export
-        .rows
-        .iter()
-        .filter(|r| r.kind == FileKind::Parent)
-        .map(|r| r.code)
-        .sum();
-    if total_code == 0 {
+    if analyzed_lines == 0 || file_complexities.is_empty() {
         return None;
     }
 
@@ -59,7 +49,7 @@ pub(super) fn compute_technical_debt_ratio(
         .map(|f| f.cyclomatic_complexity + f.cognitive_complexity.unwrap_or(0))
         .sum();
 
-    let code_kloc = total_code as f64 / 1000.0;
+    let code_kloc = analyzed_lines as f64 / 1000.0;
     let ratio = round_f64(complexity_points as f64 / code_kloc, 2);
     let level = if ratio < TECHNICAL_DEBT_LOW_THRESHOLD {
         TechnicalDebtLevel::Low

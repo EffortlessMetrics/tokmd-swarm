@@ -200,6 +200,7 @@ Coverage is partial. Analyzed 4 of 4 eligible files across 7 inventory paths (16
 |Max cognitive|0|
 |Avg nesting depth|1.33|
 |Max nesting depth|2|
+|Debt points per thousand analyzed lines|187.5|
 |High risk files|0|
 
 ### Top complex files

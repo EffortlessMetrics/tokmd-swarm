@@ -51,6 +51,13 @@ pub(super) fn render_complexity_report(out: &mut String, cx: &ComplexityReport) 
     if let Some(max_nesting) = cx.max_nesting_depth {
         let _ = writeln!(out, "|Max nesting depth|{}|", max_nesting);
     }
+    if let (Some(_), Some(debt)) = (&cx.coverage, &cx.technical_debt) {
+        let _ = writeln!(
+            out,
+            "|Debt points per thousand analyzed lines|{}|",
+            debt.ratio
+        );
+    }
     let _ = writeln!(out, "|High risk files|{}|\n", cx.high_risk_files);
 
     if !cx.files.is_empty() {

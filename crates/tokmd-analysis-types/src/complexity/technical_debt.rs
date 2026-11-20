@@ -11,7 +11,7 @@ pub struct TechnicalDebtRatio {
     pub ratio: f64,
     /// Aggregate complexity points used in the ratio.
     pub complexity_points: usize,
-    /// KLOC basis used in the ratio denominator.
+    /// Thousands of physical input lines analyzed, including comments and blanks.
     pub code_kloc: f64,
     /// Bucketed interpretation of debt ratio.
     pub level: TechnicalDebtLevel,

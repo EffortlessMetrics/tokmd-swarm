@@ -900,9 +900,9 @@ expression: normalize(stdout)
       "grade": "A"
     },
     "technical_debt": {
-      "ratio": 115.38,
+      "ratio": 187.5,
       "complexity_points": 3,
-      "code_kloc": 0.026,
+      "code_kloc": 0.016,
       "level": "critical"
     },
     "files": [

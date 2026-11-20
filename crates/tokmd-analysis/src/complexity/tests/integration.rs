@@ -726,3 +726,37 @@ fn coverage_clips_the_final_sample_to_the_remaining_total_budget() -> anyhow::Re
     assert!(warnings.is_empty());
     Ok(())
 }
+
+#[test]
+fn debt_is_invariant_to_unmeasured_lines() {
+    let mut code = String::new();
+    for index in 0..120 {
+        code.push_str(&format!("fn f{index}() {{\n}}\n"));
+    }
+    code.push_str(&"const _: () = ();\n".repeat(760));
+    let extra = "value\n".repeat(19_000);
+    let (dir, paths) = write_temp_files(&[("lib.rs", &code), ("extra.txt", &extra)]);
+    let rows = [
+        make_row("lib.rs", ".", "Rust", 1000),
+        make_row("extra.txt", ".", "Plain Text", 19_000),
+    ];
+    for count in [1, 2] {
+        let report = build_complexity_report(
+            dir.path(),
+            &paths[..count],
+            &make_export(rows[..count].to_vec()),
+            &default_limits(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(report.coverage.unwrap().analyzed_lines, 1000);
+        let debt = report.technical_debt.unwrap();
+        assert_eq!(debt.complexity_points, 120);
+        assert_eq!(debt.ratio, 120.0);
+        assert_eq!(debt.code_kloc, 1.0);
+        assert_eq!(
+            debt.level,
+            tokmd_analysis_types::TechnicalDebtLevel::Critical
+        );
+    }
+}

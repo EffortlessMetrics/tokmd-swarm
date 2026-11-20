@@ -285,24 +285,6 @@ int main(int argc, char** argv) {
 
 #[test]
 fn test_compute_technical_debt_ratio() {
-    let export = ExportData {
-        rows: vec![FileRow {
-            path: "src/lib.rs".to_string(),
-            module: "src".to_string(),
-            lang: "Rust".to_string(),
-            kind: FileKind::Parent,
-            code: 1000,
-            comments: 0,
-            blanks: 0,
-            lines: 1000,
-            bytes: 1000,
-            tokens: 250,
-        }],
-        module_roots: vec![],
-        module_depth: 1,
-        children: tokmd_types::ChildIncludeMode::Separate,
-    };
-
     let files = vec![FileComplexity {
         path: "src/lib.rs".to_string(),
         module: "src".to_string(),
@@ -315,7 +297,7 @@ fn test_compute_technical_debt_ratio() {
         functions: None,
     }];
 
-    let debt = compute_technical_debt_ratio(&export, &files).expect("debt ratio");
+    let debt = compute_technical_debt_ratio(1000, &files).expect("debt ratio");
     assert_eq!(debt.complexity_points, 20);
     assert!((debt.ratio - 20.0).abs() < f64::EPSILON);
     assert!((debt.code_kloc - 1.0).abs() < f64::EPSILON);
@@ -324,24 +306,6 @@ fn test_compute_technical_debt_ratio() {
 
 #[test]
 fn test_compute_technical_debt_ratio_none_for_zero_code() {
-    let export = ExportData {
-        rows: vec![FileRow {
-            path: "src/lib.rs".to_string(),
-            module: "src".to_string(),
-            lang: "Rust".to_string(),
-            kind: FileKind::Parent,
-            code: 0,
-            comments: 0,
-            blanks: 0,
-            lines: 0,
-            bytes: 0,
-            tokens: 0,
-        }],
-        module_roots: vec![],
-        module_depth: 1,
-        children: tokmd_types::ChildIncludeMode::Separate,
-    };
-
     let files = vec![FileComplexity {
         path: "src/lib.rs".to_string(),
         module: "src".to_string(),
@@ -354,7 +318,7 @@ fn test_compute_technical_debt_ratio_none_for_zero_code() {
         functions: None,
     }];
 
-    assert!(compute_technical_debt_ratio(&export, &files).is_none());
+    assert!(compute_technical_debt_ratio(0, &files).is_none());
 }
 
 #[test]

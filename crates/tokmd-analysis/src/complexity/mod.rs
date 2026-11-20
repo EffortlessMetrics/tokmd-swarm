@@ -234,11 +234,7 @@ pub(crate) fn build_complexity_report(
             compute_maintainability_index(summary.avg_cyclomatic, avg_loc, None)
         })
     };
-    let technical_debt = if status == ComplexityCoverageStatus::Unavailable {
-        None
-    } else {
-        compute_technical_debt_ratio(export, &file_complexities)
-    };
+    let technical_debt = compute_technical_debt_ratio(analyzed_lines, &file_complexities);
 
     // Only keep top files by complexity
     file_complexities.truncate(MAX_COMPLEXITY_FILES);
