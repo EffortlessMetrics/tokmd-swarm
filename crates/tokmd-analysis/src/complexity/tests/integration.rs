@@ -728,7 +728,7 @@ fn coverage_clips_the_final_sample_to_the_remaining_total_budget() -> anyhow::Re
 }
 
 #[test]
-fn debt_is_invariant_to_unmeasured_lines() {
+fn debt_is_invariant_to_unmeasured_lines() -> anyhow::Result<()> {
     let mut code = String::new();
     for index in 0..120 {
         code.push_str(&format!("fn f{index}() {{\n}}\n"));
@@ -743,14 +743,20 @@ fn debt_is_invariant_to_unmeasured_lines() {
     for count in [1, 2] {
         let report = build_complexity_report(
             dir.path(),
-            &paths[..count],
-            &make_export(rows[..count].to_vec()),
+            paths
+                .get(..count)
+                .ok_or_else(|| anyhow::anyhow!("fixture paths"))?,
+            &make_export(rows.iter().take(count).cloned().collect()),
             &default_limits(),
             false,
-        )
-        .unwrap();
-        assert_eq!(report.coverage.unwrap().analyzed_lines, 1000);
-        let debt = report.technical_debt.unwrap();
+        )?;
+        assert_eq!(
+            report.coverage.map(|coverage| coverage.analyzed_lines),
+            Some(1000)
+        );
+        let debt = report
+            .technical_debt
+            .ok_or_else(|| anyhow::anyhow!("missing debt"))?;
         assert_eq!(debt.analyzed_lines, Some(1000));
         assert_eq!(debt.complexity_points, 120);
         assert_eq!(debt.ratio, 120.0);
@@ -760,4 +766,5 @@ fn debt_is_invariant_to_unmeasured_lines() {
             tokmd_analysis_types::TechnicalDebtLevel::Critical
         );
     }
+    Ok(())
 }

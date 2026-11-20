@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
 }
 
 #[test]
-fn test_compute_technical_debt_ratio() {
+fn test_compute_technical_debt_ratio() -> anyhow::Result<()> {
     let files = vec![FileComplexity {
         path: "src/lib.rs".to_string(),
         module: "src".to_string(),
@@ -297,11 +297,13 @@ fn test_compute_technical_debt_ratio() {
         functions: None,
     }];
 
-    let debt = compute_technical_debt_ratio(1000, &files).expect("debt ratio");
+    let debt = compute_technical_debt_ratio(1000, &files)
+        .ok_or_else(|| anyhow::anyhow!("missing debt ratio"))?;
     assert_eq!(debt.complexity_points, 20);
     assert!((debt.ratio - 20.0).abs() < f64::EPSILON);
     assert!((debt.code_kloc - 1.0).abs() < f64::EPSILON);
     assert_eq!(debt.level, TechnicalDebtLevel::Low);
+    Ok(())
 }
 
 #[test]
