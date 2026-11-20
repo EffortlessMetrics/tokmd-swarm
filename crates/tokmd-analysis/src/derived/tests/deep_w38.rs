@@ -87,13 +87,36 @@ mod density_w38 {
     }
 
     #[test]
-    fn doc_density_by_module_groups_correctly() {
+    fn module_density_rounds_after_aggregating_file_counts() {
         let rows = vec![
-            make_row("src/a.rs", "src", "Rust", 80, 20, 0, 4000, 800),
-            make_row("lib/b.rs", "lib", "Rust", 60, 40, 0, 4000, 800),
+            make_row("alpha/a.rs", "alpha", "Rust", 2, 1, 2, 40, 10),
+            make_row("alpha/b.py", "alpha", "Python", 1, 5, 0, 64, 16),
+            make_row("beta/c.rs", "beta", "Rust", 3, 1, 2, 48, 12),
         ];
         let r = derive_report(&export(rows), None);
+        let counts =
+            |row: &tokmd_analysis_types::RatioRow| (row.numerator, row.denominator, row.ratio);
+        let modules = |report: &tokmd_analysis_types::RatioReport| {
+            report
+                .by_module
+                .iter()
+                .map(|row| (row.key.clone(), counts(row)))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+
+        // alpha has 1/3 and 5/6 documented lines. Weighting the individually
+        // rounded ratios yields 0.6666, while the exact 6/9 rounds to 0.6667.
+        let docs = modules(&r.doc_density);
         assert_eq!(r.doc_density.by_module.len(), 2);
+        assert_eq!(docs["alpha"], (6, 9, 0.6667));
+        assert_eq!(docs["beta"], (1, 4, 0.25));
+        assert_eq!(counts(&r.doc_density.total), (7, 13, 0.5385));
+
+        let blanks = modules(&r.whitespace);
+        assert_eq!(r.whitespace.by_module.len(), 2);
+        assert_eq!(blanks["alpha"], (2, 9, 0.2222));
+        assert_eq!(blanks["beta"], (2, 4, 0.5));
+        assert_eq!(counts(&r.whitespace.total), (4, 13, 0.3077));
     }
 
     #[test]
