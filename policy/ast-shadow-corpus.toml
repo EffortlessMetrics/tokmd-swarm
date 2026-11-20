@@ -22,6 +22,12 @@ category = "fixture_parse_degraded"
 expected_signal = "parse_degraded"
 
 [[file]]
+path = "fixtures/ast-shadow/rust/qualified-symbols.rs"
+reason = "literal function oracle for repeated and nested symbols, Unicode, and raw-string controls"
+category = "fixture_qualification"
+expected_signal = "function_boundary_mismatch"
+
+[[file]]
 path = "fixtures/ast-shadow/typescript/basic.ts"
 reason = "TypeScript baseline fixture with imports, one function, and simple control-flow landmarks"
 category = "fixture_baseline"

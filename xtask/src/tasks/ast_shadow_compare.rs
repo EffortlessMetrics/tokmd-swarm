@@ -1031,6 +1031,9 @@ fn block_end_line(lines: &[&str], start: usize) -> usize {
 }
 
 #[cfg(test)]
+mod rust_qualification;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;

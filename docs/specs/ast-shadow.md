@@ -201,6 +201,49 @@ shadow evidence into public receipts must:
 - keep browser/WASM capability reporting honest;
 - update proof scopes before public behavior changes.
 
+## Rust qualification corpus
+
+The [literal function oracle](../../xtask/src/tasks/ast_shadow_compare/rust_qualification.rs)
+covers [nested modules, inherent impls, nested functions, and Unicode](../../fixtures/ast-shadow/rust/qualified-symbols.rs),
+plus [incomplete input](../../fixtures/ast-shadow/rust/parse-degraded.rs). Its
+lexical identities are fixture-local. Byte ranges use zero-based UTF-8 offsets
+and an exclusive end. Line and byte-column numbers are one-based with an
+exclusive end column. The tests run the same source with LF and CRLF. Each
+preceding CR shifts the byte offset by one and leaves the tested line and
+column unchanged.
+
+The parser found all seven expected function occurrences with exact ranges.
+The existing shadow diff keys landmarks by kind, short name, and lines, so the
+two line-1 `repeat` functions collapse to one match. The syntax receipt retains
+distinct spans for them. Neither receipt emits the enclosing identities in
+the literal oracle.
+
+| Backend on the five unambiguous clean function keys | Exact | Extra | Missing |
+| --- | ---: | ---: | ---: |
+| Shadow runner heuristic | 4 | 1 | 1 |
+| Tree-sitter Rust | 5 | 0 | 0 |
+
+The heuristic reports `ghost` on line 18 from a raw string and misses `éclair` on
+line 16. The accuracy counts exclude both line-1 occurrences and the incomplete
+file. The incomplete file reports `parse_degraded` and retains `ok` as recovered
+evidence. These counts apply only to function line keys in this fixture.
+
+The three shadow JSON files are byte-identical across runs with reversed input
+order. The tests pin both fixtures' source digests, the locked Tree-sitter
+runtime, and the Rust grammar. Run them with
+`cargo test --locked -p xtask --bin xtask ast_shadow`. The wrong-oracle controls
+change a short name, a byte offset, and a UTF-8 column. A separate same-width
+module rename leaves the emitted names and ranges intact and still fails the
+source digest check.
+
+A local Rust 1.95.0 check (`59807616e1fa2540724bfbac14d7976d7e4a3860`,
+Linux x86-64) emitted MIR for the clean fixture using
+`rustc --edition=2024 --crate-type lib --emit=mir`. MIR lists both module
+paths and both impl receivers. It prints the two nested function names
+unqualified. The compiler rejected the incomplete fixture with an unclosed
+delimiter. This check corroborates those compiler observations only. The
+fixture oracle supplies the lexical identities and source ranges for the tests.
+
 ## Function-Boundary Candidate Promotion Criteria
 
 Function-boundary precision is the first AST-backed fact family eligible for a
