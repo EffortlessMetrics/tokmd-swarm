@@ -1,4 +1,4 @@
-mod left { fn repeat() {} } mod right { fn repeat() {} }
+mod scope { mod left { fn repeat() {} } mod right { fn repeat() {} } }
 
 struct First;
 struct Second;

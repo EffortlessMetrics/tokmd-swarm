@@ -238,8 +238,9 @@ source digest check.
 
 A local Rust 1.95.0 check (`59807616e1fa2540724bfbac14d7976d7e4a3860`,
 Linux x86-64) emitted MIR for the clean fixture using
-`rustc --edition=2024 --crate-type lib --emit=mir`. MIR lists both module
-paths and both impl receivers. It prints the two nested function names
+`rustc --edition=2024 --crate-type lib --emit=mir`. MIR prints
+`left::repeat` and `right::repeat`, omitting their common `scope::` prefix,
+and shows both impl receivers. It prints the two nested function names
 unqualified. The compiler rejected the incomplete fixture with an unclosed
 delimiter. This check corroborates those compiler observations only. The
 fixture oracle supplies the lexical identities and source ranges for the tests.

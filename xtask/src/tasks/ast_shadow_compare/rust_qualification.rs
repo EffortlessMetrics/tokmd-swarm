@@ -11,7 +11,7 @@ use tokmd_analysis::ast::{
 const CLEAN: &str = "fixtures/ast-shadow/rust/qualified-symbols.rs";
 const DEGRADED: &str = "fixtures/ast-shadow/rust/parse-degraded.rs";
 const MANIFEST: &str = "policy/ast-shadow-corpus.toml";
-const CLEAN_BLAKE3: &str = "902f013118194b9754025db645906a5cde8a5a1daa6aaf72e0c6277c61ba4308";
+const CLEAN_BLAKE3: &str = "5654f86dca89894326c6d10346c1051df54e78e2b65a5ffbe518656930823186";
 const DEGRADED_BLAKE3: &str = "b29a6285c211318be1d92d217cc04d429bd1b9f31cb4a113a0a37834e09f718d";
 
 /// Literal Rust function oracle v1. Identity is lexical, local to the fixture.
@@ -26,38 +26,38 @@ struct ExpectedFunction {
 
 const FUNCTIONS: [ExpectedFunction; 7] = [
     ExpectedFunction {
-        identity: "left::repeat",
-        bytes: [11, 25],
-        span: [1, 12, 1, 26],
+        identity: "scope::left::repeat",
+        bytes: [23, 37],
+        span: [1, 24, 1, 38],
     },
     ExpectedFunction {
-        identity: "right::repeat",
-        bytes: [40, 54],
-        span: [1, 41, 1, 55],
+        identity: "scope::right::repeat",
+        bytes: [52, 66],
+        span: [1, 53, 1, 67],
     },
     ExpectedFunction {
         identity: "<impl First>::repeat",
-        bytes: [105, 124],
+        bytes: [119, 138],
         span: [7, 5, 7, 24],
     },
     ExpectedFunction {
         identity: "<impl Second>::repeat",
-        bytes: [146, 165],
+        bytes: [160, 179],
         span: [11, 5, 11, 24],
     },
     ExpectedFunction {
         identity: "outer",
-        bytes: [169, 268],
+        bytes: [183, 282],
         span: [14, 1, 20, 2],
     },
     ExpectedFunction {
         identity: "outer::nested",
-        bytes: [186, 200],
+        bytes: [200, 214],
         span: [15, 5, 15, 19],
     },
     ExpectedFunction {
         identity: "outer::éclair",
-        bytes: [217, 232],
+        bytes: [231, 246],
         span: [16, 17, 16, 32],
     },
 ];
