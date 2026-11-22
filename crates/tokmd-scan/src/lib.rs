@@ -71,12 +71,93 @@ pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
         .map(|root| root.canonical().to_path_buf())
         .collect();
 
+    ensure_complete_walk(&scan_paths, &ignore_refs, &cfg)?;
     let mut languages = Languages::new();
     languages.get_statistics(&scan_paths, &ignore_refs, &cfg);
     ensure_complete_scan(&languages)?;
     rebase_report_paths(&mut languages, &roots);
 
     Ok(languages)
+}
+
+// Tokei 14 logs and discards walker errors before a language can be marked
+// inaccurate. Validate the same selection first, then leave counting to Tokei.
+// This adds a traversal without source-content reads or a retained inventory; it
+// does not make the two passes an atomic snapshot of a changing filesystem.
+fn ensure_complete_walk(paths: &[PathBuf], excluded: &[&str], config: &Config) -> Result<()> {
+    use ignore::{WalkBuilder, WalkState, overrides::OverrideBuilder};
+    use std::sync::{Mutex, PoisonError};
+
+    let mut overrides = OverrideBuilder::new(".");
+    let mut subtrees = OverrideBuilder::new(".");
+    for pattern in excluded {
+        // Match Tokei's existing handling: invalid individual patterns are
+        // skipped, while valid patterns still constrain the walk.
+        if overrides.add(&format!("!{pattern}")).is_err() {
+            continue;
+        }
+        if let Some(directory) = ignore_patterns::subtree_directory_pattern(pattern)
+            && subtrees.add(&format!("!{directory}")).is_err()
+        {
+            continue;
+        }
+    }
+    let subtrees = subtrees.build()?;
+    // Walkers always enter explicit roots. Only a proven full-subtree CLI
+    // override can omit that validation; a bare directory exclusion cannot.
+    let mut paths = paths.iter().filter(|path| {
+        subtrees.is_empty() || !path.is_dir() || !subtrees.matched(path, true).is_ignore()
+    });
+    let Some(first) = paths.next() else {
+        return Ok(());
+    };
+    let mut walker = WalkBuilder::new(first);
+    for path in paths {
+        walker.add(path);
+    }
+    if !excluded.is_empty() {
+        walker.overrides(overrides.build()?);
+    }
+    let ignore = !config.no_ignore.unwrap_or(false);
+    let ignore_dot = ignore && !config.no_ignore_dot.unwrap_or(false);
+    let ignore_vcs = ignore && !config.no_ignore_vcs.unwrap_or(false);
+    if ignore_dot {
+        walker.add_custom_ignore_filename(".tokeignore");
+    }
+    walker
+        .git_exclude(ignore_vcs)
+        .git_global(ignore_vcs)
+        .git_ignore(ignore_vcs)
+        .hidden(!config.hidden.unwrap_or(false))
+        .ignore(ignore_dot)
+        .parents(ignore && !config.no_ignore_parent.unwrap_or(false));
+
+    // Keep Tokei's walker adapter as well as its selection settings. Parent
+    // ignore-file parse errors have no entry depth; preserve their existing
+    // best-effort handling rather than calling them directory read failures.
+    let failure = Mutex::new(None);
+    walker.build_parallel().run(|| {
+        Box::new(|entry| match entry {
+            Err(error) if error.depth().is_some() && error.is_io() => {
+                let mut failure = failure.lock().unwrap_or_else(PoisonError::into_inner);
+                if failure.is_none() {
+                    *failure = Some(error);
+                }
+                WalkState::Quit
+            }
+            _ => WalkState::Continue,
+        })
+    });
+    if let Some(error) = failure.into_inner().unwrap_or_else(PoisonError::into_inner) {
+        let message = format!(
+            "Failed to access path during scan: {error}. Incomplete scan: resolve directory access permissions or explicitly exclude the entire directory, then retry"
+        );
+        return Err(match error.into_io_error() {
+            Some(source) => anyhow::Error::new(source).context(message),
+            None => anyhow::anyhow!(message),
+        });
+    }
+    Ok(())
 }
 
 // Tokei retains successful reports but marks a language inaccurate when one of
