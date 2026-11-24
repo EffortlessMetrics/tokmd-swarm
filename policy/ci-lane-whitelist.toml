@@ -499,8 +499,8 @@ proof_obligation = "Run scripts/check-no-bare-self-hosted.sh .github/workflows."
 evidence         = ["job logs"]
 allowed_triggers = ["pull_request", "push"]
 duplicate_of     = []
-review_after     = "2026-06-21"
-expires          = "2026-11-21"
+review_after     = "2026-12-11"
+expires          = "2027-02-11"
 
 [[lane]]
 id               = "ci_lane_whitelist"
@@ -924,7 +924,7 @@ base_lem         = 75
 owner            = "release/ci"
 intent           = "Run complete exact-source release proof and emit one terminal decision receipt."
 failure_mode     = "Release acceptance interprets partial, moving-source, or unavailable proof as green."
-proof_obligation = "Check out immutable source/base SHAs, record every required command, invoke cargo xtask release-preflight, and consume its uploaded receipt."
+proof_obligation = "Check out the immutable source, verify the affected-base commit and ancestry, record every required command, and run cargo xtask release-preflight. Upload the evidence and enforce the local receipt decision. Release acceptance must consume the uploaded receipt (#527)."
 evidence         = ["target/release-preflight/receipt.json", "target/release-preflight/logs/*", "job summary"]
 allowed_triggers = ["workflow_dispatch", "workflow_call"]
 duplicate_of     = []
