@@ -26,10 +26,10 @@ fn scan_self() -> Languages {
 // ===========================================================================
 
 #[test]
-fn lang_aggregation_order_deterministic() {
+fn lang_aggregation_order_deterministic() -> std::io::Result<()> {
     let languages = scan_self();
-    let a = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
-    let b = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let a = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
+    let b = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     assert_eq!(a.rows.len(), b.rows.len(), "row count must be stable");
     for (ra, rb) in a.rows.iter().zip(b.rows.iter()) {
@@ -38,12 +38,13 @@ fn lang_aggregation_order_deterministic() {
         assert_eq!(ra.lines, rb.lines, "lines count must be identical");
         assert_eq!(ra.files, rb.files, "files count must be identical");
     }
+    Ok(())
 }
 
 #[test]
-fn lang_aggregation_sorted_desc_code_asc_name() {
+fn lang_aggregation_sorted_desc_code_asc_name() -> std::io::Result<()> {
     let languages = scan_self();
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     for pair in report.rows.windows(2) {
         assert!(
@@ -56,17 +57,19 @@ fn lang_aggregation_sorted_desc_code_asc_name() {
             pair[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_aggregation_separate_mode_deterministic() {
+fn lang_aggregation_separate_mode_deterministic() -> std::io::Result<()> {
     let languages = scan_self();
-    let a = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
-    let b = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let a = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
+    let b = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     let a_names: Vec<&str> = a.rows.iter().map(|r| r.lang.as_str()).collect();
     let b_names: Vec<&str> = b.rows.iter().map(|r| r.lang.as_str()).collect();
     assert_eq!(a_names, b_names, "separate mode row names must match");
+    Ok(())
 }
 
 // ===========================================================================
@@ -74,20 +77,21 @@ fn lang_aggregation_separate_mode_deterministic() {
 // ===========================================================================
 
 #[test]
-fn module_key_ordering_deterministic() {
+fn module_key_ordering_deterministic() -> std::io::Result<()> {
     let languages = scan_self();
-    let a = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
-    let b = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let a = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
+    let b = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     let a_mods: Vec<&str> = a.rows.iter().map(|r| r.module.as_str()).collect();
     let b_mods: Vec<&str> = b.rows.iter().map(|r| r.module.as_str()).collect();
     assert_eq!(a_mods, b_mods, "module key order must be identical");
+    Ok(())
 }
 
 #[test]
-fn module_rows_sorted_desc_code_asc_name() {
+fn module_rows_sorted_desc_code_asc_name() -> std::io::Result<()> {
     let languages = scan_self();
-    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     for pair in report.rows.windows(2) {
         assert!(
@@ -100,12 +104,13 @@ fn module_rows_sorted_desc_code_asc_name() {
             pair[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn module_keys_use_forward_slashes() {
+fn module_keys_use_forward_slashes() -> std::io::Result<()> {
     let languages = scan_self();
-    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     for row in &report.rows {
         assert!(
@@ -114,6 +119,7 @@ fn module_keys_use_forward_slashes() {
             row.module
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -121,10 +127,10 @@ fn module_keys_use_forward_slashes() {
 // ===========================================================================
 
 #[test]
-fn file_row_ordering_deterministic() {
+fn file_row_ordering_deterministic() -> std::io::Result<()> {
     let languages = scan_self();
-    let a = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
-    let b = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let a = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
+    let b = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     assert_eq!(a.len(), b.len(), "file row count must be stable");
     for (ra, rb) in a.iter().zip(b.iter()) {
@@ -132,12 +138,13 @@ fn file_row_ordering_deterministic() {
         assert_eq!(ra.code, rb.code, "code count must be identical");
         assert_eq!(ra.lang, rb.lang, "language must be identical");
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_sorted_desc_code_asc_path() {
+fn file_rows_sorted_desc_code_asc_path() -> std::io::Result<()> {
     let languages = scan_self();
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for pair in rows.windows(2) {
         assert!(
@@ -150,12 +157,13 @@ fn file_rows_sorted_desc_code_asc_path() {
             pair[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_use_forward_slashes() {
+fn file_rows_use_forward_slashes() -> std::io::Result<()> {
     let languages = scan_self();
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for row in &rows {
         assert!(
@@ -169,6 +177,7 @@ fn file_rows_use_forward_slashes() {
             row.module
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -176,7 +185,7 @@ fn file_rows_use_forward_slashes() {
 // ===========================================================================
 
 #[test]
-fn export_data_row_count_stable() {
+fn export_data_row_count_stable() -> std::io::Result<()> {
     let languages = scan_self();
     let a = create_export_data(
         &languages,
@@ -186,7 +195,7 @@ fn export_data_row_count_stable() {
         None,
         0,
         0,
-    );
+    )?;
     let b = create_export_data(
         &languages,
         &[],
@@ -195,12 +204,13 @@ fn export_data_row_count_stable() {
         None,
         0,
         0,
-    );
+    )?;
     assert_eq!(
         a.rows.len(),
         b.rows.len(),
         "export row count must be stable"
     );
+    Ok(())
 }
 
 // ===========================================================================

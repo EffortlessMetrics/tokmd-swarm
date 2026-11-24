@@ -92,7 +92,7 @@ fn scan_export_from_paths(paths: &[PathBuf], global: &cli::GlobalArgs) -> Result
         None,
         0,
         0,
-    );
+    )?;
     Ok(ExportBundle {
         export,
         meta,

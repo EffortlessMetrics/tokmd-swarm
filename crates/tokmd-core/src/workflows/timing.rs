@@ -67,7 +67,7 @@ pub fn timed_lang_workflow(
     let language_count = languages.len();
 
     let model_start = Instant::now();
-    let report = tokmd_model::create_lang_report(&languages, lang.top, lang.files, lang.children);
+    let report = tokmd_model::create_lang_report(&languages, lang.top, lang.files, lang.children)?;
     let row_count = report.rows.len();
     let model_ms = elapsed_ms(model_start);
 
@@ -114,7 +114,7 @@ pub fn timed_module_workflow(
         module.module_depth,
         module.children,
         module.top,
-    );
+    )?;
     let row_count = report.rows.len();
     let model_ms = elapsed_ms(model_start);
 
@@ -164,7 +164,7 @@ pub fn timed_export_workflow(
         strip_prefix.map(Path::new),
         export.min_code,
         export.max_rows,
-    );
+    )?;
     let row_count = data.rows.len();
     let model_ms = elapsed_ms(model_start);
 

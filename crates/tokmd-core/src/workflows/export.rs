@@ -50,7 +50,7 @@ pub fn export_workflow(scan: &ScanSettings, export: &ExportSettings) -> Result<E
         strip_prefix.map(Path::new),
         export.min_code,
         export.max_rows,
-    );
+    )?;
 
     Ok(build_export_receipt(&paths, &scan_opts, export, data))
 }
@@ -92,7 +92,7 @@ pub fn export_workflow_from_inputs(
             strip_prefix,
             &export.module_roots,
             export.module_depth,
-        );
+        )?;
     }
     let data = tokmd_model::create_export_data_from_rows(
         rows,

@@ -14,7 +14,8 @@ use tokmd_types::{
     ModuleReport, RedactMode, ScanArgs, ScanStatus, ToolInfo,
 };
 
-use crate::{now_ms, redact_module_roots, scan_args, short_hash};
+use crate::redact::receipt_path_hash;
+use crate::{now_ms, redact_module_roots, scan_args};
 
 pub(super) fn write_lang_json<W: Write>(
     mut out: W,
@@ -22,6 +23,9 @@ pub(super) fn write_lang_json<W: Write>(
     global: &ScanOptions,
     args: &LangArgs,
 ) -> Result<()> {
+    for path in &args.paths {
+        tokmd_types::validate_source_path(path)?;
+    }
     let receipt = LangReceipt {
         schema_version: tokmd_types::SCHEMA_VERSION,
         generated_at_ms: now_ms(),
@@ -48,6 +52,9 @@ pub(super) fn write_module_json<W: Write>(
     global: &ScanOptions,
     args: &ModuleArgs,
 ) -> Result<()> {
+    for path in &args.paths {
+        tokmd_types::validate_source_path(path)?;
+    }
     let receipt = ModuleReceipt {
         schema_version: tokmd_types::SCHEMA_VERSION,
         generated_at_ms: now_ms(),
@@ -105,7 +112,7 @@ pub(super) fn write_module_json_to_file(
         final_args.module_roots = redact_module_roots(&final_args.module_roots, redact);
         final_report.module_roots = redact_module_roots(&final_report.module_roots, redact);
         for row in &mut final_report.rows {
-            row.module = short_hash(&row.module);
+            row.module = receipt_path_hash(&row.module);
         }
     }
 

@@ -191,8 +191,8 @@ The `tokmd-core` crate provides a clap-free library facade for embedding:
 - Essential for golden snapshot tests and reproducible receipts
 
 ### Path Normalization
-- All paths normalized to forward slashes (`/`) regardless of OS
-- Always use `normalize_path()` before output
+- Render native directory separators as `/` with `native_report_path()`. Keep literal Unix backslashes inside file names.
+- Use `normalize_path()` for portable mixed-separator text. Propagate native path errors before emitting a complete receipt.
 - Module keys computed from normalized paths
 
 ### Children/Embedded Language Handling

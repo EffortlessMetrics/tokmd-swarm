@@ -73,17 +73,23 @@ fn scan_opts() -> ScanOptions {
     }
 }
 
-fn scan_lang_report(dir: &std::path::Path, children: ChildrenMode) -> LangReport {
+fn scan_lang_report(dir: &std::path::Path, children: ChildrenMode) -> std::io::Result<LangReport> {
     let langs = scan(&[dir.to_path_buf()], &scan_opts()).expect("scan");
     create_lang_report(&langs, 0, true, children)
 }
 
-fn scan_module_report(dir: &std::path::Path, children: ChildIncludeMode) -> ModuleReport {
+fn scan_module_report(
+    dir: &std::path::Path,
+    children: ChildIncludeMode,
+) -> std::io::Result<ModuleReport> {
     let langs = scan(&[dir.to_path_buf()], &scan_opts()).expect("scan");
     create_module_report(&langs, &[], 1, children, 0)
 }
 
-fn scan_export_data(dir: &std::path::Path, strip: Option<&std::path::Path>) -> ExportData {
+fn scan_export_data(
+    dir: &std::path::Path,
+    strip: Option<&std::path::Path>,
+) -> std::io::Result<ExportData> {
     let langs = scan(&[dir.to_path_buf()], &scan_opts()).expect("scan");
     create_export_data(&langs, &[], 1, ChildIncludeMode::Separate, strip, 0, 0)
 }
@@ -130,9 +136,9 @@ fn make_export_args(dir: &std::path::Path) -> ExportArgs {
 // ===========================================================================
 
 #[test]
-fn scan_model_format_lang_md_contains_table() {
+fn scan_model_format_lang_md_contains_table() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let args = make_lang_args(proj.path(), TableFormat::Md);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -145,12 +151,13 @@ fn scan_model_format_lang_md_contains_table() {
         output.contains("|**Total**|"),
         "MD output must have total row"
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_lang_tsv_columns() {
+fn scan_model_format_lang_tsv_columns() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let args = make_lang_args(proj.path(), TableFormat::Tsv);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -163,12 +170,13 @@ fn scan_model_format_lang_tsv_columns() {
             "TSV with files should have 7 columns: {line}"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_lang_json_roundtrip() {
+fn scan_model_format_lang_json_roundtrip() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let args = make_lang_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -179,36 +187,39 @@ fn scan_model_format_lang_json_roundtrip() {
         !receipt.report.rows.is_empty(),
         "receipt must have lang rows"
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_module_md_contains_table() {
+fn scan_model_format_module_md_contains_table() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
     let args = make_module_args(proj.path(), TableFormat::Md);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
     let output = String::from_utf8(buf).unwrap();
     assert!(output.contains("|Module|"), "Module MD must have header");
     assert!(output.contains("|**Total**|"), "Module MD must have totals");
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_module_json_roundtrip() {
+fn scan_model_format_module_json_roundtrip() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
     let args = make_module_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
     let receipt: ModuleReceipt =
         serde_json::from_slice(&buf).expect("JSON must deserialize into ModuleReceipt");
     assert_eq!(receipt.schema_version, SCHEMA_VERSION);
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_export_json_roundtrip() {
+fn scan_model_format_export_json_roundtrip() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let args = make_export_args(proj.path());
     let mut buf = Vec::new();
     tokmd_format::write_export_json_to(&mut buf, &data, &scan_opts(), &args).unwrap();
@@ -216,6 +227,7 @@ fn scan_model_format_export_json_roundtrip() {
         serde_json::from_slice(&buf).expect("JSON must deserialize into ExportReceipt");
     assert_eq!(receipt.schema_version, SCHEMA_VERSION);
     assert!(!receipt.data.rows.is_empty());
+    Ok(())
 }
 
 // ===========================================================================
@@ -223,58 +235,63 @@ fn scan_model_format_export_json_roundtrip() {
 // ===========================================================================
 
 #[test]
-fn analysis_derived_from_tempdir_has_totals() {
+fn analysis_derived_from_tempdir_has_totals() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let derived = derive_report(&data, None);
     assert!(derived.totals.files > 0, "derived must report files");
     assert!(derived.totals.code > 0, "derived must report code lines");
     assert!(derived.totals.lines > 0, "derived must report total lines");
+    Ok(())
 }
 
 #[test]
-fn analysis_derived_doc_density_valid() {
+fn analysis_derived_doc_density_valid() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let derived = derive_report(&data, None);
     let ratio = derived.doc_density.total.ratio;
     assert!(
         (0.0..=1.0).contains(&ratio),
         "doc_density ratio must be in [0,1], got {ratio}"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_derived_integrity_hash_present() {
+fn analysis_derived_integrity_hash_present() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let derived = derive_report(&data, None);
     assert!(
         !derived.integrity.hash.is_empty(),
         "integrity hash must be non-empty"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_derived_cocomo_positive() {
+fn analysis_derived_cocomo_positive() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let derived = derive_report(&data, None);
     let cocomo = derived.cocomo.expect("COCOMO must be present");
     assert!(cocomo.kloc > 0.0);
     assert!(cocomo.effort_pm > 0.0);
+    Ok(())
 }
 
 #[test]
-fn analysis_derived_context_window() {
+fn analysis_derived_context_window() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     let derived = derive_report(&data, Some(128_000));
     let cw = derived
         .context_window
         .expect("context_window must be present when window_tokens given");
     assert_eq!(cw.window_tokens, 128_000);
     assert!(cw.total_tokens <= cw.window_tokens || !cw.fits);
+    Ok(())
 }
 
 // ===========================================================================
@@ -282,10 +299,10 @@ fn analysis_derived_context_window() {
 // ===========================================================================
 
 #[test]
-fn module_key_consistent_model_vs_export() {
+fn module_key_consistent_model_vs_export() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let mod_report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
-    let exp_data = scan_export_data(proj.path(), None);
+    let mod_report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
+    let exp_data = scan_export_data(proj.path(), None)?;
 
     // Every module key from export rows must appear in module report rows
     // (unless it's folded into "Other", which only happens with top > 0).
@@ -298,6 +315,7 @@ fn module_key_consistent_model_vs_export() {
             row.module
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -305,9 +323,9 @@ fn module_key_consistent_model_vs_export() {
 // ===========================================================================
 
 #[test]
-fn paths_use_forward_slashes_in_export() {
+fn paths_use_forward_slashes_in_export() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     for row in &data.rows {
         assert!(
             !row.path.contains('\\'),
@@ -320,13 +338,14 @@ fn paths_use_forward_slashes_in_export() {
             row.module
         );
     }
+    Ok(())
 }
 
 #[test]
-fn paths_use_forward_slashes_in_collect_file_rows() {
+fn paths_use_forward_slashes_in_collect_file_rows() -> std::io::Result<()> {
     let proj = make_sample_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::Separate, None)?;
     for row in &rows {
         assert!(
             !row.path.contains('\\'),
@@ -334,6 +353,7 @@ fn paths_use_forward_slashes_in_collect_file_rows() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
@@ -356,9 +376,9 @@ fn normalize_path_forward_slashes_on_backslash_input() {
 // ===========================================================================
 
 #[test]
-fn children_collapse_no_embedded_label() {
+fn children_collapse_no_embedded_label() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     for row in &report.rows {
         assert!(
             !row.lang.contains("(embedded)"),
@@ -366,38 +386,42 @@ fn children_collapse_no_embedded_label() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn children_separate_has_separate_tag() {
+fn children_separate_has_separate_tag() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Separate);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Separate)?;
     assert_eq!(report.children, ChildrenMode::Separate);
+    Ok(())
 }
 
 #[test]
-fn children_collapse_tag_preserved() {
+fn children_collapse_tag_preserved() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     assert_eq!(report.children, ChildrenMode::Collapse);
+    Ok(())
 }
 
 #[test]
-fn children_separate_ge_collapse_rows() {
+fn children_separate_ge_collapse_rows() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let collapse = scan_lang_report(proj.path(), ChildrenMode::Collapse);
-    let separate = scan_lang_report(proj.path(), ChildrenMode::Separate);
+    let collapse = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
+    let separate = scan_lang_report(proj.path(), ChildrenMode::Separate)?;
     assert!(
         separate.rows.len() >= collapse.rows.len(),
         "Separate should have >= rows than collapse"
     );
+    Ok(())
 }
 
 #[test]
-fn children_include_mode_parents_only_no_child_kind() {
+fn children_include_mode_parents_only_no_child_kind() -> std::io::Result<()> {
     let proj = make_sample_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     for row in &data.rows {
         assert_eq!(
             row.kind,
@@ -405,6 +429,7 @@ fn children_include_mode_parents_only_no_child_kind() {
             "ParentsOnly must not contain child rows"
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -412,9 +437,9 @@ fn children_include_mode_parents_only_no_child_kind() {
 // ===========================================================================
 
 #[test]
-fn lang_rows_sorted_code_desc_name_asc() {
+fn lang_rows_sorted_code_desc_name_asc() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     for window in report.rows.windows(2) {
         let a = &window[0];
         let b = &window[1];
@@ -425,12 +450,13 @@ fn lang_rows_sorted_code_desc_name_asc() {
             a.lang, a.code, b.lang, b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn module_rows_sorted_code_desc_module_asc() {
+fn module_rows_sorted_code_desc_module_asc() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
     for window in report.rows.windows(2) {
         let a = &window[0];
         let b = &window[1];
@@ -441,12 +467,13 @@ fn module_rows_sorted_code_desc_module_asc() {
             a.module, a.code, b.module, b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_rows_sorted_code_desc_path_asc() {
+fn export_rows_sorted_code_desc_path_asc() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     for window in data.rows.windows(2) {
         let a = &window[0];
         let b = &window[1];
@@ -457,6 +484,7 @@ fn export_rows_sorted_code_desc_path_asc() {
             a.path, a.code, b.path, b.code
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -464,7 +492,7 @@ fn export_rows_sorted_code_desc_path_asc() {
 // ===========================================================================
 
 #[test]
-fn exclude_pattern_filters_language() {
+fn exclude_pattern_filters_language() -> std::io::Result<()> {
     let proj = make_sample_project();
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
@@ -473,13 +501,14 @@ fn exclude_pattern_filters_language() {
         ..Default::default()
     };
     let langs = scan(&[proj.path().to_path_buf()], &opts).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let has_js = report.rows.iter().any(|r| r.lang == "JavaScript");
     assert!(!has_js, "JavaScript must be excluded by *.js pattern");
+    Ok(())
 }
 
 #[test]
-fn exclude_pattern_preserves_other_langs() {
+fn exclude_pattern_preserves_other_langs() -> std::io::Result<()> {
     let proj = make_sample_project();
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
@@ -488,25 +517,27 @@ fn exclude_pattern_preserves_other_langs() {
         ..Default::default()
     };
     let langs = scan(&[proj.path().to_path_buf()], &opts).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let has_rust = report.rows.iter().any(|r| r.lang == "Rust");
     assert!(
         has_rust,
         "Rust must still be present when only *.js excluded"
     );
+    Ok(())
 }
 
 #[test]
-fn top_n_truncates_lang_rows() {
+fn top_n_truncates_lang_rows() -> std::io::Result<()> {
     let proj = make_sample_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
     // top=1 means 1 real row + 1 "Other" row (if more langs exist)
     assert!(
         report.rows.len() <= 2,
         "top=1 should yield at most 2 rows (1 + Other), got {}",
         report.rows.len()
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -514,9 +545,9 @@ fn top_n_truncates_lang_rows() {
 // ===========================================================================
 
 #[test]
-fn lang_json_schema_version_matches_constant() {
+fn lang_json_schema_version_matches_constant() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let args = make_lang_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -525,12 +556,13 @@ fn lang_json_schema_version_matches_constant() {
         v["schema_version"].as_u64().unwrap(),
         u64::from(SCHEMA_VERSION)
     );
+    Ok(())
 }
 
 #[test]
-fn module_json_schema_version_matches_constant() {
+fn module_json_schema_version_matches_constant() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
     let args = make_module_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -539,12 +571,13 @@ fn module_json_schema_version_matches_constant() {
         v["schema_version"].as_u64().unwrap(),
         u64::from(SCHEMA_VERSION)
     );
+    Ok(())
 }
 
 #[test]
-fn lang_json_flattened_no_report_key() {
+fn lang_json_flattened_no_report_key() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let args = make_lang_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
@@ -555,6 +588,7 @@ fn lang_json_flattened_no_report_key() {
     );
     assert!(v.get("rows").is_some(), "rows must be at top level");
     assert!(v.get("total").is_some(), "total must be at top level");
+    Ok(())
 }
 
 // ===========================================================================
@@ -562,11 +596,11 @@ fn lang_json_flattened_no_report_key() {
 // ===========================================================================
 
 #[test]
-fn determinism_lang_report_three_runs() {
+fn determinism_lang_report_three_runs() -> std::io::Result<()> {
     let proj = make_sample_project();
     let mut results = Vec::new();
     for _ in 0..3 {
-        let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+        let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
         let row_data: Vec<(String, usize, usize)> = report
             .rows
             .iter()
@@ -576,14 +610,15 @@ fn determinism_lang_report_three_runs() {
     }
     assert_eq!(results[0], results[1], "Run 1 vs 2 must be identical");
     assert_eq!(results[1], results[2], "Run 2 vs 3 must be identical");
+    Ok(())
 }
 
 #[test]
-fn determinism_module_report_three_runs() {
+fn determinism_module_report_three_runs() -> std::io::Result<()> {
     let proj = make_sample_project();
     let mut results = Vec::new();
     for _ in 0..3 {
-        let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+        let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
         let row_data: Vec<(String, usize, usize)> = report
             .rows
             .iter()
@@ -593,14 +628,15 @@ fn determinism_module_report_three_runs() {
     }
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
+    Ok(())
 }
 
 #[test]
-fn determinism_export_data_three_runs() {
+fn determinism_export_data_three_runs() -> std::io::Result<()> {
     let proj = make_sample_project();
     let mut results = Vec::new();
     for _ in 0..3 {
-        let data = scan_export_data(proj.path(), Some(proj.path()));
+        let data = scan_export_data(proj.path(), Some(proj.path()))?;
         let row_data: Vec<(String, String, usize)> = data
             .rows
             .iter()
@@ -610,19 +646,21 @@ fn determinism_export_data_three_runs() {
     }
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
+    Ok(())
 }
 
 #[test]
-fn determinism_derived_integrity_hash() {
+fn determinism_derived_integrity_hash() -> std::io::Result<()> {
     let proj = make_sample_project();
     let mut hashes = Vec::new();
     for _ in 0..3 {
-        let data = scan_export_data(proj.path(), Some(proj.path()));
+        let data = scan_export_data(proj.path(), Some(proj.path()))?;
         let derived = derive_report(&data, None);
         hashes.push(derived.integrity.hash.clone());
     }
     assert_eq!(hashes[0], hashes[1], "Hash run 1 vs 2");
     assert_eq!(hashes[1], hashes[2], "Hash run 2 vs 3");
+    Ok(())
 }
 
 // ===========================================================================
@@ -630,35 +668,38 @@ fn determinism_derived_integrity_hash() {
 // ===========================================================================
 
 #[test]
-fn export_data_rows_only_contain_known_kinds() {
+fn export_data_rows_only_contain_known_kinds() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let data = scan_export_data(proj.path(), Some(proj.path()));
+    let data = scan_export_data(proj.path(), Some(proj.path()))?;
     for row in &data.rows {
         assert!(
             row.kind == FileKind::Parent || row.kind == FileKind::Child,
             "FileKind must be Parent or Child"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_totals_equal_row_sums() {
+fn lang_report_totals_equal_row_sums() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse);
+    let report = scan_lang_report(proj.path(), ChildrenMode::Collapse)?;
     let row_code: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, row_code,
         "total.code must equal sum of row codes"
     );
+    Ok(())
 }
 
 #[test]
-fn module_report_totals_code_consistent() {
+fn module_report_totals_code_consistent() -> std::io::Result<()> {
     let proj = make_sample_project();
-    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate);
+    let report = scan_module_report(proj.path(), ChildIncludeMode::Separate)?;
     let row_code: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, row_code,
         "module total.code must match row sum"
     );
+    Ok(())
 }

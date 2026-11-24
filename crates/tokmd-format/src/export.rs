@@ -24,7 +24,15 @@ use redact::redact_rows;
 
 pub use jsonl::write_export_jsonl_to_file;
 
+fn validate_export_paths(args: &ExportArgs) -> Result<()> {
+    for path in args.paths.iter().chain(&args.strip_prefix) {
+        tokmd_types::validate_source_path(path)?;
+    }
+    Ok(())
+}
+
 pub fn write_export(export: &ExportData, global: &ScanOptions, args: &ExportArgs) -> Result<()> {
+    validate_export_paths(args)?;
     match &args.output {
         Some(path) => {
             let file = File::create(path)
@@ -68,6 +76,7 @@ pub fn write_export_csv_to<W: Write>(
     export: &ExportData,
     args: &ExportArgs,
 ) -> Result<()> {
+    validate_export_paths(args)?;
     write_export_csv(out, export, args)
 }
 
@@ -79,6 +88,7 @@ pub fn write_export_jsonl_to<W: Write>(
     global: &ScanOptions,
     args: &ExportArgs,
 ) -> Result<()> {
+    validate_export_paths(args)?;
     write_export_jsonl(out, export, global, args)
 }
 
@@ -90,6 +100,7 @@ pub fn write_export_json_to<W: Write>(
     global: &ScanOptions,
     args: &ExportArgs,
 ) -> Result<()> {
+    validate_export_paths(args)?;
     write_export_json(out, export, global, args)
 }
 

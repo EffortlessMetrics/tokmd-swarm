@@ -31,22 +31,16 @@ pub fn build_substrate(
         module_depth,
         ChildIncludeMode::ParentsOnly,
         Some(std::path::Path::new(repo_root)),
-    );
+    )?;
 
     // Normalize changed_files through the same path normalization used for file rows,
     // so both sides use identical path representation regardless of scan/git root differences.
     let strip_prefix = std::path::Path::new(repo_root);
-    let normalized_changed: Vec<String> = diff_range
-        .as_ref()
-        .map(|dr| {
-            dr.changed_files
-                .iter()
-                .map(|s| tokmd_model::normalize_path(std::path::Path::new(s), Some(strip_prefix)))
-                .collect()
-        })
-        .unwrap_or_default();
-    let changed_set: std::collections::BTreeSet<&str> =
-        normalized_changed.iter().map(|s| s.as_str()).collect();
+    let changed_set = diff_range
+        .iter()
+        .flat_map(|diff| &diff.changed_files)
+        .map(|s| tokmd_model::native_report_path(std::path::Path::new(s), Some(strip_prefix)))
+        .collect::<std::io::Result<std::collections::BTreeSet<_>>>()?;
 
     // Convert file rows to substrate files
     let files: Vec<SubstrateFile> = file_rows
@@ -152,6 +146,35 @@ mod tests {
             .map(|f| f.path.as_str())
             .collect();
         assert!(!non_diff.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn in_diff_marks_only_the_selected_native_filename() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        std::fs::create_dir(dir.path().join("panel"))?;
+        for path in [r"panel\item.rs", "panel/item.rs"] {
+            std::fs::write(dir.path().join(path), "fn item() {}\n")?;
+        }
+        let diff = DiffRange {
+            base: "base".into(),
+            head: "head".into(),
+            changed_files: vec![r"panel\item.rs".into()],
+            commit_count: 1,
+            insertions: 1,
+            deletions: 0,
+        };
+        let root = tokmd_types::validate_source_path(dir.path())?;
+        let substrate = build_substrate(root, &ScanOptions::default(), &[], 1, Some(diff))?;
+        assert_eq!(
+            substrate
+                .files
+                .iter()
+                .map(|f| (f.path.as_str(), f.in_diff))
+                .collect::<Vec<_>>(),
+            [("panel/item.rs", false), (r"panel\item.rs", true)]
+        );
+        Ok(())
     }
 
     #[test]

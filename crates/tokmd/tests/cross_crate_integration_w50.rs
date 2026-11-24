@@ -31,17 +31,17 @@ fn default_scan_options() -> ScanOptions {
     }
 }
 
-fn lang_report_collapse() -> LangReport {
+fn lang_report_collapse() -> std::io::Result<LangReport> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan fixture");
     create_lang_report(&langs, 0, false, ChildrenMode::Collapse)
 }
 
-fn lang_report_separate() -> LangReport {
+fn lang_report_separate() -> std::io::Result<LangReport> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan fixture");
     create_lang_report(&langs, 0, false, ChildrenMode::Separate)
 }
 
-fn export_data() -> ExportData {
+fn export_data() -> std::io::Result<ExportData> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan fixture");
     create_export_data(
         &langs,
@@ -85,8 +85,8 @@ fn default_export_args() -> ExportArgs {
 // ===========================================================================
 
 #[test]
-fn scan_model_format_markdown_has_table_header() {
-    let report = lang_report_collapse();
+fn scan_model_format_markdown_has_table_header() -> std::io::Result<()> {
+    let report = lang_report_collapse()?;
     let scan_opts = default_scan_options();
     let args = default_lang_args(TableFormat::Md);
     let mut buf = Vec::new();
@@ -100,11 +100,12 @@ fn scan_model_format_markdown_has_table_header() {
         output.contains("|**Total**|"),
         "Markdown must contain total row"
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_tsv_column_count() {
-    let report = lang_report_collapse();
+fn scan_model_format_tsv_column_count() -> std::io::Result<()> {
+    let report = lang_report_collapse()?;
     let scan_opts = default_scan_options();
     let args = default_lang_args(TableFormat::Tsv);
     let mut buf = Vec::new();
@@ -118,11 +119,12 @@ fn scan_model_format_tsv_column_count() {
             cols.len()
         );
     }
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_json_has_schema_version() {
-    let report = lang_report_collapse();
+fn scan_model_format_json_has_schema_version() -> std::io::Result<()> {
+    let report = lang_report_collapse()?;
     let scan_opts = default_scan_options();
     let args = default_lang_args(TableFormat::Json);
     let mut buf = Vec::new();
@@ -132,11 +134,12 @@ fn scan_model_format_json_has_schema_version() {
         v["schema_version"].as_u64().unwrap(),
         u64::from(SCHEMA_VERSION)
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_json_total_consistency() {
-    let report = lang_report_collapse();
+fn scan_model_format_json_total_consistency() -> std::io::Result<()> {
+    let report = lang_report_collapse()?;
     let row_code_sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, row_code_sum,
@@ -147,28 +150,32 @@ fn scan_model_format_json_total_consistency() {
         report.total.files, row_files_sum,
         "total.files must equal sum of row files values"
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_separate_has_more_or_equal_rows() {
-    let collapse = lang_report_collapse();
-    let separate = lang_report_separate();
+fn scan_model_format_separate_has_more_or_equal_rows() -> std::io::Result<()> {
+    let collapse = lang_report_collapse()?;
+    let separate = lang_report_separate()?;
     assert!(
         separate.rows.len() >= collapse.rows.len(),
         "Separate mode should produce >= rows than Collapse"
     );
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_collapse_children_mode_tag() {
-    let report = lang_report_collapse();
+fn scan_model_format_collapse_children_mode_tag() -> std::io::Result<()> {
+    let report = lang_report_collapse()?;
     assert_eq!(report.children, ChildrenMode::Collapse);
+    Ok(())
 }
 
 #[test]
-fn scan_model_format_separate_children_mode_tag() {
-    let report = lang_report_separate();
+fn scan_model_format_separate_children_mode_tag() -> std::io::Result<()> {
+    let report = lang_report_separate()?;
     assert_eq!(report.children, ChildrenMode::Separate);
+    Ok(())
 }
 
 // ===========================================================================
@@ -176,8 +183,8 @@ fn scan_model_format_separate_children_mode_tag() {
 // ===========================================================================
 
 #[test]
-fn export_csv_has_header_and_rows() {
-    let data = export_data();
+fn export_csv_has_header_and_rows() -> std::io::Result<()> {
+    let data = export_data()?;
     let args = default_export_args();
     let mut buf = Vec::new();
     tokmd_format::write_export_csv_to(&mut buf, &data, &args).unwrap();
@@ -191,11 +198,12 @@ fn export_csv_has_header_and_rows() {
         lines[0].contains("path"),
         "CSV header must contain 'path' column"
     );
+    Ok(())
 }
 
 #[test]
-fn export_all_paths_use_forward_slashes() {
-    let data = export_data();
+fn export_all_paths_use_forward_slashes() -> std::io::Result<()> {
+    let data = export_data()?;
     for row in &data.rows {
         assert!(
             !row.path.contains('\\'),
@@ -203,11 +211,12 @@ fn export_all_paths_use_forward_slashes() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_deterministic_sort_order() {
-    let data = export_data();
+fn export_deterministic_sort_order() -> std::io::Result<()> {
+    let data = export_data()?;
     for window in data.rows.windows(2) {
         let a = &window[0];
         let b = &window[1];
@@ -218,11 +227,12 @@ fn export_deterministic_sort_order() {
             a.path, a.code, b.path, b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_jsonl_one_object_per_line() {
-    let data = export_data();
+fn export_jsonl_one_object_per_line() -> std::io::Result<()> {
+    let data = export_data()?;
     let scan_opts = default_scan_options();
     let args = default_export_args();
     let mut buf = Vec::new();
@@ -233,6 +243,7 @@ fn export_jsonl_one_object_per_line() {
             .unwrap_or_else(|e| panic!("Each JSONL line must be valid JSON: {e}\nLine: {line}"));
         assert!(parsed.is_object(), "Each JSONL line must be a JSON object");
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -240,8 +251,8 @@ fn export_jsonl_one_object_per_line() {
 // ===========================================================================
 
 #[test]
-fn analysis_derived_report_has_totals() {
-    let data = export_data();
+fn analysis_derived_report_has_totals() -> std::io::Result<()> {
+    let data = export_data()?;
     let derived = derive_report(&data, None);
     assert!(
         derived.totals.files > 0,
@@ -251,22 +262,24 @@ fn analysis_derived_report_has_totals() {
         derived.totals.code > 0,
         "Derived totals must have non-zero code lines"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_density_is_valid_ratio() {
-    let data = export_data();
+fn analysis_density_is_valid_ratio() -> std::io::Result<()> {
+    let data = export_data()?;
     let derived = derive_report(&data, None);
     let ratio = derived.doc_density.total.ratio;
     assert!(
         (0.0..=1.0).contains(&ratio),
         "doc_density ratio must be in [0, 1], got {ratio}"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_cocomo_estimates_positive() {
-    let data = export_data();
+fn analysis_cocomo_estimates_positive() -> std::io::Result<()> {
+    let data = export_data()?;
     let derived = derive_report(&data, None);
     let cocomo = derived
         .cocomo
@@ -277,16 +290,18 @@ fn analysis_cocomo_estimates_positive() {
         cocomo.duration_months > 0.0,
         "COCOMO duration_months must be positive"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_integrity_hash_present() {
-    let data = export_data();
+fn analysis_integrity_hash_present() -> std::io::Result<()> {
+    let data = export_data()?;
     let derived = derive_report(&data, None);
     assert!(
         !derived.integrity.hash.is_empty(),
         "Integrity hash must be present"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -305,7 +320,7 @@ exclude = ["*.md"]
 }
 
 #[test]
-fn config_exclude_pattern_honored() {
+fn config_exclude_pattern_honored() -> std::io::Result<()> {
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
         config: ConfigMode::None,
@@ -313,13 +328,14 @@ fn config_exclude_pattern_honored() {
         ..Default::default()
     };
     let languages = scan(&[fixture_path()], &opts).expect("scan with excludes");
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
     let has_js = report.rows.iter().any(|r| r.lang == "JavaScript");
     assert!(!has_js, "JavaScript should be excluded by *.js pattern");
+    Ok(())
 }
 
 #[test]
-fn config_exclude_does_not_affect_other_langs() {
+fn config_exclude_does_not_affect_other_langs() -> std::io::Result<()> {
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
         config: ConfigMode::None,
@@ -327,12 +343,13 @@ fn config_exclude_does_not_affect_other_langs() {
         ..Default::default()
     };
     let languages = scan(&[fixture_path()], &opts).expect("scan with excludes");
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
     let has_rust = report.rows.iter().any(|r| r.lang == "Rust");
     assert!(
         has_rust,
         "Rust should still be present when only *.js excluded"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -549,9 +566,9 @@ fn receipt_export_flatten_data_at_top_level() {
 }
 
 #[test]
-fn receipts_implement_clone_debug_serde() {
+fn receipts_implement_clone_debug_serde() -> std::io::Result<()> {
     // Verify Clone + Debug + Serialize + Deserialize via round-trip.
-    let report = lang_report_collapse();
+    let report = lang_report_collapse()?;
     let cloned = report.clone();
     let debug_str = format!("{:?}", cloned);
     assert!(!debug_str.is_empty(), "Debug must produce output");
@@ -559,6 +576,7 @@ fn receipts_implement_clone_debug_serde() {
     let json = serde_json::to_string(&cloned).unwrap();
     let deser: LangReport = serde_json::from_str(&json).unwrap();
     assert_eq!(deser.total.code, report.total.code);
+    Ok(())
 }
 
 // ===========================================================================
@@ -566,23 +584,24 @@ fn receipts_implement_clone_debug_serde() {
 // ===========================================================================
 
 #[test]
-fn determinism_identical_json_across_runs() {
+fn determinism_identical_json_across_runs() -> std::io::Result<()> {
     let opts = default_scan_options();
     let path = fixture_path();
 
     let langs1 = scan(std::slice::from_ref(&path), &opts).unwrap();
-    let report1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse);
+    let report1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse)?;
 
     let langs2 = scan(std::slice::from_ref(&path), &opts).unwrap();
-    let report2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse);
+    let report2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse)?;
 
     let json1 = serde_json::to_string(&report1).unwrap();
     let json2 = serde_json::to_string(&report2).unwrap();
     assert_eq!(json1, json2, "Same scan must produce byte-identical JSON");
+    Ok(())
 }
 
 #[test]
-fn determinism_export_identical_across_runs() {
+fn determinism_export_identical_across_runs() -> std::io::Result<()> {
     let opts = default_scan_options();
     let path = fixture_path();
 
@@ -595,7 +614,7 @@ fn determinism_export_identical_across_runs() {
         Some(path.as_path()),
         0,
         0,
-    );
+    )?;
 
     let langs2 = scan(std::slice::from_ref(&path), &opts).unwrap();
     let data2 = create_export_data(
@@ -606,16 +625,17 @@ fn determinism_export_identical_across_runs() {
         Some(path.as_path()),
         0,
         0,
-    );
+    )?;
 
     let json1 = serde_json::to_string(&data1).unwrap();
     let json2 = serde_json::to_string(&data2).unwrap();
     assert_eq!(json1, json2, "Same export must produce byte-identical JSON");
+    Ok(())
 }
 
 #[test]
-fn determinism_no_backslash_in_paths() {
-    let data = export_data();
+fn determinism_no_backslash_in_paths() -> std::io::Result<()> {
+    let data = export_data()?;
     let json = serde_json::to_string_pretty(&data).unwrap();
     // Check the raw JSON string for backslashes that are NOT escape sequences
     for line in json.lines() {
@@ -626,11 +646,12 @@ fn determinism_no_backslash_in_paths() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn determinism_sort_stability_with_tiebreak() {
-    let data = export_data();
+fn determinism_sort_stability_with_tiebreak() -> std::io::Result<()> {
+    let data = export_data()?;
     // Collect paths grouped by code count to verify tie-breaking by name.
     let mut prev_code = usize::MAX;
     let mut prev_path = String::new();
@@ -653,18 +674,20 @@ fn determinism_sort_stability_with_tiebreak() {
         prev_code = row.code;
         prev_path = row.path.clone();
     }
+    Ok(())
 }
 
 #[test]
-fn determinism_module_report_stable() {
+fn determinism_module_report_stable() -> std::io::Result<()> {
     let opts = default_scan_options();
     let path = fixture_path();
     let langs = scan(&[path], &opts).unwrap();
 
-    let r1 = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
-    let r2 = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
+    let r1 = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
+    let r2 = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
 
     let j1 = serde_json::to_string(&r1).unwrap();
     let j2 = serde_json::to_string(&r2).unwrap();
     assert_eq!(j1, j2, "Module report must be deterministic");
+    Ok(())
 }

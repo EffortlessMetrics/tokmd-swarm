@@ -34,7 +34,6 @@ pub(super) fn analysis_roots(source: &AnalysisSource) -> Vec<PathBuf> {
     let roots: Vec<PathBuf> = source
         .inputs
         .iter()
-        .map(|input| input.trim())
         .filter(|input| !input.is_empty())
         .map(PathBuf::from)
         .collect();
@@ -92,6 +91,31 @@ pub(super) fn collect_required_files(
     }
 }
 
+#[cfg(unix)]
+pub(super) fn check_enricher_paths(
+    export: &tokmd_types::ExportData,
+    files: Option<&[PathBuf]>,
+) -> anyhow::Result<()> {
+    let paths = export.rows.iter().map(|row| row.path.as_str());
+    // Native selected files have already passed validate_source_path.
+    let files = files.into_iter().flatten().filter_map(|path| path.to_str());
+    if let Some(component) = paths
+        .chain(files)
+        .flat_map(|path| path.split('/'))
+        .find(|part| part.contains('\\'))
+    {
+        let label = if component.len() <= 255 {
+            format!("{component:?}")
+        } else {
+            format!("with BLAKE3 {}", blake3::hash(component.as_bytes()))
+        };
+        anyhow::bail!(
+            "Unsupported source path for analysis: literal backslash in component {label}. Rename the component and retry"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(feature = "walk")]
 struct ScopedAnalysisRoot {
     absolute: PathBuf,
@@ -147,6 +171,9 @@ fn collect_scoped_files(
     let mut files: Vec<PathBuf> = files.into_iter().collect();
     if let Some(limit) = max_files {
         files.truncate(limit);
+    }
+    for path in &files {
+        tokmd_scan::validate_source_path(path)?;
     }
     Ok(files)
 }
@@ -209,11 +236,15 @@ mod tests {
 
     #[test]
     fn analysis_roots_use_source_inputs_for_ad_hoc_scans() {
-        let source = source_with_inputs(&["src", "README.md"]);
+        let source = source_with_inputs(&["src", "\tsrc", "README.md\n"]);
 
         assert_eq!(
             analysis_roots(&source),
-            vec![PathBuf::from("src"), PathBuf::from("README.md")]
+            vec![
+                PathBuf::from("src"),
+                PathBuf::from("\tsrc"),
+                PathBuf::from("README.md\n")
+            ]
         );
     }
 

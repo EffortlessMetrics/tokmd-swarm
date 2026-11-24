@@ -415,6 +415,9 @@ pub fn snapshot_from_entries(
         .add_paths(&admitted_paths)
         .map_err(|err| match err {
             SnapshotError::Read { path, .. } => ArchiveError::Capture { name: path },
+            other => ArchiveError::Capture {
+                name: other.to_string(),
+            },
         })?;
     Ok(builder.build())
 }

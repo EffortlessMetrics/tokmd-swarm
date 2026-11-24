@@ -300,11 +300,22 @@ fn redact_all_hides_filenames_and_modules_in_export() {
     let scan = scan_for(&dir);
     let export = ExportSettings {
         redact: RedactMode::All,
+        module_roots: vec![r"literal\root".into(), "literal/root".into()],
         ..Default::default()
     };
 
     let receipt = export_workflow(&scan, &export).unwrap();
     assert!(!receipt.data.rows.is_empty());
+    assert_eq!(receipt.args.module_roots, receipt.data.module_roots);
+    assert_eq!(receipt.args.module_roots.len(), 2);
+    assert_ne!(receipt.args.module_roots[0], receipt.args.module_roots[1]);
+    assert!(
+        receipt
+            .args
+            .module_roots
+            .iter()
+            .all(|root| root.len() == 16)
+    );
 
     for row in &receipt.data.rows {
         assert!(

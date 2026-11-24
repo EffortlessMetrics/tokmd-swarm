@@ -386,3 +386,31 @@ fn write_module_json_to_file_with_redact_paths_does_not_hash_module_names() {
         "RedactMode::Paths must not hash module identifiers: {row_modules:?}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn unsupported_input_or_strip_prefix_keeps_existing_export_intact() -> anyhow::Result<()> {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = TempDir::new()?;
+    let output = dir.path().join("receipt.json");
+    fs::write(&output, b"previous receipt")?;
+    let raw = PathBuf::from(OsStr::from_bytes(b"path-\xff"));
+
+    for (paths, strip_prefix) in [
+        (vec![raw.clone()], None),
+        (vec![PathBuf::from(".")], Some(raw)),
+    ] {
+        let mut args = export_args(ExportFormat::Json, Some(output.clone()));
+        args.paths = paths;
+        args.strip_prefix = strip_prefix;
+        args.meta = true;
+        let err = write_export(&sample_export_data(), &ScanOptions::default(), &args)
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("unsupported source path unexpectedly succeeded"))?;
+        assert!(err.to_string().contains("706174682dff"), "{err}");
+        assert_eq!(fs::read(&output)?, b"previous receipt");
+    }
+    Ok(())
+}

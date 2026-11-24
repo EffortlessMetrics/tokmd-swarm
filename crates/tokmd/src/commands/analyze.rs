@@ -72,15 +72,22 @@ pub(crate) fn build_receipt(
     let granularity = args.granularity.unwrap_or(cli::ImportGranularity::Module);
 
     progress.set_message("Loading export data...");
+    let input_labels = args
+        .inputs
+        .iter()
+        .map(|path| tokmd_types::validate_source_path(path).map(str::to_owned))
+        .collect::<Result<Vec<_>, _>>()?;
     let bundle = export_bundle::load_export_from_inputs(&args.inputs, global)?;
+    let export_path = bundle
+        .export_path
+        .as_deref()
+        .map(tokmd_types::validate_source_path)
+        .transpose()?
+        .map(str::to_owned);
     let source = analysis_types::AnalysisSource {
-        inputs: args
-            .inputs
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect(),
-        export_path: bundle.export_path.as_ref().map(|p| p.display().to_string()),
-        base_receipt_path: bundle.export_path.as_ref().map(|p| p.display().to_string()),
+        inputs: input_labels,
+        export_path: export_path.clone(),
+        base_receipt_path: export_path,
         export_schema_version: bundle.meta.schema_version,
         export_generated_at_ms: bundle.meta.generated_at_ms,
         base_signature: None,

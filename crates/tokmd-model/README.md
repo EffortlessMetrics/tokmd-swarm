@@ -17,6 +17,11 @@ Raw scan results are not stable enough yet for output, diffing, or receipt gener
 ## API / usage notes
 - This crate owns aggregation, sorting, filtering, and path normalization.
 - It turns `tokei::Languages` plus optional in-memory inputs into tokmd receipts.
+- Model builders that accept native report paths return `std::io::Result`.
+  Propagate that result before emitting a receipt. An unsupported encoding
+  or a prefix that makes distinct sources share a label produces an error.
+- `native_report_path` renders native path components for file rows.
+  `normalize_path` accepts portable mixed-separator text.
 - `src/lib.rs` shows the exact report-building helpers and invariants.
 
 ## Go deeper

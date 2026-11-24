@@ -446,7 +446,7 @@ When using `--format json`, the output is a single JSON object:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `type` | `string` | Always `"row"` for data rows (JSONL only). |
-| `path` | `string` | Normalized file path (forward slashes). |
+| `path` | `string` | Source path with native directory separators rendered as `/`. |
 | `module` | `string` | Module key based on configured roots/depth. |
 | `lang` | `string` | Detected language. |
 | `kind` | `string` | `"parent"` for physical files, `"child"` for embedded code blocks. |
@@ -456,6 +456,21 @@ When using `--format json`, the output is a single JSON object:
 | `lines` | `integer` | Total lines (code + comments + blanks). |
 | `bytes` | `integer` | File size in bytes. |
 | `tokens` | `integer` | Estimated token count. |
+
+Use the decoded `path` field for joins. On Unix a backslash can occur
+inside a filename. A file named `a\b.rs` and the file `b.rs` in directory
+`a` have distinct paths, module keys, and redacted path hashes. JSON
+escapes a literal backslash as `\\`. CSV uses its own field quoting.
+Neither changes the decoded filename. Unicode composition is preserved.
+
+An unsupported native path stops source export before a complete receipt is
+written. The diagnostic identifies the first non-UTF-8 component of the
+reported path using hexadecimal native encoded bytes (raw bytes on Unix).
+It omits the containing path and caps the sample at 768 bytes for oversized
+in-memory inputs. Rename the component to valid UTF-8 and retry. A literal
+Unicode replacement character (U+FFFD) is a valid filename character.
+If distinct source identities would share a label after stripping a prefix,
+use a common root or a different prefix and retry.
 
 ### Redaction
 

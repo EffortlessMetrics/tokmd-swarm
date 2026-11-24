@@ -696,3 +696,107 @@ fn create_file_symlink(src: &std::path::Path, dst: &std::path::Path) -> std::io:
 fn create_file_symlink(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::os::windows::fs::symlink_file(src, dst)
 }
+
+#[cfg(all(unix, feature = "walk"))]
+#[test]
+fn supply_preserves_asset_identities_and_reports_unrepresentable_native_names() -> anyhow::Result<()>
+{
+    use anyhow::Context;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempdir()?;
+    let root = dir.path();
+    std::fs::create_dir(root.join("literal"))?;
+    std::fs::write(root.join("literal/logo.png"), [1; 5])?;
+    std::fs::write(root.join(r"literal\logo.png"), [2; 7])?;
+    std::fs::write(root.join("asset-�.png"), [3; 3])?;
+
+    let analyze = |input: &OsStr, preset: &str| {
+        Command::new(env!("CARGO_BIN_EXE_tokmd"))
+            .current_dir(root)
+            .arg("analyze")
+            .arg(input)
+            .args(["--preset", preset, "--format", "json", "--no-git"])
+            .output()
+    };
+    let supply = || -> anyhow::Result<Value> {
+        let output = analyze(OsStr::new("."), "supply")?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_slice(&output.stdout)?)
+    };
+
+    let receipt = supply()?;
+    assert_eq!(receipt.get("status").context("missing status")?, "complete");
+    let assets = receipt.get("assets").context("missing assets")?;
+    assert_eq!(assets.get("total_files").context("missing total_files")?, 3);
+    assert_eq!(
+        assets.get("total_bytes").context("missing total_bytes")?,
+        15
+    );
+    let files = assets
+        .get("top_files")
+        .context("missing top_files")?
+        .as_array()
+        .context("missing asset files")?;
+    assert_eq!(files.len(), 3);
+    for (file, (path, bytes)) in files.iter().zip([
+        (r"literal\logo.png", 7),
+        ("literal/logo.png", 5),
+        ("asset-�.png", 3),
+    ]) {
+        assert_eq!(file.get("path").context("missing path")?, path);
+        assert_eq!(file.get("bytes").context("missing bytes")?, bytes);
+    }
+
+    let health = analyze(OsStr::new("."), "health")?;
+    assert!(!health.status.success());
+    assert!(health.stdout.is_empty());
+    let error = String::from_utf8(health.stderr)?;
+    assert!(
+        error.contains("literal backslash") && error.contains("retry"),
+        "{error}"
+    );
+
+    for (name, expected_hex) in [
+        (b"asset-\xff.png".as_slice(), "61737365742dff2e706e67"),
+        (b"asset-\xfe.png".as_slice(), "61737365742dfe2e706e67"),
+    ] {
+        let path = root.join(OsStr::from_bytes(name));
+        std::fs::write(&path, [4])?;
+        let receipt = supply()?;
+        assert_eq!(receipt.get("status").context("missing status")?, "partial");
+        assert!(receipt.get("assets").is_none_or(Value::is_null));
+        let warnings = receipt
+            .get("warnings")
+            .context("missing warnings")?
+            .as_array()
+            .context("missing warnings")?;
+        assert!(
+            warnings.iter().any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains(expected_hex)
+                    && text.contains("retry")
+                    && !text.contains(&root.display().to_string()))),
+            "{warnings:?}"
+        );
+        std::fs::remove_file(path)?;
+    }
+
+    // An existing export file bypasses the live scan. Its source label must be representable too.
+    let export = OsStr::from_bytes(b"\xff.json");
+    std::fs::write(root.join(export), "[]")?;
+    let output = analyze(export, "supply")?;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error = String::from_utf8(output.stderr)?;
+    assert!(
+        error.contains("ff2e6a736f6e") && error.contains("retry"),
+        "{error}"
+    );
+    Ok(())
+}

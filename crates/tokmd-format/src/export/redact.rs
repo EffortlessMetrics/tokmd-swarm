@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use tokmd_types::{FileRow, RedactMode};
 
-use crate::{redact_path, short_hash};
+use crate::redact::{receipt_path_hash, redact_receipt_path};
 
 pub(super) fn redact_rows(
     rows: &[FileRow],
@@ -16,7 +16,7 @@ pub(super) fn redact_rows(
     rows.iter().map(move |r| match mode {
         RedactMode::None => Cow::Borrowed(r),
         RedactMode::Paths => Cow::Owned(FileRow {
-            path: redact_path(&r.path),
+            path: redact_receipt_path(&r.path),
             module: r.module.clone(),
             lang: r.lang.clone(),
             kind: r.kind,
@@ -28,8 +28,8 @@ pub(super) fn redact_rows(
             tokens: r.tokens,
         }),
         RedactMode::All => Cow::Owned(FileRow {
-            path: redact_path(&r.path),
-            module: short_hash(&r.module),
+            path: redact_receipt_path(&r.path),
+            module: receipt_path_hash(&r.module),
             lang: r.lang.clone(),
             kind: r.kind,
             code: r.code,

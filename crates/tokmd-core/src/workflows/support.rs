@@ -65,25 +65,32 @@ pub(crate) fn collect_pure_in_memory_rows(
         module_depth,
         children,
         &config,
-    );
+    )?;
     Ok((paths, rows))
 }
 
 pub(crate) fn strip_virtual_export_prefix(
-    rows: Vec<FileRow>,
+    mut rows: Vec<FileRow>,
     strip_prefix: &str,
     module_roots: &[String],
     module_depth: usize,
-) -> Vec<FileRow> {
-    rows.into_iter()
-        .map(|mut row| {
-            let normalized =
-                tokmd_model::normalize_path(Path::new(&row.path), Some(Path::new(strip_prefix)));
-            row.path = normalized.clone();
-            row.module = tokmd_model::module_key(&normalized, module_roots, module_depth);
-            row
-        })
-        .collect()
+) -> Result<Vec<FileRow>> {
+    let mut origins = std::collections::BTreeMap::new();
+    for row in &mut rows {
+        let label =
+            tokmd_model::native_report_path(Path::new(&row.path), Some(Path::new(strip_prefix)))?;
+        let origin = origins
+            .entry(label.clone())
+            .or_insert_with(|| row.path.clone());
+        anyhow::ensure!(
+            origin == &row.path,
+            "Distinct source paths have the same receipt path. Change the strip prefix and retry"
+        );
+        row.module =
+            tokmd_model::module_key::module_key_from_normalized(&label, module_roots, module_depth);
+        row.path = label;
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]

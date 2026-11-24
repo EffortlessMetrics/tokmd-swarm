@@ -57,9 +57,10 @@ pub use tokmd_packets::{
     preset_title, render_packet_bundle_markdown, render_packet_preset_markdown, validate_manifest,
 };
 
-fn redact_module_roots(roots: &[String], redact: RedactMode) -> Vec<String> {
+/// Apply receipt path hashing to module-root keys when all identifiers are redacted.
+pub fn redact_module_roots(roots: &[String], redact: RedactMode) -> Vec<String> {
     if redact == RedactMode::All {
-        roots.iter().map(|r| short_hash(r)).collect()
+        roots.iter().map(|r| redact::receipt_path_hash(r)).collect()
     } else {
         roots.to_vec()
     }
@@ -88,10 +89,17 @@ mod tests {
     }
 
     #[test]
-    fn normalize_scan_input_backslash_to_forward() {
+    fn normalize_scan_input_backslash_follows_native_semantics() {
         let p = Path::new("src\\lib.rs");
         let normalized = normalize_scan_input(p);
-        assert_eq!(normalized, "src/lib.rs");
+        assert_eq!(
+            normalized,
+            if cfg!(windows) {
+                "src/lib.rs"
+            } else {
+                r"src\lib.rs"
+            }
+        );
     }
 
     #[test]
@@ -110,6 +118,7 @@ mod tests {
 
     proptest! {
         #[test]
+        #[cfg(windows)]
         fn normalize_scan_input_no_backslash(s in "[a-zA-Z0-9_/\\\\.]+") {
             let p = Path::new(&s);
             let normalized = normalize_scan_input(p);

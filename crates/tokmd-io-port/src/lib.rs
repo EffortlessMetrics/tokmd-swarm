@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use tokmd_types::{UnsupportedSourcePath, validate_source_path};
 
 #[cfg(feature = "archive")]
 pub mod archive;
@@ -191,22 +192,16 @@ impl ReadFs for MemFs {
 // archive ingestion, no serialized format). The surface may change until a
 // real consumer promotes it; do not treat it as a stable support promise.
 
-/// Normalize a path to the forward-slash rule shared with `tokmd-model`.
-///
-/// `tokmd-model::normalize_path` is the canonical rule, but it lives in a
-/// higher tier; this tier-0 crate mirrors the core of that rule (backslash to
-/// forward slash, strip a leading `./`, trim leading `/`) without taking a
-/// dependency on `tokmd-model`.
-fn normalize_snapshot_path(path: &Path) -> String {
-    let raw = path.to_string_lossy();
+// The root is a portable display label. File keys instead use the native
+// provider path syntax, so a legal Unix backslash stays inside its component.
+fn snapshot_root_label(raw: &str) -> String {
     let owned;
-    let mut slice: &str = if raw.contains('\\') {
+    let mut slice = if raw.contains('\\') {
         owned = raw.replace('\\', "/");
         &owned
     } else {
-        &raw
+        raw
     };
-
     if let Some(stripped) = slice.strip_prefix("./") {
         slice = stripped;
     }
@@ -215,6 +210,27 @@ fn normalize_snapshot_path(path: &Path) -> String {
         slice = stripped;
     }
     slice.trim_start_matches('/').to_string()
+}
+
+fn source_key(path: &Path) -> Result<String, UnsupportedSourcePath> {
+    use std::path::Component;
+
+    let mut key = String::new();
+    for component in path.components() {
+        if matches!(component, Component::CurDir | Component::RootDir) {
+            continue;
+        }
+        let name = validate_source_path(Path::new(component.as_os_str()))?;
+        if !key.is_empty() {
+            key.push('/');
+        }
+        if cfg!(windows) && name.contains('\\') {
+            key.push_str(&name.replace('\\', "/"));
+        } else {
+            key.push_str(name);
+        }
+    }
+    Ok(key)
 }
 
 /// A single provider-agnostic file entry: a normalized forward-slash path plus
@@ -254,6 +270,10 @@ impl VirtualFile {
 /// EXPERIMENTAL: part of the repo-snapshot seam (see module note).
 #[derive(Debug)]
 pub enum SnapshotError<E> {
+    /// A source name cannot be represented by the UTF-8 snapshot.
+    UnsupportedPath(UnsupportedSourcePath),
+    /// Two different provider paths would occupy the same snapshot key.
+    ConflictingPaths,
     /// Reading an in-scope path through the provider failed.
     Read {
         /// The normalized path that failed to read.
@@ -266,6 +286,11 @@ pub enum SnapshotError<E> {
 impl<E: std::fmt::Display> std::fmt::Display for SnapshotError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SnapshotError::UnsupportedPath(error) => error.fmt(f),
+            SnapshotError::ConflictingPaths => write!(
+                f,
+                "Distinct source paths share a snapshot key. Supply paths relative to the same root and retry"
+            ),
             SnapshotError::Read { path, source } => {
                 write!(f, "failed to read snapshot entry '{path}': {source}")
             }
@@ -276,6 +301,8 @@ impl<E: std::fmt::Display> std::fmt::Display for SnapshotError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for SnapshotError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            SnapshotError::UnsupportedPath(error) => Some(error),
+            SnapshotError::ConflictingPaths => None,
             SnapshotError::Read { source, .. } => Some(source),
         }
     }
@@ -299,7 +326,7 @@ impl RepoSnapshot {
     pub fn builder<F: ReadFs>(fs: &F, root: impl AsRef<Path>) -> RepoSnapshotBuilder<'_, F> {
         RepoSnapshotBuilder {
             fs,
-            root: normalize_snapshot_path(root.as_ref()),
+            root: snapshot_root_label(&root.as_ref().to_string_lossy()),
             files: BTreeMap::new(),
         }
     }
@@ -321,13 +348,12 @@ impl RepoSnapshot {
 
     /// Whether a normalized path is present in the snapshot.
     pub fn contains(&self, path: impl AsRef<Path>) -> bool {
-        self.files
-            .contains_key(&normalize_snapshot_path(path.as_ref()))
+        self.get(path).is_some()
     }
 
     /// Look up a captured entry by path.
     pub fn get(&self, path: impl AsRef<Path>) -> Option<&VirtualFile> {
-        self.files.get(&normalize_snapshot_path(path.as_ref()))
+        self.files.get(&source_key(path.as_ref()).ok()?)
     }
 
     /// Iterate captured entries in deterministic (sorted-path) order.
@@ -348,7 +374,7 @@ impl RepoSnapshot {
 pub struct RepoSnapshotBuilder<'fs, F: ReadFs> {
     fs: &'fs F,
     root: String,
-    files: BTreeMap<String, VirtualFile>,
+    files: BTreeMap<String, (PathBuf, Vec<u8>)>,
 }
 
 impl<F: ReadFs> RepoSnapshotBuilder<'_, F> {
@@ -362,7 +388,12 @@ impl<F: ReadFs> RepoSnapshotBuilder<'_, F> {
         path: impl AsRef<Path>,
     ) -> Result<&mut Self, SnapshotError<F::Error>> {
         let path = path.as_ref();
-        let normalized = normalize_snapshot_path(path);
+        let normalized = source_key(path).map_err(SnapshotError::UnsupportedPath)?;
+        if let Some((previous, _)) = self.files.get(&normalized)
+            && previous != path
+        {
+            return Err(SnapshotError::ConflictingPaths);
+        }
         let bytes = self
             .fs
             .read_bytes(path)
@@ -370,13 +401,7 @@ impl<F: ReadFs> RepoSnapshotBuilder<'_, F> {
                 path: normalized.clone(),
                 source,
             })?;
-        self.files.insert(
-            normalized.clone(),
-            VirtualFile {
-                path: normalized,
-                bytes,
-            },
-        );
+        self.files.insert(normalized, (path.to_path_buf(), bytes));
         Ok(self)
     }
 
@@ -395,7 +420,11 @@ impl<F: ReadFs> RepoSnapshotBuilder<'_, F> {
     pub fn build(self) -> RepoSnapshot {
         RepoSnapshot {
             root: self.root,
-            files: self.files,
+            files: self
+                .files
+                .into_iter()
+                .map(|(path, (_, bytes))| (path.clone(), VirtualFile { path, bytes }))
+                .collect(),
         }
     }
 }

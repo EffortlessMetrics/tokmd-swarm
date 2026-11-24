@@ -79,6 +79,21 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
         &mut warnings,
     );
     let file_slice = files.as_deref();
+    // Some enrichers still join by labels that treat either slash as a separator.
+    // Supply's native asset and lockfile rows can carry a literal Unix backslash.
+    #[cfg(all(unix, feature = "effort"))]
+    let effort_requested = req.effort.is_some();
+    #[cfg(all(unix, not(feature = "effort")))]
+    let effort_requested = false;
+    #[cfg(unix)]
+    if effort_requested
+        || include_git
+        || req.near_dup
+        || plan.archetype
+        || (plan.needs_files() && req.preset != AnalysisPreset::Supply)
+    {
+        files::check_enricher_paths(&ctx.export, file_slice)?;
+    }
 
     let mut outputs = AnalysisOutputs::default();
     enrichers::inventory::run(&ctx.root, file_slice, &plan, &mut outputs, &mut warnings);

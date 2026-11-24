@@ -2,43 +2,40 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::redact::{redact_path, short_hash};
+use crate::redact::{receipt_path_hash, redact_receipt_path, short_hash};
 use tokmd_settings::ScanOptions;
 use tokmd_types::{RedactMode, ScanArgs};
 
-/// Normalize a path to forward slashes and strip leading `./` segments.
-#[must_use]
-pub fn normalize_scan_input(p: &Path) -> String {
-    let mut normalized = normalize_rel_path(&p.display().to_string());
-
-    while let Some(stripped) = normalized.strip_prefix("./") {
-        normalized = stripped.to_string();
-    }
-
-    if normalized.is_empty() {
-        ".".to_string()
+/// Render an admitted native path with `/` as its directory separator.
+fn native_path_label(p: &Path) -> String {
+    let path = p.to_string_lossy();
+    if std::path::MAIN_SEPARATOR == '\\' {
+        path.replace('\\', "/")
     } else {
-        normalized
+        path.into_owned()
     }
 }
 
-/// Normalize a relative path for matching:
-/// - converts `\` to `/`
-/// - strips all leading `./` segments
-#[must_use]
-fn normalize_rel_path(path: &str) -> String {
-    let normalized = if path.contains('\\') {
-        path.replace('\\', "/")
+/// Render export strip-prefix metadata using the same native path identity as input labels.
+pub fn export_strip_prefix_label(path: &Path, redact: bool) -> String {
+    let label = native_path_label(path);
+    if redact {
+        receipt_path_hash(&label)
     } else {
-        path.to_string()
-    };
-
-    let mut normalized = normalized.as_str();
-    while let Some(rest) = normalized.strip_prefix("./") {
-        normalized = rest;
+        label
     }
+}
 
-    normalized.to_string()
+/// Normalize native directory separators and strip leading `./` segments.
+#[must_use]
+pub fn normalize_scan_input(p: &Path) -> String {
+    let label = native_path_label(p);
+    let normalized = label.trim_start_matches("./");
+    if normalized.is_empty() {
+        ".".to_string()
+    } else {
+        normalized.to_string()
+    }
 }
 
 /// Construct `ScanArgs` with optional path and exclusion redaction.
@@ -65,7 +62,7 @@ pub fn scan_args(paths: &[PathBuf], global: &ScanOptions, redact: Option<RedactM
     };
 
     if should_redact {
-        args.paths = args.paths.iter().map(|p| redact_path(p)).collect();
+        args.paths = args.paths.iter().map(|p| redact_receipt_path(p)).collect();
     }
 
     args
@@ -100,6 +97,27 @@ mod tests {
         assert_ne!(args.paths[0], "src/lib.rs");
         assert_ne!(args.excluded[0], "target");
         assert!(args.excluded_redacted);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_input_and_strip_prefix_labels_preserve_literal_backslashes() {
+        let paths = [
+            PathBuf::from(r"literal\name.rs"),
+            PathBuf::from("literal/name.rs"),
+        ];
+        let plain = scan_args(&paths, &ScanOptions::default(), None);
+        assert_eq!(plain.paths, [r"literal\name.rs", "literal/name.rs"]);
+        let redacted = scan_args(&paths, &ScanOptions::default(), Some(RedactMode::Paths));
+        assert_ne!(redacted.paths[0], redacted.paths[1]);
+        assert_ne!(
+            export_strip_prefix_label(&paths[0], true),
+            export_strip_prefix_label(&paths[1], true)
+        );
+        assert_eq!(
+            export_strip_prefix_label(&paths[0], false),
+            r"literal\name.rs"
+        );
     }
 
     #[test]
@@ -188,6 +206,7 @@ mod tests {
                     path_bufs.iter().map(|p| normalize_scan_input(p)).collect();
                 prop_assert_eq!(&args.paths, &expected_paths);
                 prop_assert_eq!(&args.excluded, &excluded);
+                #[cfg(windows)]
                 for path in &args.paths {
                     prop_assert!(!path.contains('\\'));
                 }

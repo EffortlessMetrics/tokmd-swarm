@@ -31,6 +31,7 @@ use crate::roots::{rebase_report_paths, validated_scan_roots};
 pub use tokmd_io_port::archive::{ArchiveError, ArchiveLimits};
 use tokmd_settings::ScanOptions;
 use tokmd_types::ConfigMode;
+pub use tokmd_types::validate_source_path;
 
 /// Scans a set of paths and computes line counts for each language found.
 ///
@@ -63,6 +64,9 @@ use tokmd_types::ConfigMode;
 /// ```
 pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
     let cfg = config_from_scan_options(args);
+    for path in paths {
+        validate_source_path(path)?;
+    }
     let roots = validated_scan_roots(paths)?;
     let ignores = ignored_patterns(args, &roots);
     let ignore_refs: Vec<_> = ignores.iter().map(String::as_str).collect();
@@ -75,6 +79,17 @@ pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
     languages.get_statistics(&scan_paths, &ignore_refs, &cfg);
     ensure_complete_scan(&languages)?;
     rebase_report_paths(&mut languages, &roots);
+
+    // Select the same diagnostic regardless of tokei's parallel report order.
+    let unsupported = languages
+        .values()
+        .flat_map(|lang| lang.reports.iter().chain(lang.children.values().flatten()))
+        .map(|report| report.name.as_path())
+        .filter(|path| path.to_str().is_none())
+        .min();
+    if let Some(path) = unsupported {
+        validate_source_path(path)?;
+    }
 
     Ok(languages)
 }

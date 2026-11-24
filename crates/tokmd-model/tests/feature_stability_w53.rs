@@ -71,24 +71,27 @@ fn module_key_deep_path() {
 // ── Empty-input model building ────────────────────────────────────────
 
 #[test]
-fn create_lang_report_empty_languages() {
+fn create_lang_report_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }
 
 #[test]
-fn create_module_report_empty_languages() {
+fn create_module_report_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &["crates".into()], 2, ChildIncludeMode::Separate, 0);
+    let report =
+        create_module_report(&langs, &["crates".into()], 2, ChildIncludeMode::Separate, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 #[test]
-fn create_export_data_empty_languages() {
+fn create_export_data_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
     let data = create_export_data(
         &langs,
@@ -98,12 +101,13 @@ fn create_export_data_empty_languages() {
         None,
         0,
         0,
-    );
+    )?;
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn collect_file_rows_empty_languages() {
+fn collect_file_rows_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
     let rows = collect_file_rows(
         &langs,
@@ -111,12 +115,14 @@ fn collect_file_rows_empty_languages() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     assert!(rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn unique_parent_file_count_empty() {
+fn unique_parent_file_count_empty() -> std::io::Result<()> {
     let langs = Languages::new();
-    assert_eq!(unique_parent_file_count(&langs), 0);
+    assert_eq!(unique_parent_file_count(&langs)?, 0);
+    Ok(())
 }

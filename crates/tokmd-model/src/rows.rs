@@ -27,6 +27,7 @@ struct Agg {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Key<'a> {
     path: String,
+    source: &'a Path,
     lang: &'a str,
     kind: FileKind,
 }
@@ -211,24 +212,41 @@ fn insert_row<'a>(
     entry.1.tokens += tokens;
 }
 
-fn rows_from_map<'a>(map: BTreeMap<Key<'a>, (String, Agg)>) -> Vec<FileRow> {
-    map.into_iter()
-        .map(|(key, (module, agg))| {
-            let lines = agg.code + agg.comments + agg.blanks;
-            FileRow {
-                path: key.path,
-                module,
-                lang: key.lang.to_string(),
-                kind: key.kind,
-                code: agg.code,
-                comments: agg.comments,
-                blanks: agg.blanks,
-                lines,
-                bytes: agg.bytes,
-                tokens: agg.tokens,
-            }
-        })
-        .collect()
+/// Map iteration groups every contribution with the same exported label together.
+/// Distinct native paths must never share a label, even across different languages.
+fn rows_from_map<'a>(map: BTreeMap<Key<'a>, (String, Agg)>) -> std::io::Result<Vec<FileRow>> {
+    let mut rows: Vec<FileRow> = Vec::with_capacity(map.len());
+    let mut previous_source = None;
+    for (key, (module, agg)) in map {
+        if rows.last().is_some_and(|row| row.path == key.path)
+            && previous_source != Some(key.source)
+        {
+            return Err(ambiguous_label());
+        }
+        previous_source = Some(key.source);
+        let lines = agg.code + agg.comments + agg.blanks;
+        rows.push(FileRow {
+            path: key.path,
+            module,
+            lang: key.lang.to_string(),
+            kind: key.kind,
+            code: agg.code,
+            comments: agg.comments,
+            blanks: agg.blanks,
+            lines,
+            bytes: agg.bytes,
+            tokens: agg.tokens,
+        });
+    }
+    sort_file_rows(&mut rows);
+    Ok(rows)
+}
+
+fn ambiguous_label() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "Distinct source paths have the same receipt path. Use a common scan root or change the strip prefix and retry",
+    )
 }
 
 /// Collect `FileRow`s directly from ordered in-memory inputs.
@@ -241,16 +259,16 @@ pub fn collect_in_memory_file_rows(
     module_depth: usize,
     children: ChildIncludeMode,
     config: &Config,
-) -> Vec<FileRow> {
+) -> std::io::Result<Vec<FileRow>> {
     let mut map = BTreeMap::new();
 
     for input in inputs {
+        let path = render_source_path(input.logical_path, None)?;
         let Some(lang_type) = detect_in_memory_language(input.logical_path, input.bytes, config)
         else {
             continue;
         };
 
-        let path = normalize_path(input.logical_path, None);
         let module = module_key_from_normalized(&path, module_roots, module_depth);
         let stats = lang_type.parse_from_slice(input.bytes, config);
         let summary = stats.summarise();
@@ -263,6 +281,7 @@ pub fn collect_in_memory_file_rows(
                     &mut map,
                     Key {
                         path: path.clone(),
+                        source: input.logical_path,
                         lang: child_type.name(),
                         kind: FileKind::Child,
                     },
@@ -278,6 +297,7 @@ pub fn collect_in_memory_file_rows(
             &mut map,
             Key {
                 path,
+                source: input.logical_path,
                 lang: lang_type.name(),
                 kind: FileKind::Parent,
             },
@@ -288,13 +308,23 @@ pub fn collect_in_memory_file_rows(
         );
     }
 
-    let mut rows = rows_from_map(map);
-    sort_file_rows(&mut rows);
-    rows
+    rows_from_map(map)
 }
 
 /// Render a native report path without reinterpreting characters within file names.
-fn native_report_path(path: &Path, strip_prefix: Option<&Path>) -> String {
+pub fn native_report_path(path: &Path, strip_prefix: Option<&Path>) -> std::io::Result<String> {
+    let prefix = validated_prefix(strip_prefix)?;
+    render_source_path(path, prefix)
+}
+
+fn validated_prefix(prefix: Option<&Path>) -> std::io::Result<Option<&Path>> {
+    prefix
+        .map(|value| tokmd_types::validate_source_path(value).map(Path::new))
+        .transpose()
+        .map_err(invalid_source_path)
+}
+
+fn render_source_path(path: &Path, strip_prefix: Option<&Path>) -> std::io::Result<String> {
     let path = path.strip_prefix(".").unwrap_or(path);
     let relative = strip_prefix.and_then(|prefix| {
         let prefix = prefix.strip_prefix(".").unwrap_or(prefix);
@@ -304,22 +334,25 @@ fn native_report_path(path: &Path, strip_prefix: Option<&Path>) -> String {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(path);
 
-    if !cfg!(unix) {
-        return normalize_path(path, None);
+    let value = tokmd_types::validate_source_path(path).map_err(invalid_source_path)?;
+    if std::path::is_separator('\\') {
+        return Ok(normalize_path(path, None));
     }
-
-    let mut result = String::with_capacity(path.as_os_str().len());
-    for component in path.components() {
-        use std::path::Component;
-        if matches!(component, Component::CurDir | Component::RootDir) {
-            continue;
-        }
+    let mut result = String::with_capacity(value.len());
+    for component in value
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+    {
         if !result.is_empty() {
             result.push('/');
         }
-        result.push_str(&component.as_os_str().to_string_lossy());
+        result.push_str(component);
     }
-    result
+    Ok(result)
+}
+
+fn invalid_source_path(error: tokmd_types::UnsupportedSourcePath) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, error)
 }
 
 /// Collect per-file contributions, optionally including embedded language reports.
@@ -332,13 +365,15 @@ pub fn collect_file_rows(
     module_depth: usize,
     children: ChildIncludeMode,
     strip_prefix: Option<&Path>,
-) -> Vec<FileRow> {
+) -> std::io::Result<Vec<FileRow>> {
     let mut map = BTreeMap::new();
+
+    let strip_prefix = validated_prefix(strip_prefix)?;
 
     // Parent reports
     for (lang_type, lang) in languages.iter() {
         for report in &lang.reports {
-            let path = native_report_path(&report.name, strip_prefix);
+            let path = render_source_path(&report.name, strip_prefix)?;
             let module = module_key_from_normalized(&path, module_roots, module_depth);
             let st = report.stats.summarise();
             let (bytes, tokens) = estimated_file_metrics(&st);
@@ -346,6 +381,7 @@ pub fn collect_file_rows(
                 &mut map,
                 Key {
                     path,
+                    source: &report.name,
                     lang: lang_type.name(),
                     kind: FileKind::Parent,
                 },
@@ -361,13 +397,14 @@ pub fn collect_file_rows(
         for lang in languages.values() {
             for (child_type, reports) in &lang.children {
                 for report in reports {
-                    let path = native_report_path(&report.name, strip_prefix);
+                    let path = render_source_path(&report.name, strip_prefix)?;
                     let module = module_key_from_normalized(&path, module_roots, module_depth);
                     let st = report.stats.summarise();
                     insert_row(
                         &mut map,
                         Key {
                             path,
+                            source: &report.name,
                             lang: child_type.name(),
                             kind: FileKind::Child,
                         },
@@ -381,14 +418,12 @@ pub fn collect_file_rows(
         }
     }
 
-    let mut rows = rows_from_map(map);
-    sort_file_rows(&mut rows);
-    rows
+    rows_from_map(map)
 }
 
-pub fn unique_parent_file_count(languages: &Languages) -> usize {
-    let rows = collect_file_rows(languages, &[], 1, ChildIncludeMode::ParentsOnly, None);
-    unique_parent_file_count_from_rows(&rows)
+pub fn unique_parent_file_count(languages: &Languages) -> std::io::Result<usize> {
+    let rows = collect_file_rows(languages, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
+    Ok(unique_parent_file_count_from_rows(&rows))
 }
 
 pub fn unique_parent_file_count_from_rows(file_rows: &[FileRow]) -> usize {
@@ -529,13 +564,13 @@ mod tests {
     }
 
     #[test]
-    fn collect_in_memory_rows_detects_env_shebang_without_extension() {
+    fn collect_in_memory_rows_detects_env_shebang_without_extension() -> std::io::Result<()> {
         let config = Config::default();
         let bytes = b"#!/usr/bin/env -S python3 -O\nprint('hello')\n";
         let input = InMemoryRowInput::new(Path::new("tools/greet"), bytes);
 
         let rows =
-            collect_in_memory_file_rows(&[input], &[], 1, ChildIncludeMode::ParentsOnly, &config);
+            collect_in_memory_file_rows(&[input], &[], 1, ChildIncludeMode::ParentsOnly, &config)?;
 
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
@@ -546,10 +581,11 @@ mod tests {
         assert_eq!(row.bytes, row.lines * ESTIMATED_BYTES_PER_LINE);
         assert_eq!(row.tokens, row.bytes / CHARS_PER_TOKEN);
         assert!(row.code > 0);
+        Ok(())
     }
 
     #[test]
-    fn collect_in_memory_rows_aggregates_duplicate_path_language_kind() {
+    fn collect_in_memory_rows_aggregates_duplicate_path_language_kind() -> std::io::Result<()> {
         let config = Config::default();
         let first = b"print('one')\n";
         let second = b"print('two')\n";
@@ -559,7 +595,7 @@ mod tests {
         ];
 
         let rows =
-            collect_in_memory_file_rows(&inputs, &[], 1, ChildIncludeMode::ParentsOnly, &config);
+            collect_in_memory_file_rows(&inputs, &[], 1, ChildIncludeMode::ParentsOnly, &config)?;
 
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
@@ -570,5 +606,6 @@ mod tests {
         assert_eq!(row.bytes, row.lines * ESTIMATED_BYTES_PER_LINE);
         assert_eq!(row.tokens, row.bytes / CHARS_PER_TOKEN);
         assert_eq!(row.lines, row.code + row.comments + row.blanks);
+        Ok(())
     }
 }

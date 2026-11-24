@@ -49,7 +49,13 @@ fn is_absolute_pattern(pattern: &str) -> bool {
 }
 
 fn normalize_relative_ignore_pattern(pattern: &str) -> String {
-    let mut normalized = normalize_slashes(pattern);
+    // A doubled backslash in a Unix ignore glob matches a literal backslash.
+    // Rewriting that escape would add an exclusion for a different source name.
+    let mut normalized = if cfg!(unix) && pattern.contains(r"\\") {
+        pattern.to_owned()
+    } else {
+        normalize_slashes(pattern)
+    };
     while let Some(rest) = normalized.strip_prefix("./") {
         normalized = rest.to_string();
     }

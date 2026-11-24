@@ -44,12 +44,12 @@ fn opts() -> ScanOptions {
     }
 }
 
-fn scan_lang(dir: &std::path::Path) -> LangReport {
+fn scan_lang(dir: &std::path::Path) -> std::io::Result<LangReport> {
     let langs = scan(&[dir.to_path_buf()], &opts()).expect("scan");
     create_lang_report(&langs, 0, true, ChildrenMode::Collapse)
 }
 
-fn scan_module(dir: &std::path::Path) -> ModuleReport {
+fn scan_module(dir: &std::path::Path) -> std::io::Result<ModuleReport> {
     let langs = scan(&[dir.to_path_buf()], &opts()).expect("scan");
     create_module_report(&langs, &[], 1, ChildIncludeMode::Separate, 0)
 }
@@ -153,21 +153,22 @@ fn module_args(dir: &std::path::Path, fmt: TableFormat) -> ModuleArgs {
 // ===========================================================================
 
 #[test]
-fn lang_to_md_has_table_header_and_total() {
+fn lang_to_md_has_table_header_and_total() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let args = lang_args(proj.path(), TableFormat::Md);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &opts(), &args).unwrap();
     let out = String::from_utf8(buf).unwrap();
     assert!(out.contains("|Lang|"), "must have Lang header");
     assert!(out.contains("|**Total**|"), "must have Total row");
+    Ok(())
 }
 
 #[test]
-fn lang_md_includes_all_languages() {
+fn lang_md_includes_all_languages() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let args = lang_args(proj.path(), TableFormat::Md);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &opts(), &args).unwrap();
@@ -179,6 +180,7 @@ fn lang_md_includes_all_languages() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
@@ -204,9 +206,9 @@ fn synthetic_lang_md_produces_valid_table() {
 // ===========================================================================
 
 #[test]
-fn module_to_tsv_has_correct_columns() {
+fn module_to_tsv_has_correct_columns() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let args = module_args(proj.path(), TableFormat::Tsv);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &opts(), &args).unwrap();
@@ -215,18 +217,20 @@ fn module_to_tsv_has_correct_columns() {
         let cols: Vec<&str> = line.split('\t').collect();
         assert_eq!(cols.len(), 7, "TSV should have 7 columns: {line}");
     }
+    Ok(())
 }
 
 #[test]
-fn module_tsv_header_is_correct() {
+fn module_tsv_header_is_correct() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let args = module_args(proj.path(), TableFormat::Tsv);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &opts(), &args).unwrap();
     let out = String::from_utf8(buf).unwrap();
     let header = out.lines().next().unwrap();
     assert_eq!(header, "Module\tCode\tLines\tFiles\tBytes\tTokens\tAvg");
+    Ok(())
 }
 
 #[test]
@@ -259,9 +263,9 @@ fn synthetic_module_tsv_roundtrip_values() {
 // ===========================================================================
 
 #[test]
-fn totals_consistent_between_md_and_tsv_lang() {
+fn totals_consistent_between_md_and_tsv_lang() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let md_args = lang_args(proj.path(), TableFormat::Md);
     let mut md_buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut md_buf, &report, &opts(), &md_args).unwrap();
@@ -279,12 +283,13 @@ fn totals_consistent_between_md_and_tsv_lang() {
         tsv_out.contains(&total_code),
         "TSV must contain total code {total_code}"
     );
+    Ok(())
 }
 
 #[test]
-fn totals_consistent_between_md_and_tsv_module() {
+fn totals_consistent_between_md_and_tsv_module() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let md_args = module_args(proj.path(), TableFormat::Md);
     let mut md_buf = Vec::new();
     tokmd_format::write_module_report_to(&mut md_buf, &report, &opts(), &md_args).unwrap();
@@ -296,12 +301,13 @@ fn totals_consistent_between_md_and_tsv_module() {
     let total_code = report.total.code.to_string();
     assert!(md_out.contains(&total_code));
     assert!(tsv_out.contains(&total_code));
+    Ok(())
 }
 
 #[test]
-fn totals_consistent_between_md_and_json_lang() {
+fn totals_consistent_between_md_and_json_lang() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let json_args = lang_args(proj.path(), TableFormat::Json);
     let mut json_buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut json_buf, &report, &opts(), &json_args).unwrap();
@@ -309,12 +315,13 @@ fn totals_consistent_between_md_and_json_lang() {
     assert_eq!(receipt.report.total.code, report.total.code);
     assert_eq!(receipt.report.total.lines, report.total.lines);
     assert_eq!(receipt.report.total.files, report.total.files);
+    Ok(())
 }
 
 #[test]
-fn totals_consistent_between_md_and_json_module() {
+fn totals_consistent_between_md_and_json_module() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let json_args = module_args(proj.path(), TableFormat::Json);
     let mut json_buf = Vec::new();
     tokmd_format::write_module_report_to(&mut json_buf, &report, &opts(), &json_args).unwrap();
@@ -322,6 +329,7 @@ fn totals_consistent_between_md_and_json_module() {
     assert_eq!(receipt.report.total.code, report.total.code);
     assert_eq!(receipt.report.total.lines, report.total.lines);
     assert_eq!(receipt.report.total.files, report.total.files);
+    Ok(())
 }
 
 // ===========================================================================
@@ -329,25 +337,27 @@ fn totals_consistent_between_md_and_json_module() {
 // ===========================================================================
 
 #[test]
-fn lang_json_has_correct_schema_version() {
+fn lang_json_has_correct_schema_version() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let args = lang_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &opts(), &args).unwrap();
     let receipt: LangReceipt = serde_json::from_slice(&buf).unwrap();
     assert_eq!(receipt.schema_version, SCHEMA_VERSION);
+    Ok(())
 }
 
 #[test]
-fn module_json_has_correct_schema_version() {
+fn module_json_has_correct_schema_version() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let args = module_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &opts(), &args).unwrap();
     let receipt: ModuleReceipt = serde_json::from_slice(&buf).unwrap();
     assert_eq!(receipt.schema_version, SCHEMA_VERSION);
+    Ok(())
 }
 
 // ===========================================================================
@@ -381,9 +391,9 @@ fn synthetic_module_totals_match_row_sums() {
 // ===========================================================================
 
 #[test]
-fn lang_json_rows_match_original_report() {
+fn lang_json_rows_match_original_report() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let args = lang_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &opts(), &args).unwrap();
@@ -395,12 +405,13 @@ fn lang_json_rows_match_original_report() {
         assert_eq!(orig.lines, parsed.lines);
         assert_eq!(orig.files, parsed.files);
     }
+    Ok(())
 }
 
 #[test]
-fn module_json_rows_match_original_report() {
+fn module_json_rows_match_original_report() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let args = module_args(proj.path(), TableFormat::Json);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &opts(), &args).unwrap();
@@ -410,6 +421,7 @@ fn module_json_rows_match_original_report() {
         assert_eq!(orig.module, parsed.module);
         assert_eq!(orig.code, parsed.code);
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -417,19 +429,21 @@ fn module_json_rows_match_original_report() {
 // ===========================================================================
 
 #[test]
-fn scan_produces_nonempty_lang_report() {
+fn scan_produces_nonempty_lang_report() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     assert!(!report.rows.is_empty(), "lang report should have rows");
     assert!(report.total.code > 0, "total code should be positive");
+    Ok(())
 }
 
 #[test]
-fn scan_produces_nonempty_module_report() {
+fn scan_produces_nonempty_module_report() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     assert!(!report.rows.is_empty(), "module report should have rows");
     assert!(report.total.code > 0, "total code should be positive");
+    Ok(())
 }
 
 // ===========================================================================
@@ -437,21 +451,23 @@ fn scan_produces_nonempty_module_report() {
 // ===========================================================================
 
 #[test]
-fn lang_md_output_is_nonempty() {
+fn lang_md_output_is_nonempty() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_lang(proj.path());
+    let report = scan_lang(proj.path())?;
     let args = lang_args(proj.path(), TableFormat::Md);
     let mut buf = Vec::new();
     tokmd_format::write_lang_report_to(&mut buf, &report, &opts(), &args).unwrap();
     assert!(!buf.is_empty());
+    Ok(())
 }
 
 #[test]
-fn module_tsv_output_is_nonempty() {
+fn module_tsv_output_is_nonempty() -> std::io::Result<()> {
     let proj = make_project();
-    let report = scan_module(proj.path());
+    let report = scan_module(proj.path())?;
     let args = module_args(proj.path(), TableFormat::Tsv);
     let mut buf = Vec::new();
     tokmd_format::write_module_report_to(&mut buf, &report, &opts(), &args).unwrap();
     assert!(!buf.is_empty());
+    Ok(())
 }

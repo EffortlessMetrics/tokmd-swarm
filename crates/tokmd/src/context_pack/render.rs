@@ -124,7 +124,7 @@ fn write_bundle_output<W: Write>(
     input_paths: &[PathBuf],
 ) -> anyhow::Result<()> {
     for file in selected {
-        let path = bundle_source_path(&file.path, input_paths);
+        let path = bundle_source_path(&file.path, input_paths)?;
         // Full and HeadTail must open/read directly: exists() hides IO errors
         // and can silently omit selected inputs. Summary/Skip need no read.
         match file.policy {
@@ -194,27 +194,27 @@ fn write_bundle_output<W: Write>(
 /// Model receipts normalize away a Unix leading slash. Recover the physical
 /// path from an explicitly absolute scan root, without probing existence or
 /// changing the advertised path. Relative invocations retain their usual path.
-fn bundle_source_path(selected_path: &str, input_paths: &[PathBuf]) -> PathBuf {
+fn bundle_source_path(selected_path: &str, input_paths: &[PathBuf]) -> anyhow::Result<PathBuf> {
     let path = Path::new(selected_path);
     if path.is_absolute() {
-        return path.to_path_buf();
+        return Ok(path.to_path_buf());
     }
-    input_paths
-        .iter()
-        .filter(|root| root.is_absolute())
-        .filter_map(|root| {
-            let normalized_root = tokmd_model::normalize_path(root, None);
-            path.strip_prefix(&normalized_root).ok().map(|relative| {
+    let mut best = None;
+    for root in input_paths.iter().filter(|root| root.is_absolute()) {
+        let label = tokmd_model::native_report_path(root, None)?;
+        if let Ok(relative) = path.strip_prefix(label) {
+            let depth = root.components().count();
+            if best.as_ref().is_none_or(|(prior, _)| depth >= *prior) {
                 let resolved = if relative.as_os_str().is_empty() {
                     root.clone()
                 } else {
                     root.join(relative)
                 };
-                (root, resolved)
-            })
-        })
-        .max_by_key(|(root, _)| root.components().count())
-        .map_or_else(|| path.to_path_buf(), |(_, resolved)| resolved)
+                best = Some((depth, resolved));
+            }
+        }
+    }
+    Ok(best.map_or_else(|| path.to_path_buf(), |(_, resolved)| resolved))
 }
 
 /// Invalidate a previous completion marker before rewriting any payload.

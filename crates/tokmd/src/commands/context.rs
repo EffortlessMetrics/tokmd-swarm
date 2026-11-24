@@ -71,7 +71,7 @@ fn handle_with_selection(
         None,
         0, // no min_code filter
         0, // no max_rows limit
-    );
+    )?;
 
     // Compute git scores if using churn/hotspot ranking
     progress.set_message("Computing scores...");

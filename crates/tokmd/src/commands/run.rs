@@ -81,14 +81,14 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
     // 3. Generate Reports
     progress.set_message("Generating reports...");
     let lang_report =
-        model::create_lang_report(&languages, 0, false, tokmd_types::ChildrenMode::Collapse);
+        model::create_lang_report(&languages, 0, false, tokmd_types::ChildrenMode::Collapse)?;
     let module_report = model::create_module_report(
         &languages,
         &["crates".to_string(), "packages".to_string()],
         2,
         tokmd_types::ChildIncludeMode::Separate,
         0,
-    );
+    )?;
     let export_data = model::create_export_data(
         &languages,
         &["crates".to_string(), "packages".to_string()],
@@ -97,7 +97,7 @@ pub(crate) fn handle(args: cli::RunArgs, global: &cli::GlobalArgs) -> Result<()>
         None,
         0,
         0,
-    );
+    )?;
 
     // Get redact mode - applies to scan args in all receipts (lang.json, module.json, export.jsonl)
     let redact_mode = args

@@ -18,9 +18,11 @@ pub fn create_lang_report(
     top: usize,
     with_files: bool,
     children: ChildrenMode,
-) -> LangReport {
-    let rows = collect_file_rows(languages, &[], 1, ChildIncludeMode::Separate, None);
-    create_lang_report_from_rows(&rows, top, with_files, children)
+) -> std::io::Result<LangReport> {
+    let rows = collect_file_rows(languages, &[], 1, ChildIncludeMode::Separate, None)?;
+    Ok(create_lang_report_from_rows(
+        &rows, top, with_files, children,
+    ))
 }
 
 pub fn create_lang_report_from_rows(
@@ -94,9 +96,15 @@ pub fn create_module_report(
     module_depth: usize,
     children: ChildIncludeMode,
     top: usize,
-) -> ModuleReport {
-    let file_rows = collect_file_rows(languages, module_roots, module_depth, children, None);
-    create_module_report_from_rows(&file_rows, module_roots, module_depth, children, top)
+) -> std::io::Result<ModuleReport> {
+    let file_rows = collect_file_rows(languages, module_roots, module_depth, children, None)?;
+    Ok(create_module_report_from_rows(
+        &file_rows,
+        module_roots,
+        module_depth,
+        children,
+        top,
+    ))
 }
 
 pub fn create_module_report_from_rows(
@@ -216,22 +224,22 @@ pub fn create_export_data(
     strip_prefix: Option<&Path>,
     min_code: usize,
     max_rows: usize,
-) -> ExportData {
+) -> std::io::Result<ExportData> {
     let rows = collect_file_rows(
         languages,
         module_roots,
         module_depth,
         children,
         strip_prefix,
-    );
-    create_export_data_from_rows(
+    )?;
+    Ok(create_export_data_from_rows(
         rows,
         module_roots,
         module_depth,
         children,
         min_code,
         max_rows,
-    )
+    ))
 }
 
 pub fn create_export_data_from_rows(

@@ -41,8 +41,12 @@ The boundary this seam protects:
 
 - The snapshot is **read-only** and **provider-agnostic**: once built, scan and
   model logic operate on the snapshot, not on `std::fs` directly.
-- Path normalization stays consistent with the existing `crates/tokmd-model`
-  rule (forward slashes, no OS-specific separators).
+- Snapshot file keys use `/` for native directory separators. Unix backslashes
+  inside a filename remain literal. Native names that cannot be represented as
+  UTF-8 fail capture with a bounded diagnostic identifying the component.
+  Re-reading the same provider path replaces its bytes. A different source
+  that would occupy an existing key fails capture. Archive entries continue
+  to follow the archive path rules below.
 - Determinism is mandatory: a snapshot built from the same provider state must
   enumerate files in a stable order (the in-memory backend already keys files
   in a sorted map; see `crates/tokmd-io-port/src/lib.rs`).

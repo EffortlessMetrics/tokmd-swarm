@@ -123,120 +123,134 @@ fn module_key_depth_one() {
 // ── Empty Languages (empty scan results) ──────────────────────────────
 
 #[test]
-fn create_lang_report_empty_languages_collapse() {
+fn create_lang_report_empty_languages_collapse() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
     assert_eq!(report.total.bytes, 0);
     assert_eq!(report.total.tokens, 0);
+    Ok(())
 }
 
 #[test]
-fn create_lang_report_empty_languages_separate() {
+fn create_lang_report_empty_languages_separate() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 #[test]
-fn create_lang_report_empty_with_files_flag() {
+fn create_lang_report_empty_with_files_flag() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     assert!(report.rows.is_empty());
     assert!(report.with_files);
+    Ok(())
 }
 
 #[test]
-fn create_module_report_empty_languages() {
+fn create_module_report_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }
 
 #[test]
-fn create_module_report_empty_with_roots() {
+fn create_module_report_empty_with_roots() -> std::io::Result<()> {
     let langs = Languages::new();
     let roots = vec!["crates".to_string(), "packages".to_string()];
-    let report = create_module_report(&langs, &roots, 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &roots, 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.module_roots, roots);
+    Ok(())
 }
 
 #[test]
-fn create_export_data_empty_languages() {
+fn create_export_data_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn create_export_data_with_min_code_filter() {
+fn create_export_data_with_min_code_filter() -> std::io::Result<()> {
     let langs = Languages::new();
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 100, 0);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 100, 0)?;
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn create_export_data_with_max_rows() {
+fn create_export_data_with_max_rows() -> std::io::Result<()> {
     let langs = Languages::new();
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 5);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 5)?;
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 // ── unique_parent_file_count ──────────────────────────────────────────
 
 #[test]
-fn unique_parent_file_count_empty() {
+fn unique_parent_file_count_empty() -> std::io::Result<()> {
     let langs = Languages::new();
-    assert_eq!(unique_parent_file_count(&langs), 0);
+    assert_eq!(unique_parent_file_count(&langs)?, 0);
+    Ok(())
 }
 
 // ── collect_file_rows ─────────────────────────────────────────────────
 
 #[test]
-fn collect_file_rows_empty_languages() {
+fn collect_file_rows_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
     assert!(rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn collect_file_rows_empty_with_separate_mode() {
+fn collect_file_rows_empty_with_separate_mode() -> std::io::Result<()> {
     let langs = Languages::new();
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None)?;
     assert!(rows.is_empty());
+    Ok(())
 }
 
 // ── top-N truncation edge cases ───────────────────────────────────────
 
 #[test]
-fn create_lang_report_top_zero_means_no_limit() {
+fn create_lang_report_top_zero_means_no_limit() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     // top=0 means show all; with empty data, no rows
     assert!(report.rows.is_empty());
     assert_eq!(report.top, 0);
+    Ok(())
 }
 
 #[test]
-fn create_module_report_top_zero_means_no_limit() {
+fn create_module_report_top_zero_means_no_limit() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.top, 0);
+    Ok(())
 }
 
 // ── create_lang_report with large top (> rows) ───────────────────────
 
 #[test]
-fn create_lang_report_top_larger_than_rows() {
+fn create_lang_report_top_larger_than_rows() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 100, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 100, false, ChildrenMode::Collapse)?;
     // top > actual rows → no "Other" row created
     assert!(report.rows.is_empty());
+    Ok(())
 }

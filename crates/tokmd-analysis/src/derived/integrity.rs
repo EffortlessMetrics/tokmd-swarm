@@ -198,6 +198,18 @@ mod tests {
     }
 
     #[test]
+    fn integrity_hash_includes_distinct_literal_backslash_and_nested_rows() {
+        let literal = make_row(r"literal\name.rs", 40, 1);
+        let nested = make_row("literal/name.rs", 40, 1);
+        let expected = blake3::hash(b"literal/name.rs:40:1\nliteral\\name.rs:40:1");
+        for order in [[&literal, &nested], [&nested, &literal]] {
+            let report = build_integrity_report(&order);
+            assert_eq!(report.entries, 2);
+            assert_eq!(report.hash, expected.to_hex().as_str());
+        }
+    }
+
+    #[test]
     fn integrity_hash_handles_empty_input_and_identical_records() {
         let empty = build_integrity_report(&[]);
         assert_eq!(empty.entries, 0);

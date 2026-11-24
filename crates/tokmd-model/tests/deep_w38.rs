@@ -31,33 +31,36 @@ fn scan_self_src() -> Languages {
 // ============================================================================
 
 #[test]
-fn lang_report_single_lang_has_one_row() {
+fn lang_report_single_lang_has_one_row() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert_eq!(report.rows.len(), 1);
     assert_eq!(report.rows[0].lang, "Rust");
+    Ok(())
 }
 
 #[test]
-fn lang_report_single_lang_totals_equal_row() {
+fn lang_report_single_lang_totals_equal_row() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let row = &report.rows[0];
     assert_eq!(report.total.code, row.code);
     assert_eq!(report.total.lines, row.lines);
     assert_eq!(report.total.bytes, row.bytes);
     assert_eq!(report.total.tokens, row.tokens);
+    Ok(())
 }
 
 #[test]
-fn lang_report_positive_metrics() {
+fn lang_report_positive_metrics() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.total.code > 0);
     assert!(report.total.lines > 0);
     assert!(report.total.files > 0);
     assert!(report.total.bytes > 0);
     assert!(report.total.tokens > 0);
+    Ok(())
 }
 
 // ============================================================================
@@ -65,9 +68,9 @@ fn lang_report_positive_metrics() {
 // ============================================================================
 
 #[test]
-fn lang_report_multi_rows_sum_to_totals() {
+fn lang_report_multi_rows_sum_to_totals() -> std::io::Result<()> {
     let langs = scan_dir(env!("CARGO_MANIFEST_DIR"));
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum_code: usize = report.rows.iter().map(|r| r.code).sum();
     let sum_lines: usize = report.rows.iter().map(|r| r.lines).sum();
     let sum_bytes: usize = report.rows.iter().map(|r| r.bytes).sum();
@@ -76,15 +79,17 @@ fn lang_report_multi_rows_sum_to_totals() {
     assert_eq!(report.total.lines, sum_lines);
     assert_eq!(report.total.bytes, sum_bytes);
     assert_eq!(report.total.tokens, sum_tokens);
+    Ok(())
 }
 
 #[test]
-fn lang_report_no_zero_code_rows() {
+fn lang_report_no_zero_code_rows() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for row in &report.rows {
         assert!(row.code > 0, "Row {} has 0 code", row.lang);
     }
+    Ok(())
 }
 
 // ============================================================================
@@ -170,9 +175,9 @@ fn module_key_empty_roots() {
 // ============================================================================
 
 #[test]
-fn collapse_mode_excludes_embedded_label() {
+fn collapse_mode_excludes_embedded_label() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for row in &report.rows {
         assert!(
             !row.lang.contains("(embedded)"),
@@ -180,41 +185,46 @@ fn collapse_mode_excludes_embedded_label() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn separate_mode_includes_rust_row() {
+fn separate_mode_includes_rust_row() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     assert!(report.rows.iter().any(|r| r.lang == "Rust"));
+    Ok(())
 }
 
 #[test]
-fn both_modes_agree_on_rust_code_count() {
+fn both_modes_agree_on_rust_code_count() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     let c_rust = collapse.rows.iter().find(|r| r.lang == "Rust").unwrap();
     let s_rust = separate.rows.iter().find(|r| r.lang == "Rust").unwrap();
     // For pure Rust crate, both should give the same Rust code
     assert!(c_rust.code > 0);
     assert!(s_rust.code > 0);
+    Ok(())
 }
 
 #[test]
-fn child_include_parents_only_has_only_parents() {
+fn child_include_parents_only_has_only_parents() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert_eq!(row.kind, FileKind::Parent);
     }
+    Ok(())
 }
 
 #[test]
-fn child_include_separate_has_parents() {
+fn child_include_separate_has_parents() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::Separate, None)?;
     assert!(rows.iter().any(|r| r.kind == FileKind::Parent));
+    Ok(())
 }
 
 // ============================================================================
@@ -222,9 +232,9 @@ fn child_include_separate_has_parents() {
 // ============================================================================
 
 #[test]
-fn lang_report_sorted_descending() {
+fn lang_report_sorted_descending() -> std::io::Result<()> {
     let langs = scan_dir(env!("CARGO_MANIFEST_DIR"));
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for w in report.rows.windows(2) {
         assert!(
             w[0].code >= w[1].code,
@@ -235,12 +245,13 @@ fn lang_report_sorted_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_sorted_descending() {
+fn module_report_sorted_descending() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     for w in report.rows.windows(2) {
         assert!(
             w[0].code >= w[1].code,
@@ -251,12 +262,13 @@ fn module_report_sorted_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_data_sorted_descending() {
+fn export_data_sorted_descending() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     for w in data.rows.windows(2) {
         assert!(
             w[0].code >= w[1].code,
@@ -267,6 +279,7 @@ fn export_data_sorted_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 // ============================================================================
@@ -274,9 +287,9 @@ fn export_data_sorted_descending() {
 // ============================================================================
 
 #[test]
-fn file_rows_have_normalized_paths() {
+fn file_rows_have_normalized_paths() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert!(!row.path.contains('\\'), "Backslash in path: {}", row.path);
         assert!(
@@ -285,12 +298,13 @@ fn file_rows_have_normalized_paths() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_have_valid_module() {
+fn file_rows_have_valid_module() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert!(
             !row.module.is_empty(),
@@ -298,12 +312,13 @@ fn file_rows_have_valid_module() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_lang_is_rust_for_pure_crate() {
+fn file_rows_lang_is_rust_for_pure_crate() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert_eq!(
             row.lang, "Rust",
@@ -311,12 +326,13 @@ fn file_rows_lang_is_rust_for_pure_crate() {
             row.lang, row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_lines_eq_code_plus_comments_plus_blanks() {
+fn file_rows_lines_eq_code_plus_comments_plus_blanks() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert_eq!(
             row.lines,
@@ -325,6 +341,7 @@ fn file_rows_lines_eq_code_plus_comments_plus_blanks() {
             row.path
         );
     }
+    Ok(())
 }
 
 // ============================================================================
@@ -332,35 +349,39 @@ fn file_rows_lines_eq_code_plus_comments_plus_blanks() {
 // ============================================================================
 
 #[test]
-fn empty_languages_lang_report_is_empty() {
+fn empty_languages_lang_report_is_empty() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.lines, 0);
     assert_eq!(report.total.files, 0);
     assert_eq!(report.total.bytes, 0);
     assert_eq!(report.total.tokens, 0);
+    Ok(())
 }
 
 #[test]
-fn empty_languages_module_report_is_empty() {
+fn empty_languages_module_report_is_empty() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 #[test]
-fn empty_languages_export_data_is_empty() {
+fn empty_languages_export_data_is_empty() -> std::io::Result<()> {
     let langs = Languages::new();
-    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 #[test]
-fn empty_languages_unique_file_count_is_zero() {
-    assert_eq!(unique_parent_file_count(&Languages::new()), 0);
+fn empty_languages_unique_file_count_is_zero() -> std::io::Result<()> {
+    assert_eq!(unique_parent_file_count(&Languages::new())?, 0);
+    Ok(())
 }
 
 // ============================================================================
@@ -444,26 +465,29 @@ fn normalize_path_no_leading_slash() {
 // ============================================================================
 
 #[test]
-fn lang_report_top_n_limits_rows() {
+fn lang_report_top_n_limits_rows() -> std::io::Result<()> {
     let langs = scan_dir(env!("CARGO_MANIFEST_DIR"));
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
     // With top=1, at most 2 rows (1 + "Other")
     assert!(report.rows.len() <= 2);
+    Ok(())
 }
 
 #[test]
-fn module_report_top_n_limits_rows() {
+fn module_report_top_n_limits_rows() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 1);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 1)?;
     assert!(report.rows.len() <= 2);
+    Ok(())
 }
 
 #[test]
-fn lang_report_top_zero_keeps_all() {
+fn lang_report_top_zero_keeps_all() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     // top=0 means no truncation
     assert!(!report.rows.is_empty());
+    Ok(())
 }
 
 // ============================================================================
@@ -471,7 +495,7 @@ fn lang_report_top_zero_keeps_all() {
 // ============================================================================
 
 #[test]
-fn export_data_min_code_filters_small() {
+fn export_data_min_code_filters_small() -> std::io::Result<()> {
     let langs = scan_self_src();
     let data = create_export_data(
         &langs,
@@ -481,20 +505,22 @@ fn export_data_min_code_filters_small() {
         None,
         999_999,
         0,
-    );
+    )?;
     // With very high min_code, most/all rows should be filtered out
     assert!(
         data.rows.len() < 10,
         "High min_code should filter most rows, got {}",
         data.rows.len()
     );
+    Ok(())
 }
 
 #[test]
-fn export_data_max_rows_truncates() {
+fn export_data_max_rows_truncates() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 1);
+    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 1)?;
     assert!(data.rows.len() <= 1);
+    Ok(())
 }
 
 // ============================================================================
@@ -502,17 +528,19 @@ fn export_data_max_rows_truncates() {
 // ============================================================================
 
 #[test]
-fn unique_file_count_positive_for_nonempty_scan() {
+fn unique_file_count_positive_for_nonempty_scan() -> std::io::Result<()> {
     let langs = scan_self_src();
-    assert!(unique_parent_file_count(&langs) > 0);
+    assert!(unique_parent_file_count(&langs)? > 0);
+    Ok(())
 }
 
 #[test]
-fn unique_file_count_matches_lang_report_total() {
+fn unique_file_count_matches_lang_report_total() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let count = unique_parent_file_count(&langs);
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let count = unique_parent_file_count(&langs)?;
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert_eq!(report.total.files, count);
+    Ok(())
 }
 
 // ============================================================================
@@ -520,13 +548,14 @@ fn unique_file_count_matches_lang_report_total() {
 // ============================================================================
 
 #[test]
-fn module_report_totals_consistent() {
+fn module_report_totals_consistent() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     let sum_code: usize = report.rows.iter().map(|r| r.code).sum();
     let sum_lines: usize = report.rows.iter().map(|r| r.lines).sum();
     assert_eq!(report.total.code, sum_code);
     assert_eq!(report.total.lines, sum_lines);
+    Ok(())
 }
 
 // ============================================================================
@@ -534,17 +563,19 @@ fn module_report_totals_consistent() {
 // ============================================================================
 
 #[test]
-fn lang_report_with_files_true() {
+fn lang_report_with_files_true() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     assert!(report.with_files);
+    Ok(())
 }
 
 #[test]
-fn lang_report_with_files_false() {
+fn lang_report_with_files_false() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(!report.with_files);
+    Ok(())
 }
 
 // ============================================================================
@@ -552,10 +583,10 @@ fn lang_report_with_files_false() {
 // ============================================================================
 
 #[test]
-fn file_rows_strip_prefix_removes_leading_path() {
+fn file_rows_strip_prefix_removes_leading_path() -> std::io::Result<()> {
     let langs = scan_self_src();
     let prefix = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, Some(prefix));
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, Some(prefix))?;
     for row in &rows {
         let manifest = env!("CARGO_MANIFEST_DIR").replace('\\', "/");
         assert!(
@@ -564,4 +595,5 @@ fn file_rows_strip_prefix_removes_leading_path() {
             row.path
         );
     }
+    Ok(())
 }

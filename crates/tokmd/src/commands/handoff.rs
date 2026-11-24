@@ -93,7 +93,7 @@ fn handle_with_selection(
         None,
         0, // no min_code filter
         0, // no max_rows limit
-    );
+    )?;
 
     // Detect capabilities
     progress.set_message("Detecting capabilities...");

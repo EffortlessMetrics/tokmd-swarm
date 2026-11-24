@@ -221,6 +221,7 @@ fn logical_path_key(path: &Path, case_insensitive: bool) -> String {
 }
 
 fn normalize_logical_path(path: &Path) -> Result<PathBuf> {
+    crate::validate_source_path(path)?;
     if path.as_os_str().is_empty() {
         anyhow::bail!("In-memory path must not be empty");
     }

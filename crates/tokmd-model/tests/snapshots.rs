@@ -84,63 +84,69 @@ fn redact_file_rows(rows: &[tokmd_types::FileRow]) -> Vec<serde_json::Value> {
 // ─── Lang report snapshots ───
 
 #[test]
-fn snapshot_lang_report_collapse_shape() {
+fn snapshot_lang_report_collapse_shape() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let redacted = redact_lang_rows(&report);
     insta::assert_json_snapshot!("lang_collapse_shape", redacted);
+    Ok(())
 }
 
 #[test]
-fn snapshot_lang_report_separate_shape() {
+fn snapshot_lang_report_separate_shape() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     let redacted = redact_lang_rows(&report);
     insta::assert_json_snapshot!("lang_separate_shape", redacted);
+    Ok(())
 }
 
 #[test]
-fn snapshot_lang_report_top1() {
+fn snapshot_lang_report_top1() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
     let redacted = redact_lang_rows(&report);
     insta::assert_json_snapshot!("lang_top1", redacted);
+    Ok(())
 }
 
 // ─── Module report snapshots ───
 
 #[test]
-fn snapshot_module_report_shape() {
+fn snapshot_module_report_shape() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     let redacted = redact_module_rows(&report);
     insta::assert_json_snapshot!("module_shape", redacted);
+    Ok(())
 }
 
 // ─── Export / file-row snapshots ───
 
 #[test]
-fn snapshot_file_rows_parents_only() {
+fn snapshot_file_rows_parents_only() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
     let redacted = redact_file_rows(&rows);
     insta::assert_json_snapshot!("file_rows_parents_only", redacted);
+    Ok(())
 }
 
 #[test]
-fn snapshot_file_rows_separate() {
+fn snapshot_file_rows_separate() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None)?;
     let redacted = redact_file_rows(&rows);
     insta::assert_json_snapshot!("file_rows_separate", redacted);
+    Ok(())
 }
 
 // ─── Empty input snapshots ───
 
 #[test]
-fn snapshot_empty_lang_report() {
+fn snapshot_empty_lang_report() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     insta::assert_json_snapshot!(
         "empty_lang_report",
         serde_json::json!({
@@ -152,12 +158,13 @@ fn snapshot_empty_lang_report() {
             "total_files": report.total.files,
         })
     );
+    Ok(())
 }
 
 #[test]
-fn snapshot_empty_module_report() {
+fn snapshot_empty_module_report() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     insta::assert_json_snapshot!(
         "empty_module_report",
         serde_json::json!({
@@ -166,16 +173,18 @@ fn snapshot_empty_module_report() {
             "total_files": report.total.files,
         })
     );
+    Ok(())
 }
 
 #[test]
-fn snapshot_empty_export() {
+fn snapshot_empty_export() -> std::io::Result<()> {
     let langs = Languages::new();
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     insta::assert_json_snapshot!(
         "empty_export",
         serde_json::json!({
             "rows": data.rows.len(),
         })
     );
+    Ok(())
 }

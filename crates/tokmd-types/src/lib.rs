@@ -35,6 +35,8 @@ mod diff;
 mod evidence_packet;
 mod inventory;
 mod packet_siblings;
+mod source_path;
+pub use source_path::{UnsupportedSourcePath, validate_source_path};
 mod tokmd_packets;
 
 pub use context::{
