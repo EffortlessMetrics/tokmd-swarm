@@ -36,13 +36,12 @@ pub fn normalize_exclude_pattern(root: &Path, path: &Path) -> String {
 }
 
 /// Render a native output path for a receipt and for a literal gitignore glob.
-/// The display name and the matcher differ when a filename contains glob syntax.
+/// These root-relative values describe the exclusion in receipts. The scanner
+/// matches the physical destination separately with [`crate::scan_excluding_outputs`].
 pub fn output_exclusion(root: &Path, path: &Path) -> anyhow::Result<(String, String)> {
-    let relative = if path.is_absolute() {
-        path.strip_prefix(root).unwrap_or(path)
-    } else {
-        path
-    };
+    let absolute = std::path::absolute(path)?;
+    let root = std::path::absolute(root)?;
+    let relative = absolute.strip_prefix(root).unwrap_or(path);
     let native = tokmd_types::validate_source_path(relative)?;
     let display = if cfg!(windows) {
         native.replace('\\', "/")
@@ -51,6 +50,35 @@ pub fn output_exclusion(root: &Path, path: &Path) -> anyhow::Result<(String, Str
     };
     let display = display.trim_start_matches("./");
     Ok((display.to_owned(), escape_literal_glob_path(display)))
+}
+
+/// Tokei walks canonical paths and passes them to a gitignore matcher rooted
+/// at ".". Its initial slash anchors the glob and is consumed by gitignore;
+/// the rest must match the complete physical path, including its native root.
+pub(crate) fn exact_output_patterns(
+    roots: &mut Vec<crate::path::ValidatedRoot>,
+    outputs: &[&Path],
+) -> anyhow::Result<Vec<String>> {
+    let mut patterns = Vec::new();
+    for output in outputs {
+        tokmd_types::validate_source_path(output)?;
+        let path = match output.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        // The walker always visits explicitly supplied roots, even when a
+        // glob would have pruned the same entry during directory traversal.
+        roots.retain(|root| !root.canonical().starts_with(&path));
+        let native = tokmd_types::validate_source_path(&path)?;
+        let label = if cfg!(windows) {
+            native.replace('\\', "/")
+        } else {
+            native.to_owned()
+        };
+        patterns.push(format!("/{}", escape_literal_glob_path(&label)));
+    }
+    Ok(patterns)
 }
 
 /// Quote a literal path whose directory separators have already been rendered as `/`.

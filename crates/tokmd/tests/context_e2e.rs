@@ -354,8 +354,10 @@ fn context_excludes_its_literal_output_and_keeps_distinct_native_sources() -> an
     let output = r"literal\name[1].rs";
     let nested = "literal/name[1].rs";
     let glob_lookalike = r"literal\name1.rs";
+    let deeper_namesake = r"sub/literal\name[1].rs";
     fs::create_dir(dir.path().join("literal"))?;
-    for path in [output, nested, glob_lookalike] {
+    fs::create_dir(dir.path().join("sub"))?;
+    for path in [output, nested, glob_lookalike, deeper_namesake] {
         fs::write(dir.path().join(path), "fn marker() {}\n")?;
     }
 
@@ -378,7 +380,50 @@ fn context_excludes_its_literal_output_and_keeps_distinct_native_sources() -> an
     let receipt: tokmd_types::ContextReceipt =
         serde_json::from_slice(&fs::read(dir.path().join(output))?)?;
     let paths: Vec<_> = receipt.files.iter().map(|row| row.path.as_str()).collect();
-    assert_eq!(paths, [nested, glob_lookalike]);
+    assert_eq!(paths, [nested, glob_lookalike, deeper_namesake]);
+
+    // The log destination is relative to cwd. A narrower scan root must
+    // retain its own file with the same name and record only logical labels.
+    tokmd_cmd()
+        .current_dir(dir.path())
+        .args([
+            "context",
+            "sub",
+            "--mode",
+            "bundle",
+            "--budget",
+            "100k",
+            "--no-smart-exclude",
+            "--output-dir",
+            "bundle",
+            "--log",
+            output,
+        ])
+        .assert()
+        .success();
+    let manifest_bytes = fs::read(dir.path().join("bundle/manifest.json"))?;
+    let manifest: tokmd_types::ContextBundleManifest = serde_json::from_slice(&manifest_bytes)?;
+    assert_eq!(manifest.included_files.len(), 1);
+    assert!(
+        manifest
+            .included_files
+            .iter()
+            .any(|row| row.path == deeper_namesake)
+    );
+    assert!(manifest.excluded_paths.iter().any(|row| row.path == output));
+    let cwd = dir.path().to_string_lossy();
+    assert!(
+        manifest
+            .excluded_paths
+            .iter()
+            .all(|row| !row.path.contains(cwd.as_ref()))
+    );
+    assert!(
+        manifest
+            .excluded_patterns
+            .iter()
+            .all(|pattern| !pattern.contains(cwd.as_ref()))
+    );
     Ok(())
 }
 

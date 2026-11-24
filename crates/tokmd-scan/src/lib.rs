@@ -64,12 +64,27 @@ pub use tokmd_types::validate_source_path;
 /// # }
 /// ```
 pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
+    scan_excluding_outputs(paths, args, &[])
+}
+
+/// Scan with exact native output destinations excluded. Relative destinations
+/// are resolved from the process working directory, just as they are for writing.
+/// Configured glob exclusions retain their normal matching rules.
+pub fn scan_excluding_outputs(
+    paths: &[PathBuf],
+    args: &ScanOptions,
+    outputs: &[&std::path::Path],
+) -> Result<Languages> {
     let cfg = config_from_scan_options(args);
     for path in paths {
         validate_source_path(path)?;
     }
-    let roots = validated_scan_roots(paths)?;
-    let ignores = ignored_patterns(args, &roots);
+    let mut roots = validated_scan_roots(paths)?;
+    let mut ignores = exclude::exact_output_patterns(&mut roots, outputs)?;
+    if roots.is_empty() && !paths.is_empty() {
+        return Ok(Languages::new());
+    }
+    ignores.extend(ignored_patterns(args, &roots));
     let ignore_refs: Vec<_> = ignores.iter().map(String::as_str).collect();
     let scan_paths: Vec<PathBuf> = roots
         .iter()

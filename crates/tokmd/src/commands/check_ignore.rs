@@ -178,6 +178,7 @@ fn is_git_tracked(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Legacy display-path matcher used by the syntax command.
 pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
     // Simple glob matching (could use the glob crate for more accuracy)
     // Handle common patterns: *, **, ?

@@ -77,10 +77,10 @@ fn handle_with_selection(
 
     // Scan and create export data
     progress.set_message("Scanning codebase...");
-    let mut scan_args = global.clone();
-    let excluded_paths = exclude_output_dir(&root, &args.out_dir, &mut scan_args)?;
-    let scan_opts = tokmd_settings::ScanOptions::from(&scan_args);
-    let languages = scan::scan(&paths, &scan_opts)?;
+    let mut excluded_patterns = global.excluded.clone();
+    let excluded_paths = exclude_output_dir(&root, &args.out_dir, &mut excluded_patterns)?;
+    let scan_opts = tokmd_settings::ScanOptions::from(global);
+    let languages = scan::scan_excluding_outputs(&paths, &scan_opts, &[&args.out_dir])?;
     let module_roots = args.module_roots.clone().unwrap_or_default();
     let module_depth = args.module_depth.unwrap_or(2);
 
@@ -234,7 +234,7 @@ fn handle_with_selection(
         artifacts: payloads.artifacts,
         included_files: selected.clone(),
         excluded_paths: excluded_paths.clone(),
-        excluded_patterns: scan_args.excluded.clone(),
+        excluded_patterns,
         smart_excluded_files,
         total_files,
         bundled_files: selected.len(),
@@ -279,11 +279,11 @@ fn handle_with_selection(
 fn exclude_output_dir(
     root: &Path,
     out_dir: &Path,
-    scan_args: &mut cli::GlobalArgs,
+    excluded_patterns: &mut Vec<String>,
 ) -> Result<Vec<HandoffExcludedPath>> {
     let (display, pattern) = output_exclusion(root, out_dir)?;
     if !pattern.is_empty() {
-        let _ = add_exclude_pattern(&mut scan_args.excluded, pattern);
+        let _ = add_exclude_pattern(excluded_patterns, pattern);
     }
     Ok(vec![HandoffExcludedPath {
         path: display,

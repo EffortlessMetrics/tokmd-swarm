@@ -137,8 +137,7 @@ fn collect_files(
         .collect()
 }
 
-/// Apply the global `--exclude` glob patterns to a normalized syntax path,
-/// matching the file-selection semantics of `tokmd check-ignore`.
+/// Apply the global `--exclude` glob patterns to a normalized syntax path.
 fn is_excluded(display: &str, excluded: &[String]) -> bool {
     excluded
         .iter()

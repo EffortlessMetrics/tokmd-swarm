@@ -44,7 +44,9 @@ fn expand_pattern(pattern: &str, roots: &[ValidatedRoot], patterns: &mut BTreeSe
             } else {
                 crate::exclude::escape_literal_glob_path(root)
             };
-            patterns.insert(format!("{}/{relative}", prefix.trim_end_matches('/')));
+            // The first slash is the gitignore anchor. The physical absolute
+            // path, including its own leading slash, must follow the anchor.
+            patterns.insert(format!("/{}/{relative}", prefix.trim_end_matches('/')));
         }
     }
 }
@@ -165,7 +167,7 @@ mod tests {
 
         assert!(patterns.contains(&"secret_folder/**".to_string()));
         assert!(patterns.contains(&"**/secret_folder/**".to_string()));
-        assert!(patterns.contains(&format!("{canonical}/secret_folder/**")));
+        assert!(patterns.contains(&format!("/{canonical}/secret_folder/**")));
     }
 
     #[cfg(unix)]
