@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::ReleaseStatusArgs;
 
+#[path = "preflight_verifier.rs"]
+mod preflight_verifier;
+
 const SCHEMA: &str = "tokmd.release_status.v1";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_FIXTURE_BYTES: u64 = 1024 * 1024;
@@ -67,6 +70,10 @@ struct ReleaseStatusReceipt {
     source: SourceFact,
     publication: PublicationFact,
     git_tag: StateFact,
+    // Deserialize is used only for offline receipts. With deny_unknown_fields
+    // this also rejects an explicit null preflight in a fixture.
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    preflight: Option<StateFact>,
     github_release: StateFact,
     assets: StateFact,
     registry: StateFact,
@@ -82,17 +89,26 @@ struct ReleaseStatusReceipt {
 }
 
 pub fn run(args: ReleaseStatusArgs) -> Result<()> {
-    let receipt = match args.fixture.as_deref() {
+    let mut receipt = match args.fixture.as_deref() {
         Some(path) => load_fixture(path, &args.tag)?,
         None => inspect_local(&args.tag)?,
     };
+
+    if let Some(manifest) = args.preflight_manifest.as_deref() {
+        receipt.preflight = Some(inspect_preflight(&receipt, manifest));
+    }
 
     if let Some(path) = args.json.as_deref() {
         write_json(path, &receipt)?;
     }
 
+    let preflight_summary = receipt
+        .preflight
+        .as_ref()
+        .map(|fact| format!(" preflight={}", state_name(fact.state)))
+        .unwrap_or_default();
     println!(
-        "release status: tag={} complete={} source={} registry={} consumer_proof={}",
+        "release status: tag={} complete={} source={} registry={} consumer_proof={}{preflight_summary}",
         receipt.tag,
         receipt.complete,
         state_name(receipt.source.state),
@@ -100,6 +116,26 @@ pub fn run(args: ReleaseStatusArgs) -> Result<()> {
         state_name(receipt.consumer_proof.state),
     );
     Ok(())
+}
+
+fn inspect_preflight(receipt: &ReleaseStatusReceipt, manifest: &Path) -> StateFact {
+    match (
+        receipt.source.state,
+        receipt.git_tag.state,
+        receipt.source.sha.as_deref(),
+    ) {
+        (ReleaseState::Passed, ReleaseState::Passed, Some(sha)) => preflight_verifier::verify(
+            manifest,
+            &receipt.tag,
+            sha,
+            &receipt.source.expected_version,
+        ),
+        _ => state_fact(
+            ReleaseState::Unavailable,
+            "Preflight requires a verified local source and tag",
+            None,
+        ),
+    }
 }
 
 fn inspect_local(tag: &str) -> Result<ReleaseStatusReceipt> {
@@ -228,6 +264,7 @@ fn inspect_local_with_git(
         source,
         publication: not_run_publication("publication receipt not supplied"),
         git_tag,
+        preflight: None,
         github_release: not_run("GitHub Release receipt not supplied"),
         assets: not_run("release asset receipt not supplied"),
         registry: not_run("registry inventory receipt not supplied"),
@@ -386,8 +423,9 @@ fn validate_fixture(receipt: &ReleaseStatusReceipt, expected_tag: &str, path: &P
 
 fn is_complete(receipt: &ReleaseStatusReceipt) -> bool {
     // This slice models stable completion. RC non-promotion evidence is #634.
-    semver::Version::parse(receipt.tag.strip_prefix('v').unwrap_or(&receipt.tag))
-        .is_ok_and(|version| version.pre.is_empty())
+    receipt.preflight.is_none()
+        && semver::Version::parse(receipt.tag.strip_prefix('v').unwrap_or(&receipt.tag))
+            .is_ok_and(|version| version.pre.is_empty())
         && receipt.source.state == ReleaseState::Passed
         && receipt.publication.state == ReleaseState::Passed
         && publication_graph_is_aligned(&receipt.publication)
@@ -899,6 +937,7 @@ mod tests {
                 evidence: Some("fixture".to_string()),
             },
             git_tag: passed("tag"),
+            preflight: None,
             github_release: passed("release"),
             assets: passed("assets"),
             registry: passed("registry"),
@@ -912,6 +951,31 @@ mod tests {
             finalization: passed("finalization"),
             complete: true,
         }
+    }
+
+    #[test]
+    fn live_preflight_field_cannot_be_supplied_by_a_fixture_or_prove_completion() -> Result<()> {
+        let schema =
+            serde_json::from_str(include_str!("../../../docs/release-status.schema.json"))?;
+        let validator = jsonschema::validator_for(&schema)?;
+        let mut receipt = complete_fixture();
+        receipt.preflight = Some(passed("hosted preflight"));
+        ensure!(!is_complete(&receipt));
+        ensure!(!validator.is_valid(&serde_json::to_value(&receipt)?));
+
+        receipt.complete = false;
+        let mut live = serde_json::to_value(&receipt)?;
+        ensure!(validator.is_valid(&live));
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("fixture.json");
+        fs::write(&path, serde_json::to_vec(&live)?)?;
+        ensure!(load_fixture(&path, &receipt.tag).is_err());
+
+        let field = live.get_mut("preflight").context("live fact is absent")?;
+        *field = serde_json::Value::Null;
+        fs::write(&path, serde_json::to_vec(&live)?)?;
+        ensure!(load_fixture(&path, &receipt.tag).is_err());
+        Ok(())
     }
 
     #[test]

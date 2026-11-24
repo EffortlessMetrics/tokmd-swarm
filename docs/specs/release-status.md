@@ -12,10 +12,11 @@ change GHCR aliases, or move the Action `v1` ref.
 
 ## Inputs
 
-The command requires a Git tag. It optionally accepts a JSON output path and an
-offline receipt fixture assembled from release-system evidence. Fixture mode
-performs structural and cross-field validation; it does not authenticate the
-fixture's provenance or independently re-run remote release checks.
+Supply a Git tag and, optionally, a JSON output path. Plain local inspection and
+offline `--fixture` validation perform no network queries. Fixture mode checks
+structure and cross-field consistency. The mutually exclusive
+`--preflight-manifest PATH` option looks up hosted preflight evidence after
+local source and tag verification passes.
 
 ## Outputs
 
@@ -49,10 +50,18 @@ cargo --locked xtask release-status \
   --json target/release/status-checked.json
 ```
 
-The current first slice reads the workspace version and local Git tag. Remote
-surfaces are recorded as `not_run` until their authoritative receipts are
-provided through `--fixture`; prose, missing artifacts, and upstream job
-success are never promoted to `passed`.
+Inspect the exact hosted preflight named by a manifest:
+
+```text
+cargo --locked xtask release-status --tag v1.15.1 \
+  --preflight-manifest preflight-input.json --json target/release/status.json
+```
+
+Plain local inspection records remote surfaces as `not_run`. Requesting
+preflight inspection adds a `preflight` fact and keeps the other remote
+surfaces at `not_run`. Offline fixture input must omit `preflight`, including
+an explicit null. Previously serialized receipts without this field retain
+their original wire representation and fixture semantics.
 
 Local inspection discovers the workspace from the current directory using the
 parsed `workspace` table in `Cargo.toml`. A comment or string mentioning
@@ -80,12 +89,55 @@ Tag-name validation does not launch Git, so offline fixture validation does not
 require Git to be installed. It follows the Git refname rules for
 `refs/tags/<tag>` and also rejects Unicode whitespace in the supplied tag.
 
+## Live preflight manifest
+
+Provide one JSON object with the following fields. Numeric IDs are positive
+JSON integers and hashes refer to immutable objects.
+
+| Field | Identifies |
+| --- | --- |
+| `repository` | `EffortlessMetrics/tokmd` or `EffortlessMetrics/tokmd-swarm` on GitHub.com |
+| `tag` | The exact requested Git tag |
+| `source_sha`, `affected_base_sha` | Full source and affected-plan base commit IDs |
+| `release_kind` | `stable` or `rc` |
+| `run_id`, `run_attempt`, `job_id` | The workflow run, its attempt, and its job |
+| `artifact_id`, `artifact_digest` | The artifact ID and `sha256:` followed by its lowercase hexadecimal digest |
+
+The manifest supplies lookup coordinates. The verified local tag and source
+supply the expected commit and workspace version. If either local fact fails,
+the preflight fact is `unavailable` and the command makes no hosted lookup.
+
+A live inspection uses the host's `gh` executable, its GitHub.com credentials,
+and read access to repository contents, Actions metadata, logs, and artifacts.
+It resolves the hosted tag to a commit, including annotated tags, and checks
+the workflow bytes against the release-preflight workflow embedded in the
+installed verifier. The supported provenance is a manual `workflow_dispatch`
+of that workflow. Reusable workflow calls and unsupported execution layouts
+yield `unavailable`.
+
+The verifier checks the attempt, its sole expected job, and the upload step
+against service metadata. In that attempt’s log archive, the numbered upload
+step must report the artifact ID and digest. A filename or a timestamp alone
+cannot associate an artifact with a rerun. The artifact download must match
+that digest, and its terminal preflight receipt and command observations must
+match the source, base, version, and release kind. Archive hashing requires
+`sha256sum` or `shasum`; missing tools, denied access, expired evidence, or
+unverifiable associations produce an unavailable preflight fact. Request
+sizes and execution time are bounded.
+
+A successful preflight references the hosted run, attempt, job, artifact
+and digest. It establishes one release component. Publication, registry health,
+consumer proofs, aliases, finalization, and release completion still require
+their respective evidence. The operator trusts the installed verifier, local
+tools, and authenticated GitHub service responses. The operation is read-only.
+
 ## Contract
 
 The receipt schema is `tokmd.release_status.v1`. It reports independent facts
 for:
 
 - source version and exact tag SHA;
+- hosted preflight provenance and terminal proof when requested;
 - publication merge SHA, parent count, and repository graph ahead/behind;
 - GitHub Release state and asset inventory;
 - registry inventory;
@@ -106,7 +158,7 @@ Each surface uses one of these states:
 | `not_supported` | The surface is outside the current inspection capability. |
 | `not_run` | No evidence was supplied or the check was intentionally not executed. |
 
-The vocabulary applies to supplied fixtures as well as local inspection. In
+The vocabulary applies to legacy fixture components and local inspection. In
 this slice, `not_supported` can be supplied by a fixture; it is not emitted by
 the local inspector, which leaves remote surfaces `not_run`. A fixture surface
 marked `not_supported` keeps `complete` false, just like other non-passed
@@ -168,6 +220,6 @@ does not replace or reinterpret them. A future schema revision must preserve
 
 ## Open Questions
 
-Remote receipt adapters and the closeout consumer are intentionally separate
+The other remote receipt adapters and the closeout consumer are separate
 follow-up slices. They must name their authoritative source and preserve the
 same state vocabulary before being wired into this command.

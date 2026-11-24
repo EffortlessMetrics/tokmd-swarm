@@ -1860,6 +1860,10 @@ pub struct ReleaseStatusArgs {
     /// Offline status fixture containing a tokmd.release_status.v1 receipt
     #[arg(long, value_name = "PATH")]
     pub fixture: Option<std::path::PathBuf>,
+
+    /// Inspect the hosted preflight run and artifact identified by this manifest
+    #[arg(long, value_name = "PATH", conflicts_with = "fixture")]
+    pub preflight_manifest: Option<std::path::PathBuf>,
 }
 
 #[derive(Args, Debug, Clone, Default)]
