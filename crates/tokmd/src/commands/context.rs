@@ -5,7 +5,7 @@ use crate::cli;
 use anyhow::Result;
 use tokmd_model as model;
 use tokmd_scan as scan;
-use tokmd_scan::{add_exclude_pattern, normalize_exclude_pattern};
+use tokmd_scan::{add_exclude_pattern, exclude::output_exclusion};
 use tokmd_types::ContextExcludedPath;
 
 use crate::context_pack;
@@ -42,21 +42,21 @@ fn handle_with_selection(
         "out_file",
         &mut scan_args,
         &mut excluded_paths,
-    );
+    )?;
     add_excluded_path(
         &root,
         args.bundle_dir.as_ref(),
         "bundle_dir",
         &mut scan_args,
         &mut excluded_paths,
-    );
+    )?;
     add_excluded_path(
         &root,
         args.log.as_ref(),
         "log_file",
         &mut scan_args,
         &mut excluded_paths,
-    );
+    )?;
     let scan_opts = tokmd_settings::ScanOptions::from(&scan_args);
     let languages = scan::scan(&paths, &scan_opts)?;
     let module_roots = args.module_roots.clone().unwrap_or_default();
@@ -218,21 +218,22 @@ fn add_excluded_path(
     reason: &str,
     scan_args: &mut cli::GlobalArgs,
     excluded_paths: &mut Vec<ContextExcludedPath>,
-) {
-    let Some(path) = path else { return };
-    let pattern = normalize_exclude_pattern(root, path);
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let (display, pattern) = output_exclusion(root, path)?;
     if pattern.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let _ = add_exclude_pattern(&mut scan_args.excluded, pattern.clone());
+    let _ = add_exclude_pattern(&mut scan_args.excluded, pattern);
 
-    if !excluded_paths.iter().any(|p| p.path == pattern) {
+    if !excluded_paths.iter().any(|p| p.path == display) {
         excluded_paths.push(ContextExcludedPath {
-            path: pattern,
+            path: display,
             reason: reason.to_string(),
         });
     }
+    Ok(())
 }
 
 #[cfg(test)]

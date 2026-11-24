@@ -2,8 +2,17 @@
 
 #![forbid(unsafe_code)]
 
-use tokmd_scan::normalize_slashes as normalize_path;
+use std::borrow::Cow;
+
 use tokmd_types::{FileClassification, InclusionPolicy};
+
+fn normalize_path(path: &str) -> Cow<'_, str> {
+    if cfg!(windows) && path.contains('\\') {
+        Cow::Owned(tokmd_scan::normalize_slashes(path))
+    } else {
+        Cow::Borrowed(path)
+    }
+}
 
 /// Default maximum fraction of budget a single file may consume.
 pub const DEFAULT_MAX_FILE_PCT: f64 = 0.15;
@@ -262,10 +271,10 @@ mod tests {
     }
 
     #[test]
-    fn smart_exclude_reason_normalizes_windows_separators() {
+    fn smart_exclude_reason_respects_native_separators() {
         assert_eq!(
             smart_exclude_reason(r"frontend\package-lock.json"),
-            Some("lockfile")
+            cfg!(windows).then_some("lockfile")
         );
         assert_eq!(
             smart_exclude_reason(r"dist\bundle.min.js"),
@@ -283,7 +292,10 @@ mod tests {
         assert!(vendor_classes.contains(&FileClassification::Vendored));
 
         let fixture_classes = classify_file(r"tests\fixtures\example.rs", 10, 10, 50.0);
-        assert!(fixture_classes.contains(&FileClassification::Fixture));
+        assert_eq!(
+            fixture_classes.contains(&FileClassification::Fixture),
+            cfg!(windows)
+        );
 
         let similar_vendor = classify_file("vendorized/generated.rs", 10, 10, 50.0);
         assert!(!similar_vendor.contains(&FileClassification::Vendored));

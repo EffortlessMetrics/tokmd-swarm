@@ -6,10 +6,18 @@ pub(super) fn build_integrity_report(rows: &[&FileRow]) -> IntegrityReport {
     sorted_rows.sort_unstable_by(|&a, &b| compare_integrity_rows(a, b));
 
     let mut hasher = blake3::Hasher::new();
+    // 0xff cannot occur in a UTF-8 path. For newline-bearing names it both
+    // distinguishes this encoding from legacy records and frames each record.
+    let separator: &[u8] = if sorted_rows.iter().any(|row| row.path.contains('\n')) {
+        hasher.update(&[0xff]);
+        &[0xff]
+    } else {
+        b"\n"
+    };
     let mut first = true;
     for row in sorted_rows {
         if !first {
-            hasher.update(b"\n");
+            hasher.update(separator);
         }
         first = false;
         hasher.update(row.path.as_bytes());
@@ -206,6 +214,19 @@ mod tests {
             let report = build_integrity_report(&order);
             assert_eq!(report.entries, 2);
             assert_eq!(report.hash, expected.to_hex().as_str());
+        }
+    }
+
+    #[test]
+    fn integrity_frames_records_with_newline_bearing_names() {
+        let plain = make_row("a.rs", 10, 1);
+        let multiline = make_row("b\ninside.rs", 20, 2);
+        let expected = blake3::hash(b"\xffa.rs:10:1\xffb\ninside.rs:20:2");
+        for rows in [[&plain, &multiline], [&multiline, &plain]] {
+            assert_eq!(
+                build_integrity_report(&rows).hash,
+                expected.to_hex().as_str()
+            );
         }
     }
 

@@ -347,6 +347,41 @@ fn test_context_output_to_file_json() {
     assert!(parsed["files"].is_array());
 }
 
+#[cfg(unix)]
+#[test]
+fn context_excludes_its_literal_output_and_keeps_distinct_native_sources() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let output = r"literal\name[1].rs";
+    let nested = "literal/name[1].rs";
+    let glob_lookalike = r"literal\name1.rs";
+    fs::create_dir(dir.path().join("literal"))?;
+    for path in [output, nested, glob_lookalike] {
+        fs::write(dir.path().join(path), "fn marker() {}\n")?;
+    }
+
+    tokmd_cmd()
+        .current_dir(dir.path())
+        .args([
+            "context",
+            ".",
+            "--mode",
+            "json",
+            "--budget",
+            "100k",
+            "--no-smart-exclude",
+            "--force",
+            "--output",
+            output,
+        ])
+        .assert()
+        .success();
+    let receipt: tokmd_types::ContextReceipt =
+        serde_json::from_slice(&fs::read(dir.path().join(output))?)?;
+    let paths: Vec<_> = receipt.files.iter().map(|row| row.path.as_str()).collect();
+    assert_eq!(paths, [nested, glob_lookalike]);
+    Ok(())
+}
+
 #[test]
 fn test_context_output_to_file_list() {
     let dir = tempdir().unwrap();

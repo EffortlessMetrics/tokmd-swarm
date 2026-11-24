@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use tokmd_scan::normalize_slashes as normalize_path;
 use tokmd_types::{
     CapabilityState, CapabilityStatus, ExportData, FileKind, FileRow, HandoffDerived,
     HandoffHotspot, HandoffIntelligence,
@@ -49,7 +48,7 @@ pub(super) fn build_intelligence(
                         let lines = export
                             .rows
                             .iter()
-                            .find(|r| normalize_path(&r.path) == *path)
+                            .find(|r| r.kind == FileKind::Parent && &r.path == path)
                             .map(|r| r.lines)
                             .unwrap_or(0);
                         HandoffHotspot {

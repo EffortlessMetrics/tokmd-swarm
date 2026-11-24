@@ -163,6 +163,24 @@ fn exclusion_and_redaction_distinguish_native_backslash_from_separator() -> Resu
         )?;
     }
 
+    let mut excluded_hashes = std::collections::BTreeSet::new();
+    for pattern in ["literal/name.rs", r"literal\\name.rs"] {
+        let body = success(export(
+            root,
+            "json",
+            &["--exclude", pattern, "--redact", "paths"],
+        )?)?;
+        let receipt: Value = serde_json::from_str(&body)?;
+        let label = receipt
+            .pointer("/scan/excluded/0")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("missing redacted exclusion label"))?;
+        assert!(
+            excluded_hashes.insert(label.to_owned()),
+            "distinct exclusions share a hash"
+        );
+    }
+
     let redacted = success(export(root, "json", &["--redact", "paths"])?)?;
     let receipt = serde_json::from_str(&redacted)?;
     let rows = array(&receipt, "rows")?;
@@ -275,6 +293,152 @@ fn context_bundle_reads_each_advertised_path_under_an_absolute_native_root() -> 
     assert_eq!(
         artifact.pointer("/hash/hash").and_then(Value::as_str),
         Some(blake3::hash(bundle.as_bytes()).to_hex().as_str())
+    );
+    Ok(())
+}
+
+#[cfg(all(unix, feature = "git"))]
+#[test]
+fn context_ranking_reports_fallback_for_quoted_git_paths() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let root = dir.path();
+    let git = |args: &[&str]| -> Result<()> {
+        success(
+            Command::new("git")
+                .current_dir(root)
+                .args([
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                ])
+                .args(args)
+                .output()?,
+        )?;
+        Ok(())
+    };
+    let rank = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_tokmd"))
+            .current_dir(root)
+            .args([
+                "context",
+                "--mode",
+                "json",
+                "--config",
+                "none",
+                "--rank-by",
+                "hotspot",
+            ])
+            .args(extra)
+            .output()
+    };
+    git(&["init", "--quiet"])?;
+    fs::create_dir(root.join("literal"))?;
+    fs::write(root.join("literal/name.rs"), "fn nested() {}\n")?;
+    git(&["add", "."])?;
+    git(&["commit", "--quiet", "-m", "nested"])?;
+    let ranked = serde_json::from_str(&success(rank(&["--require-git-scores"])?)?)?;
+    let [only] = array(&ranked, "files")?.as_slice() else {
+        anyhow::bail!("expected the tracked nested file");
+    };
+    assert_eq!(field(only, "rank_reason")?, "hotspot");
+
+    fs::write(root.join(r"literal\name.rs"), "fn literal() {}\n")?;
+    git(&["add", "."])?;
+    git(&["commit", "--quiet", "-m", "literal"])?;
+    let fallback = serde_json::from_str(&success(rank(&[])?)?)?;
+    assert_eq!(field(&fallback, "rank_by_effective")?, "code");
+    assert!(field(&fallback, "fallback_reason")?.contains("git scores"));
+    let mut names = array(&fallback, "files")?
+        .iter()
+        .map(|row| field(row, "path"))
+        .collect::<Result<Vec<_>>>()?;
+    names.sort_unstable();
+    assert_eq!(names, ["literal/name.rs", r"literal\name.rs"]);
+    let required = rank(&["--require-git-scores"])?;
+    assert!(!required.status.success());
+    assert!(required.stdout.is_empty());
+    assert!(String::from_utf8(required.stderr)?.contains("Git scores required"));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn check_ignore_explains_the_same_native_path_as_export() -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join(r"source[ab]\root");
+    fs::create_dir_all(root.join("sub/literal"))?;
+    let literal = r"sub/literal\name.rs";
+    let nested = "sub/literal/name.rs";
+    for path in [literal, nested] {
+        fs::File::create_new(root.join(path))?;
+    }
+    // The rule is relative to its source. A root-level basename with the same
+    // spelling is a positive control for overly broad .tokeignore matching.
+    fs::File::create_new(root.join(r"literal\name.rs"))?;
+    for file_rule in [false, true] {
+        for (pattern, ignored, kept) in [
+            (r"literal\\name.rs", literal, nested),
+            ("literal/name.rs", nested, literal),
+        ] {
+            let cli_pattern = format!("sub/{pattern}");
+            let flags = if file_rule {
+                fs::write(root.join("sub/.tokeignore"), format!("/{pattern}\n"))?;
+                vec![]
+            } else {
+                vec!["--exclude", cli_pattern.as_str()]
+            };
+            let inventory = serde_json::from_str(&success(export(&root, "json", &flags)?)?)?;
+            let paths = array(&inventory, "rows")?
+                .iter()
+                .map(|row| field(row, "path"))
+                .collect::<Result<Vec<_>>>()?;
+            assert!(
+                paths.contains(&kept)
+                    && paths.contains(&r"literal\name.rs")
+                    && !paths.contains(&ignored),
+                "{paths:?}"
+            );
+            for path in [literal, nested, r"literal\name.rs"] {
+                let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+                    .current_dir(&root)
+                    .args(&flags)
+                    .args(["check-ignore", "-v", path])
+                    .output()?;
+                let expected = if path == ignored {
+                    let reason = if file_rule {
+                        format!("sub/.tokeignore: /{pattern}")
+                    } else {
+                        format!("--exclude: {cli_pattern}")
+                    };
+                    format!("{path}: ignored\n  {reason}\n")
+                } else {
+                    format!("{path}: not ignored\n")
+                };
+                assert_eq!(
+                    output.status.code(),
+                    Some(i32::from(path != ignored)),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert_eq!(String::from_utf8(output.stdout)?, expected);
+            }
+        }
+    }
+    let raw = std::ffi::OsStr::from_bytes(b"bad-\xff.rs");
+    fs::File::create_new(root.join(raw))?;
+    let unsupported = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+        .current_dir(&root)
+        .arg("check-ignore")
+        .arg(raw)
+        .output()?;
+    assert!(!unsupported.status.success() && unsupported.stdout.is_empty());
+    let diagnostic = String::from_utf8(unsupported.stderr)?;
+    assert!(
+        diagnostic.contains("Unsupported source path") && diagnostic.contains("6261642dff2e7273"),
+        "{diagnostic}"
     );
     Ok(())
 }

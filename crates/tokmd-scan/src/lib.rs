@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use tokei::{Config, Languages};
 
 use crate::ignore_patterns::ignored_patterns;
+pub use crate::ignore_patterns::{matching_exclude_flags, matching_tokeignore};
 pub use crate::in_memory::{
     InMemoryFile, MaterializedScan, normalize_in_memory_paths, scan_in_memory, scan_snapshot,
 };

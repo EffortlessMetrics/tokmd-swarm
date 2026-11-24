@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::redact::{receipt_path_hash, redact_receipt_path, short_hash};
+use crate::redact::{hash_bytes, receipt_path_hash, redact_receipt_path};
 use tokmd_settings::ScanOptions;
 use tokmd_types::{RedactMode, ScanArgs};
 
@@ -47,7 +47,7 @@ pub fn scan_args(paths: &[PathBuf], global: &ScanOptions, redact: Option<RedactM
     let mut args = ScanArgs {
         paths: paths.iter().map(|p| normalize_scan_input(p)).collect(),
         excluded: if should_redact {
-            global.excluded.iter().map(|p| short_hash(p)).collect()
+            global.excluded.iter().map(|p| hash_bytes(p)).collect()
         } else {
             global.excluded.clone()
         },

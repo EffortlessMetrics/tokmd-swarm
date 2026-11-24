@@ -14,7 +14,7 @@ use crate::cli;
 use anyhow::{Context, Result, bail};
 use tokmd_model as model;
 use tokmd_scan as scan;
-use tokmd_scan::{add_exclude_pattern, normalize_exclude_pattern};
+use tokmd_scan::{add_exclude_pattern, exclude::output_exclusion};
 use tokmd_types::{
     FileKind, HANDOFF_SCHEMA_VERSION, HandoffExcludedPath, HandoffManifest, ToolInfo,
 };
@@ -78,7 +78,7 @@ fn handle_with_selection(
     // Scan and create export data
     progress.set_message("Scanning codebase...");
     let mut scan_args = global.clone();
-    let excluded_paths = exclude_output_dir(&root, &args.out_dir, &mut scan_args);
+    let excluded_paths = exclude_output_dir(&root, &args.out_dir, &mut scan_args)?;
     let scan_opts = tokmd_settings::ScanOptions::from(&scan_args);
     let languages = scan::scan(&paths, &scan_opts)?;
     let module_roots = args.module_roots.clone().unwrap_or_default();
@@ -280,15 +280,15 @@ fn exclude_output_dir(
     root: &Path,
     out_dir: &Path,
     scan_args: &mut cli::GlobalArgs,
-) -> Vec<HandoffExcludedPath> {
-    let pattern = normalize_exclude_pattern(root, out_dir);
+) -> Result<Vec<HandoffExcludedPath>> {
+    let (display, pattern) = output_exclusion(root, out_dir)?;
     if !pattern.is_empty() {
-        let _ = add_exclude_pattern(&mut scan_args.excluded, pattern.clone());
+        let _ = add_exclude_pattern(&mut scan_args.excluded, pattern);
     }
-    vec![HandoffExcludedPath {
-        path: pattern,
+    Ok(vec![HandoffExcludedPath {
+        path: display,
         reason: "output_dir".to_string(),
-    }]
+    }])
 }
 
 fn discover_packet_local_proof_route(

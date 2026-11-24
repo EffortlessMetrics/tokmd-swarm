@@ -1107,7 +1107,7 @@ Tracks build artifact hashes for reproducibility verification.
 - **Additive changes** (new optional fields) do not increment `schema_version`.
 - **Breaking changes** (renamed/removed fields, type changes) increment `schema_version`.
 - Consumers should ignore unknown fields for forward compatibility.
-- The `integrity.hash` field can be used to verify receipt contents.
+- To verify `integrity.hash`, sort the UTF-8 records `path:bytes:lines` in byte order. Hash their concatenation with BLAKE3, inserting a line feed between records. If any path contains a line feed, prefix the stream with byte `0xff` and use `0xff` between records. That byte cannot occur in UTF-8. Numeric fields are unsigned decimal without padding.
 
 ### Forward Compatibility Policy
 

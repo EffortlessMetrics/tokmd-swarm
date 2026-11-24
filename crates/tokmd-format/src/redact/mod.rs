@@ -99,7 +99,7 @@ pub fn receipt_path_hash(path: &str) -> String {
     hash_bytes(&clean_path(path, false))
 }
 
-fn hash_bytes(s: &str) -> String {
+pub(crate) fn hash_bytes(s: &str) -> String {
     let mut hex = blake3::hash(s.as_bytes()).to_hex().to_string();
     hex.truncate(16);
     hex
