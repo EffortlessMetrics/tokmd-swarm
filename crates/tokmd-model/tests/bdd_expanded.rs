@@ -34,6 +34,18 @@ fn crate_src() -> String {
     format!("{}/src", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Use a relative tokei report so module roots and separator spelling are
+/// independent of the directory containing the checkout.
+fn native_report_fixture() -> (Languages, &'static str) {
+    let module = if cfg!(unix) { r"app\core" } else { "app" };
+    let source = Path::new(".").join("crates").join(module).join("lib.rs");
+    let mut language = tokei::Language::new();
+    language.reports.push(tokei::Report::new(source));
+    let mut languages = Languages::new();
+    languages.insert(tokei::LanguageType::Rust, language);
+    (languages, module)
+}
+
 /// Scan the entire workspace (provides richer multi-language data).
 fn workspace_src() -> String {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -107,23 +119,17 @@ fn given_lang_report_then_total_tokens_equals_sum_of_row_tokens() -> std::io::Re
 // ===========================================================================
 
 #[test]
-fn given_module_report_then_all_module_keys_use_forward_slashes() -> std::io::Result<()> {
-    let langs = scan_dir(&workspace_src());
+fn given_native_file_then_module_key_joins_native_directory_names() -> std::io::Result<()> {
+    let (languages, module) = native_report_fixture();
     let report = create_module_report(
-        &langs,
+        &languages,
         &["crates".into()],
         2,
         ChildIncludeMode::ParentsOnly,
         0,
     )?;
-
-    for row in &report.rows {
-        assert!(
-            !row.module.contains('\\'),
-            "module key '{}' must not contain backslashes",
-            row.module
-        );
-    }
+    let keys: Vec<_> = report.rows.into_iter().map(|row| row.module).collect();
+    assert_eq!(keys, [format!("crates/{module}")]);
     Ok(())
 }
 
@@ -209,17 +215,11 @@ fn given_parent_file_rows_then_bytes_are_positive() -> std::io::Result<()> {
 }
 
 #[test]
-fn given_file_rows_then_paths_use_forward_slashes() -> std::io::Result<()> {
-    let langs = scan_dir(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
-
-    for row in &rows {
-        assert!(
-            !row.path.contains('\\'),
-            "file row path '{}' must not contain backslashes",
-            row.path
-        );
-    }
+fn given_native_file_then_row_path_joins_native_names_with_slashes() -> std::io::Result<()> {
+    let (languages, module) = native_report_fixture();
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
+    let paths: Vec<_> = rows.into_iter().map(|row| row.path).collect();
+    assert_eq!(paths, [format!("crates/{module}/lib.rs")]);
     Ok(())
 }
 

@@ -617,44 +617,50 @@ fn normalize_path_idempotent() {
     assert_eq!(once, twice, "normalize_path should be idempotent");
 }
 
+fn native_tree() -> std::io::Result<(tempfile::TempDir, Languages, String)> {
+    let root = tempfile::tempdir()?;
+    let name = if cfg!(unix) {
+        r"project\part"
+    } else {
+        "project"
+    };
+    let src = root.path().join(name).join("src");
+    std::fs::create_dir_all(&src)?;
+    std::fs::write(src.join("lib.rs"), "fn measured() {}\n")?;
+    let mut languages = Languages::new();
+    languages.get_statistics(&[root.path()], &[], &Config::default());
+    Ok((root, languages, format!("{name}/src/lib.rs")))
+}
+
 #[test]
 fn collect_file_rows_paths_normalized() -> std::io::Result<()> {
-    let languages = scan_self();
-    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
-    for row in &rows {
-        assert!(
-            !row.path.contains('\\'),
-            "File row path should use forward slashes: {}",
-            row.path
-        );
-        assert!(
-            !row.path.starts_with("./"),
-            "File row path should not start with ./: {}",
-            row.path
-        );
-    }
+    let (root, languages, expected) = native_tree()?;
+    let rows = collect_file_rows(
+        &languages,
+        &[],
+        1,
+        ChildIncludeMode::ParentsOnly,
+        Some(root.path()),
+    )?;
+    let paths: Vec<_> = rows.into_iter().map(|row| row.path).collect();
+    assert_eq!(paths, [expected]);
     Ok(())
 }
 
 #[test]
 fn export_data_paths_normalized() -> std::io::Result<()> {
-    let languages = scan_self();
+    let (root, languages, expected) = native_tree()?;
     let data = create_export_data(
         &languages,
         &[],
         1,
         ChildIncludeMode::ParentsOnly,
-        None,
+        Some(root.path()),
         0,
         0,
     )?;
-    for row in &data.rows {
-        assert!(
-            !row.path.contains('\\'),
-            "Export path should use forward slashes: {}",
-            row.path
-        );
-    }
+    let paths: Vec<_> = data.rows.into_iter().map(|row| row.path).collect();
+    assert_eq!(paths, [expected]);
     Ok(())
 }
 
