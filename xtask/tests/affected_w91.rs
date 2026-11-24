@@ -124,7 +124,7 @@ fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json::Value> {
+fn changed_fixture(changed_files: &[&str]) -> Result<tempfile::TempDir> {
     let temp = tempfile::tempdir().context("create affected fixture repo")?;
     let repo = temp.path();
     run_git(repo, &["init", "-q"])?;
@@ -133,12 +133,7 @@ fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json:
     run_git(repo, &["config", "commit.gpgsign", "false"])?;
     run_git(repo, &["config", "tag.gpgsign", "false"])?;
 
-    for path in [
-        "AGENTS.md",
-        "agents/shared/repo.md",
-        "agents/shared/future-guidance.md",
-        ".github/workflows/ci.yml",
-    ] {
+    for path in changed_files {
         let target = repo.join(path);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)
@@ -158,11 +153,16 @@ fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json:
     run_git(repo, &["add", "."])?;
     run_git(repo, &["commit", "-q", "-m", "fixture head"])?;
 
+    Ok(temp)
+}
+
+fn affected_fixture(changed_files: &[&str], policy: &Path) -> Result<serde_json::Value> {
+    let fixture = changed_fixture(changed_files)?;
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
         .args(["affected", "--base", "HEAD^", "--head", "HEAD", "--policy"])
         .arg(policy)
         .arg("--json")
-        .current_dir(repo)
+        .current_dir(fixture.path())
         .output()
         .context("run affected fixture")?;
     ensure!(
@@ -231,5 +231,67 @@ fn agent_guidance_scope_reduces_and_deduplicates_commands() -> Result<()> {
     // guidance-scope reduction this test guards is the assertion above.
     ensure!(array_len(scope(&workflow, "proof_control_plane")?, "proof")? == 31);
     ensure!(array_len(&workflow, "unknown_files")? == 0);
+    Ok(())
+}
+
+#[test]
+fn affected_release_status_plans_verifier_proof_for_each_module() -> Result<()> {
+    use serde_json::{Value, json};
+
+    let policy = workspace_root().join("ci/proof.toml");
+    for file in [
+        "xtask/src/tasks/preflight_archive.rs",
+        "xtask/src/tasks/preflight_github.rs",
+        "xtask/src/tasks/preflight_verifier.rs",
+        "xtask/src/tasks/preflight_verifier_tests.rs",
+    ] {
+        let fixture = changed_fixture(&[file])?;
+        let plan_path = fixture.path().join("plan.json");
+        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args([
+                "proof",
+                "--plan",
+                "--profile",
+                "affected",
+                "--base",
+                "HEAD^",
+                "--head",
+                "HEAD",
+                "--plan-json",
+            ])
+            .arg(&plan_path)
+            .arg("--policy")
+            .arg(&policy)
+            .current_dir(fixture.path())
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "plan {file}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let plan: Value = serde_json::from_slice(&fs::read(plan_path)?)?;
+        ensure!(
+            plan.get("changed_files") == Some(&json!([file])),
+            "expected an isolated diff for {file}"
+        );
+        ensure!(
+            array_len(&plan, "unknown_files")? == 0,
+            "unrouted release-status module: {file}"
+        );
+        let commands = plan
+            .get("commands")
+            .and_then(Value::as_array)
+            .context("plan commands")?;
+        ensure!(
+            commands
+                .iter()
+                .any(|entry| entry.get("scope").and_then(Value::as_str)
+                    == Some("proof_control_plane")
+                    && entry.get("required").and_then(Value::as_bool) == Some(true)
+                    && entry.get("command").and_then(Value::as_str)
+                        == Some("cargo test --locked -p xtask release_status --verbose")),
+            "missing required release-status proof for {file}"
+        );
+    }
     Ok(())
 }

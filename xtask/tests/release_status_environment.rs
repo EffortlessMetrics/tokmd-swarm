@@ -150,8 +150,8 @@ fn release_status_rejects_staged_and_unstaged_source_changes_at_the_tag() -> Res
 
 #[cfg(unix)]
 #[test]
-fn preflight_requires_live_evidence_and_rejects_stale_manifest_before_remote_lookup() -> Result<()>
-{
+fn release_status_preflight_requires_live_evidence_and_rejects_stale_manifest_before_remote_lookup()
+-> Result<()> {
     use serde_json::{Value, json};
     use std::fs;
     use std::os::unix::fs::symlink;
