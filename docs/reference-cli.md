@@ -2906,6 +2906,9 @@ tokmd completions fish > ~/.config/fish/completions/tokmd.fish
 tokmd completions powershell >> $PROFILE
 ```
 
+If writing or flushing stdout fails, completions exits with code `1` and reports
+the I/O error on stderr. Repair the destination and rerun the same command.
+
 ---
 
 ## Exit Codes
