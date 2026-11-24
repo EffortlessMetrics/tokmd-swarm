@@ -820,3 +820,190 @@ fn test_gate_ratchet_no_baseline() {
             "Ratchet rules require a baseline receipt",
         ));
 }
+
+// Configured baselines must use the same path provenance as configured policies.
+// Keep these executable regressions in the existing governed gate test target.
+fn configured_baseline_fixture() -> anyhow::Result<TempDir> {
+    let dir = TempDir::new()?;
+    fs::create_dir(dir.path().join("nested"))?;
+    fs::write(dir.path().join("current.json"), r#"{"metric":105}"#)?;
+    write_configured_baseline(dir.path(), "baseline.json")?;
+    Ok(dir)
+}
+
+fn write_configured_baseline(root: &std::path::Path, baseline: &str) -> anyhow::Result<()> {
+    let quoted = serde_json::to_string(baseline)?;
+    fs::write(
+        root.join("tokmd.toml"),
+        format!(
+            "[gate]\nbaseline = {quoted}\n\n[[gate.ratchet]]\npointer = \"/metric\"\nmax_increase_pct = 10.0\nlevel = \"error\"\n"
+        ),
+    )?;
+    Ok(())
+}
+
+fn configured_baseline_command(root: &std::path::Path, cwd: &std::path::Path) -> Command {
+    let mut command = tokmd();
+    command
+        .current_dir(cwd)
+        .env_remove("TOKMD_CONFIG")
+        .env_remove("TOKMD_PROFILE")
+        .args(["--no-progress", "gate"])
+        .arg(root.join("current.json"))
+        .args(["--format", "json"]);
+    command
+}
+
+fn check_baseline_verdict(
+    command: &mut Command,
+    expected_code: i32,
+    expected_baseline: f64,
+) -> anyhow::Result<()> {
+    let output = command.output()?;
+    anyhow::ensure!(
+        output.status.code() == Some(expected_code),
+        "unexpected gate exit {:?}; stdout: {}; stderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(
+        report.get("passed").and_then(serde_json::Value::as_bool) == Some(expected_code == 0),
+        "gate verdict disagrees with exit code: {report}"
+    );
+    anyhow::ensure!(
+        report.pointer("/ratchet/ratchet_results/0/baseline_value")
+            == Some(&serde_json::json!(expected_baseline)),
+        "gate used the wrong baseline: {report}"
+    );
+    Ok(())
+}
+
+fn check_baseline_load_error(
+    command: &mut Command,
+    intended_path: &std::path::Path,
+    expected_detail: &str,
+) -> anyhow::Result<()> {
+    let output = command.output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    anyhow::ensure!(
+        output.status.code() == Some(1) && output.stdout.is_empty(),
+        "selected baseline error was masked: exit {:?}, stdout {}, stderr {stderr}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    anyhow::ensure!(
+        stderr.contains(expected_detail)
+            && stderr.contains(intended_path.to_string_lossy().as_ref()),
+        "baseline diagnostic lost its intended path or cause: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_gate_configured_baseline_root_and_nested_reject_shadow_false_pass() -> anyhow::Result<()> {
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    fs::write(root.join("baseline.json"), r#"{"metric":1}"#)?;
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+
+    check_baseline_verdict(&mut configured_baseline_command(root, root), 1, 1.0)?;
+    check_baseline_verdict(&mut configured_baseline_command(root, &nested), 1, 1.0)
+}
+
+#[test]
+fn test_gate_configured_baseline_nested_without_shadow_uses_root() -> anyhow::Result<()> {
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    fs::write(root.join("baseline.json"), r#"{"metric":100}"#)?;
+
+    check_baseline_verdict(
+        &mut configured_baseline_command(root, &root.join("nested")),
+        0,
+        100.0,
+    )
+}
+
+#[test]
+fn test_gate_configured_baseline_missing_intended_file_rejects_shadow() -> anyhow::Result<()> {
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+
+    check_baseline_load_error(
+        &mut configured_baseline_command(root, &nested),
+        &root.join("baseline.json"),
+        "Failed to read baseline",
+    )
+}
+
+#[test]
+fn test_gate_configured_baseline_malformed_intended_file_rejects_shadow() -> anyhow::Result<()> {
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    fs::write(root.join("baseline.json"), "{broken")?;
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+
+    check_baseline_load_error(
+        &mut configured_baseline_command(root, &nested),
+        &root.join("baseline.json"),
+        "failed to parse baseline JSON",
+    )
+}
+
+#[test]
+fn test_gate_configured_baseline_absolute_path_is_preserved() -> anyhow::Result<()> {
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    let baseline = root.join("absolute baseline.json");
+    fs::write(&baseline, r#"{"metric":1}"#)?;
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+    write_configured_baseline(root, baseline.to_string_lossy().as_ref())?;
+
+    check_baseline_verdict(&mut configured_baseline_command(root, &nested), 1, 1.0)
+}
+
+#[test]
+fn test_gate_configured_baseline_cli_relative_override_remains_cwd_relative() -> anyhow::Result<()>
+{
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    fs::write(root.join("baseline.json"), "{broken")?;
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+    let mut command = configured_baseline_command(root, &nested);
+    command.args(["--baseline", "baseline.json"]);
+    check_baseline_verdict(&mut command, 0, 100.0)?;
+
+    // A missing explicit CLI selection must not fall back to the valid TOML baseline.
+    fs::write(root.join("baseline.json"), r#"{"metric":100}"#)?;
+    fs::remove_file(nested.join("baseline.json"))?;
+    check_baseline_load_error(
+        &mut command,
+        std::path::Path::new("baseline.json"),
+        "Failed to read baseline",
+    )
+}
+
+#[test]
+fn test_gate_configured_baseline_env_selected_config_uses_its_own_directory() -> anyhow::Result<()>
+{
+    let dir = configured_baseline_fixture()?;
+    let root = dir.path();
+    let nested = root.join("nested");
+    let selected = root.join("selected");
+    fs::create_dir(&selected)?;
+    write_configured_baseline(&selected, "baseline.json")?;
+    fs::write(selected.join("baseline.json"), r#"{"metric":1}"#)?;
+    fs::write(root.join("baseline.json"), r#"{"metric":100}"#)?;
+    fs::write(nested.join("baseline.json"), r#"{"metric":100}"#)?;
+    let mut command = configured_baseline_command(root, &nested);
+    command.env("TOKMD_CONFIG", selected.join("tokmd.toml"));
+
+    check_baseline_verdict(&mut command, 1, 1.0)
+}
