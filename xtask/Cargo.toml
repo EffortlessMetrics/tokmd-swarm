@@ -20,14 +20,19 @@ chrono = "0.4"
 globset = "0.4.18"
 semver = "1"
 serde_json = "1"
+sha2 = { version = "0.10.9", default-features = false }
 syn = { version = "3.0.3", features = ["full", "extra-traits", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 walkdir = "2"
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 tempfile.workspace = true
 tokmd-core = { workspace = true, features = ["analysis"] }
 tokmd-analysis = { workspace = true, features = ["ast"] }
 tokmd-analysis-types.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Globalization"] }

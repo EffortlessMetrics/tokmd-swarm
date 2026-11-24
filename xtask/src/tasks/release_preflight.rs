@@ -116,6 +116,39 @@ pub fn run(args: ReleasePreflightArgs) -> Result<()> {
     Ok(())
 }
 
+/// Rebuild an archived decision using the same producer rules and command order.
+pub(crate) fn reaggregate_archive_input(bytes: &[u8]) -> Result<ReleasePreflightReceipt> {
+    let input: PreflightInput =
+        serde_json::from_slice(bytes).context("parse v2 preflight input")?;
+    if input.expected_version.trim() != input.expected_version {
+        bail!("noncanonical preflight expected_version");
+    }
+    // Admission is stricter than the historical producer CLI, which normalizes log separators.
+    for command in &input.commands {
+        let log = format!("logs/{}.log", command.id);
+        if command.log.as_deref() != Some(log.as_str()) {
+            bail!("noncanonical preflight command log");
+        }
+    }
+    // serde rejects duplicate known fields and wrong scalar types. Round-tripping also
+    // catches unknown fields. Older valid input can omit the optional detail field.
+    let mut recorded: serde_json::Value = serde_json::from_slice(bytes)?;
+    if let Some(commands) = recorded
+        .get_mut("commands")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for row in commands {
+            if let Some(fields) = row.as_object_mut() {
+                fields.entry("detail").or_insert(serde_json::Value::Null);
+            }
+        }
+    }
+    if recorded != serde_json::to_value(&input)? {
+        bail!("unexpected preflight input structure");
+    }
+    aggregate(input)
+}
+
 fn aggregate(input: PreflightInput) -> Result<ReleasePreflightReceipt> {
     if input.schema != INPUT_SCHEMA || input.schema_version != SCHEMA_VERSION {
         bail!("release preflight input schema must be `{INPUT_SCHEMA}` version {SCHEMA_VERSION}");

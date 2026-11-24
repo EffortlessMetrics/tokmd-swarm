@@ -46,6 +46,19 @@
     "git_tag": {
       "$ref": "#/definitions/fact"
     },
+    "preflight": {
+      "description": "Live preflight inspection requested by manifest. Offline fixture input must omit this field.",
+      "allOf": [
+        { "$ref": "#/definitions/fact" },
+        {
+          "required": ["state", "detail", "evidence"],
+          "properties": {
+            "state": { "enum": ["missing", "pending", "passed", "failed", "unavailable", "not_run"] },
+            "detail": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
     "github_release": {
       "$ref": "#/definitions/fact"
     },
@@ -84,6 +97,24 @@
     }
   },
   "allOf": [
+    {
+      "if": { "required": ["preflight"] },
+      "then": { "properties": { "complete": { "const": false } } }
+    },
+    {
+      "if": {
+        "required": ["preflight"],
+        "properties": {
+          "preflight": { "properties": { "state": { "not": { "const": "unavailable" } } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "source": { "properties": { "state": { "const": "passed" } } },
+          "git_tag": { "properties": { "state": { "const": "passed" } } }
+        }
+      }
+    },
     {
       "if": {
         "properties": {
