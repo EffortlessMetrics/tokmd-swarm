@@ -753,14 +753,17 @@ fn supply_preserves_asset_identities_and_reports_unrepresentable_native_names() 
         assert_eq!(file.get("bytes").context("missing bytes")?, bytes);
     }
 
-    let health = analyze(OsStr::new("."), "health")?;
-    assert!(!health.status.success());
-    assert!(health.stdout.is_empty());
-    let error = String::from_utf8(health.stderr)?;
-    assert!(
-        error.contains("literal backslash") && error.contains("retry"),
-        "{error}"
-    );
+    #[cfg(feature = "content")]
+    {
+        let health = analyze(OsStr::new("."), "health")?;
+        assert!(!health.status.success());
+        assert!(health.stdout.is_empty());
+        let error = String::from_utf8(health.stderr)?;
+        assert!(
+            error.contains("literal backslash") && error.contains("retry"),
+            "{error}"
+        );
+    }
 
     for (name, expected_hex) in [
         (b"asset-\xff.png".as_slice(), "61737365742dff2e706e67"),

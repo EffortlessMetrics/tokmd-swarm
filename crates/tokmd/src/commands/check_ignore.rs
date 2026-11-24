@@ -96,7 +96,11 @@ fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<Ch
     }
 
     // 3. Check .tokeignore relative to the directory containing the rule.
-    if let Some((source, pattern)) = tokmd_scan::matching_tokeignore(path)? {
+    if !global.no_ignore
+        && !global.no_ignore_dot
+        && let Some((source, pattern)) =
+            tokmd_scan::matching_tokeignore(path, !global.no_ignore_parent)?
+    {
         let cwd = std::env::current_dir()?;
         let source = source.strip_prefix(cwd).unwrap_or(&source);
         reasons.push(IgnoreReason::Tokeignore {
@@ -301,7 +305,7 @@ mod tests {
         let file_path = src_dir.join("main.rs");
         std::fs::write(&file_path, "fn main() {}\n")?;
 
-        let reason = tokmd_scan::matching_tokeignore(&file_path)?;
+        let reason = tokmd_scan::matching_tokeignore(&file_path, true)?;
         assert!(matches!(
             reason,
             Some((source, pattern)) if source == dir.path().join(".tokeignore") && pattern == "*.rs"

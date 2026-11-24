@@ -85,24 +85,42 @@ pub fn matching_exclude_flags(path: &Path, patterns: &[String]) -> Result<Vec<St
 }
 
 /// Find the effective .tokeignore rule for a native path and its source file.
-pub fn matching_tokeignore(path: &Path) -> Result<Option<(std::path::PathBuf, String)>> {
+pub fn matching_tokeignore(
+    path: &Path,
+    include_parents: bool,
+) -> Result<Option<(std::path::PathBuf, String)>> {
     let path = std::path::absolute(path)?;
+    let cwd = std::env::current_dir()?;
+    let levels: Vec<_> = path.ancestors().collect();
     let is_dir = path.is_dir();
-    for dir in path.ancestors().skip(1) {
-        let source = dir.join(".tokeignore");
-        if !source.try_exists()? {
+    let mut active = Vec::<(std::path::PathBuf, ignore::gitignore::Gitignore)>::new();
+    for entry in levels.into_iter().rev() {
+        // The walker enters its explicit root without applying ignore rules.
+        // Ancestor rule files can still govern entries below that root.
+        let above_root = cwd.starts_with(entry) && path.starts_with(&cwd);
+        if !above_root {
+            for (source, matcher) in active.iter().rev() {
+                match matcher.matched(entry, entry != path || is_dir) {
+                    Match::Ignore(rule) => {
+                        return Ok(Some((source.clone(), rule.original().into())));
+                    }
+                    Match::Whitelist(_) => break,
+                    Match::None => {}
+                }
+            }
+        }
+        // Read a child's rules only after its parent rules allowed the walk to
+        // enter that directory. A file-level whitelist cannot undo pruning.
+        if entry == path || (above_root && entry != cwd && !include_parents) {
             continue;
         }
-        let mut builder = GitignoreBuilder::new(".");
-        if let Some(error) = builder.add(&source) {
-            return Err(error.into());
-        }
-        let matcher = builder.build()?;
-        let relative = path.strip_prefix(dir)?;
-        match matcher.matched_path_or_any_parents(relative, is_dir) {
-            Match::Ignore(rule) => return Ok(Some((source, rule.original().to_owned()))),
-            Match::Whitelist(_) => return Ok(None),
-            Match::None => {}
+        let source = entry.join(".tokeignore");
+        if source.try_exists()? {
+            let mut builder = GitignoreBuilder::new(entry);
+            if let Some(error) = builder.add(&source) {
+                return Err(error.into());
+            }
+            active.push((source, builder.build()?));
         }
     }
     Ok(None)

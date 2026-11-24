@@ -8,11 +8,12 @@ pub(super) fn build_integrity_report(rows: &[&FileRow]) -> IntegrityReport {
     let mut hasher = blake3::Hasher::new();
     // 0xff cannot occur in a UTF-8 path. For newline-bearing names it both
     // distinguishes this encoding from legacy records and frames each record.
-    let separator: &[u8] = if sorted_rows.iter().any(|row| row.path.contains('\n')) {
+    let (algo, separator): (&str, &[u8]) = if sorted_rows.iter().any(|row| row.path.contains('\n'))
+    {
         hasher.update(&[0xff]);
-        &[0xff]
+        ("blake3-ff-v1", &[0xff])
     } else {
-        b"\n"
+        ("blake3", b"\n")
     };
     let mut first = true;
     for row in sorted_rows {
@@ -28,7 +29,7 @@ pub(super) fn build_integrity_report(rows: &[&FileRow]) -> IntegrityReport {
     }
 
     IntegrityReport {
-        algo: "blake3".to_string(),
+        algo: algo.to_owned(),
         hash: hasher.finalize().to_hex().to_string(),
         entries: rows.len(),
     }
@@ -223,10 +224,9 @@ mod tests {
         let multiline = make_row("b\ninside.rs", 20, 2);
         let expected = blake3::hash(b"\xffa.rs:10:1\xffb\ninside.rs:20:2");
         for rows in [[&plain, &multiline], [&multiline, &plain]] {
-            assert_eq!(
-                build_integrity_report(&rows).hash,
-                expected.to_hex().as_str()
-            );
+            let report = build_integrity_report(&rows);
+            assert_eq!(report.algo, "blake3-ff-v1");
+            assert_eq!(report.hash, expected.to_hex().as_str());
         }
     }
 

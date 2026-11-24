@@ -442,3 +442,80 @@ fn check_ignore_explains_the_same_native_path_as_export() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn check_ignore_follows_directory_pruning_and_enabled_rule_sources() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("repo");
+    fs::create_dir_all(root.join("branch"))?;
+    let path = "branch/keep.rs";
+    fs::File::create_new(root.join(path))?;
+    let check = |flags: &[&str], expected_reason: Option<&str>| -> Result<()> {
+        let inventory = serde_json::from_str(&success(export(&root, "json", flags)?)?)?;
+        let present = array(&inventory, "rows")?
+            .iter()
+            .any(|row| row.get("path").and_then(Value::as_str) == Some(path));
+        assert_eq!(
+            present,
+            expected_reason.is_none(),
+            "export with {flags:?}: {inventory}"
+        );
+        let output = Command::new(env!("CARGO_BIN_EXE_tokmd"))
+            .current_dir(&root)
+            .args(flags)
+            .args(["check-ignore", "--config", "none", "-v", path])
+            .output()?;
+        assert_eq!(
+            output.status.code(),
+            Some(i32::from(present)),
+            "check-ignore {flags:?}: {output:?}"
+        );
+        let expected = match expected_reason {
+            Some(reason) => format!("{path}: ignored\n  {reason}\n"),
+            None => format!("{path}: not ignored\n"),
+        };
+        assert_eq!(
+            String::from_utf8(output.stdout)?,
+            expected,
+            "check-ignore {flags:?}"
+        );
+        Ok(())
+    };
+
+    // First, the file exception in the root rule cannot re-open its parent.
+    fs::write(root.join(".tokeignore"), "branch/\n!branch/keep.rs\n")?;
+    check(&[], Some(".tokeignore: branch/"))?;
+    // A more local rule file inside a pruned directory is never consulted.
+    fs::write(root.join("branch/.tokeignore"), "!keep.rs\n")?;
+    check(&[], Some(".tokeignore: branch/"))?;
+    // Re-opening the directory permits its own file-level exception.
+    fs::write(root.join(".tokeignore"), "branch/\n!branch/\nbranch/*\n")?;
+    check(&[], None)?;
+    fs::write(root.join("branch/.tokeignore"), "keep.rs\n")?;
+    let source = Path::new("branch").join(".tokeignore");
+    let reason = format!("{}: keep.rs", source.display());
+    check(&[], Some(&reason))?;
+    for flag in ["--no-ignore-dot", "--no-ignore"] {
+        check(&[flag], None)?;
+        check(
+            &[flag, "--exclude", path],
+            Some("--exclude: branch/keep.rs"),
+        )?;
+    }
+    // --no-ignore-parent skips parent rule files but retains the root's own.
+    fs::remove_file(root.join("branch/.tokeignore"))?;
+    fs::write(root.join(".tokeignore"), "")?;
+    fs::write(temp.path().join(".tokeignore"), "/repo/branch/keep.rs\n")?;
+    let parent = temp.path().join(".tokeignore");
+    check(
+        &[],
+        Some(&format!("{}: /repo/branch/keep.rs", parent.display())),
+    )?;
+    check(&["--no-ignore-parent"], None)?;
+    fs::write(root.join(".tokeignore"), "/branch/keep.rs\n")?;
+    check(
+        &["--no-ignore-parent"],
+        Some(".tokeignore: /branch/keep.rs"),
+    )?;
+    Ok(())
+}

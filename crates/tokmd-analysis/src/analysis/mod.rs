@@ -86,13 +86,17 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
     #[cfg(all(unix, not(feature = "effort")))]
     let effort_requested = false;
     #[cfg(unix)]
-    if effort_requested
-        || include_git
-        || req.near_dup
-        || plan.archetype
-        || (plan.needs_files() && req.preset != AnalysisPreset::Supply)
     {
-        files::check_enricher_paths(&ctx.export, file_slice)?;
+        // File-backed legacy joins require content support and a successful walk.
+        let joined_files = file_slice.filter(|list| {
+            cfg!(feature = "content") && !list.is_empty() && req.preset != AnalysisPreset::Supply
+        });
+        if effort_requested
+            || (cfg!(feature = "archetype") && plan.archetype)
+            || joined_files.is_some()
+        {
+            files::check_enricher_paths(&ctx.export, joined_files)?;
+        }
     }
 
     let mut outputs = AnalysisOutputs::default();
@@ -122,7 +126,7 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
         },
         &mut outputs,
         &mut warnings,
-    );
+    )?;
     enrichers::semantic::run(&ctx.export, &derived, &plan, &mut outputs, &mut warnings);
     enrichers::code_quality::run(
         enrichers::code_quality::CodeQualityInput {
