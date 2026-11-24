@@ -1,9 +1,9 @@
 //! Bind downloaded preflight evidence to a GitHub Actions dispatch and a verified tag.
 
-use std::fs::File;
-use std::io::{Read, Write};
+use sha2::{Digest, Sha256};
+use std::fs::OpenOptions;
+use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
@@ -51,7 +51,19 @@ fn commit_id(value: &str) -> bool {
 
 impl Manifest {
     fn read(path: &Path, tag: &str, sha: &str, version: &str) -> Result<Self> {
-        let f = File::open(path).context("open preflight expectations")?;
+        ensure!(
+            std::fs::metadata(path)?.is_file(),
+            "expected a regular manifest file"
+        );
+        let mut options = OpenOptions::new();
+        options.read(true);
+        // A concurrent replacement with a FIFO must not stall the subsequent descriptor check.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let f = options.open(path).context("open preflight expectations")?;
         ensure!(f.metadata()?.is_file(), "expected a regular manifest file");
         let mut bytes = Vec::new();
         f.take(16385).read_to_end(&mut bytes)?;
@@ -72,13 +84,10 @@ impl Manifest {
             m.tag == tag && m.source_sha == sha && m.tag.strip_prefix('v') == Some(version),
             "manifest does not identify the verified release source/tag"
         );
-        let version = semver::Version::parse(version)?;
-        let kind = if version.pre.is_empty() {
-            "stable"
-        } else {
-            "rc"
-        };
-        ensure!(m.release_kind == kind, "release kind does not match tag");
+        ensure!(
+            matches!(m.release_kind.as_str(), "stable" | "rc"),
+            "unsupported release kind"
+        );
         ensure!(
             [m.run_id, m.run_attempt, m.job_id, m.artifact_id]
                 .iter()
@@ -256,37 +265,27 @@ fn check_upload_log(bytes: Vec<u8>, step: u64, m: &Manifest) -> Result<()> {
 }
 
 fn check_digest(blob: &[u8], expected: &str) -> Result<()> {
-    // Use installed SHA-256 tools. The release workspace does not otherwise depend on SHA-2.
-    let start = |prog: &str, args: &[&str]| {
-        Command::new(prog)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-    };
-    let mut child = match start("sha256sum", &[]) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => start("shasum", &["-a", "256"]),
-        other => other,
-    }
-    .context("start SHA-256 utility")?;
-    let write = child
-        .stdin
-        .take()
-        .context("open SHA-256 input")?
-        .write_all(blob);
-    let output = child.wait_with_output()?;
-    write?;
-    ensure!(output.status.success(), "SHA-256 utility failed");
-    let sum = std::str::from_utf8(&output.stdout)?
-        .split_whitespace()
-        .next()
-        .context("missing archive SHA-256")?;
-    ensure!(
-        expected.strip_prefix("sha256:") == Some(sum),
-        "downloaded artifact digest mismatch"
-    );
+    let actual = format!("sha256:{:x}", Sha256::digest(blob));
+    ensure!(expected == actual, "downloaded artifact digest mismatch");
     Ok(())
+}
+
+fn pending_fact(run: &Value, workflow: &[u8]) -> Result<Option<StateFact>> {
+    ensure!(
+        workflow == WORKFLOW_BYTES,
+        "unrecognized producer workflow revision"
+    );
+    match field(run, "/status").as_str() {
+        Some("completed") => Ok(None),
+        Some("queued" | "in_progress" | "pending" | "waiting" | "requested") => {
+            Ok(Some(state_fact(
+                ReleaseState::Pending,
+                "Preflight attempt has no terminal result",
+                None,
+            )))
+        }
+        _ => bail!("unknown run status"),
+    }
 }
 
 fn observe(m: &Manifest, version: &str) -> Result<StateFact> {
@@ -299,20 +298,6 @@ fn observe(m: &Manifest, version: &str) -> Result<StateFact> {
     );
     let run = client.json(&attempt)?;
     check_run(&run, m)?;
-    if field(&run, "/status") != "completed" {
-        ensure!(
-            matches!(
-                field(&run, "/status").as_str(),
-                Some("queued" | "in_progress" | "pending" | "waiting" | "requested")
-            ),
-            "unknown run status"
-        );
-        return Ok(state_fact(
-            ReleaseState::Pending,
-            "Preflight attempt has no terminal result",
-            None,
-        ));
-    }
     let run_head = field(&run, "/head_sha")
         .as_str()
         .context("missing workflow revision")?;
@@ -320,10 +305,9 @@ fn observe(m: &Manifest, version: &str) -> Result<StateFact> {
         &format!("{repo}/contents/{WORKFLOW}?ref={run_head}"),
         1 << 20,
     )?;
-    ensure!(
-        workflow == WORKFLOW_BYTES,
-        "unrecognized producer workflow revision"
-    );
+    if let Some(pending) = pending_fact(&run, &workflow)? {
+        return Ok(pending);
+    }
     let jobs = client.json(&format!("{attempt}/jobs?per_page=100"))?;
     let (job, step) = check_job(&jobs, m)?;
     let endpoint = format!("{repo}/actions/artifacts/{}", m.artifact_id);

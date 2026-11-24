@@ -246,7 +246,7 @@ fn preflight_requires_live_evidence_and_rejects_stale_manifest_before_remote_loo
         .arg(&manifest_path)
         .output()?;
     ensure!(local.status.success(), "preflight inspection: {local:?}");
-    let receipt: Value = serde_json::from_slice(&fs::read(status_path)?)?;
+    let receipt: Value = serde_json::from_slice(&fs::read(&status_path)?)?;
     ensure!(
         receipt.pointer("/preflight/state").and_then(Value::as_str) == Some("unavailable"),
         "{receipt}"
@@ -259,5 +259,32 @@ fn preflight_requires_live_evidence_and_rejects_stale_manifest_before_remote_loo
         "stale source should be rejected before a hosting client is needed: {receipt}"
     );
     ensure!(receipt.get("complete").and_then(Value::as_bool) == Some(false));
+
+    // The original reader blocked in open before checking the file type.
+    fs::remove_file(&status_path)?;
+    let fifo = temp.path().join("preflight.fifo");
+    ensure!(Command::new("mkfifo").arg(&fifo).status()?.success());
+    let mut child = cli().arg("--preflight-manifest").arg(&fifo).spawn()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            anyhow::bail!("release-status blocked on a nonregular manifest");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    ensure!(status.success());
+    let receipt: Value = serde_json::from_slice(&fs::read(status_path)?)?;
+    ensure!(receipt.pointer("/preflight/state").and_then(Value::as_str) == Some("unavailable"));
+    ensure!(
+        receipt
+            .pointer("/preflight/detail")
+            .and_then(Value::as_str)
+            .is_some_and(|text| text.contains("regular manifest file"))
+    );
     Ok(())
 }

@@ -48,6 +48,25 @@ fn manifest() -> Result<Manifest> {
 }
 
 #[test]
+fn manifest_accepts_the_producers_explicit_release_kind() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("expectations.json");
+    let mut coordinates = json!({
+        "repository": REPO, "source_sha": SHA, "affected_base_sha": BASE, "tag": "v1.15.0",
+        "release_kind": "rc", "run_id": 1001, "run_attempt": 2, "job_id": 2002,
+        "artifact_id": 3003, "artifact_digest": DIGEST,
+    });
+    fs::write(&path, serde_json::to_vec(&coordinates)?)?;
+    ensure!(Manifest::read(&path, "v1.15.0", SHA, VERSION)?.release_kind == "rc");
+    *coordinates
+        .get_mut("release_kind")
+        .context("fixture kind")? = json!("unknown");
+    fs::write(&path, serde_json::to_vec(&coordinates)?)?;
+    ensure!(Manifest::read(&path, "v1.15.0", SHA, VERSION).is_err());
+    Ok(())
+}
+
+#[test]
 fn exact_attempt_and_artifact_repository_are_checked_independently() -> Result<()> {
     let manifest = manifest()?;
     let repo = json!({"id": REPO_ID, "full_name": REPO});
@@ -58,6 +77,14 @@ fn exact_attempt_and_artifact_repository_are_checked_independently() -> Result<(
         "display_title": format!("Release preflight {SHA} (stable)")
     });
     check_run(&run, &manifest)?;
+    let mut queued = run.clone();
+    *queued.get_mut("status").context("fixture run status")? = json!("queued");
+    check_run(&queued, &manifest)?;
+    ensure!(super::pending_fact(&queued, b"different producer").is_err());
+    ensure!(
+        super::pending_fact(&queued, super::WORKFLOW_BYTES)?
+            .is_some_and(|s| s.state == ReleaseState::Pending)
+    );
     let mut different_dispatch = run.clone();
     *different_dispatch
         .get_mut("display_title")

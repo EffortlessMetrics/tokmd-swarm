@@ -120,10 +120,10 @@ against service metadata. In that attempt’s log archive, the numbered upload
 step must report the artifact ID and digest. A filename or a timestamp alone
 cannot associate an artifact with a rerun. The artifact download must match
 that digest, and its terminal preflight receipt and command observations must
-match the source, base, version, and release kind. Archive hashing requires
-`sha256sum` or `shasum`; missing tools, denied access, expired evidence, or
-unverifiable associations produce an unavailable preflight fact. Request
-sizes and execution time are bounded.
+match the source, base, version, and explicit dispatch release kind. The
+verifier hashes the downloaded bytes in process. Denied access, expired
+evidence, or unverifiable associations produce an unavailable preflight fact.
+GitHub requests have time and byte limits.
 
 A successful preflight references the hosted run, attempt, job, artifact
 and digest. It establishes one release component. Publication, registry health,
