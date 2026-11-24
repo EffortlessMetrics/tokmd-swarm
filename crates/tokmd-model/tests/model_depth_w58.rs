@@ -36,9 +36,9 @@ fn empty_languages() -> Languages {
 // ===========================================================================
 
 #[test]
-fn lang_report_aggregates_all_files_of_same_language() {
+fn lang_report_aggregates_all_files_of_same_language() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // The model crate is pure Rust — all files should aggregate into one row
     let rust_rows: Vec<_> = report.rows.iter().filter(|r| r.lang == "Rust").collect();
@@ -51,27 +51,30 @@ fn lang_report_aggregates_all_files_of_same_language() {
         rust_rows[0].files > 1 || rust_rows[0].code > 0,
         "aggregated Rust row should have data"
     );
+    Ok(())
 }
 
 #[test]
-fn lang_report_total_code_matches_sum_of_rows() {
+fn lang_report_total_code_matches_sum_of_rows() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, sum,
         "total code must equal sum of row codes"
     );
+    Ok(())
 }
 
 #[test]
-fn lang_report_total_lines_matches_sum_of_rows() {
+fn lang_report_total_lines_matches_sum_of_rows() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.lines).sum();
     assert_eq!(report.total.lines, sum);
+    Ok(())
 }
 
 // ===========================================================================
@@ -79,9 +82,9 @@ fn lang_report_total_lines_matches_sum_of_rows() {
 // ===========================================================================
 
 #[test]
-fn lang_report_sorted_by_code_descending() {
+fn lang_report_sorted_by_code_descending() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     for w in report.rows.windows(2) {
         assert!(
@@ -93,12 +96,13 @@ fn lang_report_sorted_by_code_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_name_tiebreak_ascending() {
+fn lang_report_name_tiebreak_ascending() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     for w in report.rows.windows(2) {
         if w[0].code == w[1].code {
@@ -110,10 +114,11 @@ fn lang_report_name_tiebreak_ascending() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_sorted_by_code_descending() {
+fn module_report_sorted_by_code_descending() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let report = create_module_report(
         &langs,
@@ -121,7 +126,7 @@ fn module_report_sorted_by_code_descending() {
         2,
         ChildIncludeMode::Separate,
         0,
-    );
+    )?;
 
     for w in report.rows.windows(2) {
         assert!(
@@ -133,10 +138,11 @@ fn module_report_sorted_by_code_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_rows_sorted_by_code_descending() {
+fn export_rows_sorted_by_code_descending() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let data = create_export_data(
         &langs,
@@ -146,7 +152,7 @@ fn export_rows_sorted_by_code_descending() {
         None,
         0,
         0,
-    );
+    )?;
 
     for w in data.rows.windows(2) {
         assert!(
@@ -158,6 +164,7 @@ fn export_rows_sorted_by_code_descending() {
             w[1].code
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -165,9 +172,9 @@ fn export_rows_sorted_by_code_descending() {
 // ===========================================================================
 
 #[test]
-fn collapse_mode_no_embedded_rows() {
+fn collapse_mode_no_embedded_rows() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     for row in &report.rows {
         assert!(
@@ -176,12 +183,13 @@ fn collapse_mode_no_embedded_rows() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn collapse_mode_all_rows_have_bytes() {
+fn collapse_mode_all_rows_have_bytes() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     for row in &report.rows {
         if row.code > 0 {
@@ -192,6 +200,7 @@ fn collapse_mode_all_rows_have_bytes() {
             );
         }
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -199,9 +208,9 @@ fn collapse_mode_all_rows_have_bytes() {
 // ===========================================================================
 
 #[test]
-fn separate_mode_embedded_rows_have_zero_bytes() {
+fn separate_mode_embedded_rows_have_zero_bytes() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     for row in &report.rows {
         if row.lang.contains("(embedded)") {
@@ -217,12 +226,13 @@ fn separate_mode_embedded_rows_have_zero_bytes() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn separate_mode_parent_rows_have_bytes() {
+fn separate_mode_parent_rows_have_bytes() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     for row in &report.rows {
         if !row.lang.contains("(embedded)") && row.code > 0 {
@@ -233,18 +243,20 @@ fn separate_mode_parent_rows_have_bytes() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn separate_mode_total_code_still_matches_row_sum() {
+fn separate_mode_total_code_still_matches_row_sum() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     let sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, sum,
         "separate mode: total code = sum of rows"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -281,7 +293,7 @@ fn module_key_non_root_dir() {
 }
 
 #[test]
-fn module_report_at_depth_two_groups_by_subcrate() {
+fn module_report_at_depth_two_groups_by_subcrate() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let report = create_module_report(
         &langs,
@@ -289,13 +301,14 @@ fn module_report_at_depth_two_groups_by_subcrate() {
         2,
         ChildIncludeMode::Separate,
         0,
-    );
+    )?;
 
     // Scanning the model crate's src, everything should be in one module
     assert!(
         !report.rows.is_empty(),
         "module report should have at least one row"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -303,7 +316,7 @@ fn module_report_at_depth_two_groups_by_subcrate() {
 // ===========================================================================
 
 #[test]
-fn export_rows_have_parent_kind() {
+fn export_rows_have_parent_kind() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let data = create_export_data(
         &langs,
@@ -313,7 +326,7 @@ fn export_rows_have_parent_kind() {
         None,
         0,
         0,
-    );
+    )?;
 
     for row in &data.rows {
         assert_eq!(
@@ -324,10 +337,11 @@ fn export_rows_have_parent_kind() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_rows_lines_equals_code_plus_comments_plus_blanks() {
+fn export_rows_lines_equals_code_plus_comments_plus_blanks() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let data = create_export_data(
         &langs,
@@ -337,7 +351,7 @@ fn export_rows_lines_equals_code_plus_comments_plus_blanks() {
         None,
         0,
         0,
-    );
+    )?;
 
     for row in &data.rows {
         assert_eq!(
@@ -347,10 +361,11 @@ fn export_rows_lines_equals_code_plus_comments_plus_blanks() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn collect_file_rows_returns_nonempty_for_real_code() {
+fn collect_file_rows_returns_nonempty_for_real_code() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let rows = collect_file_rows(
         &langs,
@@ -358,8 +373,9 @@ fn collect_file_rows_returns_nonempty_for_real_code() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     assert!(!rows.is_empty(), "collect_file_rows should find files");
+    Ok(())
 }
 
 // ===========================================================================
@@ -367,17 +383,18 @@ fn collect_file_rows_returns_nonempty_for_real_code() {
 // ===========================================================================
 
 #[test]
-fn empty_scan_lang_report_has_zero_rows() {
+fn empty_scan_lang_report_has_zero_rows() -> std::io::Result<()> {
     let langs = empty_languages();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }
 
 #[test]
-fn empty_scan_module_report_has_zero_rows() {
+fn empty_scan_module_report_has_zero_rows() -> std::io::Result<()> {
     let langs = empty_languages();
     let report = create_module_report(
         &langs,
@@ -385,14 +402,15 @@ fn empty_scan_module_report_has_zero_rows() {
         2,
         ChildIncludeMode::Separate,
         0,
-    );
+    )?;
 
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 #[test]
-fn empty_scan_export_data_has_zero_rows() {
+fn empty_scan_export_data_has_zero_rows() -> std::io::Result<()> {
     let langs = empty_languages();
     let data = create_export_data(
         &langs,
@@ -402,9 +420,10 @@ fn empty_scan_export_data_has_zero_rows() {
         None,
         0,
         0,
-    );
+    )?;
 
     assert!(data.rows.is_empty());
+    Ok(())
 }
 
 #[test]
@@ -425,12 +444,12 @@ fn avg_rounds_correctly() {
 // ===========================================================================
 
 #[test]
-fn lang_report_deterministic() {
+fn lang_report_deterministic() -> std::io::Result<()> {
     let langs1 = scan(&crate_src());
     let langs2 = scan(&crate_src());
 
-    let report1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse);
-    let report2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse);
+    let report1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse)?;
+    let report2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse)?;
 
     assert_eq!(report1.rows.len(), report2.rows.len());
     for (a, b) in report1.rows.iter().zip(report2.rows.iter()) {
@@ -438,10 +457,11 @@ fn lang_report_deterministic() {
         assert_eq!(a.code, b.code, "code counts must match for {}", a.lang);
         assert_eq!(a.lines, b.lines, "line counts must match for {}", a.lang);
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_deterministic() {
+fn module_report_deterministic() -> std::io::Result<()> {
     let langs1 = scan(&crate_src());
     let langs2 = scan(&crate_src());
 
@@ -451,24 +471,25 @@ fn module_report_deterministic() {
         2,
         ChildIncludeMode::Separate,
         0,
-    );
+    )?;
     let r2 = create_module_report(
         &langs2,
         &["crates".to_string()],
         2,
         ChildIncludeMode::Separate,
         0,
-    );
+    )?;
 
     assert_eq!(r1.rows.len(), r2.rows.len());
     for (a, b) in r1.rows.iter().zip(r2.rows.iter()) {
         assert_eq!(a.module, b.module);
         assert_eq!(a.code, b.code);
     }
+    Ok(())
 }
 
 #[test]
-fn export_data_deterministic() {
+fn export_data_deterministic() -> std::io::Result<()> {
     let langs1 = scan(&crate_src());
     let langs2 = scan(&crate_src());
 
@@ -480,7 +501,7 @@ fn export_data_deterministic() {
         None,
         0,
         0,
-    );
+    )?;
     let d2 = create_export_data(
         &langs2,
         &["crates".to_string()],
@@ -489,13 +510,14 @@ fn export_data_deterministic() {
         None,
         0,
         0,
-    );
+    )?;
 
     assert_eq!(d1.rows.len(), d2.rows.len());
     for (a, b) in d1.rows.iter().zip(d2.rows.iter()) {
         assert_eq!(a.path, b.path);
         assert_eq!(a.code, b.code);
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -503,7 +525,7 @@ fn export_data_deterministic() {
 // ===========================================================================
 
 #[test]
-fn file_rows_are_grouped_by_path_lang_kind() {
+fn file_rows_are_grouped_by_path_lang_kind() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let rows = collect_file_rows(
         &langs,
@@ -511,7 +533,7 @@ fn file_rows_are_grouped_by_path_lang_kind() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
 
     // No duplicate (path, lang, kind) combinations
     let mut seen = std::collections::BTreeSet::new();
@@ -519,10 +541,11 @@ fn file_rows_are_grouped_by_path_lang_kind() {
         let key = (r.path.clone(), r.lang.clone(), format!("{:?}", r.kind));
         assert!(seen.insert(key.clone()), "duplicate file row: {:?}", key);
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_paths_use_forward_slashes() {
+fn file_rows_paths_use_forward_slashes() -> std::io::Result<()> {
     let langs = scan(&crate_src());
     let rows = collect_file_rows(
         &langs,
@@ -530,7 +553,7 @@ fn file_rows_paths_use_forward_slashes() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
 
     for r in &rows {
         assert!(
@@ -539,4 +562,5 @@ fn file_rows_paths_use_forward_slashes() {
             r.path
         );
     }
+    Ok(())
 }

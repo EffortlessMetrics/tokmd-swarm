@@ -39,7 +39,7 @@ tokmd context --budget 128k --module-roots crates,src --strategy spread --output
 - `--compress` strips blank lines for more content per token.
 - `--module-roots` groups files by directory structure for better spread coverage.
 
-> **Tip**: Use `--rank-by churn` or `--rank-by hotspot` to prioritize recently-changed or high-complexity files (requires git history).
+> **Tip**: Use `--rank-by churn` or `--rank-by hotspot` to prioritize recently-changed or high-complexity files (requires git history). When Git history quotes source names that cannot be matched unambiguously, context falls back to code-line ranking and records the reason. Use `--require-git-scores` to make that fallback an error.
 
 ## 2. Getting a File Inventory for LLM Context Planning
 

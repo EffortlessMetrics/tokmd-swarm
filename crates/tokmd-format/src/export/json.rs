@@ -13,7 +13,8 @@ use tokmd_types::{
     ExportArgs, ExportArgsMeta, ExportData, ExportReceipt, RedactMode, ScanStatus, ToolInfo,
 };
 
-use crate::{now_ms, redact_module_roots, scan_args, short_hash};
+use crate::scan_args::export_strip_prefix_label;
+use crate::{now_ms, redact_module_roots, scan_args};
 
 use super::redact_rows;
 
@@ -45,15 +46,10 @@ pub(super) fn write_export_json<W: Write>(
                 min_code: args.min_code,
                 max_rows: args.max_rows,
                 redact: args.redact,
-                strip_prefix: if should_redact {
-                    args.strip_prefix
-                        .as_ref()
-                        .map(|p| short_hash(&p.display().to_string().replace('\\', "/")))
-                } else {
-                    args.strip_prefix
-                        .as_ref()
-                        .map(|p| p.display().to_string().replace('\\', "/"))
-                },
+                strip_prefix: args
+                    .strip_prefix
+                    .as_deref()
+                    .map(|p| export_strip_prefix_label(p, should_redact)),
                 strip_prefix_redacted,
             },
             data: ExportData {

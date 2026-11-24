@@ -29,12 +29,12 @@ fn crate_src() -> String {
 // ========================
 
 #[test]
-fn scenario_collapse_mode_merges_embedded_into_parent() {
+fn scenario_collapse_mode_merges_embedded_into_parent() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When I generate a lang report in Collapse mode
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // Then no row name should contain "(embedded)"
     for row in &report.rows {
@@ -44,15 +44,16 @@ fn scenario_collapse_mode_merges_embedded_into_parent() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn scenario_separate_mode_labels_embedded_rows() {
+fn scenario_separate_mode_labels_embedded_rows() -> std::io::Result<()> {
     // Given a scanned codebase that may contain embedded languages
     let langs = scan(&crate_src());
 
     // When I generate a lang report in Separate mode
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     // Then every non-embedded row must have positive bytes,
     //      and every embedded row must have zero bytes (no double-counting)
@@ -70,16 +71,17 @@ fn scenario_separate_mode_labels_embedded_rows() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn scenario_collapse_and_separate_totals_agree_on_bytes() {
+fn scenario_collapse_and_separate_totals_agree_on_bytes() -> std::io::Result<()> {
     // Given the same scanned codebase
     let langs = scan(&crate_src());
 
     // When I generate reports in both modes
-    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     // Then total bytes must be equal (embedded rows contribute 0 bytes)
     assert_eq!(
@@ -90,15 +92,16 @@ fn scenario_collapse_and_separate_totals_agree_on_bytes() {
         collapse.total.tokens, separate.total.tokens,
         "Collapse and Separate should agree on total tokens"
     );
+    Ok(())
 }
 
 #[test]
-fn scenario_file_rows_separate_marks_child_kind() {
+fn scenario_file_rows_separate_marks_child_kind() -> std::io::Result<()> {
     // Given scanned languages
     let langs = scan(&crate_src());
 
     // When I collect file rows in Separate mode
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None)?;
 
     // Then every row with kind == Child must have 0 bytes/tokens
     for row in &rows {
@@ -115,15 +118,16 @@ fn scenario_file_rows_separate_marks_child_kind() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn scenario_file_rows_parents_only_excludes_children() {
+fn scenario_file_rows_parents_only_excludes_children() -> std::io::Result<()> {
     // Given scanned languages
     let langs = scan(&crate_src());
 
     // When I collect file rows in ParentsOnly mode
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     // Then no row should have kind == Child
     for row in &rows {
@@ -134,6 +138,7 @@ fn scenario_file_rows_parents_only_excludes_children() {
             row.path
         );
     }
+    Ok(())
 }
 
 // ========================
@@ -141,12 +146,12 @@ fn scenario_file_rows_parents_only_excludes_children() {
 // ========================
 
 #[test]
-fn scenario_lang_rows_sorted_desc_code_then_asc_name() {
+fn scenario_lang_rows_sorted_desc_code_then_asc_name() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When I generate a lang report
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // Then rows are sorted descending by code, ties broken ascending by name
     for pair in report.rows.windows(2) {
@@ -160,15 +165,16 @@ fn scenario_lang_rows_sorted_desc_code_then_asc_name() {
             b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn scenario_module_rows_sorted_desc_code_then_asc_module() {
+fn scenario_module_rows_sorted_desc_code_then_asc_module() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When I generate a module report
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     // Then rows are sorted descending by code, ties broken ascending by module name
     for pair in report.rows.windows(2) {
@@ -182,15 +188,16 @@ fn scenario_module_rows_sorted_desc_code_then_asc_module() {
             b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn scenario_export_rows_sorted_desc_code_then_asc_path() {
+fn scenario_export_rows_sorted_desc_code_then_asc_path() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When I generate export data
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
 
     // Then rows are sorted descending by code, ties broken ascending by path
     for pair in data.rows.windows(2) {
@@ -204,6 +211,7 @@ fn scenario_export_rows_sorted_desc_code_then_asc_path() {
             b.code
         );
     }
+    Ok(())
 }
 
 // ========================
@@ -299,12 +307,12 @@ fn scenario_module_key_normalizes_backslashes() {
 // ========================
 
 #[test]
-fn scenario_empty_languages_produce_empty_report() {
+fn scenario_empty_languages_produce_empty_report() -> std::io::Result<()> {
     // Given an empty Languages collection
     let langs = Languages::new();
 
     // When I generate a lang report
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // Then there are no rows and totals are all zero
     assert!(report.rows.is_empty(), "Empty languages → 0 rows");
@@ -313,76 +321,82 @@ fn scenario_empty_languages_produce_empty_report() {
     assert_eq!(report.total.files, 0);
     assert_eq!(report.total.bytes, 0);
     assert_eq!(report.total.tokens, 0);
+    Ok(())
 }
 
 #[test]
-fn scenario_empty_languages_produce_empty_module_report() {
+fn scenario_empty_languages_produce_empty_module_report() -> std::io::Result<()> {
     // Given an empty Languages collection
     let langs = Languages::new();
 
     // When I generate a module report
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     // Then there are no rows and totals are all zero
     assert!(report.rows.is_empty(), "Empty languages → 0 rows");
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.lines, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }
 
 #[test]
-fn scenario_empty_languages_produce_empty_export() {
+fn scenario_empty_languages_produce_empty_export() -> std::io::Result<()> {
     // Given an empty Languages collection
     let langs = Languages::new();
 
     // When I generate export data
-    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
 
     // Then there are no rows
     assert!(data.rows.is_empty(), "Empty languages → 0 export rows");
+    Ok(())
 }
 
 #[test]
-fn scenario_separate_mode_empty_languages_produce_empty_report() {
+fn scenario_separate_mode_empty_languages_produce_empty_report() -> std::io::Result<()> {
     // Given an empty Languages collection
     let langs = Languages::new();
 
     // When I generate a lang report in Separate mode
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     // Then there are no rows
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 #[test]
-fn scenario_top_with_fewer_rows_than_limit_keeps_all() {
+fn scenario_top_with_fewer_rows_than_limit_keeps_all() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When top is larger than the number of rows
-    let report = create_lang_report(&langs, 9999, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 9999, false, ChildrenMode::Collapse)?;
 
     // Then no "Other" bucket is produced
     assert!(
         !report.rows.iter().any(|r| r.lang == "Other"),
         "top > row count should not produce 'Other'"
     );
+    Ok(())
 }
 
 #[test]
-fn scenario_top_zero_means_no_limit() {
+fn scenario_top_zero_means_no_limit() -> std::io::Result<()> {
     // Given a scanned codebase
     let langs = scan(&crate_src());
 
     // When top = 0
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // Then no "Other" bucket is produced
     assert!(
         !report.rows.iter().any(|r| r.lang == "Other"),
         "top = 0 should not truncate"
     );
+    Ok(())
 }
 
 // ========================
@@ -487,9 +501,9 @@ fn scenario_module_key_with_matching_root_joins_segments() {
 // ========================
 
 #[test]
-fn scenario_with_files_true_populates_file_count_in_report() {
+fn scenario_with_files_true_populates_file_count_in_report() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
 
     for row in &report.rows {
         assert!(
@@ -499,15 +513,17 @@ fn scenario_with_files_true_populates_file_count_in_report() {
         );
     }
     assert!(report.total.files > 0, "total files should be positive");
+    Ok(())
 }
 
 #[test]
-fn scenario_with_files_false_still_populates_file_count() {
+fn scenario_with_files_false_still_populates_file_count() -> std::io::Result<()> {
     let langs = scan(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     // Even with_files=false, the report struct still has file counts (it controls display)
     assert!(report.total.files > 0 || report.rows.is_empty());
+    Ok(())
 }
 
 // ========================
@@ -515,16 +531,17 @@ fn scenario_with_files_false_still_populates_file_count() {
 // ========================
 
 #[test]
-fn scenario_two_identical_scans_produce_identical_reports() {
+fn scenario_two_identical_scans_produce_identical_reports() -> std::io::Result<()> {
     let langs1 = scan(&crate_src());
     let langs2 = scan(&crate_src());
 
-    let r1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse);
-    let r2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse);
+    let r1 = create_lang_report(&langs1, 0, false, ChildrenMode::Collapse)?;
+    let r2 = create_lang_report(&langs2, 0, false, ChildrenMode::Collapse)?;
 
     assert_eq!(r1.rows.len(), r2.rows.len(), "same row count");
     for (a, b) in r1.rows.iter().zip(r2.rows.iter()) {
         assert_eq!(a.lang, b.lang, "same language order");
         assert_eq!(a.code, b.code, "same code count for {}", a.lang);
     }
+    Ok(())
 }

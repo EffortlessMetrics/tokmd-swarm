@@ -233,3 +233,82 @@ fn host_and_mem_snapshots_match_for_same_fixture() -> TestResult {
     assert_eq!(host_snapshot.len(), fixture.len());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn host_snapshot_preserves_literal_backslash_and_rejects_raw_name_aliases() -> TestResult {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir()?;
+    let root = temp.path();
+    std::fs::create_dir(root.join("literal"))?;
+    let nested = root.join("literal/name.rs");
+    let literal = root.join(r"literal\name.rs");
+    let replacement = root.join("raw-�.rs");
+    for (path, bytes) in [
+        (&nested, "nested"),
+        (&literal, "literal"),
+        (&replacement, "valid"),
+    ] {
+        std::fs::write(path, bytes)?;
+    }
+
+    let mut builder = RepoSnapshot::builder(&HostFs, root);
+    builder.add_paths([&nested, &literal, &replacement])?;
+    for (name, hex) in [
+        (b"raw-\xff.rs", "7261772dff2e7273"),
+        (b"raw-\xfe.rs", "7261772dfe2e7273"),
+    ] {
+        let raw = root.join(OsStr::from_bytes(name));
+        std::fs::write(&raw, "unsupported")?;
+        let error = builder
+            .add_path(&raw)
+            .err()
+            .ok_or("captured unsupported path")?;
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains(hex));
+        assert!(!diagnostic.contains(root.to_str().ok_or("fixture root must be UTF-8")?));
+    }
+    let snapshot = builder.build();
+    assert_eq!(snapshot.len(), 3);
+    for (path, bytes) in [
+        (&nested, "nested"),
+        (&literal, "literal"),
+        (&replacement, "valid"),
+    ] {
+        assert_eq!(
+            snapshot.get(path).ok_or("missing captured path")?.bytes(),
+            bytes.as_bytes()
+        );
+    }
+    assert!(!snapshot.contains(root.join(OsStr::from_bytes(b"raw-\xfe.rs"))));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn rooted_and_relative_provider_paths_cannot_overwrite_one_snapshot_key() -> TestResult {
+    let mut fs = MemFs::new();
+    fs.add_file(PathBuf::from("entry.rs"), "relative");
+    fs.add_file(PathBuf::from("/entry.rs"), "rooted");
+    let mut builder = RepoSnapshot::builder(&fs, ".");
+    builder.add_path("entry.rs")?;
+    let err = builder
+        .add_path("/entry.rs")
+        .err()
+        .ok_or("expected source conflict")?;
+    assert!(matches!(
+        err,
+        tokmd_io_port::SnapshotError::ConflictingPaths
+    ));
+    let snapshot = builder.build();
+    assert_eq!(
+        snapshot
+            .get("entry.rs")
+            .ok_or("lost original source")?
+            .bytes(),
+        b"relative"
+    );
+    Ok(())
+}

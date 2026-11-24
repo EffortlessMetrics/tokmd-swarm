@@ -43,7 +43,7 @@ pub(crate) fn handle(
     let progress = Progress::new(!global.no_progress);
     progress.set_message("Scanning codebase...");
     let languages = scan::scan(&args.paths, &scan_opts)?;
-    let report = model::create_lang_report(&languages, args.top, args.files, args.children);
+    let report = model::create_lang_report(&languages, args.top, args.files, args.children)?;
     // Clear the stderr spinner before the report is written to stdout.
     progress.finish_and_clear();
 

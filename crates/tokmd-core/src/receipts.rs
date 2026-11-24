@@ -1,6 +1,6 @@
 //! Receipt construction helpers for core workflows.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -97,20 +97,15 @@ pub(crate) fn build_export_receipt(
         scan: scan_args(paths, scan_opts, Some(export.redact)),
         args: ExportArgsMeta {
             format: export.format,
-            module_roots: export.module_roots.clone(),
+            module_roots: tokmd_format::redact_module_roots(&export.module_roots, export.redact),
             module_depth: export.module_depth,
             children: export.children,
             min_code: export.min_code,
             max_rows: export.max_rows,
             redact: export.redact,
-            strip_prefix: if should_redact {
-                export
-                    .strip_prefix
-                    .as_ref()
-                    .map(|p| tokmd_format::short_hash(p))
-            } else {
-                export.strip_prefix.clone()
-            },
+            strip_prefix: export.strip_prefix.as_deref().map(|p| {
+                tokmd_format::scan_args::export_strip_prefix_label(Path::new(p), should_redact)
+            }),
             strip_prefix_redacted,
         },
         data: redact_export_data(data, export.redact),
@@ -128,10 +123,10 @@ fn redact_export_data(data: ExportData, mode: RedactMode) -> ExportData {
         .into_iter()
         .map(|mut row| {
             if mode == RedactMode::Paths || mode == RedactMode::All {
-                row.path = tokmd_format::redact_path(&row.path);
+                row.path = tokmd_format::redact::redact_receipt_path(&row.path);
             }
             if mode == RedactMode::All {
-                row.module = tokmd_format::short_hash(&row.module);
+                row.module = tokmd_format::redact::receipt_path_hash(&row.module);
             }
             row
         })
@@ -139,7 +134,7 @@ fn redact_export_data(data: ExportData, mode: RedactMode) -> ExportData {
 
     ExportData {
         rows,
-        module_roots: data.module_roots,
+        module_roots: tokmd_format::redact_module_roots(&data.module_roots, mode),
         module_depth: data.module_depth,
         children: data.children,
     }

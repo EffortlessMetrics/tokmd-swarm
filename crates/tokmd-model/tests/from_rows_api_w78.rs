@@ -264,27 +264,29 @@ fn create_export_data_from_rows_manual_fixture() {
 }
 
 #[test]
-fn create_lang_report_from_rows_matches_collapse_report() {
+fn create_lang_report_from_rows_matches_collapse_report() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let expected = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
-    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None);
+    let expected = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
+    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None)?;
     let actual = create_lang_report_from_rows(&rows, 0, false, ChildrenMode::Collapse);
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn create_lang_report_from_rows_matches_separate_report() {
+fn create_lang_report_from_rows_matches_separate_report() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let expected = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
-    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None);
+    let expected = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
+    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None)?;
     let actual = create_lang_report_from_rows(&rows, 0, false, ChildrenMode::Separate);
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn create_module_report_from_rows_matches_parents_only_report() {
+fn create_module_report_from_rows_matches_parents_only_report() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let expected = create_module_report(
@@ -293,41 +295,43 @@ fn create_module_report_from_rows_matches_parents_only_report() {
         2,
         ChildIncludeMode::ParentsOnly,
         0,
-    );
+    )?;
     let rows = collect_file_rows(
         &languages,
         &module_roots,
         2,
         ChildIncludeMode::ParentsOnly,
         None,
-    );
+    )?;
     let actual =
         create_module_report_from_rows(&rows, &module_roots, 2, ChildIncludeMode::ParentsOnly, 0);
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn create_module_report_from_rows_matches_separate_report() {
+fn create_module_report_from_rows_matches_separate_report() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let expected =
-        create_module_report(&languages, &module_roots, 2, ChildIncludeMode::Separate, 0);
+        create_module_report(&languages, &module_roots, 2, ChildIncludeMode::Separate, 0)?;
     let rows = collect_file_rows(
         &languages,
         &module_roots,
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     let actual =
         create_module_report_from_rows(&rows, &module_roots, 2, ChildIncludeMode::Separate, 0);
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn create_export_data_from_rows_matches_parents_only_export() {
+fn create_export_data_from_rows_matches_parents_only_export() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let expected = create_export_data(
@@ -338,14 +342,14 @@ fn create_export_data_from_rows_matches_parents_only_export() {
         None,
         10,
         25,
-    );
+    )?;
     let rows = collect_file_rows(
         &languages,
         &module_roots,
         2,
         ChildIncludeMode::ParentsOnly,
         None,
-    );
+    )?;
     let actual = create_export_data_from_rows(
         rows,
         &module_roots,
@@ -356,10 +360,11 @@ fn create_export_data_from_rows_matches_parents_only_export() {
     );
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn create_export_data_from_rows_matches_separate_export() {
+fn create_export_data_from_rows_matches_separate_export() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let expected = create_export_data(
@@ -370,46 +375,48 @@ fn create_export_data_from_rows_matches_separate_export() {
         None,
         5,
         40,
-    );
+    )?;
     let rows = collect_file_rows(
         &languages,
         &module_roots,
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     let actual =
         create_export_data_from_rows(rows, &module_roots, 2, ChildIncludeMode::Separate, 5, 40);
 
     assert_eq!(to_json(&actual), to_json(&expected));
+    Ok(())
 }
 
 #[test]
-fn unique_parent_file_count_from_rows_matches_languages_api() {
+fn unique_parent_file_count_from_rows_matches_languages_api() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None)?;
 
     assert_eq!(
         unique_parent_file_count_from_rows(&rows),
-        unique_parent_file_count(&languages)
+        unique_parent_file_count(&languages)?
     );
+    Ok(())
 }
 
 #[test]
-fn row_based_apis_match_empty_languages_behavior() {
+fn row_based_apis_match_empty_languages_behavior() -> std::io::Result<()> {
     let languages = Languages::new();
 
-    let empty_collapse = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let empty_collapse = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
     let empty_collapse_rows = create_lang_report_from_rows(&[], 0, false, ChildrenMode::Collapse);
     assert_eq!(to_json(&empty_collapse_rows), to_json(&empty_collapse));
 
-    let empty_separate = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let empty_separate = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
     let empty_separate_rows = create_lang_report_from_rows(&[], 0, false, ChildrenMode::Separate);
     assert_eq!(to_json(&empty_separate_rows), to_json(&empty_separate));
 
     let module_roots = vec!["crates".to_string()];
     let empty_module =
-        create_module_report(&languages, &module_roots, 2, ChildIncludeMode::Separate, 0);
+        create_module_report(&languages, &module_roots, 2, ChildIncludeMode::Separate, 0)?;
     let empty_module_rows =
         create_module_report_from_rows(&[], &module_roots, 2, ChildIncludeMode::Separate, 0);
     assert_eq!(to_json(&empty_module_rows), to_json(&empty_module));
@@ -422,7 +429,7 @@ fn row_based_apis_match_empty_languages_behavior() {
         None,
         0,
         0,
-    );
+    )?;
     let empty_export_rows = create_export_data_from_rows(
         Vec::new(),
         &module_roots,
@@ -434,12 +441,13 @@ fn row_based_apis_match_empty_languages_behavior() {
     assert_eq!(to_json(&empty_export_rows), to_json(&empty_export));
 
     assert_eq!(unique_parent_file_count_from_rows(&[]), 0);
+    Ok(())
 }
 
 #[test]
-fn create_lang_report_from_rows_is_deterministic_for_shuffled_input() {
+fn create_lang_report_from_rows_is_deterministic_for_shuffled_input() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&languages, &[], 1, ChildIncludeMode::Separate, None)?;
     let reversed = reversed_rows(rows.clone());
 
     let collapse_a = create_lang_report_from_rows(&rows, 0, false, ChildrenMode::Collapse);
@@ -449,10 +457,11 @@ fn create_lang_report_from_rows_is_deterministic_for_shuffled_input() {
     let separate_a = create_lang_report_from_rows(&rows, 0, false, ChildrenMode::Separate);
     let separate_b = create_lang_report_from_rows(&reversed, 0, false, ChildrenMode::Separate);
     assert_eq!(to_json(&separate_a), to_json(&separate_b));
+    Ok(())
 }
 
 #[test]
-fn create_module_report_from_rows_is_deterministic_for_shuffled_input() {
+fn create_module_report_from_rows_is_deterministic_for_shuffled_input() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let rows = collect_file_rows(
@@ -461,7 +470,7 @@ fn create_module_report_from_rows_is_deterministic_for_shuffled_input() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     let reversed = reversed_rows(rows.clone());
 
     let a = create_module_report_from_rows(&rows, &module_roots, 2, ChildIncludeMode::Separate, 0);
@@ -469,10 +478,11 @@ fn create_module_report_from_rows_is_deterministic_for_shuffled_input() {
         create_module_report_from_rows(&reversed, &module_roots, 2, ChildIncludeMode::Separate, 0);
 
     assert_eq!(to_json(&a), to_json(&b));
+    Ok(())
 }
 
 #[test]
-fn create_export_data_from_rows_is_deterministic_for_shuffled_input() {
+fn create_export_data_from_rows_is_deterministic_for_shuffled_input() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let module_roots = vec!["crates".to_string()];
     let rows = collect_file_rows(
@@ -481,7 +491,7 @@ fn create_export_data_from_rows_is_deterministic_for_shuffled_input() {
         2,
         ChildIncludeMode::Separate,
         None,
-    );
+    )?;
     let reversed = reversed_rows(rows.clone());
 
     let a = create_export_data_from_rows(rows, &module_roots, 2, ChildIncludeMode::Separate, 0, 0);
@@ -489,6 +499,7 @@ fn create_export_data_from_rows_is_deterministic_for_shuffled_input() {
         create_export_data_from_rows(reversed, &module_roots, 2, ChildIncludeMode::Separate, 0, 0);
 
     assert_eq!(to_json(&a), to_json(&b));
+    Ok(())
 }
 
 #[test]

@@ -6,7 +6,9 @@ use std::path::Path;
 
 use crate::normalize_rel_path;
 
-/// Normalize an exclude path into a deterministic pattern.
+/// Normalize a portable exclusion spelling, where both slash styles are separators.
+/// For paths obtained from the host filesystem, use [`output_exclusion`] to quote
+/// literal backslashes and glob metacharacters in filenames.
 ///
 /// Rules:
 /// - if `path` is absolute and under `root`, strip the `root` prefix
@@ -33,6 +35,80 @@ pub fn normalize_exclude_pattern(root: &Path, path: &Path) -> String {
     normalize_rel_path(&rel.to_string_lossy())
 }
 
+/// Render a native output path for a receipt and for a literal gitignore glob.
+/// These root-relative values describe the exclusion in receipts. The scanner
+/// matches the physical destination separately with [`crate::scan_excluding_outputs`].
+pub fn output_exclusion(root: &Path, path: &Path) -> anyhow::Result<(String, String)> {
+    let absolute = std::path::absolute(path)?;
+    let root = std::path::absolute(root)?;
+    let relative = absolute.strip_prefix(root).unwrap_or(path);
+    let native = tokmd_types::validate_source_path(relative)?;
+    let display = if cfg!(windows) {
+        native.replace('\\', "/")
+    } else {
+        native.to_owned()
+    };
+    let display = display.trim_start_matches("./");
+    Ok((display.to_owned(), escape_literal_glob_path(display)))
+}
+
+/// Tokei walks canonical paths and passes them to a gitignore matcher rooted
+/// at ".". Its initial slash anchors the glob and is consumed by gitignore;
+/// the rest must match the complete physical path, including its native root.
+pub(crate) fn exact_output_patterns(
+    roots: &mut Vec<crate::path::ValidatedRoot>,
+    outputs: &[&Path],
+) -> anyhow::Result<Vec<String>> {
+    let mut patterns = Vec::new();
+    for output in outputs {
+        tokmd_types::validate_source_path(output)?;
+        let path = match output.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        // The walker always visits explicitly supplied roots, even when a
+        // glob would have pruned the same entry during directory traversal.
+        roots.retain(|root| !root.canonical().starts_with(&path));
+        let native = tokmd_types::validate_source_path(&path)?;
+        let label = if cfg!(windows) {
+            native.replace('\\', "/")
+        } else {
+            native.to_owned()
+        };
+        patterns.push(format!("/{}", escape_literal_glob_path(&label)));
+    }
+    Ok(patterns)
+}
+
+/// Quote a literal path whose directory separators have already been rendered as `/`.
+pub(crate) fn escape_literal_glob_path(display: &str) -> String {
+    let mut pattern = String::with_capacity(display.len());
+    for ch in display.chars() {
+        match ch {
+            '\\' => pattern.push_str(r"\\"),
+            // Gitignore trims trailing whitespace unless the glob quotes it.
+            c if matches!(c, '*' | '?' | '[' | ']' | '{' | '}') || c.is_whitespace() => {
+                pattern.push('[');
+                pattern.push(ch);
+                pattern.push(']');
+            }
+            _ => pattern.push(ch),
+        }
+    }
+    pattern
+}
+
+/// Retain glob escapes when comparing patterns. Simple portable path spellings
+/// can still use either directory separator.
+fn pattern_key(pattern: &str) -> String {
+    if pattern.contains(r"\\") || pattern.contains(['*', '?', '[', ']', '{', '}']) {
+        pattern.trim_start_matches("./").to_owned()
+    } else {
+        normalize_rel_path(pattern)
+    }
+}
+
 /// Return `true` when `existing` already contains `pattern` after normalization.
 ///
 /// # Examples
@@ -46,10 +122,10 @@ pub fn normalize_exclude_pattern(root: &Path, path: &Path) -> String {
 /// ```
 #[must_use]
 pub fn has_exclude_pattern(existing: &[String], pattern: &str) -> bool {
-    let normalized = normalize_rel_path(pattern);
+    let normalized = pattern_key(pattern);
     existing
         .iter()
-        .any(|candidate| normalize_rel_path(candidate) == normalized)
+        .any(|candidate| pattern_key(candidate) == normalized)
 }
 
 /// Add a pattern only when non-empty and not already present (after normalization).
@@ -106,6 +182,14 @@ mod tests {
             "out/bundle".to_string()
         ));
         assert_eq!(existing.len(), 1);
+    }
+
+    #[test]
+    fn escaped_globs_are_not_deduplicated_as_portable_separators() {
+        let mut patterns = vec![r"one\\two".to_string(), r"one\*.rs".to_string()];
+        assert!(add_exclude_pattern(&mut patterns, "one//two".into()));
+        assert!(add_exclude_pattern(&mut patterns, "one/*.rs".into()));
+        assert!(!add_exclude_pattern(&mut patterns, r"./one\\two".into()));
     }
 
     #[test]

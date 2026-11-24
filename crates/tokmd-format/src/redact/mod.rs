@@ -20,11 +20,15 @@ mod extensions;
 ///
 /// This ensures that logically identical paths produce the same hash.
 /// For example, `./src/lib.rs` and `src/lib.rs` will produce the same hash.
-fn clean_path(s: &str) -> String {
+fn clean_path(s: &str, backslash_separator: bool) -> String {
     let mut normalized = String::with_capacity(s.len());
     let mut last_was_slash = false;
     for ch in s.chars() {
-        let ch = if ch == '\\' { '/' } else { ch };
+        let ch = if backslash_separator && ch == '\\' {
+            '/'
+        } else {
+            ch
+        };
         if ch == '/' {
             if last_was_slash {
                 continue;
@@ -87,8 +91,16 @@ fn clean_path(s: &str) -> String {
 /// assert_ne!(short_hash("alpha"), short_hash("beta"));
 /// ```
 pub fn short_hash(s: &str) -> String {
-    let cleaned = clean_path(s);
-    let mut hex = blake3::hash(cleaned.as_bytes()).to_hex().to_string();
+    hash_bytes(&clean_path(s, true))
+}
+
+/// Hash a receipt path or module key. Its directory separator is already `/`.
+pub fn receipt_path_hash(path: &str) -> String {
+    hash_bytes(&clean_path(path, false))
+}
+
+pub(crate) fn hash_bytes(s: &str) -> String {
+    let mut hex = blake3::hash(s.as_bytes()).to_hex().to_string();
     hex.truncate(16);
     hex
 }
@@ -131,20 +143,23 @@ pub fn short_hash(s: &str) -> String {
 /// assert!(gz.ends_with(".tar.gz"));
 /// ```
 pub fn redact_path(path: &str) -> String {
-    let cleaned = clean_path(path);
-    let mut out = short_hash(&cleaned);
+    redact_cleaned_path(&clean_path(path, true))
+}
 
-    let filename = cleaned.split('/').next_back().unwrap_or(&cleaned);
-    let parts: Vec<&str> = filename.split('.').collect();
+/// Redact an already modeled receipt path, preserving literal backslashes in names.
+pub fn redact_receipt_path(path: &str) -> String {
+    redact_cleaned_path(&clean_path(path, false))
+}
 
-    if parts.len() > 1 && !(parts.len() == 2 && parts[0].is_empty()) {
-        let extension_parts = if parts[0].is_empty() {
-            &parts[2..]
-        } else {
-            &parts[1..]
-        };
+fn redact_cleaned_path(cleaned: &str) -> String {
+    let mut out = hash_bytes(cleaned);
 
-        if let Some(suffix) = extensions::safe_path_extension_suffix(extension_parts) {
+    let filename = cleaned.rsplit('/').next().unwrap_or(cleaned);
+    // A leading dot belongs to the basename (e.g. .env), not its suffix.
+    let basename = filename.strip_prefix('.').unwrap_or(filename);
+    if let Some((_, extensions)) = basename.split_once('.') {
+        let extension_parts: Vec<_> = extensions.split('.').collect();
+        if let Some(suffix) = extensions::safe_path_extension_suffix(&extension_parts) {
             for ext in suffix {
                 out.push('.');
                 out.push_str(ext);

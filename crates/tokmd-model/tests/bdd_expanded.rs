@@ -34,6 +34,18 @@ fn crate_src() -> String {
     format!("{}/src", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Use a relative tokei report so module roots and separator spelling are
+/// independent of the directory containing the checkout.
+fn native_report_fixture() -> (Languages, &'static str) {
+    let module = if cfg!(unix) { r"app\core" } else { "app" };
+    let source = Path::new(".").join("crates").join(module).join("lib.rs");
+    let mut language = tokei::Language::new();
+    language.reports.push(tokei::Report::new(source));
+    let mut languages = Languages::new();
+    languages.insert(tokei::LanguageType::Rust, language);
+    (languages, module)
+}
+
 /// Scan the entire workspace (provides richer multi-language data).
 fn workspace_src() -> String {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -51,51 +63,55 @@ fn workspace_src() -> String {
 // ===========================================================================
 
 #[test]
-fn given_lang_report_then_total_code_equals_sum_of_row_codes() {
+fn given_lang_report_then_total_code_equals_sum_of_row_codes() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(
         report.total.code, sum,
         "total.code must equal sum of row codes"
     );
+    Ok(())
 }
 
 #[test]
-fn given_lang_report_then_total_lines_equals_sum_of_row_lines() {
+fn given_lang_report_then_total_lines_equals_sum_of_row_lines() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.lines).sum();
     assert_eq!(
         report.total.lines, sum,
         "total.lines must equal sum of row lines"
     );
+    Ok(())
 }
 
 #[test]
-fn given_lang_report_then_total_bytes_equals_sum_of_row_bytes() {
+fn given_lang_report_then_total_bytes_equals_sum_of_row_bytes() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.bytes).sum();
     assert_eq!(
         report.total.bytes, sum,
         "total.bytes must equal sum of row bytes"
     );
+    Ok(())
 }
 
 #[test]
-fn given_lang_report_then_total_tokens_equals_sum_of_row_tokens() {
+fn given_lang_report_then_total_tokens_equals_sum_of_row_tokens() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
 
     let sum: usize = report.rows.iter().map(|r| r.tokens).sum();
     assert_eq!(
         report.total.tokens, sum,
         "total.tokens must equal sum of row tokens"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -103,27 +119,22 @@ fn given_lang_report_then_total_tokens_equals_sum_of_row_tokens() {
 // ===========================================================================
 
 #[test]
-fn given_module_report_then_all_module_keys_use_forward_slashes() {
-    let langs = scan_dir(&workspace_src());
+fn given_native_file_then_module_key_joins_native_directory_names() -> std::io::Result<()> {
+    let (languages, module) = native_report_fixture();
     let report = create_module_report(
-        &langs,
+        &languages,
         &["crates".into()],
         2,
         ChildIncludeMode::ParentsOnly,
         0,
-    );
-
-    for row in &report.rows {
-        assert!(
-            !row.module.contains('\\'),
-            "module key '{}' must not contain backslashes",
-            row.module
-        );
-    }
+    )?;
+    let keys: Vec<_> = report.rows.into_iter().map(|row| row.module).collect();
+    assert_eq!(keys, [format!("crates/{module}")]);
+    Ok(())
 }
 
 #[test]
-fn given_module_report_with_roots_then_matching_paths_have_depth_segments() {
+fn given_module_report_with_roots_then_matching_paths_have_depth_segments() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
     let report = create_module_report(
         &langs,
@@ -131,7 +142,7 @@ fn given_module_report_with_roots_then_matching_paths_have_depth_segments() {
         2,
         ChildIncludeMode::ParentsOnly,
         0,
-    );
+    )?;
 
     let crate_modules: Vec<_> = report
         .rows
@@ -148,6 +159,7 @@ fn given_module_report_with_roots_then_matching_paths_have_depth_segments() {
             m.module
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -155,20 +167,21 @@ fn given_module_report_with_roots_then_matching_paths_have_depth_segments() {
 // ===========================================================================
 
 #[test]
-fn given_file_rows_then_every_row_has_nonempty_path_and_lang() {
+fn given_file_rows_then_every_row_has_nonempty_path_and_lang() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for row in &rows {
         assert!(!row.path.is_empty(), "file row path must not be empty");
         assert!(!row.lang.is_empty(), "file row lang must not be empty");
     }
+    Ok(())
 }
 
 #[test]
-fn given_file_rows_then_lines_equals_code_plus_comments_plus_blanks() {
+fn given_file_rows_then_lines_equals_code_plus_comments_plus_blanks() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for row in &rows {
         let expected = row.code + row.comments + row.blanks;
@@ -178,12 +191,13 @@ fn given_file_rows_then_lines_equals_code_plus_comments_plus_blanks() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_parent_file_rows_then_bytes_are_positive() {
+fn given_parent_file_rows_then_bytes_are_positive() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for row in &rows {
         assert!(
@@ -197,20 +211,16 @@ fn given_parent_file_rows_then_bytes_are_positive() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_file_rows_then_paths_use_forward_slashes() {
-    let langs = scan_dir(&crate_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
-
-    for row in &rows {
-        assert!(
-            !row.path.contains('\\'),
-            "file row path '{}' must not contain backslashes",
-            row.path
-        );
-    }
+fn given_native_file_then_row_path_joins_native_names_with_slashes() -> std::io::Result<()> {
+    let (languages, module) = native_report_fixture();
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
+    let paths: Vec<_> = rows.into_iter().map(|row| row.path).collect();
+    assert_eq!(paths, [format!("crates/{module}/lib.rs")]);
+    Ok(())
 }
 
 // ===========================================================================
@@ -218,7 +228,7 @@ fn given_file_rows_then_paths_use_forward_slashes() {
 // ===========================================================================
 
 #[test]
-fn given_export_data_then_rows_sorted_desc_code_then_asc_path() {
+fn given_export_data_then_rows_sorted_desc_code_then_asc_path() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
     let data = create_export_data(
         &langs,
@@ -228,7 +238,7 @@ fn given_export_data_then_rows_sorted_desc_code_then_asc_path() {
         None,
         0,
         0,
-    );
+    )?;
 
     for pair in data.rows.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
@@ -241,10 +251,11 @@ fn given_export_data_then_rows_sorted_desc_code_then_asc_path() {
             b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_module_report_then_rows_sorted_desc_code_then_asc_module() {
+fn given_module_report_then_rows_sorted_desc_code_then_asc_module() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
     let report = create_module_report(
         &langs,
@@ -252,7 +263,7 @@ fn given_module_report_then_rows_sorted_desc_code_then_asc_module() {
         2,
         ChildIncludeMode::ParentsOnly,
         0,
-    );
+    )?;
 
     for pair in report.rows.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
@@ -265,6 +276,7 @@ fn given_module_report_then_rows_sorted_desc_code_then_asc_module() {
             b.code
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -272,9 +284,9 @@ fn given_module_report_then_rows_sorted_desc_code_then_asc_module() {
 // ===========================================================================
 
 #[test]
-fn given_separate_mode_then_child_rows_have_zero_bytes() {
+fn given_separate_mode_then_child_rows_have_zero_bytes() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, None)?;
 
     for row in rows.iter().filter(|r| r.kind == FileKind::Child) {
         assert_eq!(
@@ -288,28 +300,31 @@ fn given_separate_mode_then_child_rows_have_zero_bytes() {
             row.path, row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_parents_only_mode_then_no_child_kind_rows() {
+fn given_parents_only_mode_then_no_child_kind_rows() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     let child_count = rows.iter().filter(|r| r.kind == FileKind::Child).count();
     assert_eq!(child_count, 0, "ParentsOnly mode must not emit Child rows");
+    Ok(())
 }
 
 #[test]
-fn given_collapse_vs_separate_lang_report_then_total_files_match() {
+fn given_collapse_vs_separate_lang_report_then_total_files_match() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
 
-    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
 
     assert_eq!(
         collapse.total.files, separate.total.files,
         "total files must agree between Collapse and Separate modes"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -317,9 +332,9 @@ fn given_collapse_vs_separate_lang_report_then_total_files_match() {
 // ===========================================================================
 
 #[test]
-fn given_top_1_lang_report_then_other_bucket_created() {
+fn given_top_1_lang_report_then_other_bucket_created() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
 
     assert!(
         report.rows.len() <= 2,
@@ -331,13 +346,14 @@ fn given_top_1_lang_report_then_other_bucket_created() {
             "second row should be 'Other' bucket"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_top_n_lang_report_then_other_bucket_totals_are_correct() {
+fn given_top_n_lang_report_then_other_bucket_totals_are_correct() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
-    let full = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let top2 = create_lang_report(&langs, 2, false, ChildrenMode::Collapse);
+    let full = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let top2 = create_lang_report(&langs, 2, false, ChildrenMode::Collapse)?;
 
     if full.rows.len() > 2 {
         let other = top2.rows.iter().find(|r| r.lang == "Other");
@@ -350,6 +366,7 @@ fn given_top_n_lang_report_then_other_bucket_totals_are_correct() {
             "Other bucket code must equal sum of truncated rows"
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -357,7 +374,7 @@ fn given_top_n_lang_report_then_other_bucket_totals_are_correct() {
 // ===========================================================================
 
 #[test]
-fn given_min_code_filter_then_low_code_files_excluded() {
+fn given_min_code_filter_then_low_code_files_excluded() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
     let data = create_export_data(
         &langs,
@@ -367,7 +384,7 @@ fn given_min_code_filter_then_low_code_files_excluded() {
         None,
         50, // min_code = 50
         0,
-    );
+    )?;
 
     for row in &data.rows {
         assert!(
@@ -377,10 +394,11 @@ fn given_min_code_filter_then_low_code_files_excluded() {
             row.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn given_max_rows_then_output_truncated() {
+fn given_max_rows_then_output_truncated() -> std::io::Result<()> {
     let langs = scan_dir(&workspace_src());
     let data = create_export_data(
         &langs,
@@ -390,13 +408,14 @@ fn given_max_rows_then_output_truncated() {
         None,
         0,
         5, // max_rows = 5
-    );
+    )?;
 
     assert!(
         data.rows.len() <= 5,
         "max_rows=5 should produce at most 5 rows, got {}",
         data.rows.len()
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -404,9 +423,9 @@ fn given_max_rows_then_output_truncated() {
 // ===========================================================================
 
 #[test]
-fn given_scanned_crate_then_unique_file_count_matches_report_count() {
+fn given_scanned_crate_then_unique_file_count_matches_report_count() -> std::io::Result<()> {
     let langs = scan_dir(&crate_src());
-    let count = unique_parent_file_count(&langs);
+    let count = unique_parent_file_count(&langs)?;
 
     let mut paths = std::collections::BTreeSet::new();
     for lang in langs.values() {
@@ -420,6 +439,7 @@ fn given_scanned_crate_then_unique_file_count_matches_report_count() {
         paths.len(),
         "unique_parent_file_count must match deduplicated report paths"
     );
+    Ok(())
 }
 
 // ===========================================================================

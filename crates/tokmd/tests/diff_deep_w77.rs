@@ -616,6 +616,36 @@ fn diff_from_files_via_positional_args() {
     assert_eq!(json["totals"]["delta_code"], 50);
 }
 
+#[cfg(unix)]
+#[test]
+fn diff_distinguishes_literal_backslash_receipt_from_nested_receipt() -> anyhow::Result<()> {
+    let dir = tempdir()?;
+    let literal = r"reports\lang.json";
+    let nested = "reports/lang.json";
+    fs::create_dir(dir.path().join("reports"))?;
+    write_fixture(
+        dir.path(),
+        literal,
+        &lang_receipt(&[("Rust", 2, 2, 1, 80, 20)]),
+    );
+    write_fixture(
+        dir.path(),
+        nested,
+        &lang_receipt(&[("Rust", 5, 5, 1, 200, 50)]),
+    );
+
+    let output = tokmd()
+        .current_dir(dir.path())
+        .args(["diff", "--format", "json", literal, nested])
+        .assert()
+        .success();
+    let receipt: Value = serde_json::from_slice(&output.get_output().stdout)?;
+    assert_eq!(receipt["from_source"], literal);
+    assert_eq!(receipt["to_source"], nested);
+    assert_eq!(receipt["totals"]["delta_code"], 3);
+    Ok(())
+}
+
 #[test]
 fn diff_from_directory_loads_lang_json() {
     let dir = tempdir().unwrap();

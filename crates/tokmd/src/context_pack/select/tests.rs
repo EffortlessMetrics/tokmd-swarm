@@ -117,13 +117,6 @@ fn budget_warning_distinguishes_zero_token_excerpts_from_empty_and_partial_conte
 }
 
 #[test]
-fn test_normalize_path() {
-    assert_eq!(normalize_path("foo/bar"), "foo/bar");
-    assert_eq!(normalize_path("foo\\bar"), "foo/bar");
-    assert_eq!(normalize_path("foo\\bar\\baz"), "foo/bar/baz");
-}
-
-#[test]
 fn test_get_value_code_metric() {
     let row = make_test_row("test.rs", "mod", "Rust", 100, 50);
     assert_eq!(get_value(&row, ValueMetric::Code, None), 50);
@@ -400,35 +393,48 @@ fn test_pack_spread_no_duplicates() {
     assert!(paths.contains(&&"b.rs".to_string()));
 }
 
+#[cfg(unix)]
 #[test]
-fn test_normalize_path_with_backslash() {
-    // This tests the path normalization in get_value
-    let row = FileRow {
-        path: "foo\\bar\\test.rs".to_string(),
-        module: "mod".to_string(),
-        lang: "Rust".to_string(),
-        kind: FileKind::Parent,
-        code: 50,
-        comments: 0,
-        blanks: 0,
-        lines: 50,
-        bytes: 500,
-        tokens: 100,
-    };
-
-    // Create git scores with forward slash path
-    let mut hotspots = BTreeMap::new();
-    hotspots.insert("foo/bar/test.rs".to_string(), 999);
-    let git_scores = GitScores {
-        hotspots,
+fn selection_joins_scores_and_caps_by_exact_modeled_path() -> anyhow::Result<()> {
+    let literal = r"literal\name.rs";
+    let nested = "literal/name.rs";
+    let rows = [
+        make_test_row(literal, "(root)", "Rust", 300, 100),
+        make_test_row(nested, "literal", "Rust", 10, 5),
+    ];
+    let scores = GitScores {
+        hotspots: BTreeMap::from([(literal.to_owned(), 501), (nested.to_owned(), 77)]),
         commit_counts: BTreeMap::new(),
     };
-
-    // Should find the hotspot despite backslash in original path
-    assert_eq!(
-        get_value(&row, ValueMetric::Hotspot, Some(&git_scores)),
-        999
+    let options = SelectOptions {
+        max_file_tokens: Some(100),
+        ..Default::default()
+    };
+    let result = select_files_with_options(
+        &rows,
+        1000,
+        ContextStrategy::Greedy,
+        ValueMetric::Hotspot,
+        Some(&scores),
+        &options,
     );
+    let [first, second] = result.selected.as_slice() else {
+        anyhow::bail!("expected both selected identities");
+    };
+    assert_eq!(
+        (
+            first.path.as_str(),
+            first.value,
+            first.policy,
+            first.effective_tokens
+        ),
+        (literal, 501, InclusionPolicy::HeadTail, Some(100))
+    );
+    assert_eq!(
+        (second.path.as_str(), second.value, second.policy),
+        (nested, 77, InclusionPolicy::Full)
+    );
+    Ok(())
 }
 
 // =======================================================================
@@ -773,20 +779,6 @@ fn test_spread_70_percent_allocation() {
 
     // With these token sizes, should get 2 files in spread, possibly 1 more in greedy
     assert!(result.len() >= 2, "Should select at least 2 files");
-}
-
-#[test]
-fn test_normalize_path_preserves_forward_slashes() {
-    // Kills "normalize_path -> empty string" mutant
-    assert_eq!(normalize_path("foo/bar/baz.rs"), "foo/bar/baz.rs");
-    assert!(!normalize_path("test.rs").is_empty());
-}
-
-#[test]
-fn test_normalize_path_not_xyzzy() {
-    // Kills "normalize_path -> xyzzy" mutant
-    assert_ne!(normalize_path("foo/bar"), "xyzzy");
-    assert_ne!(normalize_path("test.rs"), "xyzzy");
 }
 
 // ==================== All-child rows produce empty result ====================

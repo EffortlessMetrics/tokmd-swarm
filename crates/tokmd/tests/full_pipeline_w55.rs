@@ -116,9 +116,9 @@ fn default_export_args(fmt: ExportFormat) -> ExportArgs {
 // ===========================================================================
 
 #[test]
-fn pipeline_lang_markdown_produces_table() {
+fn pipeline_lang_markdown_produces_table() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Md);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -128,24 +128,26 @@ fn pipeline_lang_markdown_produces_table() {
         output.contains("|**Total**|"),
         "markdown must have total row"
     );
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_tsv_has_correct_columns() {
+fn pipeline_lang_tsv_has_correct_columns() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Tsv);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
     let output = String::from_utf8(buf).unwrap();
     let header = output.lines().next().expect("no TSV output");
     assert!(header.contains('\t'), "TSV header must have tabs");
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_json_has_schema_version() {
+fn pipeline_lang_json_has_schema_version() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Json);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -155,12 +157,13 @@ fn pipeline_lang_json_has_schema_version() {
         u64::from(SCHEMA_VERSION)
     );
     assert_eq!(v["mode"].as_str().unwrap(), "lang");
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_with_files_includes_avg() {
+fn pipeline_lang_with_files_includes_avg() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     assert!(
         report.with_files,
         "with_files flag must be set in the report"
@@ -176,41 +179,45 @@ fn pipeline_lang_with_files_includes_avg() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_separate_children_has_embedded() {
+fn pipeline_lang_separate_children_has_embedded() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let collapse = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     assert!(
         separate.rows.len() >= collapse.rows.len(),
         "Separate mode should yield >= rows than Collapse"
     );
     assert_eq!(separate.children, ChildrenMode::Separate);
     assert_eq!(collapse.children, ChildrenMode::Collapse);
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_top_limits_rows() {
+fn pipeline_lang_top_limits_rows() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let full = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let full = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     if full.rows.len() > 2 {
-        let limited = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+        let limited = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
         // top=1 keeps the #1 language + folds rest into "Other"
         assert_eq!(limited.rows.len(), 2, "top=1 should yield 1 lang + Other");
         assert_eq!(limited.rows[1].lang, "Other");
     }
+    Ok(())
 }
 
 #[test]
-fn pipeline_lang_total_equals_row_sum() {
+fn pipeline_lang_total_equals_row_sum() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum_code: usize = report.rows.iter().map(|r| r.code).sum();
     let sum_files: usize = report.rows.iter().map(|r| r.files).sum();
     assert_eq!(report.total.code, sum_code, "total.code != row sum");
     assert_eq!(report.total.files, sum_files, "total.files != row sum");
+    Ok(())
 }
 
 // ===========================================================================
@@ -218,9 +225,9 @@ fn pipeline_lang_total_equals_row_sum() {
 // ===========================================================================
 
 #[test]
-fn pipeline_module_markdown_produces_table() {
+fn pipeline_module_markdown_produces_table() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
     let args = default_module_args(TableFormat::Md);
     let mut buf = Vec::new();
     write_module_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -229,12 +236,13 @@ fn pipeline_module_markdown_produces_table() {
         output.contains('|'),
         "module markdown must contain table pipe chars"
     );
+    Ok(())
 }
 
 #[test]
-fn pipeline_module_json_has_schema_version() {
+fn pipeline_module_json_has_schema_version() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
     let args = default_module_args(TableFormat::Json);
     let mut buf = Vec::new();
     write_module_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -244,18 +252,20 @@ fn pipeline_module_json_has_schema_version() {
         u64::from(SCHEMA_VERSION)
     );
     assert_eq!(v["mode"].as_str().unwrap(), "module");
+    Ok(())
 }
 
 #[test]
-fn pipeline_module_custom_depth_changes_granularity() {
+fn pipeline_module_custom_depth_changes_granularity() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let depth1 = create_module_report(&langs, &[], 1, ChildIncludeMode::Separate, 0);
-    let depth3 = create_module_report(&langs, &[], 3, ChildIncludeMode::Separate, 0);
+    let depth1 = create_module_report(&langs, &[], 1, ChildIncludeMode::Separate, 0)?;
+    let depth3 = create_module_report(&langs, &[], 3, ChildIncludeMode::Separate, 0)?;
     // Deeper depth should produce >= module rows (or equal for flat trees)
     assert!(
         depth3.rows.len() >= depth1.rows.len(),
         "depth=3 should yield >= rows than depth=1"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -263,7 +273,7 @@ fn pipeline_module_custom_depth_changes_granularity() {
 // ===========================================================================
 
 #[test]
-fn pipeline_export_csv_has_header_and_data() {
+fn pipeline_export_csv_has_header_and_data() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -273,7 +283,7 @@ fn pipeline_export_csv_has_header_and_data() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let args = default_export_args(ExportFormat::Csv);
     let mut buf = Vec::new();
     write_export_csv_to(&mut buf, &data, &args).unwrap();
@@ -281,10 +291,11 @@ fn pipeline_export_csv_has_header_and_data() {
     let lines: Vec<&str> = output.lines().collect();
     assert!(lines.len() >= 2, "CSV must have header + data rows");
     assert!(lines[0].contains("path"), "CSV header must contain 'path'");
+    Ok(())
 }
 
 #[test]
-fn pipeline_export_jsonl_valid_objects() {
+fn pipeline_export_jsonl_valid_objects() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -294,7 +305,7 @@ fn pipeline_export_jsonl_valid_objects() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let args = default_export_args(ExportFormat::Jsonl);
     let mut buf = Vec::new();
     write_export_jsonl_to(&mut buf, &data, &default_scan_options(), &args).unwrap();
@@ -304,10 +315,11 @@ fn pipeline_export_jsonl_valid_objects() {
             .unwrap_or_else(|e| panic!("JSONL line {i} not valid JSON: {e}"));
         assert!(v.is_object(), "JSONL line {i} must be an object");
     }
+    Ok(())
 }
 
 #[test]
-fn pipeline_export_json_with_meta_is_valid_receipt() {
+fn pipeline_export_json_with_meta_is_valid_receipt() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -317,7 +329,7 @@ fn pipeline_export_json_with_meta_is_valid_receipt() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let mut args = default_export_args(ExportFormat::Json);
     args.meta = true;
     let mut buf = Vec::new();
@@ -329,10 +341,11 @@ fn pipeline_export_json_with_meta_is_valid_receipt() {
     );
     assert!(v["rows"].is_array(), "export JSON must have rows array");
     assert_eq!(v["mode"].as_str().unwrap(), "export");
+    Ok(())
 }
 
 #[test]
-fn pipeline_export_json_bare_is_array() {
+fn pipeline_export_json_bare_is_array() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -342,7 +355,7 @@ fn pipeline_export_json_bare_is_array() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let args = default_export_args(ExportFormat::Json);
     let mut buf = Vec::new();
     write_export_json_to(&mut buf, &data, &default_scan_options(), &args).unwrap();
@@ -351,10 +364,11 @@ fn pipeline_export_json_bare_is_array() {
         v.is_array(),
         "export JSON without meta must be a bare array"
     );
+    Ok(())
 }
 
 #[test]
-fn pipeline_export_forward_slash_paths() {
+fn pipeline_export_forward_slash_paths() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -364,7 +378,7 @@ fn pipeline_export_forward_slash_paths() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     for row in &data.rows {
         assert!(
             !row.path.contains('\\'),
@@ -372,10 +386,11 @@ fn pipeline_export_forward_slash_paths() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn pipeline_export_csv_consistent_column_count() {
+fn pipeline_export_csv_consistent_column_count() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -385,7 +400,7 @@ fn pipeline_export_csv_consistent_column_count() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let args = default_export_args(ExportFormat::Csv);
     let mut buf = Vec::new();
     write_export_csv_to(&mut buf, &data, &args).unwrap();
@@ -398,6 +413,7 @@ fn pipeline_export_csv_consistent_column_count() {
             "CSV row {i} has {count} columns, expected {first}"
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -417,7 +433,7 @@ fn cli_lang_json_full_pipeline() {
 }
 
 #[test]
-fn pipeline_export_cyclonedx_full() {
+fn pipeline_export_cyclonedx_full() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -427,13 +443,14 @@ fn pipeline_export_cyclonedx_full() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let mut buf = Vec::new();
     write_export_cyclonedx_to(&mut buf, &data, RedactMode::None).unwrap();
     let v: Value = serde_json::from_slice(&buf).unwrap();
     assert_eq!(v["bomFormat"], "CycloneDX");
     assert_eq!(v["specVersion"], "1.6");
     assert!(v["components"].is_array());
+    Ok(())
 }
 
 #[test]
@@ -500,22 +517,23 @@ fn cli_analyze_health_json_pipeline() {
 // ===========================================================================
 
 #[test]
-fn types_flow_scan_to_model_to_format() {
+fn types_flow_scan_to_model_to_format() -> std::io::Result<()> {
     // Verify types produced by scan are consumed by model, then format
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(!report.rows.is_empty(), "fixture must produce rows");
     let args = default_lang_args(TableFormat::Json);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
     let v: Value = serde_json::from_slice(&buf).unwrap();
     assert_eq!(v["rows"].as_array().unwrap().len(), report.rows.len());
+    Ok(())
 }
 
 #[test]
-fn lang_row_fields_preserved_through_pipeline() {
+fn lang_row_fields_preserved_through_pipeline() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Json);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -528,10 +546,11 @@ fn lang_row_fields_preserved_through_pipeline() {
         assert_eq!(jr["files"].as_u64().unwrap(), row.files as u64);
         assert_eq!(jr["lines"].as_u64().unwrap(), row.lines as u64);
     }
+    Ok(())
 }
 
 #[test]
-fn file_row_fields_preserved_through_export() {
+fn file_row_fields_preserved_through_export() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -541,7 +560,7 @@ fn file_row_fields_preserved_through_export() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     // Use bare JSON (no meta) which produces a plain array
     let args = default_export_args(ExportFormat::Json);
     let mut buf = Vec::new();
@@ -553,12 +572,13 @@ fn file_row_fields_preserved_through_export() {
         assert_eq!(jr["path"].as_str().unwrap(), row.path);
         assert_eq!(jr["code"].as_u64().unwrap(), row.code as u64);
     }
+    Ok(())
 }
 
 #[test]
-fn totals_consistent_model_to_json() {
+fn totals_consistent_model_to_json() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Json);
     let mut buf = Vec::new();
     write_lang_report_to(&mut buf, &report, &default_scan_options(), &args).unwrap();
@@ -571,6 +591,7 @@ fn totals_consistent_model_to_json() {
         v["total"]["files"].as_u64().unwrap(),
         report.total.files as u64
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -578,14 +599,15 @@ fn totals_consistent_model_to_json() {
 // ===========================================================================
 
 #[test]
-fn diff_identical_reports_produces_no_rows() {
+fn diff_identical_reports_produces_no_rows() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let diff_rows = compute_diff_rows(&report, &report);
     assert!(
         diff_rows.is_empty(),
         "diff of identical reports should be empty"
     );
+    Ok(())
 }
 
 #[test]
@@ -663,7 +685,7 @@ fn diff_receipt_serializes_to_valid_json() {
 // ===========================================================================
 
 #[test]
-fn analysis_derived_from_export_data() {
+fn analysis_derived_from_export_data() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -673,14 +695,15 @@ fn analysis_derived_from_export_data() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let derived = derive_report(&data, None);
     assert!(derived.totals.files > 0, "derived totals must have files");
     assert!(derived.totals.code > 0, "derived totals must have code");
+    Ok(())
 }
 
 #[test]
-fn analysis_density_ratio_bounded() {
+fn analysis_density_ratio_bounded() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -690,17 +713,18 @@ fn analysis_density_ratio_bounded() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let derived = derive_report(&data, None);
     let ratio = derived.doc_density.total.ratio;
     assert!(
         (0.0..=1.0).contains(&ratio),
         "doc_density ratio must be in [0,1], got {ratio}"
     );
+    Ok(())
 }
 
 #[test]
-fn analysis_integrity_hash_present() {
+fn analysis_integrity_hash_present() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -710,12 +734,13 @@ fn analysis_integrity_hash_present() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let derived = derive_report(&data, None);
     assert!(
         !derived.integrity.hash.is_empty(),
         "integrity hash must be present"
     );
+    Ok(())
 }
 
 // ===========================================================================
@@ -723,12 +748,13 @@ fn analysis_integrity_hash_present() {
 // ===========================================================================
 
 #[test]
-fn badge_from_scan_data_produces_svg() {
+fn badge_from_scan_data_produces_svg() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let svg = badge_svg("lines", &report.total.lines.to_string());
     assert!(svg.contains("<svg"), "badge must be valid SVG");
     assert!(svg.contains("lines"), "badge must contain label");
+    Ok(())
 }
 
 #[test]
@@ -746,7 +772,7 @@ fn cli_badge_produces_svg() {
 // ===========================================================================
 
 #[test]
-fn pipeline_deterministic_json_output() {
+fn pipeline_deterministic_json_output() -> std::io::Result<()> {
     let normalize = |s: &str| -> String {
         let re_ts = regex::Regex::new(r#""generated_at_ms"\s*:\s*\d+"#).unwrap();
         let re_ver = regex::Regex::new(r#""version"\s*:\s*"[^"]+""#).unwrap();
@@ -756,7 +782,7 @@ fn pipeline_deterministic_json_output() {
     };
 
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Json);
 
     let mut buf1 = Vec::new();
@@ -767,12 +793,13 @@ fn pipeline_deterministic_json_output() {
     let out1 = normalize(&String::from_utf8(buf1).unwrap());
     let out2 = normalize(&String::from_utf8(buf2).unwrap());
     assert_eq!(out1, out2, "repeated formatting must be deterministic");
+    Ok(())
 }
 
 #[test]
-fn pipeline_deterministic_markdown_output() {
+fn pipeline_deterministic_markdown_output() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = default_lang_args(TableFormat::Md);
 
     let mut buf1 = Vec::new();
@@ -780,6 +807,7 @@ fn pipeline_deterministic_markdown_output() {
     let mut buf2 = Vec::new();
     write_lang_report_to(&mut buf2, &report, &default_scan_options(), &args).unwrap();
     assert_eq!(buf1, buf2, "repeated markdown must be byte-identical");
+    Ok(())
 }
 
 // ===========================================================================
@@ -787,7 +815,7 @@ fn pipeline_deterministic_markdown_output() {
 // ===========================================================================
 
 #[test]
-fn config_exclude_filters_languages() {
+fn config_exclude_filters_languages() -> std::io::Result<()> {
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
         config: ConfigMode::None,
@@ -795,9 +823,10 @@ fn config_exclude_filters_languages() {
         ..Default::default()
     };
     let langs = scan(&[fixture_path()], &opts).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let has_js = report.rows.iter().any(|r| r.lang == "JavaScript");
     assert!(!has_js, "JavaScript should be excluded by *.js pattern");
+    Ok(())
 }
 
 #[test]
@@ -849,7 +878,7 @@ fn cli_lang_help_succeeds() {
 // ===========================================================================
 
 #[test]
-fn export_rows_sorted_by_code_desc_then_path_asc() {
+fn export_rows_sorted_by_code_desc_then_path_asc() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
     let data = create_export_data(
         &langs,
@@ -859,7 +888,7 @@ fn export_rows_sorted_by_code_desc_then_path_asc() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     for window in data.rows.windows(2) {
         let a = &window[0];
         let b = &window[1];
@@ -870,12 +899,13 @@ fn export_rows_sorted_by_code_desc_then_path_asc() {
             a.path, a.code, b.path, b.code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_rows_sorted_by_code_desc() {
+fn lang_rows_sorted_by_code_desc() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for window in report.rows.windows(2) {
         assert!(
             window[0].code >= window[1].code,
@@ -886,4 +916,5 @@ fn lang_rows_sorted_by_code_desc() {
             window[1].code
         );
     }
+    Ok(())
 }

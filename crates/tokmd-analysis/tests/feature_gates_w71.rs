@@ -579,3 +579,137 @@ fn deep_is_superset_of_receipt() {
         "deep ({deep_count}) must enable more enrichers than receipt ({receipt_count})"
     );
 }
+
+#[cfg(unix)]
+fn native_identity_export() -> ExportData {
+    ExportData {
+        rows: vec![
+            sample_row(r"literal\name.rs", "(root)", "Rust", 100),
+            sample_row("literal/name.rs", "literal", "Rust", 100),
+        ],
+        ..sample_export()
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn native_identity_rootless_enrichers_keep_capability_warnings() -> anyhow::Result<()> {
+    let mut ctx = make_ctx(native_identity_export());
+    ctx.root.clear();
+    let mut req = make_req(PresetKind::Receipt);
+    req.git = Some(true);
+    req.near_dup = true;
+    let receipt = analyze(ctx, req)?;
+    assert_eq!(receipt.status, ScanStatus::Partial);
+    assert!(receipt.git.is_none() && receipt.dup.is_none());
+    assert!(receipt.warnings.iter().any(|w| w.contains("git")));
+    assert_eq!(
+        receipt.derived.map(|derived| derived.integrity.entries),
+        Some(2)
+    );
+    Ok(())
+}
+
+#[cfg(all(unix, not(feature = "git")))]
+#[test]
+fn native_identity_disabled_git_preserves_supply_receipt() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let mut ctx = make_ctx(native_identity_export());
+    ctx.root = dir.path().to_owned();
+    let mut req = make_req(PresetKind::Supply);
+    req.git = Some(true);
+
+    let receipt = analyze(ctx, req)?;
+    assert_eq!(receipt.status, ScanStatus::Partial);
+    assert!(receipt.git.is_none());
+    assert!(
+        receipt
+            .warnings
+            .iter()
+            .any(|w| w == DisabledFeature::GitMetrics.warning())
+    );
+    assert_eq!(
+        receipt.derived.map(|derived| derived.integrity.entries),
+        Some(2)
+    );
+    Ok(())
+}
+
+#[cfg(all(unix, feature = "content"))]
+#[test]
+fn native_identity_near_duplicate_pairs_keep_both_names() -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let dir = tempfile::tempdir()?;
+    let source = "one two three four five six seven eight ".repeat(12);
+    std::fs::create_dir(dir.path().join("literal"))?;
+    let export = native_identity_export();
+    for row in &export.rows {
+        std::fs::write(dir.path().join(&row.path), &source)?;
+    }
+    let mut ctx = make_ctx(export);
+    ctx.root = dir.path().to_owned();
+    let mut req = make_req(PresetKind::Supply);
+    req.git = Some(false);
+    req.near_dup = true;
+    req.near_dup_scope = NearDupScope::Global;
+
+    let near = analyze(ctx, req)?
+        .dup
+        .and_then(|report| report.near)
+        .context("missing near-duplicate report")?;
+    assert_eq!(near.pairs.len(), 1);
+    let pair = near.pairs.first().context("missing pair")?;
+    assert_eq!(
+        (pair.left.as_str(), pair.right.as_str()),
+        ("literal/name.rs", r"literal\name.rs")
+    );
+    Ok(())
+}
+
+#[cfg(all(unix, feature = "git"))]
+#[test]
+fn native_identity_enabled_git_checks_only_requested_joins() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let export = native_identity_export();
+    std::fs::create_dir(dir.path().join("literal"))?;
+    for row in &export.rows {
+        std::fs::write(dir.path().join(&row.path), "fn example() {}")?;
+    }
+    let setup: [&[&str]; 3] = [
+        &["init", "-q"],
+        &["add", "."],
+        &[
+            "-c",
+            "user.name=T",
+            "-c",
+            "user.email=t@example.org",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+    ];
+    for args in setup {
+        let output = std::process::Command::new("git")
+            .current_dir(dir.path())
+            .args(args)
+            .output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "Git fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let mut ctx = make_ctx(export);
+    ctx.root = dir.path().to_owned();
+
+    let mut supply = make_req(PresetKind::Supply);
+    supply.git = Some(true);
+    assert!(analyze(ctx.clone(), supply)?.git.is_none());
+
+    let result = analyze(ctx, make_req(PresetKind::Git));
+    assert!(result.is_err_and(|err| err.to_string().contains("literal backslash")));
+    Ok(())
+}

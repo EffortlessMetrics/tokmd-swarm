@@ -53,45 +53,48 @@ fn scaffold() -> TempDir {
 // ===========================================================================
 
 #[test]
-fn scan_then_lang_report_finds_languages() {
+fn scan_then_lang_report_finds_languages() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).expect("scan succeeds");
-    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     assert!(!report.rows.is_empty(), "should have language rows");
     let langs: Vec<&str> = report.rows.iter().map(|r| r.lang.as_str()).collect();
     assert!(langs.contains(&"Rust"), "should find Rust");
     assert!(langs.contains(&"Python"), "should find Python");
+    Ok(())
 }
 
 #[test]
-fn scan_then_lang_report_totals_are_positive() {
+fn scan_then_lang_report_totals_are_positive() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
-    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     assert!(report.total.code > 0, "total code > 0");
     assert!(report.total.files > 0, "total files > 0");
     assert!(report.total.lines > 0, "total lines > 0");
+    Ok(())
 }
 
 #[test]
-fn scan_then_lang_report_rows_sum_to_total() {
+fn scan_then_lang_report_rows_sum_to_total() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
-    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     let row_code_sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(row_code_sum, report.total.code);
+    Ok(())
 }
 
 // ===========================================================================
@@ -99,35 +102,37 @@ fn scan_then_lang_report_rows_sum_to_total() {
 // ===========================================================================
 
 #[test]
-fn scan_then_module_report_finds_modules() {
+fn scan_then_module_report_finds_modules() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
     let report =
-        tokmd_model::create_module_report(&languages, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+        tokmd_model::create_module_report(&languages, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
 
     assert!(!report.rows.is_empty(), "should have module rows");
     assert!(report.total.code > 0);
+    Ok(())
 }
 
 #[test]
-fn scan_then_module_report_totals_match_lang() {
+fn scan_then_module_report_totals_match_lang() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
-    let lang = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let lang = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
     let module =
-        tokmd_model::create_module_report(&languages, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+        tokmd_model::create_module_report(&languages, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
 
     assert_eq!(
         lang.total.code, module.total.code,
         "lang and module totals should match"
     );
     assert_eq!(lang.total.files, module.total.files);
+    Ok(())
 }
 
 // ===========================================================================
@@ -135,7 +140,7 @@ fn scan_then_module_report_totals_match_lang() {
 // ===========================================================================
 
 #[test]
-fn scan_then_export_data_lists_all_files() {
+fn scan_then_export_data_lists_all_files() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
@@ -149,14 +154,15 @@ fn scan_then_export_data_lists_all_files() {
         None,
         0,
         0,
-    );
+    )?;
 
     // We created 3 files: main.rs, script.py, src/lib.rs
     assert_eq!(data.rows.len(), 3, "should export exactly 3 file rows");
+    Ok(())
 }
 
 #[test]
-fn scan_then_export_data_paths_are_forward_slash() {
+fn scan_then_export_data_paths_are_forward_slash() -> std::io::Result<()> {
     let dir = scaffold();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
@@ -170,7 +176,7 @@ fn scan_then_export_data_paths_are_forward_slash() {
         None,
         0,
         0,
-    );
+    )?;
 
     for row in &data.rows {
         assert!(
@@ -179,6 +185,7 @@ fn scan_then_export_data_paths_are_forward_slash() {
             row.path
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -186,7 +193,7 @@ fn scan_then_export_data_paths_are_forward_slash() {
 // ===========================================================================
 
 #[test]
-fn scan_javascript_file() {
+fn scan_javascript_file() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     fs::write(
         dir.path().join("app.js"),
@@ -198,22 +205,24 @@ fn scan_javascript_file() {
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
-    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     let langs: Vec<&str> = report.rows.iter().map(|r| r.lang.as_str()).collect();
     assert!(langs.contains(&"JavaScript"));
+    Ok(())
 }
 
 #[test]
-fn scan_empty_directory_produces_empty_report() {
+fn scan_empty_directory_produces_empty_report() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let opts = default_scan_options();
     let paths = vec![dir.path().to_path_buf()];
 
     let languages = tokmd_scan::scan(&paths, &opts).unwrap();
-    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = tokmd_model::create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     assert!(report.rows.is_empty(), "empty dir should have no rows");
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }

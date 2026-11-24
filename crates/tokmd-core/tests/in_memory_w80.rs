@@ -549,3 +549,31 @@ fn analyze_workflow_from_inputs_health_keeps_explicit_hidden_inputs() -> Result<
 
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn virtual_prefix_keeps_unix_backslash_distinct_and_rejects_an_ambiguous_label() -> Result<()> {
+    let export = ExportSettings {
+        strip_prefix: Some("repo".into()),
+        ..Default::default()
+    };
+    let mut inputs = vec![
+        InMemoryFile::new(r"repo/src\work.rs", "fn flat() {}\n"),
+        InMemoryFile::new("repo/src/work.rs", "fn nested() {}\n"),
+    ];
+    let receipt = export_workflow_from_inputs(&inputs, &scan_options(), &export)?;
+    assert_eq!(
+        receipt
+            .data
+            .rows
+            .iter()
+            .map(|r| (r.path.as_str(), r.module.as_str()))
+            .collect::<Vec<_>>(),
+        [("src/work.rs", "src"), (r"src\work.rs", "(root)")]
+    );
+
+    inputs.push(InMemoryFile::new("src/work.rs", "fn third() {}\n"));
+    let error = export_workflow_from_inputs(&inputs, &scan_options(), &export).unwrap_err();
+    assert!(error.to_string().contains("strip prefix"), "{error}");
+    Ok(())
+}

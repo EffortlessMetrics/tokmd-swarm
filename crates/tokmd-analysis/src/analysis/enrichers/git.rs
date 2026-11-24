@@ -24,7 +24,7 @@ pub(in crate::analysis) fn run(
     input: GitInput<'_>,
     outputs: &mut AnalysisOutputs,
     warnings: &mut Vec<String>,
-) {
+) -> anyhow::Result<()> {
     if input.include_git {
         #[cfg(feature = "git")]
         {
@@ -43,6 +43,10 @@ pub(in crate::analysis) fn run(
                         input.max_commit_files,
                     ) {
                         Ok(commits) => {
+                            #[cfg(unix)]
+                            if input.plan.git || input.plan.churn {
+                                super::super::files::check_enricher_paths(input.export, None)?;
+                            }
                             if input.plan.git {
                                 match crate::git::build_git_report(
                                     &repo_root,
@@ -82,4 +86,5 @@ pub(in crate::analysis) fn run(
             );
         }
     }
+    Ok(())
 }

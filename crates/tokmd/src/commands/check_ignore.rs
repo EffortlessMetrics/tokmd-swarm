@@ -53,6 +53,7 @@ enum IgnoreReason {
     },
     GitTracked, // File is tracked by git; gitignore rules don't apply
     Tokeignore {
+        source: String,
         pattern: String,
     },
     ExcludeFlag {
@@ -61,7 +62,7 @@ enum IgnoreReason {
 }
 
 fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<CheckResult> {
-    let path_str = path.display().to_string();
+    let path_str = tokmd_types::validate_source_path(path)?.to_owned();
     let mut reasons = Vec::new();
     let mut ignored = false;
 
@@ -89,18 +90,23 @@ fn check_path(path: &Path, global: &cli::GlobalArgs, verbose: bool) -> Result<Ch
     }
 
     // 2. Check --exclude patterns from CLI
-    for pattern in &global.excluded {
-        if matches_glob(pattern, &path_str) {
-            reasons.push(IgnoreReason::ExcludeFlag {
-                pattern: pattern.clone(),
-            });
-            ignored = true;
-        }
+    for pattern in tokmd_scan::matching_exclude_flags(path, &global.excluded)? {
+        reasons.push(IgnoreReason::ExcludeFlag { pattern });
+        ignored = true;
     }
 
-    // 3. Check .tokeignore
-    if let Some(tokeignore_reason) = check_tokeignore(path, &path_str) {
-        reasons.push(tokeignore_reason);
+    // 3. Check .tokeignore relative to the directory containing the rule.
+    if !global.no_ignore
+        && !global.no_ignore_dot
+        && let Some((source, pattern)) =
+            tokmd_scan::matching_tokeignore(path, !global.no_ignore_parent)?
+    {
+        let cwd = std::env::current_dir()?;
+        let source = source.strip_prefix(cwd).unwrap_or(&source);
+        reasons.push(IgnoreReason::Tokeignore {
+            source: tokmd_types::validate_source_path(source)?.to_owned(),
+            pattern,
+        });
         ignored = true;
     }
 
@@ -176,46 +182,7 @@ fn is_git_tracked(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn check_tokeignore(base_path: &Path, path_str: &str) -> Option<IgnoreReason> {
-    // Look for .tokeignore in current directory and parents
-    let mut dir = base_path.parent();
-    while let Some(d) = dir {
-        let tokeignore = d.join(".tokeignore");
-        if let Ok(content) = std::fs::read_to_string(&tokeignore) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if matches_glob(line, path_str) {
-                    return Some(IgnoreReason::Tokeignore {
-                        pattern: line.to_string(),
-                    });
-                }
-            }
-        }
-        dir = d.parent();
-    }
-
-    // Also check current working directory
-    let cwd_tokeignore = Path::new(".tokeignore");
-    if let Ok(content) = std::fs::read_to_string(cwd_tokeignore) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if matches_glob(line, path_str) {
-                return Some(IgnoreReason::Tokeignore {
-                    pattern: line.to_string(),
-                });
-            }
-        }
-    }
-
-    None
-}
-
+/// Legacy display-path matcher used by the syntax command.
 pub(crate) fn matches_glob(pattern: &str, path: &str) -> bool {
     // Simple glob matching (could use the glob crate for more accuracy)
     // Handle common patterns: *, **, ?
@@ -280,8 +247,8 @@ fn print_result(result: &CheckResult, verbose: bool) {
                             println!("  gitignore: {} -> {}", source, pattern);
                         }
                     }
-                    IgnoreReason::Tokeignore { pattern } => {
-                        println!("  .tokeignore: {}", pattern);
+                    IgnoreReason::Tokeignore { source, pattern } => {
+                        println!("  {}: {}", source, pattern);
                     }
                     IgnoreReason::ExcludeFlag { pattern } => {
                         println!("  --exclude: {}", pattern);
@@ -338,10 +305,10 @@ mod tests {
         let file_path = src_dir.join("main.rs");
         std::fs::write(&file_path, "fn main() {}\n")?;
 
-        let reason = check_tokeignore(&file_path, file_path.to_string_lossy().as_ref());
+        let reason = tokmd_scan::matching_tokeignore(&file_path, true)?;
         assert!(matches!(
             reason,
-            Some(IgnoreReason::Tokeignore { pattern }) if pattern == "*.rs"
+            Some((source, pattern)) if source == dir.path().join(".tokeignore") && pattern == "*.rs"
         ));
         Ok(())
     }

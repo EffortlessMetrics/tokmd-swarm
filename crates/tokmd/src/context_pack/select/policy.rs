@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use tokmd_scan::normalize_slashes as normalize_path;
 use tokmd_types::{
     ContextFileRow, FileClassification, FileKind, FileRow, InclusionPolicy, PolicyExcludedFile,
 };
@@ -63,14 +62,14 @@ pub(super) fn prepare_policy_selection(
         .iter()
         .filter(|row| row.kind == FileKind::Parent)
     {
-        let path = normalize_path(&row.path);
-        let policy_tokens = policy_tokens(&path, row);
+        let path = row.path.as_str();
+        let policy_tokens = policy_tokens(path, row);
         let classifications =
-            classify_file(&path, policy_tokens, row.lines, options.dense_threshold);
+            classify_file(path, policy_tokens, row.lines, options.dense_threshold);
         let (policy, reason) = assign_policy(policy_tokens, file_cap, &classifications);
 
         file_meta_map.insert(
-            path.clone(),
+            path.to_owned(),
             FileContextMeta {
                 classifications: classifications.clone(),
                 policy,
@@ -81,7 +80,7 @@ pub(super) fn prepare_policy_selection(
 
         if matches!(policy, InclusionPolicy::Skip | InclusionPolicy::Summary) {
             excluded_by_policy.push(PolicyExcludedFile {
-                path,
+                path: path.to_owned(),
                 original_tokens: policy_tokens,
                 policy,
                 reason: reason.unwrap_or_default(),
@@ -101,16 +100,15 @@ pub(super) fn prepare_policy_selection(
             if row.kind != FileKind::Parent {
                 return true;
             }
-            let path = normalize_path(&row.path);
-            !excluded_paths.contains(path.as_str())
+            !excluded_paths.contains(row.path.as_str())
         })
         .map(|row| {
-            let path = normalize_path(&row.path);
-            if let Some(meta) = file_meta_map.get(&path)
+            let path = row.path.as_str();
+            if let Some(meta) = file_meta_map.get(path)
                 && meta.policy == InclusionPolicy::HeadTail
             {
                 return FileRow {
-                    tokens: policy_tokens(&path, row).min(file_cap),
+                    tokens: policy_tokens(path, row).min(file_cap),
                     ..row.clone()
                 };
             }
@@ -128,8 +126,7 @@ pub(super) fn prepare_policy_selection(
 impl PolicySelection {
     pub(super) fn annotate_selected(&self, selected: &mut [ContextFileRow]) {
         for file in selected {
-            let path = normalize_path(&file.path);
-            if let Some(meta) = self.file_meta_map.get(&path) {
+            if let Some(meta) = self.file_meta_map.get(&file.path) {
                 file.classifications = meta.classifications.clone();
                 file.policy = meta.policy;
                 file.policy_reason = meta.policy_reason.clone();

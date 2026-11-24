@@ -261218,63 +261218,6 @@ line = 29
 column = 25
 
 [[allow]]
-id = "panic-13756"
-path = "crates/tokmd-format/src/redact/mod.rs"
-family = "element_indexing"
-classification = "production"
-owner = "tokmd-format"
-explanation = "receipted baseline debt; remove or make fallible before expiry"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "indexing"
-container = "redact_path"
-callee = "[]"
-receiver_fingerprint = "parts[0]"
-
-[allow.last_seen]
-line = 140
-column = 48
-
-[[allow]]
-id = "panic-13757"
-path = "crates/tokmd-format/src/redact/mod.rs"
-family = "range_indexing"
-classification = "production"
-owner = "tokmd-format"
-explanation = "receipted baseline debt; remove or make fallible before expiry"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "indexing"
-container = "redact_path"
-callee = "[]"
-receiver_fingerprint = "parts[1 ..]"
-
-[allow.last_seen]
-line = 144
-column = 13
-
-[[allow]]
-id = "panic-13758"
-path = "crates/tokmd-format/src/redact/mod.rs"
-family = "range_indexing"
-classification = "production"
-owner = "tokmd-format"
-explanation = "receipted baseline debt; remove or make fallible before expiry"
-expires = "2026-12-31"
-
-[allow.selector]
-kind = "indexing"
-container = "redact_path"
-callee = "[]"
-receiver_fingerprint = "parts[2 ..]"
-
-[allow.last_seen]
-line = 142
-column = 13
-
-[[allow]]
 id = "panic-13759"
 path = "crates/tokmd-format/src/summary.rs"
 family = "unwrap"

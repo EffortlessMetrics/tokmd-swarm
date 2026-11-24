@@ -189,7 +189,7 @@ fn lang_report_from_git_ref(revision: &str, global: &cli::GlobalArgs) -> Result<
         0,
         false,
         tokmd_types::ChildrenMode::Collapse,
-    ))
+    )?)
 }
 
 #[cfg(feature = "git")]

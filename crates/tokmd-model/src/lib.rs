@@ -30,8 +30,8 @@ pub use aggregate::{
     create_lang_report_from_rows, create_module_report, create_module_report_from_rows,
 };
 pub use rows::{
-    InMemoryRowInput, collect_file_rows, collect_in_memory_file_rows, unique_parent_file_count,
-    unique_parent_file_count_from_rows,
+    InMemoryRowInput, collect_file_rows, collect_in_memory_file_rows, native_report_path,
+    unique_parent_file_count, unique_parent_file_count_from_rows,
 };
 
 /// Compute the average of `lines` over `files`, rounding to nearest integer.

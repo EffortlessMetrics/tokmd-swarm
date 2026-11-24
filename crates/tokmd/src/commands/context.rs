@@ -5,7 +5,7 @@ use crate::cli;
 use anyhow::Result;
 use tokmd_model as model;
 use tokmd_scan as scan;
-use tokmd_scan::{add_exclude_pattern, normalize_exclude_pattern};
+use tokmd_scan::{add_exclude_pattern, exclude::output_exclusion};
 use tokmd_types::ContextExcludedPath;
 
 use crate::context_pack;
@@ -34,31 +34,39 @@ fn handle_with_selection(
 
     // Scan and create export data
     progress.set_message("Scanning codebase...");
-    let mut scan_args = global.clone();
+    let mut excluded_patterns = global.excluded.clone();
     let mut excluded_paths: Vec<ContextExcludedPath> = Vec::new();
     add_excluded_path(
         &root,
         args.output.as_ref(),
         "out_file",
-        &mut scan_args,
+        &mut excluded_patterns,
         &mut excluded_paths,
-    );
+    )?;
     add_excluded_path(
         &root,
         args.bundle_dir.as_ref(),
         "bundle_dir",
-        &mut scan_args,
+        &mut excluded_patterns,
         &mut excluded_paths,
-    );
+    )?;
     add_excluded_path(
         &root,
         args.log.as_ref(),
         "log_file",
-        &mut scan_args,
+        &mut excluded_patterns,
         &mut excluded_paths,
-    );
-    let scan_opts = tokmd_settings::ScanOptions::from(&scan_args);
-    let languages = scan::scan(&paths, &scan_opts)?;
+    )?;
+    let outputs: Vec<_> = [
+        args.output.as_deref(),
+        args.bundle_dir.as_deref(),
+        args.log.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let scan_opts = tokmd_settings::ScanOptions::from(global);
+    let languages = scan::scan_excluding_outputs(&paths, &scan_opts, &outputs)?;
     let module_roots = args.module_roots.clone().unwrap_or_default();
     let module_depth = args.module_depth.unwrap_or(2);
 
@@ -71,7 +79,7 @@ fn handle_with_selection(
         None,
         0, // no min_code filter
         0, // no max_rows limit
-    );
+    )?;
 
     // Compute git scores if using churn/hotspot ranking
     progress.set_message("Computing scores...");
@@ -170,7 +178,7 @@ fn handle_with_selection(
             utilization,
             args.force,
             &excluded_paths,
-            &scan_args.excluded,
+            &excluded_patterns,
             &select_result,
         )?
     } else {
@@ -216,23 +224,24 @@ fn add_excluded_path(
     root: &Path,
     path: Option<&PathBuf>,
     reason: &str,
-    scan_args: &mut cli::GlobalArgs,
+    excluded_patterns: &mut Vec<String>,
     excluded_paths: &mut Vec<ContextExcludedPath>,
-) {
-    let Some(path) = path else { return };
-    let pattern = normalize_exclude_pattern(root, path);
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let (display, pattern) = output_exclusion(root, path)?;
     if pattern.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let _ = add_exclude_pattern(&mut scan_args.excluded, pattern.clone());
+    let _ = add_exclude_pattern(excluded_patterns, pattern);
 
-    if !excluded_paths.iter().any(|p| p.path == pattern) {
+    if !excluded_paths.iter().any(|p| p.path == display) {
         excluded_paths.push(ContextExcludedPath {
-            path: pattern,
+            path: display,
             reason: reason.to_string(),
         });
     }
+    Ok(())
 }
 
 #[cfg(test)]

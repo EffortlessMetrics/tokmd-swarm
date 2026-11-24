@@ -2707,6 +2707,7 @@ version = "1.15.0"
 dependencies = [
  "proptest",
  "tempfile",
+ "tokmd-types",
  "zip",
 ]
 

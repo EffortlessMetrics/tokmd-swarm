@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use tokei::{Config, Languages};
 
 use crate::ignore_patterns::ignored_patterns;
+pub use crate::ignore_patterns::{matching_exclude_flags, matching_tokeignore};
 pub use crate::in_memory::{
     InMemoryFile, MaterializedScan, normalize_in_memory_paths, scan_in_memory, scan_snapshot,
 };
@@ -31,6 +32,7 @@ use crate::roots::{rebase_report_paths, validated_scan_roots};
 pub use tokmd_io_port::archive::{ArchiveError, ArchiveLimits};
 use tokmd_settings::ScanOptions;
 use tokmd_types::ConfigMode;
+pub use tokmd_types::validate_source_path;
 
 /// Scans a set of paths and computes line counts for each language found.
 ///
@@ -62,9 +64,27 @@ use tokmd_types::ConfigMode;
 /// # }
 /// ```
 pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
+    scan_excluding_outputs(paths, args, &[])
+}
+
+/// Scan with exact native output destinations excluded. Relative destinations
+/// are resolved from the process working directory, just as they are for writing.
+/// Configured glob exclusions retain their normal matching rules.
+pub fn scan_excluding_outputs(
+    paths: &[PathBuf],
+    args: &ScanOptions,
+    outputs: &[&std::path::Path],
+) -> Result<Languages> {
     let cfg = config_from_scan_options(args);
-    let roots = validated_scan_roots(paths)?;
-    let ignores = ignored_patterns(args, &roots);
+    for path in paths {
+        validate_source_path(path)?;
+    }
+    let mut roots = validated_scan_roots(paths)?;
+    let mut ignores = exclude::exact_output_patterns(&mut roots, outputs)?;
+    if roots.is_empty() && !paths.is_empty() {
+        return Ok(Languages::new());
+    }
+    ignores.extend(ignored_patterns(args, &roots));
     let ignore_refs: Vec<_> = ignores.iter().map(String::as_str).collect();
     let scan_paths: Vec<PathBuf> = roots
         .iter()
@@ -75,6 +95,17 @@ pub fn scan(paths: &[PathBuf], args: &ScanOptions) -> Result<Languages> {
     languages.get_statistics(&scan_paths, &ignore_refs, &cfg);
     ensure_complete_scan(&languages)?;
     rebase_report_paths(&mut languages, &roots);
+
+    // Select the same diagnostic regardless of tokei's parallel report order.
+    let unsupported = languages
+        .values()
+        .flat_map(|lang| lang.reports.iter().chain(lang.children.values().flatten()))
+        .map(|report| report.name.as_path())
+        .filter(|path| path.to_str().is_none())
+        .min();
+    if let Some(path) = unsupported {
+        validate_source_path(path)?;
+    }
 
     Ok(languages)
 }

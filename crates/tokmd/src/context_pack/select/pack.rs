@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 
 use crate::cli::ValueMetric;
 use tokmd_core::context_git::GitScores;
-use tokmd_scan::normalize_slashes as normalize_path;
 use tokmd_types::{ContextFileRow, FileKind, FileRow, InclusionPolicy};
 
 /// Get the value of a file row based on the selected metric.
@@ -13,17 +12,16 @@ pub(super) fn get_value(
     metric: ValueMetric,
     git_scores: Option<&GitScores>,
 ) -> usize {
-    let path = normalize_path(&row.path);
     match metric {
         ValueMetric::Code => row.code,
         ValueMetric::Tokens => row.tokens,
         ValueMetric::Hotspot => git_scores
-            .and_then(|gs| gs.hotspots.get(&path).copied())
+            .and_then(|gs| gs.hotspots.get(&row.path).copied())
             .unwrap_or(row.code),
         ValueMetric::Churn => {
             // Use commit count as churn proxy, scaled by code lines for tie-breaking.
             git_scores
-                .and_then(|gs| gs.commit_counts.get(&path).copied())
+                .and_then(|gs| gs.commit_counts.get(&row.path).copied())
                 .map(|commits| commits * 1000 + row.code)
                 .unwrap_or(row.code)
         }

@@ -37,28 +37,31 @@ fn scan_workspace() -> Languages {
 // ===========================================================================
 
 #[test]
-fn single_lang_collapse_has_one_row() {
+fn single_lang_collapse_has_one_row() -> std::io::Result<()> {
     let langs = scan_self();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert_eq!(report.rows.len(), 1, "pure Rust crate → 1 language");
     assert_eq!(report.rows[0].lang, "Rust");
+    Ok(())
 }
 
 #[test]
-fn single_lang_totals_equal_sole_row() {
+fn single_lang_totals_equal_sole_row() -> std::io::Result<()> {
     let langs = scan_self();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert_eq!(report.total.code, report.rows[0].code);
     assert_eq!(report.total.lines, report.rows[0].lines);
+    Ok(())
 }
 
 #[test]
-fn single_lang_positive_metrics() {
+fn single_lang_positive_metrics() -> std::io::Result<()> {
     let langs = scan_self();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.total.code > 0);
     assert!(report.total.files > 0);
     assert!(report.total.bytes > 0);
+    Ok(())
 }
 
 // ===========================================================================
@@ -66,27 +69,30 @@ fn single_lang_positive_metrics() {
 // ===========================================================================
 
 #[test]
-fn multi_lang_rows_sum_to_totals_code() {
+fn multi_lang_rows_sum_to_totals_code() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum_code: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(sum_code, report.total.code);
+    Ok(())
 }
 
 #[test]
-fn multi_lang_rows_sum_to_totals_lines() {
+fn multi_lang_rows_sum_to_totals_lines() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum_lines: usize = report.rows.iter().map(|r| r.lines).sum();
     assert_eq!(sum_lines, report.total.lines);
+    Ok(())
 }
 
 #[test]
-fn multi_lang_rows_sum_to_totals_bytes() {
+fn multi_lang_rows_sum_to_totals_bytes() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum_bytes: usize = report.rows.iter().map(|r| r.bytes).sum();
     assert_eq!(sum_bytes, report.total.bytes);
+    Ok(())
 }
 
 // ===========================================================================
@@ -94,9 +100,9 @@ fn multi_lang_rows_sum_to_totals_bytes() {
 // ===========================================================================
 
 #[test]
-fn module_report_depth_1_groups_top_dirs() {
+fn module_report_depth_1_groups_top_dirs() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     // All module keys should be either top-level dirs or "(root)"
     for row in &report.rows {
         assert!(
@@ -105,31 +111,35 @@ fn module_report_depth_1_groups_top_dirs() {
             row.module
         );
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_depth_2_with_roots() {
+fn module_report_depth_2_with_roots() -> std::io::Result<()> {
     let langs = scan_workspace();
     let roots = vec!["tests".to_string()];
-    let report = create_module_report(&langs, &roots, 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &roots, 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(!report.rows.is_empty());
     assert!(report.total.code > 0);
+    Ok(())
 }
 
 #[test]
-fn module_report_totals_are_positive() {
+fn module_report_totals_are_positive() -> std::io::Result<()> {
     let langs = scan_self();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(report.total.code > 0);
     assert!(report.total.files > 0);
+    Ok(())
 }
 
 #[test]
-fn module_report_code_sum_matches_total() {
+fn module_report_code_sum_matches_total() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     let sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(sum, report.total.code);
+    Ok(())
 }
 
 // ===========================================================================
@@ -137,9 +147,9 @@ fn module_report_code_sum_matches_total() {
 // ===========================================================================
 
 #[test]
-fn file_rows_have_forward_slash_paths() {
+fn file_rows_have_forward_slash_paths() -> std::io::Result<()> {
     let langs = scan_self();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert!(
             !row.path.contains('\\'),
@@ -147,22 +157,24 @@ fn file_rows_have_forward_slash_paths() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn file_rows_have_positive_code() {
+fn file_rows_have_positive_code() -> std::io::Result<()> {
     let langs = scan_self();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     assert!(!rows.is_empty());
     // At least the lib.rs should have code
     let has_code = rows.iter().any(|r| r.code > 0);
     assert!(has_code);
+    Ok(())
 }
 
 #[test]
-fn file_rows_lines_equal_sum_of_parts() {
+fn file_rows_lines_equal_sum_of_parts() -> std::io::Result<()> {
     let langs = scan_self();
-    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None)?;
     for row in &rows {
         assert_eq!(
             row.lines,
@@ -171,14 +183,16 @@ fn file_rows_lines_equal_sum_of_parts() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn unique_parent_file_count_matches_report_files() {
+fn unique_parent_file_count_matches_report_files() -> std::io::Result<()> {
     let langs = scan_self();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let count = unique_parent_file_count(&langs);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let count = unique_parent_file_count(&langs)?;
     assert_eq!(report.total.files, count);
+    Ok(())
 }
 
 // ===========================================================================
@@ -186,9 +200,9 @@ fn unique_parent_file_count_matches_report_files() {
 // ===========================================================================
 
 #[test]
-fn lang_report_rows_sorted_desc_by_code() {
+fn lang_report_rows_sorted_desc_by_code() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for window in report.rows.windows(2) {
         assert!(
             window[0].code >= window[1].code,
@@ -199,17 +213,18 @@ fn lang_report_rows_sorted_desc_by_code() {
             window[1].code,
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_tied_rows_sorted_by_name() {
+fn lang_report_tied_rows_sorted_by_name() -> std::io::Result<()> {
     // Create a synthetic scenario with tied code counts
     let dir = tempfile::TempDir::new().unwrap();
     std::fs::write(dir.path().join("alpha.py"), "x = 1\n").unwrap();
     std::fs::write(dir.path().join("beta.rb"), "x = 1\n").unwrap();
 
     let langs = scan_path(dir.path().to_str().unwrap());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     for window in report.rows.windows(2) {
         if window[0].code == window[1].code {
             assert!(
@@ -220,30 +235,33 @@ fn lang_report_tied_rows_sorted_by_name() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_rows_sorted_desc_by_code() {
+fn module_report_rows_sorted_desc_by_code() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 0)?;
     for window in report.rows.windows(2) {
         assert!(
             window[0].code >= window[1].code,
             "module rows must be sorted desc by code"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_data_rows_sorted_desc_by_code() {
+fn export_data_rows_sorted_desc_by_code() -> std::io::Result<()> {
     let langs = scan_self();
-    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0);
+    let data = create_export_data(&langs, &[], 1, ChildIncludeMode::ParentsOnly, None, 0, 0)?;
     for window in data.rows.windows(2) {
         assert!(
             window[0].code >= window[1].code,
             "export rows must be sorted desc by code"
         );
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -251,24 +269,26 @@ fn export_data_rows_sorted_desc_by_code() {
 // ===========================================================================
 
 #[test]
-fn lang_report_top_n_truncates() {
+fn lang_report_top_n_truncates() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
     // top=1 → 1 real row + 1 "Other" row (if there are more languages)
     assert!(report.rows.len() <= 2, "top=1 should truncate to ≤2 rows");
     if report.rows.len() == 2 {
         assert_eq!(report.rows[1].lang, "Other");
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_top_n_truncates() {
+fn module_report_top_n_truncates() -> std::io::Result<()> {
     let langs = scan_workspace();
-    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 1);
+    let report = create_module_report(&langs, &[], 1, ChildIncludeMode::ParentsOnly, 1)?;
     assert!(report.rows.len() <= 2);
     if report.rows.len() == 2 {
         assert_eq!(report.rows[1].module, "Other");
     }
+    Ok(())
 }
 
 // ===========================================================================

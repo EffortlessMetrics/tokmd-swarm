@@ -15,7 +15,8 @@ fn write_file(root: &Path, rel: &str, contents: &str) {
 }
 
 #[test]
-fn collect_in_memory_file_rows_matches_filesystem_rows_with_embedded_children() {
+fn collect_in_memory_file_rows_matches_filesystem_rows_with_embedded_children()
+-> std::io::Result<()> {
     let tmp = TempDir::new().expect("temp dir");
     let html = "<html>\n<script>\nconst value = 1;\n</script>\n</html>\n";
     let rust = "pub fn alpha() -> usize { 1 }\n";
@@ -30,7 +31,7 @@ fn collect_in_memory_file_rows_matches_filesystem_rows_with_embedded_children() 
         1,
         ChildIncludeMode::Separate,
         Some(tmp.path()),
-    );
+    )?;
 
     let inputs = vec![
         InMemoryRowInput::new(Path::new("web/index.html"), html.as_bytes()),
@@ -42,13 +43,14 @@ fn collect_in_memory_file_rows_matches_filesystem_rows_with_embedded_children() 
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual, expected);
+    Ok(())
 }
 
 #[test]
-fn collect_in_memory_file_rows_uses_inline_shebang_instead_of_host_file() {
+fn collect_in_memory_file_rows_uses_inline_shebang_instead_of_host_file() -> std::io::Result<()> {
     let tmp = TempDir::new().expect("temp dir");
     let host_path = tmp.path().join("script");
     write_file(
@@ -67,14 +69,15 @@ fn collect_in_memory_file_rows_uses_inline_shebang_instead_of_host_file() {
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual.len(), 1);
     assert_eq!(actual[0].lang, LanguageType::Bash.name());
+    Ok(())
 }
 
 #[test]
-fn collect_in_memory_file_rows_supports_env_python_shebangs() {
+fn collect_in_memory_file_rows_supports_env_python_shebangs() -> std::io::Result<()> {
     let inputs = vec![InMemoryRowInput::new(
         Path::new("script"),
         b"#!/usr/bin/env python3\nprint('ok')\n",
@@ -85,14 +88,15 @@ fn collect_in_memory_file_rows_supports_env_python_shebangs() {
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual.len(), 1);
     assert_eq!(actual[0].lang, LanguageType::Python.name());
+    Ok(())
 }
 
 #[test]
-fn collect_in_memory_file_rows_supports_env_split_string_shebangs() {
+fn collect_in_memory_file_rows_supports_env_split_string_shebangs() -> std::io::Result<()> {
     let inputs = vec![InMemoryRowInput::new(
         Path::new("script"),
         b"#!/usr/bin/env -S python3 -u\nprint('ok')\n",
@@ -103,14 +107,15 @@ fn collect_in_memory_file_rows_supports_env_split_string_shebangs() {
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual.len(), 1);
     assert_eq!(actual[0].lang, LanguageType::Python.name());
+    Ok(())
 }
 
 #[test]
-fn collect_in_memory_file_rows_supports_env_assignment_prefixes() {
+fn collect_in_memory_file_rows_supports_env_assignment_prefixes() -> std::io::Result<()> {
     let inputs = vec![InMemoryRowInput::new(
         Path::new("script"),
         b"#!/usr/bin/env VAR=1 python3\nprint('ok')\n",
@@ -121,14 +126,15 @@ fn collect_in_memory_file_rows_supports_env_assignment_prefixes() {
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual.len(), 1);
     assert_eq!(actual[0].lang, LanguageType::Python.name());
+    Ok(())
 }
 
 #[test]
-fn collect_in_memory_file_rows_supports_env_flags_with_values() {
+fn collect_in_memory_file_rows_supports_env_flags_with_values() -> std::io::Result<()> {
     let inputs = vec![
         InMemoryRowInput::new(
             Path::new("script"),
@@ -145,10 +151,11 @@ fn collect_in_memory_file_rows_supports_env_flags_with_values() {
         1,
         ChildIncludeMode::Separate,
         &Config::default(),
-    );
+    )?;
 
     assert_eq!(actual.len(), 2);
     let langs: Vec<&str> = actual.iter().map(|row| row.lang.as_str()).collect();
     assert!(langs.contains(&LanguageType::Python.name()));
     assert!(langs.contains(&LanguageType::Bash.name()));
+    Ok(())
 }

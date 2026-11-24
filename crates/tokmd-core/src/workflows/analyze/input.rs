@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use tokmd_settings::ScanOptions;
-use tokmd_types::{ChildIncludeMode, ExportData, ExportReceipt, FileRow};
+use tokmd_types::{ExportData, ExportReceipt};
 
 use crate::settings::ExportSettings;
 use crate::{InMemoryFile, build_export_receipt};
@@ -41,8 +41,8 @@ pub(super) fn prepare_rootless_in_memory_export(
     );
     let logical_inputs: Vec<String> = paths
         .iter()
-        .map(|path| tokmd_model::normalize_path(path, None))
-        .collect();
+        .map(|path| tokmd_model::native_report_path(path, None))
+        .collect::<std::io::Result<_>>()?;
     let export_receipt = build_export_receipt(&paths, scan_opts, export, data);
 
     Ok(PreparedAnalysisInput {
@@ -59,12 +59,12 @@ pub(super) fn prepare_materialized_in_memory_export(
     export: &ExportSettings,
 ) -> Result<PreparedAnalysisInput> {
     let scan = tokmd_scan::scan_in_memory(inputs, scan_opts)?;
-    let data = collect_materialized_export_data(&scan, export);
+    let data = collect_materialized_export_data(&scan, export)?;
     let logical_inputs: Vec<String> = scan
         .logical_paths()
         .iter()
-        .map(|path| tokmd_model::normalize_path(path, None))
-        .collect();
+        .map(|path| tokmd_model::native_report_path(path, None))
+        .collect::<std::io::Result<_>>()?;
     let root = scan.strip_prefix().to_path_buf();
     let export_receipt = build_export_receipt(scan.logical_paths(), scan_opts, export, data);
 
@@ -76,31 +76,17 @@ pub(super) fn prepare_materialized_in_memory_export(
     })
 }
 
-fn collect_materialized_rows(
-    scan: &tokmd_scan::MaterializedScan,
-    module_roots: &[String],
-    module_depth: usize,
-    children: ChildIncludeMode,
-) -> Vec<FileRow> {
-    tokmd_model::collect_file_rows(
-        scan.languages(),
-        module_roots,
-        module_depth,
-        children,
-        Some(scan.strip_prefix()),
-    )
-}
-
 fn collect_materialized_export_data(
     scan: &tokmd_scan::MaterializedScan,
     export: &ExportSettings,
-) -> ExportData {
-    let mut rows = collect_materialized_rows(
-        scan,
+) -> Result<ExportData> {
+    let mut rows = tokmd_model::collect_file_rows(
+        scan.languages(),
         &export.module_roots,
         export.module_depth,
         export.children,
-    );
+        Some(scan.strip_prefix()),
+    )?;
 
     if let Some(strip_prefix) = export.strip_prefix.as_deref() {
         rows = strip_virtual_export_prefix(
@@ -108,15 +94,15 @@ fn collect_materialized_export_data(
             strip_prefix,
             &export.module_roots,
             export.module_depth,
-        );
+        )?;
     }
 
-    tokmd_model::create_export_data_from_rows(
+    Ok(tokmd_model::create_export_data_from_rows(
         rows,
         &export.module_roots,
         export.module_depth,
         export.children,
         export.min_code,
         export.max_rows,
-    )
+    ))
 }

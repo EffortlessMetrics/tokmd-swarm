@@ -218,21 +218,23 @@ fn scan_function_accepts_paths_and_options() {
 }
 
 #[test]
-fn create_lang_report_produces_report() {
+fn create_lang_report_produces_report() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).unwrap();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(!report.rows.is_empty(), "lang report must have rows");
+    Ok(())
 }
 
 #[test]
-fn create_module_report_produces_report() {
+fn create_module_report_produces_report() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).unwrap();
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
     assert!(!report.rows.is_empty(), "module report must have rows");
+    Ok(())
 }
 
 #[test]
-fn create_export_data_produces_data() {
+fn create_export_data_produces_data() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).unwrap();
     let data = create_export_data(
         &langs,
@@ -242,8 +244,9 @@ fn create_export_data_produces_data() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     assert!(!data.rows.is_empty(), "export data must have rows");
+    Ok(())
 }
 
 #[test]
@@ -255,9 +258,9 @@ fn badge_svg_produces_valid_svg() {
 }
 
 #[test]
-fn format_write_functions_accept_writers() {
+fn format_write_functions_accept_writers() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).unwrap();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let args = LangArgs {
         paths: vec![fixture_path()],
         format: TableFormat::Md,
@@ -269,6 +272,7 @@ fn format_write_functions_accept_writers() {
     let result = write_lang_report_to(&mut buf, &report, &default_scan_options(), &args);
     assert!(result.is_ok(), "write_lang_report_to must succeed");
     assert!(!buf.is_empty(), "output buffer must not be empty");
+    Ok(())
 }
 
 #[test]
@@ -286,7 +290,7 @@ fn model_utility_functions_work() {
 // ===========================================================================
 
 #[test]
-fn invalid_path_produces_error_or_empty() {
+fn invalid_path_produces_error_or_empty() -> std::io::Result<()> {
     let result = scan(
         &[PathBuf::from("/nonexistent/path/that/does/not/exist")],
         &default_scan_options(),
@@ -294,10 +298,11 @@ fn invalid_path_produces_error_or_empty() {
     // Scan may succeed with empty or minimal result, or may fail
     // Either outcome is acceptable - just verify no panic
     if let Ok(langs) = &result {
-        let report = create_lang_report(langs, 0, false, ChildrenMode::Collapse);
+        let report = create_lang_report(langs, 0, false, ChildrenMode::Collapse)?;
         // May or may not have rows depending on platform behavior
         let _ = report.rows.len();
     }
+    Ok(())
 }
 
 #[test]
@@ -488,7 +493,7 @@ fn diff_receipt_api_not_removed() {
 }
 
 #[test]
-fn derive_report_api_not_removed() {
+fn derive_report_api_not_removed() -> std::io::Result<()> {
     let langs = scan(&[fixture_path()], &default_scan_options()).unwrap();
     let data = create_export_data(
         &langs,
@@ -498,8 +503,9 @@ fn derive_report_api_not_removed() {
         Some(fixture_path().as_path()),
         0,
         0,
-    );
+    )?;
     let _derived = derive_report(&data, None);
+    Ok(())
 }
 
 #[test]

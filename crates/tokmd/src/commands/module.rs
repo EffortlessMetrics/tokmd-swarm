@@ -37,7 +37,7 @@ pub(crate) fn handle(
         args.module_depth,
         args.children,
         strip_prefix,
-    );
+    )?;
     let report = model::create_module_report_from_rows(
         &file_rows,
         &args.module_roots,

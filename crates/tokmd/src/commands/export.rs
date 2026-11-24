@@ -30,7 +30,7 @@ pub(crate) fn handle(
         strip_prefix,
         args.min_code,
         args.max_rows,
-    );
+    )?;
     // Clear the stderr spinner before machine-readable output is written so the
     // inventory on stdout stays clean.
     progress.finish_and_clear();

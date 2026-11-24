@@ -5,8 +5,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 #[cfg(feature = "git")]
-use tokmd_scan::normalize_rel_path as normalize_path;
-#[cfg(feature = "git")]
 use tokmd_types::{FileKind, FileRow};
 
 /// Git-derived scores for file ranking.
@@ -28,20 +26,36 @@ pub fn compute_git_scores(
     let commits =
         tokmd_git::collect_history(&repo_root, Some(max_commits), Some(max_commit_files)).ok()?;
 
-    // Build file → lines map (only parent files)
-    let file_lines: BTreeMap<String, usize> = rows
+    // Git's line-based history adapter returns C-quoted strings verbatim and
+    // trims whitespace. Decline ambiguous joins through the ranking fallback.
+    let has_quoted_history = commits
+        .iter()
+        .flat_map(|c| &c.files)
+        .any(|p| p.starts_with('"'));
+    if rows.iter().any(|row| {
+        let path = row.path.as_str();
+        path != path.trim()
+            || (has_quoted_history
+                && path
+                    .bytes()
+                    .any(|b| !b.is_ascii() || b.is_ascii_control() || matches!(b, b'\\' | b'"')))
+    }) {
+        return None;
+    }
+
+    // Both modeled rows and unquoted Git paths already use '/' separators.
+    let file_lines: BTreeMap<&str, usize> = rows
         .iter()
         .filter(|r| r.kind == FileKind::Parent)
-        .map(|r| (normalize_path(&r.path), r.lines))
+        .map(|r| (r.path.as_str(), r.lines))
         .collect();
 
     // Count commits per file
     let mut commit_counts: BTreeMap<String, usize> = BTreeMap::new();
     for commit in &commits {
         for file in &commit.files {
-            let key = normalize_path(file);
-            if file_lines.contains_key(&key) {
-                *commit_counts.entry(key).or_insert(0) += 1;
+            if file_lines.contains_key(file.as_str()) {
+                *commit_counts.entry(file.clone()).or_insert(0) += 1;
             }
         }
     }
@@ -50,7 +64,7 @@ pub fn compute_git_scores(
     let hotspots: BTreeMap<String, usize> = commit_counts
         .iter()
         .filter_map(|(path, commits)| {
-            let lines = file_lines.get(path)?;
+            let lines = file_lines.get(path.as_str())?;
             Some((path.clone(), lines * commits))
         })
         .collect();
@@ -265,16 +279,6 @@ mod tests {
         assert!(compute_git_scores(dir.path(), &rows, 100, 100).is_none());
     }
 
-    #[test]
-    fn test_normalize_path_backslash() {
-        assert_eq!(normalize_path("foo\\bar\\baz.rs"), "foo/bar/baz.rs");
-    }
-
-    #[test]
-    fn test_normalize_path_dot_slash() {
-        assert_eq!(normalize_path("./src/main.rs"), "src/main.rs");
-    }
-
     // ==================== Mutant killer tests ====================
 
     #[test]
@@ -351,22 +355,6 @@ mod tests {
             hotspot, 8,
             "hotspot should be lines * commits = 4 * 2 = 8, got {hotspot}"
         );
-    }
-
-    #[test]
-    fn test_normalize_path_not_empty() {
-        // Kills "normalize_path -> empty string" mutant
-        assert!(!normalize_path("foo/bar").is_empty());
-        assert!(!normalize_path("test.rs").is_empty());
-        assert!(!normalize_path("./src/lib.rs").is_empty());
-    }
-
-    #[test]
-    fn test_normalize_path_not_xyzzy() {
-        // Kills "normalize_path -> xyzzy" mutant
-        assert_ne!(normalize_path("foo/bar"), "xyzzy");
-        assert_ne!(normalize_path("test.rs"), "xyzzy");
-        assert_ne!(normalize_path("./src/lib.rs"), "xyzzy");
     }
 
     #[test]

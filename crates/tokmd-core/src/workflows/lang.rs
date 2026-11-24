@@ -49,7 +49,7 @@ pub fn lang_workflow(scan: &ScanSettings, lang: &LangSettings) -> Result<LangRec
     let paths = scan_paths_or_current_dir(scan);
 
     let languages = tokmd_scan::scan(&paths, &scan_opts)?;
-    let report = tokmd_model::create_lang_report(&languages, lang.top, lang.files, lang.children);
+    let report = tokmd_model::create_lang_report(&languages, lang.top, lang.files, lang.children)?;
 
     Ok(build_lang_receipt(&paths, &scan_opts, lang, report))
 }

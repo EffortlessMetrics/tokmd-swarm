@@ -104,10 +104,10 @@ fn normalize_envelope(output: &str) -> String {
 // ===========================================================================
 
 #[test]
-fn w70_scan_model_format_md_contains_table_header() {
+fn w70_scan_model_format_md_contains_table_header() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     let args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
         format: TableFormat::Md,
@@ -120,13 +120,14 @@ fn w70_scan_model_format_md_contains_table_header() {
     let out = String::from_utf8(buf).unwrap();
     assert!(out.contains("|Lang|"), "Markdown must have table header");
     assert!(out.contains("|**Total**|"), "Markdown must have total row");
+    Ok(())
 }
 
 #[test]
-fn w70_scan_model_format_md_includes_all_detected_languages() {
+fn w70_scan_model_format_md_includes_all_detected_languages() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     let args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
         format: TableFormat::Md,
@@ -140,13 +141,14 @@ fn w70_scan_model_format_md_includes_all_detected_languages() {
     for row in &report.rows {
         assert!(out.contains(&row.lang), "MD should contain {}", row.lang);
     }
+    Ok(())
 }
 
 #[test]
-fn w70_scan_model_format_json_roundtrips_totals() {
+fn w70_scan_model_format_json_roundtrips_totals() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     let args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
         format: TableFormat::Json,
@@ -159,6 +161,7 @@ fn w70_scan_model_format_json_roundtrips_totals() {
     let receipt: LangReceipt = serde_json::from_slice(&buf).unwrap();
     assert_eq!(receipt.report.total.code, report.total.code);
     assert_eq!(receipt.report.total.files, report.total.files);
+    Ok(())
 }
 
 // ===========================================================================
@@ -318,10 +321,10 @@ fn w70_export_json_schema_version_matches_constant() {
 }
 
 #[test]
-fn w70_lib_lang_receipt_schema_version_matches() {
+fn w70_lib_lang_receipt_schema_version_matches() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
     let args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
         format: TableFormat::Json,
@@ -333,6 +336,7 @@ fn w70_lib_lang_receipt_schema_version_matches() {
     tokmd_format::write_lang_report_to(&mut buf, &report, &scan_opts(), &args).unwrap();
     let receipt: LangReceipt = serde_json::from_slice(&buf).unwrap();
     assert_eq!(receipt.schema_version, SCHEMA_VERSION);
+    Ok(())
 }
 
 // ===========================================================================
@@ -484,7 +488,7 @@ fn w70_cli_exclude_flag_propagates_to_scan_options() {
 }
 
 #[test]
-fn w70_lib_config_parse_exclude_affects_scan() {
+fn w70_lib_config_parse_exclude_affects_scan() -> std::io::Result<()> {
     use tokmd_settings::TomlConfig;
     let toml_str = "[scan]\nexclude = [\"*.md\"]\n";
     let config = TomlConfig::parse(toml_str).expect("valid TOML");
@@ -499,9 +503,10 @@ fn w70_lib_config_parse_exclude_affects_scan() {
         ..Default::default()
     };
     let langs = scan(&[proj.path().to_path_buf()], &opts).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let has_md = report.rows.iter().any(|r| r.lang == "Markdown");
     assert!(!has_md, "Markdown should be excluded via parsed config");
+    Ok(())
 }
 
 // ===========================================================================
@@ -589,7 +594,7 @@ fn w70_cli_exclude_removes_files_from_export() {
 }
 
 #[test]
-fn w70_lib_exclude_removes_language_from_scan() {
+fn w70_lib_exclude_removes_language_from_scan() -> std::io::Result<()> {
     let proj = make_project();
     let opts = ScanOptions {
         excluded: vec!["*.js".to_string()],
@@ -598,11 +603,12 @@ fn w70_lib_exclude_removes_language_from_scan() {
         ..Default::default()
     };
     let langs = scan(&[proj.path().to_path_buf()], &opts).expect("scan");
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let has_js = report.rows.iter().any(|r| r.lang == "JavaScript");
     assert!(!has_js, "JavaScript should be excluded");
     let has_rust = report.rows.iter().any(|r| r.lang == "Rust");
     assert!(has_rust, "Rust should still be present");
+    Ok(())
 }
 
 // ===========================================================================
@@ -666,10 +672,10 @@ fn w70_lang_rows_sorted_descending_by_code() {
 }
 
 #[test]
-fn w70_sort_order_consistent_between_md_and_json() {
+fn w70_sort_order_consistent_between_md_and_json() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
 
     let json_args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
@@ -714,13 +720,14 @@ fn w70_sort_order_consistent_between_md_and_json() {
         json_langs, md_langs,
         "JSON and MD should list languages in the same order"
     );
+    Ok(())
 }
 
 #[test]
-fn w70_sort_order_consistent_between_tsv_and_json() {
+fn w70_sort_order_consistent_between_tsv_and_json() -> std::io::Result<()> {
     let proj = make_project();
     let langs = scan(&[proj.path().to_path_buf()], &scan_opts()).expect("scan");
-    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, true, ChildrenMode::Collapse)?;
 
     let json_args = LangArgs {
         paths: vec![proj.path().to_path_buf()],
@@ -760,6 +767,7 @@ fn w70_sort_order_consistent_between_tsv_and_json() {
         json_langs, tsv_langs,
         "JSON and TSV should list languages in the same order"
     );
+    Ok(())
 }
 
 #[test]

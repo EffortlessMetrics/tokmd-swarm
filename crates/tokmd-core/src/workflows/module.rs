@@ -49,7 +49,7 @@ pub fn module_workflow(scan: &ScanSettings, module: &ModuleSettings) -> Result<M
         module.module_depth,
         module.children,
         strip_prefix,
-    );
+    )?;
     let report = tokmd_model::create_module_report_from_rows(
         &file_rows,
         &module.module_roots,

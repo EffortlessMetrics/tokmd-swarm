@@ -16,10 +16,10 @@ Deterministic aggregation and receipt modeling. This is a **Tier 1** crate that 
 
 ### Report Creation
 ```rust
-pub fn create_lang_report(languages, top, with_files, children) -> LangReport
-pub fn create_module_report(languages, module_roots, module_depth, children, top) -> ModuleReport
-pub fn create_export_data(languages, module_roots, module_depth, children, strip_prefix, min_code, max_rows) -> ExportData
-pub fn collect_file_rows(languages, module_roots, module_depth, children, strip_prefix) -> Vec<FileRow>
+pub fn create_lang_report(languages, top, with_files, children) -> std::io::Result<LangReport>
+pub fn create_module_report(languages, module_roots, module_depth, children, top) -> std::io::Result<ModuleReport>
+pub fn create_export_data(languages, module_roots, module_depth, children, strip_prefix, min_code, max_rows) -> std::io::Result<ExportData>
+pub fn collect_file_rows(languages, module_roots, module_depth, children, strip_prefix) -> std::io::Result<Vec<FileRow>>
 ```
 
 ### Path Utilities
@@ -30,7 +30,7 @@ pub fn module_key(path: &str, module_roots: &[String], module_depth: usize) -> S
 
 ### Statistics
 ```rust
-pub fn unique_parent_file_count(languages: &Languages) -> usize
+pub fn unique_parent_file_count(languages: &Languages) -> std::io::Result<usize>
 pub fn avg(lines: usize, files: usize) -> usize
 ```
 

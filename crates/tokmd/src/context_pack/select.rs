@@ -7,7 +7,6 @@ use tokmd_core::context_policy::{
     classify_file as classify_context_file, compute_file_cap as compute_context_file_cap,
     is_spine_file as matches_spine_file, smart_exclude_reason,
 };
-use tokmd_scan::normalize_slashes as normalize_path;
 use tokmd_types::{
     ContextFileRow, FileClassification, FileKind, FileRow, InclusionPolicy, PolicyExcludedFile,
     SmartExcludedFile,
@@ -203,10 +202,9 @@ pub fn select_files_with_options(
                 if row.kind != FileKind::Parent {
                     return true; // Don't filter children (they're filtered later)
                 }
-                let path = normalize_path(&row.path);
-                if let Some(reason) = is_smart_excluded(&path) {
+                if let Some(reason) = is_smart_excluded(&row.path) {
                     smart_excluded.push(SmartExcludedFile {
-                        path,
+                        path: row.path.clone(),
                         reason: reason.to_string(),
                         tokens: row.tokens,
                     });

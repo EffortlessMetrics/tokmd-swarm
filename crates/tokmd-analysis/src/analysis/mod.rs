@@ -79,6 +79,25 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
         &mut warnings,
     );
     let file_slice = files.as_deref();
+    // Some enrichers still join by labels that treat either slash as a separator.
+    // Supply's native asset and lockfile rows can carry a literal Unix backslash.
+    #[cfg(all(unix, feature = "effort"))]
+    let effort_requested = req.effort.is_some();
+    #[cfg(all(unix, not(feature = "effort")))]
+    let effort_requested = false;
+    #[cfg(unix)]
+    {
+        // File-backed legacy joins require content support and a successful walk.
+        let joined_files = file_slice.filter(|list| {
+            cfg!(feature = "content") && !list.is_empty() && req.preset != AnalysisPreset::Supply
+        });
+        if effort_requested
+            || (cfg!(feature = "archetype") && plan.archetype)
+            || joined_files.is_some()
+        {
+            files::check_enricher_paths(&ctx.export, joined_files)?;
+        }
+    }
 
     let mut outputs = AnalysisOutputs::default();
     enrichers::inventory::run(&ctx.root, file_slice, &plan, &mut outputs, &mut warnings);
@@ -107,7 +126,7 @@ pub fn analyze(ctx: AnalysisContext, req: AnalysisRequest) -> Result<AnalysisRec
         },
         &mut outputs,
         &mut warnings,
-    );
+    )?;
     enrichers::semantic::run(&ctx.export, &derived, &plan, &mut outputs, &mut warnings);
     enrichers::code_quality::run(
         enrichers::code_quality::CodeQualityInput {

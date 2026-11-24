@@ -221,7 +221,12 @@ mod edge_cases_w66 {
         let tmp = TempDir::new().unwrap();
         let f = write_file(tmp.path(), "assets\\deep\\img.png", &[0u8; 64]);
         let r = build_assets_report(tmp.path(), &[f]).unwrap();
-        assert!(!r.top_files[0].path.contains('\\'));
+        let expected = if std::path::is_separator('\\') {
+            "assets/deep/img.png"
+        } else {
+            r"assets\deep\img.png"
+        };
+        assert_eq!(r.top_files[0].path, expected);
     }
 
     #[test]

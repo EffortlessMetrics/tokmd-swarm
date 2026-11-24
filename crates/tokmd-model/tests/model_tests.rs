@@ -30,9 +30,9 @@ fn crate_src_path() -> String {
 // ========================
 
 #[test]
-fn lang_report_collapse_sums_correctly() {
+fn lang_report_collapse_sums_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // Totals should match sum of rows
     let row_code: usize = report.rows.iter().map(|r| r.code).sum();
@@ -56,12 +56,13 @@ fn lang_report_collapse_sums_correctly() {
         report.total.tokens, row_tokens,
         "Total tokens should match sum of rows"
     );
+    Ok(())
 }
 
 #[test]
-fn lang_report_separate_sums_correctly() {
+fn lang_report_separate_sums_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     // Totals should match sum of rows
     let row_code: usize = report.rows.iter().map(|r| r.code).sum();
@@ -75,12 +76,13 @@ fn lang_report_separate_sums_correctly() {
         report.total.lines, row_lines,
         "Total lines should match sum of rows"
     );
+    Ok(())
 }
 
 #[test]
-fn lang_report_sorted_descending_by_code() {
+fn lang_report_sorted_descending_by_code() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     for i in 1..report.rows.len() {
         assert!(
@@ -90,12 +92,13 @@ fn lang_report_sorted_descending_by_code() {
             report.rows[i].code
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_skips_zero_code_languages() {
+fn lang_report_skips_zero_code_languages() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     for row in &report.rows {
         assert!(
@@ -104,15 +107,16 @@ fn lang_report_skips_zero_code_languages() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_top_truncates_and_adds_other() {
+fn lang_report_top_truncates_and_adds_other() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let full_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let full_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     if full_report.rows.len() > 1 {
-        let top1_report = create_lang_report(&languages, 1, false, ChildrenMode::Collapse);
+        let top1_report = create_lang_report(&languages, 1, false, ChildrenMode::Collapse)?;
 
         // Should have exactly 2 rows: top 1 + "Other"
         assert_eq!(top1_report.rows.len(), 2, "Should have top 1 + Other");
@@ -128,12 +132,13 @@ fn lang_report_top_truncates_and_adds_other() {
             "Other code should sum remaining"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_lines_includes_all_components() {
+fn lang_report_lines_includes_all_components() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // For each language, lines should be code + comments + blanks
     // We verify by checking that lines >= code (since comments and blanks are non-negative)
@@ -146,12 +151,13 @@ fn lang_report_lines_includes_all_components() {
             row.lang
         );
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_avg_lines_calculated_correctly() {
+fn lang_report_avg_lines_calculated_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     for row in &report.rows {
         if row.files > 0 {
@@ -163,12 +169,13 @@ fn lang_report_avg_lines_calculated_correctly() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn lang_report_tokens_approximates_bytes() {
+fn lang_report_tokens_approximates_bytes() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // tokens are estimated per file as bytes / 4 and then summed, so aggregate
     // rows may be lower than row.bytes / 4 by at most one token per file.
@@ -190,6 +197,7 @@ fn lang_report_tokens_approximates_bytes() {
             row.files
         );
     }
+    Ok(())
 }
 
 // ========================
@@ -197,9 +205,9 @@ fn lang_report_tokens_approximates_bytes() {
 // ========================
 
 #[test]
-fn module_report_sums_correctly() {
+fn module_report_sums_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     // Totals should be consistent
     let row_code: usize = report.rows.iter().map(|r| r.code).sum();
@@ -207,12 +215,13 @@ fn module_report_sums_correctly() {
         report.total.code, row_code,
         "Total code should match sum of rows"
     );
+    Ok(())
 }
 
 #[test]
-fn module_report_sorted_descending_by_code() {
+fn module_report_sorted_descending_by_code() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     for i in 1..report.rows.len() {
         assert!(
@@ -220,16 +229,17 @@ fn module_report_sorted_descending_by_code() {
             "Rows should be sorted descending by code"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn module_report_top_truncates() {
+fn module_report_top_truncates() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let full_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let full_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     if full_report.rows.len() > 1 {
         let top1_report =
-            create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 1);
+            create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 1)?;
 
         assert_eq!(top1_report.rows.len(), 2, "Should have top 1 + Other");
         assert_eq!(
@@ -237,6 +247,7 @@ fn module_report_top_truncates() {
             "Second row should be Other"
         );
     }
+    Ok(())
 }
 
 // ========================
@@ -244,7 +255,7 @@ fn module_report_top_truncates() {
 // ========================
 
 #[test]
-fn export_data_min_code_filters_correctly() {
+fn export_data_min_code_filters_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
 
     // Get all rows first
@@ -256,7 +267,7 @@ fn export_data_min_code_filters_correctly() {
         None,
         0,
         0,
-    );
+    )?;
 
     if !all_data.rows.is_empty() {
         // Find a threshold that will filter some but not all
@@ -271,7 +282,7 @@ fn export_data_min_code_filters_correctly() {
                 None,
                 max_code,
                 0,
-            );
+            )?;
 
             // All rows should have code >= min_code
             for row in &filtered.rows {
@@ -290,10 +301,11 @@ fn export_data_min_code_filters_correctly() {
             );
         }
     }
+    Ok(())
 }
 
 #[test]
-fn export_data_max_rows_truncates() {
+fn export_data_max_rows_truncates() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let all_data = create_export_data(
         &languages,
@@ -303,7 +315,7 @@ fn export_data_max_rows_truncates() {
         None,
         0,
         0,
-    );
+    )?;
 
     if all_data.rows.len() > 1 {
         let limited = create_export_data(
@@ -314,7 +326,7 @@ fn export_data_max_rows_truncates() {
             None,
             0,
             1,
-        );
+        )?;
 
         assert_eq!(
             limited.rows.len(),
@@ -322,10 +334,11 @@ fn export_data_max_rows_truncates() {
             "Should have exactly 1 row when max_rows=1"
         );
     }
+    Ok(())
 }
 
 #[test]
-fn export_data_sorted_by_code_then_path() {
+fn export_data_sorted_by_code_then_path() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let data = create_export_data(
         &languages,
@@ -335,7 +348,7 @@ fn export_data_sorted_by_code_then_path() {
         None,
         0,
         0,
-    );
+    )?;
 
     for i in 1..data.rows.len() {
         let prev = &data.rows[i - 1];
@@ -347,6 +360,7 @@ fn export_data_sorted_by_code_then_path() {
             "Rows should be sorted by code desc, path asc"
         );
     }
+    Ok(())
 }
 
 // ========================
@@ -354,9 +368,9 @@ fn export_data_sorted_by_code_then_path() {
 // ========================
 
 #[test]
-fn collect_file_rows_returns_valid_rows() {
+fn collect_file_rows_returns_valid_rows() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     for row in &rows {
         // Each row should have lines = code + comments + blanks
@@ -375,13 +389,14 @@ fn collect_file_rows_returns_valid_rows() {
             row.path
         );
     }
+    Ok(())
 }
 
 #[test]
-fn collect_file_rows_separate_includes_children() {
+fn collect_file_rows_separate_includes_children() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let collapse_rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
-    let separate_rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::Separate, None);
+    let collapse_rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
+    let separate_rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::Separate, None)?;
 
     // Separate mode should have at least as many rows as collapse mode
     // (it includes child rows which collapse mode merges)
@@ -389,6 +404,7 @@ fn collect_file_rows_separate_includes_children() {
         separate_rows.len() >= collapse_rows.len(),
         "Separate mode should have >= rows than collapse mode"
     );
+    Ok(())
 }
 
 // ========================
@@ -396,9 +412,9 @@ fn collect_file_rows_separate_includes_children() {
 // ========================
 
 #[test]
-fn unique_parent_file_count_returns_correct_count() {
+fn unique_parent_file_count_returns_correct_count() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let count = unique_parent_file_count(&languages);
+    let count = unique_parent_file_count(&languages)?;
 
     // Should match the number of unique files from Rust language
     let rust_files = languages
@@ -409,17 +425,19 @@ fn unique_parent_file_count_returns_correct_count() {
     // For a single-language directory, should match
     assert!(
         count >= rust_files,
-        "unique_parent_file_count ({}) should be >= rust files ({})",
+        "unique_parent_file_count ({}).unwrap() should be >= rust files ({})",
         count,
         rust_files
     );
+    Ok(())
 }
 
 #[test]
-fn unique_parent_file_count_empty_languages() {
+fn unique_parent_file_count_empty_languages() -> std::io::Result<()> {
     let languages = Languages::new();
-    let count = unique_parent_file_count(&languages);
+    let count = unique_parent_file_count(&languages)?;
     assert_eq!(count, 0, "Empty languages should have 0 files");
+    Ok(())
 }
 
 // ========================
@@ -589,9 +607,9 @@ fn avg_one_file() {
 // ========================
 
 #[test]
-fn verify_code_accumulation_is_addition() {
+fn verify_code_accumulation_is_addition() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     // Manually compute totals by adding
     let manual_code: usize = rows.iter().map(|r| r.code).sum();
@@ -606,11 +624,12 @@ fn verify_code_accumulation_is_addition() {
     assert!(manual_tokens > 0, "Should have some tokens");
 
     // Verify totals through module report
-    let module_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let module_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert_eq!(
         module_report.total.code, manual_code,
         "Module report total code should match manual sum"
     );
+    Ok(())
 }
 
 #[test]
@@ -644,11 +663,11 @@ fn verify_division_in_tokens() {
 /// Test that code == 0 check correctly excludes zero-code languages (line 76)
 /// This catches mutant: replace == with != in create_lang_report
 #[test]
-fn lang_report_collapse_code_zero_check_excludes_zero() {
+fn lang_report_collapse_code_zero_check_excludes_zero() -> std::io::Result<()> {
     // This test verifies that when code == 0, the language is skipped.
     // If mutated to !=, zero-code languages would be included and non-zero excluded.
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // All rows should have code > 0
     for row in &report.rows {
@@ -658,14 +677,15 @@ fn lang_report_collapse_code_zero_check_excludes_zero() {
             row.lang
         );
     }
+    Ok(())
 }
 
 /// Test that code == 0 check in Separate mode works correctly (line 149)
 /// This catches mutant: replace == with != in create_lang_report
 #[test]
-fn lang_report_separate_code_zero_check_excludes_zero() {
+fn lang_report_separate_code_zero_check_excludes_zero() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     // All rows should have code > 0
     for row in &report.rows {
@@ -675,14 +695,15 @@ fn lang_report_separate_code_zero_check_excludes_zero() {
             row.lang
         );
     }
+    Ok(())
 }
 
 /// Test that lines = code + comments + blanks (lines 89, 113)
 /// This catches mutants: replace + with - or * in create_lang_report
 #[test]
-fn lang_report_lines_equals_code_plus_comments_plus_blanks() {
+fn lang_report_lines_equals_code_plus_comments_plus_blanks() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // For each language, manually check that lines is the sum of components
     for (lang_type, lang) in languages.iter() {
@@ -702,14 +723,15 @@ fn lang_report_lines_equals_code_plus_comments_plus_blanks() {
             );
         }
     }
+    Ok(())
 }
 
 /// Test that code > 0 check works for Separate mode (line 112)
 /// This catches mutants: replace > with ==, <, or >= in create_lang_report
 #[test]
-fn lang_report_separate_code_greater_than_zero_check() {
+fn lang_report_separate_code_greater_than_zero_check() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     // All non-embedded rows should have code > 0 (not >= 0, not == 0, not < 0)
     for row in &report.rows {
@@ -722,14 +744,15 @@ fn lang_report_separate_code_greater_than_zero_check() {
             );
         }
     }
+    Ok(())
 }
 
 /// Test that += operations accumulate correctly in Collapse mode (lines 121-122, 138, 141-142)
 /// This catches mutants: replace += with *= or -= in create_lang_report
 #[test]
-fn lang_report_accumulates_bytes_and_tokens_correctly() {
+fn lang_report_accumulates_bytes_and_tokens_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     // Verify that bytes and tokens are sums, not products
     // If bytes were multiplied instead of added, we'd get 0 (if any file has 0 bytes)
@@ -749,14 +772,15 @@ fn lang_report_accumulates_bytes_and_tokens_correctly() {
         upper_bound.saturating_sub(report.total.tokens) <= report.total.files,
         "Total token rounding drift should be bounded by file count"
     );
+    Ok(())
 }
 
 /// Test that accumulation in Separate mode works (lines 138, 141-142)
 /// This catches mutants: replace += with *= or -= in create_lang_report
 #[test]
-fn lang_report_separate_accumulates_correctly() {
+fn lang_report_separate_accumulates_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     // For embedded languages, code should be positive (accumulated by +=)
     // If it was *= starting from 0, it would remain 0
@@ -771,14 +795,15 @@ fn lang_report_separate_accumulates_correctly() {
             row.lang
         );
     }
+    Ok(())
 }
 
 /// Test that top > 0 && rows.len() > top condition works (line 185)
 /// This catches mutants: replace > with ==, <, >= and && with ||
 #[test]
-fn lang_report_top_truncation_boundary_conditions() {
+fn lang_report_top_truncation_boundary_conditions() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let full_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let full_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
 
     if full_report.rows.len() >= 2 {
         // Test exact boundary: top = rows.len() should NOT truncate
@@ -787,7 +812,7 @@ fn lang_report_top_truncation_boundary_conditions() {
             full_report.rows.len(),
             false,
             ChildrenMode::Collapse,
-        );
+        )?;
         assert_eq!(
             exact_report.rows.len(),
             full_report.rows.len(),
@@ -804,7 +829,7 @@ fn lang_report_top_truncation_boundary_conditions() {
             full_report.rows.len() - 1,
             false,
             ChildrenMode::Collapse,
-        );
+        )?;
         assert_eq!(
             truncated_report.rows.len(),
             full_report.rows.len(),
@@ -817,19 +842,20 @@ fn lang_report_top_truncation_boundary_conditions() {
     }
 
     // Test top = 0 should NOT truncate (0 means no limit)
-    let no_limit_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse);
+    let no_limit_report = create_lang_report(&languages, 0, false, ChildrenMode::Collapse)?;
     assert!(
         !no_limit_report.rows.iter().any(|r| r.lang == "Other"),
         "top = 0 should not add Other"
     );
+    Ok(())
 }
 
 /// Test that module report accumulates code, lines, bytes, tokens correctly (lines 248-250)
 /// This catches mutants: replace += with *= in create_module_report
 #[test]
-fn module_report_accumulates_all_metrics_correctly() {
+fn module_report_accumulates_all_metrics_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     // Verify that totals are sums, not products
     // With multiplication from 0 starting point, would get 0
@@ -859,14 +885,15 @@ fn module_report_accumulates_all_metrics_correctly() {
         report.total.tokens, row_tokens,
         "Total tokens should match sum of rows"
     );
+    Ok(())
 }
 
 /// Test that module report top > 0 && rows.len() > top condition works (line 281)
 /// This catches mutants: replace > with ==, <, >= and && with ||
 #[test]
-fn module_report_top_truncation_boundary_conditions() {
+fn module_report_top_truncation_boundary_conditions() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let full_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+    let full_report = create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
 
     if full_report.rows.len() >= 2 {
         // Test exact boundary: top = rows.len() should NOT truncate
@@ -876,7 +903,7 @@ fn module_report_top_truncation_boundary_conditions() {
             2,
             ChildIncludeMode::ParentsOnly,
             full_report.rows.len(),
-        );
+        )?;
         assert_eq!(
             exact_report.rows.len(),
             full_report.rows.len(),
@@ -894,7 +921,7 @@ fn module_report_top_truncation_boundary_conditions() {
             2,
             ChildIncludeMode::ParentsOnly,
             full_report.rows.len() - 1,
-        );
+        )?;
         assert!(
             truncated_report.rows.iter().any(|r| r.module == "Other"),
             "Should have Other when top < rows.len()"
@@ -903,17 +930,18 @@ fn module_report_top_truncation_boundary_conditions() {
 
     // Test top = 0 should NOT truncate
     let no_limit_report =
-        create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0);
+        create_module_report(&languages, &[], 2, ChildIncludeMode::ParentsOnly, 0)?;
     assert!(
         !no_limit_report.rows.iter().any(|r| r.module == "Other"),
         "top = 0 should not add Other"
     );
+    Ok(())
 }
 
 /// Test that export data min_code > 0 check works (line 356)
 /// This catches mutants: replace > with ==, <, >= in create_export_data
 #[test]
-fn export_data_min_code_boundary_conditions() {
+fn export_data_min_code_boundary_conditions() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
 
     // Get baseline with min_code = 0 (should include all)
@@ -925,7 +953,7 @@ fn export_data_min_code_boundary_conditions() {
         None,
         0,
         0,
-    );
+    )?;
 
     if !baseline.rows.is_empty() {
         // min_code = 0 should not filter anything (condition is: if min_code > 0)
@@ -937,7 +965,7 @@ fn export_data_min_code_boundary_conditions() {
             None,
             0,
             0,
-        );
+        )?;
         assert_eq!(
             with_zero.rows.len(),
             baseline.rows.len(),
@@ -953,7 +981,7 @@ fn export_data_min_code_boundary_conditions() {
             None,
             1,
             0,
-        );
+        )?;
         for row in &with_one.rows {
             assert!(
                 row.code >= 1,
@@ -961,12 +989,13 @@ fn export_data_min_code_boundary_conditions() {
             );
         }
     }
+    Ok(())
 }
 
 /// Test that r.code >= min_code filter works (line 357)
 /// This catches mutant: replace >= with < in create_export_data
 #[test]
-fn export_data_min_code_filter_uses_greater_or_equal() {
+fn export_data_min_code_filter_uses_greater_or_equal() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let all_data = create_export_data(
         &languages,
@@ -976,7 +1005,7 @@ fn export_data_min_code_filter_uses_greater_or_equal() {
         None,
         0,
         0,
-    );
+    )?;
 
     if !all_data.rows.is_empty() {
         // Find a code value that exists
@@ -991,7 +1020,7 @@ fn export_data_min_code_filter_uses_greater_or_equal() {
                 None,
                 some_code,
                 0,
-            );
+            )?;
 
             // The row with exactly some_code should be included (>= not <)
             assert!(
@@ -1000,12 +1029,13 @@ fn export_data_min_code_filter_uses_greater_or_equal() {
             );
         }
     }
+    Ok(())
 }
 
 /// Test that max_rows > 0 && rows.len() > max_rows condition works (line 361)
 /// This catches mutants: replace > with ==, <, >= and && with ||
 #[test]
-fn export_data_max_rows_boundary_conditions() {
+fn export_data_max_rows_boundary_conditions() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
     let all_data = create_export_data(
         &languages,
@@ -1015,7 +1045,7 @@ fn export_data_max_rows_boundary_conditions() {
         None,
         0,
         0,
-    );
+    )?;
 
     if all_data.rows.len() >= 2 {
         // max_rows = 0 should NOT truncate
@@ -1030,7 +1060,7 @@ fn export_data_max_rows_boundary_conditions() {
             None,
             0,
             all_data.rows.len(),
-        );
+        )?;
         assert_eq!(
             exact.rows.len(),
             all_data.rows.len(),
@@ -1046,7 +1076,7 @@ fn export_data_max_rows_boundary_conditions() {
             None,
             0,
             1,
-        );
+        )?;
         assert_eq!(one.rows.len(), 1, "max_rows = 1 should truncate to 1 row");
 
         // max_rows = all_data.rows.len() - 1 should truncate
@@ -1058,21 +1088,22 @@ fn export_data_max_rows_boundary_conditions() {
             None,
             0,
             all_data.rows.len() - 1,
-        );
+        )?;
         assert_eq!(
             less_one.rows.len(),
             all_data.rows.len() - 1,
             "max_rows = rows.len() - 1 should truncate"
         );
     }
+    Ok(())
 }
 
 /// Test that collect_file_rows accumulates code, comments, blanks correctly (lines 418-419, 440-442)
 /// This catches mutants: replace += with *= or -= in collect_file_rows
 #[test]
-fn collect_file_rows_accumulates_stats_correctly() {
+fn collect_file_rows_accumulates_stats_correctly() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::ParentsOnly, None)?;
 
     // Verify that each row has consistent stats
     for row in &rows {
@@ -1105,14 +1136,15 @@ fn collect_file_rows_accumulates_stats_correctly() {
             "bytes should be positive for files with code"
         );
     }
+    Ok(())
 }
 
 /// Test that accumulation works for child rows in Separate mode (lines 440-442)
 /// This catches mutants: replace += with *= or -= in collect_file_rows
 #[test]
-fn collect_file_rows_separate_accumulates_child_stats() {
+fn collect_file_rows_separate_accumulates_child_stats() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::Separate, None);
+    let rows = collect_file_rows(&languages, &[], 2, ChildIncludeMode::Separate, None)?;
 
     // Each row should have consistent lines = code + comments + blanks
     for row in &rows {
@@ -1124,6 +1156,7 @@ fn collect_file_rows_separate_accumulates_child_stats() {
             row.kind
         );
     }
+    Ok(())
 }
 
 /// Test normalize_path handles backslash and slash conditions (line 520)
@@ -1201,9 +1234,9 @@ fn normalize_path_not_operators() {
 /// Test that lines calculation in Separate mode is correct (line 113)
 /// lines = lang.code + lang.comments + lang.blanks
 #[test]
-fn lang_report_separate_lines_calculation() {
+fn lang_report_separate_lines_calculation() -> std::io::Result<()> {
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     for (lang_type, lang) in languages.iter() {
         if lang.code == 0 {
@@ -1224,16 +1257,17 @@ fn lang_report_separate_lines_calculation() {
             );
         }
     }
+    Ok(())
 }
 
 /// Test embedded language accumulation (lines 138, 141-142)
 /// entry.files += reports.len(), entry.code += st.code, entry.lines += code + comments + blanks
 #[test]
-fn lang_report_embedded_accumulation() {
+fn lang_report_embedded_accumulation() -> std::io::Result<()> {
     // This test ensures that embedded language stats are accumulated with +=
     // If *= was used instead, starting from 0, all embedded stats would be 0
     let languages = scan_path(&crate_src_path());
-    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate);
+    let report = create_lang_report(&languages, 0, false, ChildrenMode::Separate)?;
 
     // Check that non-embedded rows have positive stats
     for row in &report.rows {
@@ -1250,4 +1284,5 @@ fn lang_report_embedded_accumulation() {
             );
         }
     }
+    Ok(())
 }

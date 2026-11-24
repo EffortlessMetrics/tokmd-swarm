@@ -23,7 +23,7 @@ fn scan_self_src() -> Languages {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn single_file_zero_code_positive_blanks_comments() {
+fn single_file_zero_code_positive_blanks_comments() -> std::io::Result<()> {
     let dir = tempfile::tempdir().unwrap();
     // A file with only comments and blanks, no code
     std::fs::write(
@@ -33,11 +33,12 @@ fn single_file_zero_code_positive_blanks_comments() {
     .unwrap();
     let mut langs = Languages::new();
     langs.get_statistics(&[dir.path().to_path_buf()], &[], &Config::default());
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     if !report.rows.is_empty() {
         assert_eq!(report.rows[0].code, 0);
     }
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -76,20 +77,22 @@ fn module_key_deeply_nested_with_root_respects_depth() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn lang_report_empty_languages() {
+fn lang_report_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
     assert_eq!(report.total.files, 0);
+    Ok(())
 }
 
 #[test]
-fn module_report_empty_languages() {
+fn module_report_empty_languages() -> std::io::Result<()> {
     let langs = Languages::new();
-    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0);
+    let report = create_module_report(&langs, &[], 2, ChildIncludeMode::Separate, 0)?;
     assert!(report.rows.is_empty());
     assert_eq!(report.total.code, 0);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -97,19 +100,21 @@ fn module_report_empty_languages() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn aggregation_total_code_is_sum_of_rows() {
+fn aggregation_total_code_is_sum_of_rows() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
     let sum: usize = report.rows.iter().map(|r| r.code).sum();
     assert_eq!(sum, report.total.code);
+    Ok(())
 }
 
 #[test]
-fn aggregation_top_limits_rows() {
+fn aggregation_top_limits_rows() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse);
+    let report = create_lang_report(&langs, 1, false, ChildrenMode::Collapse)?;
     // top=1 means at most 1 row (or 2 with "Other" if more langs exist)
     assert!(report.rows.len() <= 2);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -117,12 +122,13 @@ fn aggregation_top_limits_rows() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn children_collapse_no_children_is_noop() {
+fn children_collapse_no_children_is_noop() -> std::io::Result<()> {
     let langs = scan_self_src();
-    let collapsed = create_lang_report(&langs, 0, false, ChildrenMode::Collapse);
-    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate);
+    let collapsed = create_lang_report(&langs, 0, false, ChildrenMode::Collapse)?;
+    let separate = create_lang_report(&langs, 0, false, ChildrenMode::Separate)?;
     // Pure Rust crate has no embedded languages, both modes yield same code count
     assert_eq!(collapsed.total.code, separate.total.code);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -146,12 +152,13 @@ fn normalize_path_with_strip_prefix() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn collect_file_rows_root_file_module_is_root() {
+fn collect_file_rows_root_file_module_is_root() -> std::io::Result<()> {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
     let mut langs = Languages::new();
     langs.get_statistics(&[dir.path().to_path_buf()], &[], &Config::default());
-    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, Some(dir.path()));
+    let rows = collect_file_rows(&langs, &[], 2, ChildIncludeMode::Separate, Some(dir.path()))?;
     assert!(!rows.is_empty());
     assert_eq!(rows[0].module, "(root)");
+    Ok(())
 }

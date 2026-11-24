@@ -8,6 +8,16 @@ use tokmd_analysis_types::{
 
 const ASSET_TOP_N: usize = 10;
 
+/// The walk supplies native relative paths. Only the host's separator is structural.
+fn asset_path(rel: &Path) -> Result<String> {
+    let path = tokmd_scan::validate_source_path(rel)?;
+    if cfg!(windows) {
+        Ok(path.replace('\\', "/"))
+    } else {
+        Ok(path.to_owned())
+    }
+}
+
 /// Build aggregate asset inventory for files produced by a walk.
 pub(crate) fn build_assets_report(root: &Path, files: &[PathBuf]) -> Result<AssetReport> {
     let mut categories: BTreeMap<&str, (usize, u64, BTreeSet<String>)> = BTreeMap::new();
@@ -40,7 +50,7 @@ pub(crate) fn build_assets_report(root: &Path, files: &[PathBuf]) -> Result<Asse
         entry.2.insert(ext.clone());
 
         top_files.push(AssetFileRow {
-            path: rel.to_string_lossy().replace('\\', "/"),
+            path: asset_path(rel)?,
             bytes,
             category: category.to_string(),
             extension: ext,
@@ -123,7 +133,7 @@ pub(crate) fn build_dependency_report(root: &Path, files: &[PathBuf]) -> Result<
         };
 
         lockfiles.push(LockfileReport {
-            path: rel.to_string_lossy().replace('\\', "/"),
+            path: asset_path(rel)?,
             kind: kind.to_string(),
             dependencies: count,
         });
