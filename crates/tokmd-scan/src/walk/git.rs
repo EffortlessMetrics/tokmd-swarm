@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::path::{BoundedPath, PathViolation, ValidatedRoot};
 
@@ -60,7 +60,13 @@ pub(super) fn git_ls_files(root: &Path) -> Result<Option<Vec<PathBuf>>> {
         if part.is_empty() {
             continue;
         }
-        let s = String::from_utf8_lossy(part).to_string();
+        // Lossy decoding can alias a real replacement-character filename and
+        // silently remove a tracked file from the downstream inventory.
+        let s = std::str::from_utf8(part).with_context(|| {
+            format!(
+                "git ls-files returned a path that is not valid UTF-8 (raw bytes: {part:02x?}); rename the tracked path to valid UTF-8 and retry"
+            )
+        })?;
         files.push(PathBuf::from(s));
     }
 
