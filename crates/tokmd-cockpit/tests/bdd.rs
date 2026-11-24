@@ -1233,6 +1233,127 @@ fn scenario_write_review_packet_includes_imported_proof_evidence() {
 }
 
 #[test]
+fn scenario_review_packet_preserves_command_failure_and_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut receipt = minimal_receipt();
+    receipt.base_ref = "b".repeat(40);
+    receipt.head_ref = "a".repeat(40);
+
+    for (case, (exit_code, status, skip_reason, expected_status, availability, expected_counts)) in
+        [
+            (
+                Some(0),
+                "passed",
+                "",
+                "executed_passed",
+                "available",
+                "1 passed, 0 failed, 0 missing",
+            ),
+            (
+                Some(1),
+                "passed",
+                "",
+                "executed_failed",
+                "available",
+                "0 passed, 1 failed, 0 missing",
+            ),
+            (
+                None,
+                "failed",
+                "command_failed",
+                "executed_failed",
+                "available",
+                "0 passed, 1 failed, 0 missing",
+            ),
+            (
+                None,
+                "skipped",
+                "execution_guard_disabled",
+                "not_executed",
+                "missing",
+                "0 passed, 0 failed, 1 missing",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+    {
+        let executed = status != "skipped";
+        let source = serde_json::json!({
+            "schema": "tokmd.proof_run_summary.v1",
+            "status": status,
+            "execution_status": if executed { "executed" } else { "not_executed" },
+            "execution_guard": {
+                "required": true,
+                "enabled": executed,
+                "ci": false,
+                "allow_ci_required_execution": false,
+                "allow_local_required_execution": true,
+                "reason": "local required proof"
+            },
+            "profile": "fast",
+            "base": receipt.base_ref,
+            "head": receipt.head_ref,
+            "ok": status == "passed",
+            "counts": {
+                "commands_total": 1,
+                "required_planned": 1,
+                "advisory_skipped": 0,
+                "executed": usize::from(executed),
+                "passed": usize::from(status == "passed"),
+                "failed": usize::from(status == "failed")
+            },
+            "entries": [{
+                "scope": "tokmd_cockpit",
+                "kind": "test",
+                "required": true,
+                "command": "cargo test --locked -p tokmd-cockpit",
+                "artifact_path": null,
+                "status": status,
+                "skip_reason": skip_reason,
+                "exit_code": exit_code
+            }]
+        });
+        let proof = tokmd_cockpit::parse_proof_evidence_input(
+            &source.to_string(),
+            "proof-run-summary.json",
+        )
+        .unwrap();
+        let out = dir.path().join(format!("case-{case}"));
+        tokmd_cockpit::render::write_review_packet_with_proof_evidence(&out, &receipt, &[proof])
+            .unwrap();
+
+        let evidence: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("evidence.json")).unwrap())
+                .unwrap();
+        assert_eq!(evidence["schema"], "tokmd.review_packet_evidence.v1");
+        assert_eq!(evidence["proof"][0]["execution_status"], expected_status);
+        assert_eq!(evidence["proof"][0]["required"], true);
+        assert_eq!(evidence["proof"][0]["advisory"], false);
+        assert_eq!(evidence["proof"][0]["commit_match"], "exact");
+        assert_eq!(evidence["proof"][0]["availability"], availability);
+        assert_eq!(
+            evidence["proof"][0]["refs"][0],
+            "proof/proof-run-summary.json#/entries/0"
+        );
+        let copied: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(out.join("proof/proof-run-summary.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(copied["entries"], source["entries"]);
+        assert_eq!(copied["base"], source["base"]);
+        assert_eq!(copied["head"], source["head"]);
+
+        for path in ["comment.md", "review-map.md"] {
+            let rendered = std::fs::read_to_string(out.join(path)).unwrap();
+            assert!(
+                rendered.contains(&format!("Required proof: {expected_counts}")),
+                "case={case}, path={path}: {rendered}"
+            );
+        }
+    }
+}
+
+#[test]
 fn scenario_write_review_packet_keeps_ambiguous_multiscope_proof_packet_level() {
     let dir = tempfile::tempdir().unwrap();
     let mut receipt = minimal_receipt();
