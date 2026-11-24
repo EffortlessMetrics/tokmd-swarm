@@ -1349,3 +1349,209 @@ fn ordinary_handoff_file_output_reports_directory_repair_and_recovers() -> anyho
     );
     Ok(())
 }
+
+// The two physical Rust lines below contain no comments or blanks. This oracle
+// uses literal inventory values, including the documented 40-byte/line and
+// four-byte/token estimates; it never asks a resolver or formatter for expected
+// output.
+fn selected_module_json(output: &std::process::Output) -> anyhow::Result<serde_json::Value> {
+    anyhow::ensure!(
+        output.status.code() == Some(0) && output.stderr.is_empty(),
+        "selected module JSON failed or emitted stderr: {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    anyhow::ensure!(
+        receipt["schema_version"] == 2
+            && receipt["mode"] == "module"
+            && receipt["status"] == "complete"
+            && receipt["warnings"] == serde_json::json!([])
+            && receipt["args"]["format"] == "json"
+            && receipt["scan"]["config"] == "none"
+            && receipt["rows"]
+                == serde_json::json!([{
+                    "module": "(root)", "code": 2, "lines": 2, "files": 1,
+                    "bytes": 80, "tokens": 20, "avg_lines": 2
+                }])
+            && receipt["total"]
+                == serde_json::json!({
+                    "code": 2, "lines": 2, "files": 1,
+                    "bytes": 80, "tokens": 20, "avg_lines": 2
+                }),
+        "selected module receipt differs from the literal two-line inventory: {receipt}"
+    );
+    let object = receipt
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("selected module receipt must be a JSON object"))?;
+    anyhow::ensure!(
+        object
+            .remove("generated_at_ms")
+            .is_some_and(|value| value.is_number()),
+        "selected module receipt must have a numeric generated_at_ms"
+    );
+    Ok(receipt)
+}
+
+fn selected_module_format_failure(
+    output: &std::process::Output,
+    expected: &str,
+) -> anyhow::Result<()> {
+    let stderr = std::str::from_utf8(&output.stderr)?;
+    anyhow::ensure!(
+        output.status.code() == Some(2) && output.stdout.is_empty() && stderr == expected,
+        "unsupported selected module format must fail with its exact local diagnostic: {}: stdout={:?}, stderr={stderr:?}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout)
+    );
+    Ok(())
+}
+
+#[test]
+fn selected_profile_module_format_recovers_by_override_or_config_repair() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    std::fs::create_dir(&repo)?;
+    let config_dir = dir.path().join("rate_limit").join("timeout");
+    std::fs::create_dir_all(&config_dir)?;
+    let selected_config = config_dir.join("selected.toml");
+    std::fs::write(repo.join("sample.rs"), "fn a() {}\nfn b() {}\n")?;
+    let invalid_config = "[view.ci]\nformat = \"jsno\"\n";
+    std::fs::write(&selected_config, invalid_config)?;
+    let run = |override_format: Option<&str>| -> anyhow::Result<std::process::Output> {
+        let mut command = first_use_command(&repo, &selected_config);
+        command.args(["--profile", "ci", "module"]);
+        if let Some(format) = override_format {
+            command.args(["--format", format]);
+        }
+        Ok(command.arg("sample.rs").output()?)
+    };
+    let expected = format!(
+        "Error: Invalid module format \"jsno\" in the selected TOML config {}; expected md, tsv, json. Fix the selected profile or pass --format json.\n",
+        selected_config.display()
+    );
+    selected_module_format_failure(&run(None)?, &expected)?;
+    let absent_source = repo.join("absent.rs");
+    anyhow::ensure!(!absent_source.exists(), "absent scan root fixture exists");
+    let absent_output = first_use_command(&repo, &selected_config)
+        .args(["--profile", "ci", "module"])
+        .arg(&absent_source)
+        .output()?;
+    selected_module_format_failure(&absent_output, &expected)?;
+    let overridden = selected_module_json(&run(Some("json"))?)?;
+    anyhow::ensure!(
+        std::fs::read_to_string(&selected_config)? == invalid_config,
+        "an explicit --format override changed the selected config"
+    );
+    selected_module_format_failure(&run(None)?, &expected)?;
+
+    std::fs::write(&selected_config, "[view.ci]\nformat = \"json\"\n")?;
+    anyhow::ensure!(
+        selected_module_json(&run(None)?)? == overridden
+            && selected_module_json(&run(None)?)? == overridden,
+        "module profile repair did not restore repeatable same-argv JSON receipts"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn selected_profile_module_legacy_and_env_format_recovery() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let repo = dir.path().join("ordinary-repo");
+    std::fs::create_dir(&repo)?;
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::write(&selected_config, "[view.valid]\nformat = \"json\"\n")?;
+    std::fs::write(repo.join("sample.rs"), "fn a() {}\nfn b() {}\n")?;
+    let user_config = dir.path().join("rate_limit").join("timeout");
+    let legacy_dir = user_config.join("tokmd");
+    std::fs::create_dir_all(&legacy_dir)?;
+    let legacy = legacy_dir.join("config.json");
+    let invalid_config = r#"{"profiles":{"ci":{"format":"csv"}},"repos":{}}"#;
+    std::fs::write(&legacy, invalid_config)?;
+    let run = |from_env: bool, format: Option<&str>, profile: Option<&str>| {
+        let mut command = profile_selection_command(&repo, &selected_config, &user_config);
+        if from_env {
+            command.env("TOKMD_PROFILE", "ci");
+        } else {
+            command.args(["--profile", "ci"]);
+        }
+        if let Some(profile) = profile {
+            command.args(["--profile", profile]);
+        }
+        command.arg("module");
+        if let Some(format) = format {
+            command.args(["--format", format]);
+        }
+        command.arg("sample.rs").output()
+    };
+    let expected = "Error: Invalid module format \"csv\" in the selected profile; expected md, tsv, json. Fix the selected profile or pass --format json.\n";
+    for from_env in [false, true] {
+        selected_module_format_failure(&run(from_env, None, None)?, expected)?;
+        selected_module_json(&run(from_env, Some("json"), None)?)?;
+        anyhow::ensure!(
+            std::fs::read_to_string(&legacy)? == invalid_config,
+            "an explicit module format override changed the legacy config"
+        );
+    }
+    // An explicit selector supersedes TOKMD_PROFILE before format validation.
+    let original = selected_module_json(&run(true, None, Some("valid"))?)?;
+    std::fs::write(
+        &legacy,
+        r#"{"profiles":{"ci":{"format":"json"}},"repos":{}}"#,
+    )?;
+    for from_env in [false, true] {
+        anyhow::ensure!(
+            selected_module_json(&run(from_env, None, None)?)? == original
+                && selected_module_json(&run(from_env, None, None)?)? == original,
+            "legacy module format repair failed for selector from_env={from_env}"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn selected_profile_module_valid_toml_formats_override_invalid_legacy() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let selected_config = dir.path().join("selected.toml");
+    std::fs::write(dir.path().join("sample.rs"), "fn a() {}\nfn b() {}\n")?;
+    let user_config = dir.path().join("user-config");
+    let legacy_dir = user_config.join("tokmd");
+    std::fs::create_dir_all(&legacy_dir)?;
+    let legacy = legacy_dir.join("config.json");
+    std::fs::write(
+        &legacy,
+        r#"{"profiles":{"ci":{"format":"csv"}},"repos":{}}"#,
+    )?;
+    for (format, expected) in [
+        (
+            "md",
+            "|Module|Code|Lines|Files|Bytes|Tokens|Avg|\n|---|---:|---:|---:|---:|---:|---:|\n|(root)|2|2|1|80|20|2|\n|**Total**|2|2|1|80|20|2|\n",
+        ),
+        (
+            "tsv",
+            "Module\tCode\tLines\tFiles\tBytes\tTokens\tAvg\n(root)\t2\t2\t1\t80\t20\t2\nTotal\t2\t2\t1\t80\t20\t2\n",
+        ),
+        ("json", ""),
+    ] {
+        std::fs::write(
+            &selected_config,
+            format!("[view.ci]\nformat = \"{format}\"\n"),
+        )?;
+        let output = profile_selection_command(dir.path(), &selected_config, &user_config)
+            .args(["--profile", "ci", "module", "sample.rs"])
+            .output()?;
+        if format == "json" {
+            selected_module_json(&output)?;
+        } else {
+            anyhow::ensure!(
+                output.status.code() == Some(0)
+                    && output.stderr.is_empty()
+                    && std::str::from_utf8(&output.stdout)? == expected,
+                "valid TOML {format} must supersede invalid legacy format: {output:?}"
+            );
+        }
+    }
+    Ok(())
+}

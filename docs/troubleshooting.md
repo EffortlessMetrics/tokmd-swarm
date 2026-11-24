@@ -407,6 +407,11 @@ then correct the selector or define that name in `[view.NAME]` (or the legacy
 JSON profiles map) and retry. `--show-config` still reports unmatched names
 successfully without scanning.
 
+For `lang` and `module`, a selected profile format outside `md`, `tsv`, and
+`json` also exits with code 2 and empty stdout before scanning. Correct the
+winning profile's `format`, or override it with command-local `--format json`
+(for example, `tokmd --profile ci module --format json`), then retry.
+
 If the error includes `Failed to parse legacy JSON configuration from ...` or
 `Failed to read legacy JSON configuration from ...`, repair the named JSON file
 or restore read access, then retry the same command. Parse errors include the

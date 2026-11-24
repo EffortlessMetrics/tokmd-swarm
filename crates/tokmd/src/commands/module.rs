@@ -24,6 +24,7 @@ pub(crate) fn handle(
     global: &cli::GlobalArgs,
     resolved: &ResolvedConfig,
 ) -> Result<()> {
+    super::validate_table_profile_format("module", cli_args.format, resolved)?;
     let args = config::resolve_module_with_config(&cli_args, resolved);
     let scan_opts = ScanOptions::from(global);
 
